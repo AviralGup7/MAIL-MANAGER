@@ -1,0 +1,869 @@
+/**
+ * BITS Mail Manager — the app.
+ *
+ * ============================================================================
+ * THE ONE RULE
+ * ============================================================================
+ * Data changes go into the Store. The Store notifies ONCE per settled state.
+ * Rendering happens ONCE per animation frame, no matter how many notifications
+ * arrived. Nothing else is allowed to touch the DOM of the list.
+ *
+ * The audit's §10 verdict on the old build was that the render cycle was
+ * coupled to the data pipeline: `renderEmailList` + `rebuildSearchIndex` +
+ * `silentRefresh` ran on every single store mutation, so syncing 200 messages
+ * produced dozens of full re-renders inside one synchronous batch. This file
+ * is the decoupling.
+ *
+ * Concretely:
+ *   - store.batch()  coalesces N mutations into 1 notification
+ *   - scheduleRender() coalesces N notifications into 1 rAF
+ *   - renderList() diffs against the previously rendered id list and reuses
+ *     existing <li> nodes, so a delta sync of 3 new mails touches 3 nodes
+ *   - there is NO MutationObserver, NO setInterval, NO polling loop anywhere
+ *     in this file. The old version had a re-entrant undebounced
+ *     MutationObserver (observer.js:54) plus a 300ms silentRefresh timer.
+ */
+
+import { Store } from './store.js';
+import { classify } from '../classify/index.js';
+import {
+  CATEGORY_LABELS,
+  SIDEBAR_ORDER,
+  MUTED_CATEGORIES,
+} from '../classify/categories.js';
+
+// ---------------------------------------------------------------- constants --
+
+/** Stable colours per category. Derived once, never recomputed. */
+const CAT_COLOR = {
+  augsd: '#e2504a',
+  academics: '#2f7bd6',
+  admin: '#8b6ad6',
+  administration: '#6b7bd6',
+  ps: '#1e9e6a',
+  internship: '#0f9b8e',
+  competitions: '#e08a1e',
+  clubs: '#d64a9c',
+  events: '#c04ad6',
+  library: '#8a7b52',
+  technology: '#4a86d6',
+  'external-services': '#7a8493',
+  'external-promotions': '#98a0ad',
+  spam: '#b0313a',
+  other: '#98a0ad',
+};
+
+/** Messages pulled per page. Gmail's batch endpoint caps at 100. */
+const PAGE = 100;
+
+/** Confidence under this shows a dashed tag: "we guessed". */
+const LOW_CONFIDENCE = 0.7;
+
+// -------------------------------------------------------------------- state --
+
+const store = new Store();
+
+const state = {
+  category: 'all',
+  query: '',
+  selected: null,
+  nextPageToken: '',
+  loading: false,
+  signedIn: false,
+};
+
+/** Ids currently rendered, in order. The diff baseline. */
+let renderedIds = [];
+/** id -> <li>. Lets a delta patch one row without re-rendering the list. */
+const nodeById = new Map();
+
+// ------------------------------------------------------------------- lookup --
+
+const $ = (id) => document.getElementById(id);
+const el = {
+  shell: $('shell'),
+  cats: $('cats'),
+  list: $('list'),
+  scroller: $('scroller'),
+  empty: $('empty'),
+  search: $('search'),
+  listTitle: $('listtitle'),
+  listCount: $('listcount'),
+  account: $('account'),
+  gate: $('gate'),
+  gateError: $('gate-error'),
+  reader: $('reader'),
+  readerEmpty: $('reader-empty'),
+  rSubject: $('r-subject'),
+  rFrom: $('r-from'),
+  rDate: $('r-date'),
+  rTags: $('r-tags'),
+  rBody: $('r-body'),
+  rLoading: $('r-loading'),
+  rOpen: $('r-open'),
+  toast: $('toast'),
+};
+
+// ------------------------------------------------------------------ plumbing --
+
+/** Ask the service worker to do something. It owns the token; we never see it. */
+function send(type, extra = {}) {
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage({ type, ...extra }, (res) => {
+      const lastErr = chrome.runtime.lastError;
+      if (lastErr) return reject(new Error(lastErr.message));
+      if (!res) return reject(new Error('No response from background worker'));
+      res.ok ? resolve(res.data) : reject(new Error(res.error));
+    });
+  });
+}
+
+let toastTimer = 0;
+function toast(text) {
+  el.toast.textContent = text;
+  el.toast.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    el.toast.hidden = true;
+  }, 2200);
+}
+
+// --------------------------------------------------------------- the render --
+
+let frame = 0;
+let pendingStructural = false;
+/** @type {Set<string>} */
+let pendingIds = new Set();
+
+/**
+ * Coalesce. Called once per store notification; runs at most once per frame.
+ *
+ * `structural` means the set or order of messages changed, so the list must be
+ * diffed. Otherwise only the touched rows need patching, which is O(changed)
+ * rather than O(all).
+ */
+function scheduleRender({ changed, structural } = { changed: new Set(), structural: true }) {
+  if (structural) pendingStructural = true;
+  for (const id of changed) pendingIds.add(id);
+  if (frame) return;
+  frame = requestAnimationFrame(() => {
+    frame = 0;
+    const structuralNow = pendingStructural;
+    const ids = pendingIds;
+    pendingStructural = false;
+    pendingIds = new Set();
+    if (structuralNow || state.query) {
+      renderList();
+      renderSidebar();
+    } else {
+      for (const id of ids) patchRow(id);
+      renderSidebar();
+    }
+  });
+}
+
+store.subscribe(scheduleRender);
+
+/** The ids the list should currently show. */
+function visibleIds() {
+  return state.query ? store.search(state.query, state.category) : store.idsFor(state.category);
+}
+
+/**
+ * Diff-render the list.
+ *
+ * Not a full innerHTML rewrite. The old version rebuilt every row on every
+ * refresh, which threw away scroll position, focus and the selection, and
+ * forced a full style+layout pass over the whole list.
+ */
+function renderList() {
+  const ids = visibleIds();
+  const next = ids.length > 400 ? ids.slice(0, 400) : ids;
+
+  // Fast path: identical id list, only content changed.
+  if (sameOrder(next, renderedIds)) {
+    for (const id of next) patchRow(id);
+    updateCounts(ids.length);
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  const seen = new Set();
+  for (const id of next) {
+    seen.add(id);
+    let node = nodeById.get(id);
+    if (!node) {
+      node = buildRow(id);
+      nodeById.set(id, node);
+    } else {
+      fillRow(node, store.get(id));
+    }
+    frag.appendChild(node); // appendChild moves an existing node — no re-create
+  }
+  el.list.replaceChildren(frag);
+
+  for (const [id, node] of nodeById) {
+    if (!seen.has(id)) {
+      node.remove();
+      nodeById.delete(id);
+    }
+  }
+
+  renderedIds = next;
+  el.empty.hidden = next.length > 0;
+  updateCounts(ids.length);
+}
+
+function sameOrder(a, b) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+function updateCounts(total) {
+  el.listTitle.textContent =
+    state.category === 'all' ? 'All mail' : CATEGORY_LABELS[state.category] || state.category;
+  const shown = Math.min(total, 400);
+  el.listCount.textContent = total === 0 ? '' : shown < total ? `${shown} of ${total}` : `${total}`;
+}
+
+/** Build a row's skeleton once. Text is filled by fillRow. */
+function buildRow(id) {
+  const li = document.createElement('li');
+  li.className = 'row';
+  li.dataset.id = id;
+  li.setAttribute('role', 'option');
+  li.innerHTML =
+    '<span class="r-bar"></span>' +
+    '<span class="r-mid">' +
+    '<span class="r-line1"><span class="r-from"></span></span>' +
+    '<div class="r-subj"></div>' +
+    '<div class="r-snip"></div>' +
+    '</span>' +
+    '<span class="r-right">' +
+    '<span class="r-date"></span>' +
+    '<button class="r-star" type="button" aria-label="Star">★</button>' +
+    '<span class="tag"></span>' +
+    '</span>';
+  fillRow(li, store.get(id));
+  return li;
+}
+
+/**
+ * Write a message into an existing row.
+ *
+ * Every assignment is guarded by a comparison. Writing the same string to
+ * textContent still dirties the node and costs a style recalc; skipping the
+ * write when nothing changed is most of why a delta sync is free here.
+ */
+function fillRow(li, m) {
+  if (!m) return;
+  const q = (s) => li.querySelector(s);
+  const bar = q('.r-bar');
+  const color = CAT_COLOR[m.category] || CAT_COLOR.other;
+  if (bar.style.getPropertyValue('--c') !== color) bar.style.setProperty('--c', color);
+
+  setText(q('.r-from'), displayName(m.from));
+  setText(q('.r-subj'), m.subject);
+  setText(q('.r-snip'), m.snippet);
+  setText(q('.r-date'), shortDate(m.date));
+
+  const tag = q('.tag');
+  setText(tag, CATEGORY_LABELS[m.category] || m.category);
+  tag.classList.toggle('low', (m.confidence ?? 1) < LOW_CONFIDENCE);
+  if (m.reason && tag.title !== m.reason) tag.title = m.reason;
+
+  li.classList.toggle('unread', !!m.unread);
+  li.classList.toggle('muted', MUTED_CATEGORIES.has(m.category));
+  q('.r-star').setAttribute('aria-pressed', String(!!m.starred));
+  li.setAttribute('aria-selected', String(state.selected === m.id));
+}
+
+function setText(node, value) {
+  const v = value || '';
+  if (node.textContent !== v) node.textContent = v;
+}
+
+function patchRow(id) {
+  const node = nodeById.get(id);
+  if (node) fillRow(node, store.get(id));
+}
+
+// ---------------------------------------------------------------- sidebar --
+
+/** Built once; afterwards only the count text is touched. */
+function buildSidebar() {
+  const frag = document.createDocumentFragment();
+  frag.appendChild(catButton('all', 'All mail', null));
+  for (const cat of SIDEBAR_ORDER) {
+    frag.appendChild(catButton(cat, CATEGORY_LABELS[cat] || cat, CAT_COLOR[cat]));
+  }
+  el.cats.replaceChildren(frag);
+}
+
+function catButton(key, label, color) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'cat' + (MUTED_CATEGORIES.has(key) ? ' muted' : '');
+  b.dataset.cat = key;
+  b.setAttribute('aria-current', String(state.category === key));
+  const dot = document.createElement('span');
+  dot.className = 'dot';
+  if (color) dot.style.setProperty('--c', color);
+  const name = document.createElement('span');
+  name.className = 'cat-name';
+  name.textContent = label;
+  const count = document.createElement('span');
+  count.className = 'cat-count';
+  b.append(dot, name, count);
+  return b;
+}
+
+function renderSidebar() {
+  const counts = store.counts();
+  const unread = store.unreadCounts();
+  let totalUnread = 0;
+  for (const n of Object.values(unread)) totalUnread += n;
+
+  for (const b of el.cats.children) {
+    const key = b.dataset.cat;
+    const countEl = b.lastElementChild;
+    const u = key === 'all' ? totalUnread : unread[key] || 0;
+    const t = key === 'all' ? store.size : counts[key] || 0;
+    setText(countEl, u ? String(u) : t ? String(t) : '');
+    countEl.classList.toggle('unread', u > 0);
+    b.setAttribute('aria-current', String(state.category === key));
+  }
+}
+
+// ----------------------------------------------------------------- reader --
+
+let bodyToken = 0;
+
+async function openMessage(id) {
+  const m = store.get(id);
+  if (!m) return;
+
+  const prev = state.selected;
+  state.selected = id;
+  if (prev) patchRow(prev);
+  patchRow(id);
+
+  el.readerEmpty.hidden = true;
+  el.reader.hidden = false;
+  // Restart the 180ms swap animation. Runs once, then the class is removed
+  // on animationend so it never accumulates.
+  el.reader.classList.remove('swap');
+  void el.reader.offsetWidth; // reflow to reset the animation
+  el.reader.classList.add('swap');
+
+  el.rSubject.textContent = m.subject;
+  el.rFrom.textContent = m.from;
+  el.rDate.textContent = fullDate(m.date);
+  el.rOpen.href = `https://mail.google.com/mail/u/0/#inbox/${m.threadId}`;
+
+  el.rTags.replaceChildren(
+    tagNode(CATEGORY_LABELS[m.category] || m.category, CAT_COLOR[m.category]),
+    tagNode(`${Math.round((m.confidence ?? 1) * 100)}% · ${m.source || 'rule'}`),
+    ...(m.reason ? [tagNode(m.reason)] : [])
+  );
+
+  // Optimistic read. Gmail is told after, and the UI never waits for it.
+  if (m.unread) {
+    store.patch(id, { unread: false });
+    send('MARK_READ', { id }).catch(() => store.patch(id, { unread: true }));
+  }
+
+  const token = ++bodyToken;
+  el.rLoading.hidden = false;
+  el.rBody.srcdoc = '';
+  try {
+    const body = await send('GET_BODY', { id });
+    if (token !== bodyToken) return; // user moved on; drop the stale response
+    el.rBody.srcdoc = renderBody(body);
+  } catch (err) {
+    if (token !== bodyToken) return;
+    el.rBody.srcdoc = escapeDoc(`Could not load this message.\n\n${err.message}`);
+  } finally {
+    if (token === bodyToken) el.rLoading.hidden = true;
+  }
+}
+
+el.reader.addEventListener('animationend', () => el.reader.classList.remove('swap'));
+
+function tagNode(text, color) {
+  const s = document.createElement('span');
+  s.className = 'tag';
+  s.textContent = text;
+  if (color) s.style.borderColor = color;
+  return s;
+}
+
+/**
+ * Build the srcdoc for the body iframe.
+ *
+ * SECURITY: the iframe has no allow-scripts and no allow-same-origin, so this
+ * content is inert by construction — that, not the string munging below, is
+ * the actual defence. The sanitisation is defence in depth and, unlike the old
+ * version's, it does not pretend a regex is a parser: we strip the tags that
+ * can execute or exfiltrate, and we block remote images by default so opening
+ * a mail does not confirm your address to a spammer.
+ */
+function renderBody(body) {
+  const raw = body.html || '';
+  const html = raw
+    ? raw
+        .replace(/<\s*(script|iframe|object|embed|link|meta|base|form)\b[\s\S]*?<\s*\/\s*\1\s*>/gi, '')
+        .replace(/<\s*(script|iframe|object|embed|link|meta|base)\b[^>]*>/gi, '')
+        .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+        .replace(/javascript:/gi, 'blocked:')
+    : `<pre>${escapeHtml(body.text || '(no content)')}</pre>`;
+
+  const attachments = (body.attachments || []).length
+    ? `<div class="att">📎 ${body.attachments
+        .map((a) => escapeHtml(a.filename))
+        .join(', ')} — open in Gmail to download</div>`
+    : '';
+
+  return `<!doctype html><html><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:;">
+<style>
+  html{color-scheme:light}
+  body{font:14px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+       color:#16181d;margin:0;padding:20px 22px;word-wrap:break-word}
+  img{max-width:100%;height:auto}
+  pre{white-space:pre-wrap;font:inherit;margin:0}
+  table{max-width:100%!important}
+  a{color:#1a4fd6}
+  .att{margin-bottom:14px;padding:8px 10px;background:#f2f4f8;border-radius:8px;font-size:12.5px}
+</style></head><body>${attachments}${html}</body></html>`;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+}
+function escapeDoc(text) {
+  return `<!doctype html><meta charset="utf-8"><body style="font:13px system-ui;padding:20px;color:#5b6270"><pre style="white-space:pre-wrap">${escapeHtml(
+    text
+  )}</pre>`;
+}
+
+function closeReader() {
+  const prev = state.selected;
+  state.selected = null;
+  bodyToken++;
+  if (prev) patchRow(prev);
+  el.reader.hidden = true;
+  el.readerEmpty.hidden = false;
+  el.rBody.srcdoc = '';
+}
+
+// ------------------------------------------------------------------ triage --
+
+/**
+ * Every action is optimistic: mutate the store now, tell Gmail after, roll
+ * back on failure. A click must never wait on a 300ms network round trip.
+ */
+async function act(action, id) {
+  const m = store.get(id);
+  if (!m) return;
+  switch (action) {
+    case 'star': {
+      const on = !m.starred;
+      store.patch(id, { starred: on });
+      send('STAR', { id, on }).catch(() => {
+        store.patch(id, { starred: !on });
+        toast('Could not update star');
+      });
+      break;
+    }
+    case 'unread': {
+      const on = !m.unread;
+      store.patch(id, { unread: on });
+      send(on ? 'MARK_UNREAD' : 'MARK_READ', { id }).catch(() => {
+        store.patch(id, { unread: !on });
+        toast('Could not update');
+      });
+      break;
+    }
+    case 'archive': {
+      const snapshot = { ...m };
+      selectNeighbourThen(id);
+      store.remove(id);
+      toast('Archived');
+      send('ARCHIVE', { id }).catch(() => {
+        store.upsert(snapshot);
+        toast('Could not archive');
+      });
+      break;
+    }
+    case 'trash': {
+      const snapshot = { ...m };
+      selectNeighbourThen(id);
+      store.remove(id);
+      toast('Deleted');
+      send('TRASH', { id }).catch(() => {
+        store.upsert(snapshot);
+        toast('Could not delete');
+      });
+      break;
+    }
+  }
+}
+
+/** Keep the reading pane useful after a destructive action. */
+function selectNeighbourThen(id) {
+  if (state.selected !== id) return;
+  const i = renderedIds.indexOf(id);
+  const nextId = renderedIds[i + 1] || renderedIds[i - 1];
+  if (nextId) {
+    // Defer: let the removal settle first so the row exists to be selected.
+    queueMicrotask(() => openMessage(nextId));
+  } else {
+    closeReader();
+  }
+}
+
+// -------------------------------------------------------------------- sync --
+
+/**
+ * Ingest raw Gmail records: classify, then commit in ONE batch.
+ *
+ * Classification is synchronous (500 messages in ~19ms measured), so it can
+ * run inline. Doing it before the batch means the store is mutated exactly
+ * once per page and the UI renders exactly once per page.
+ */
+function ingest(messages) {
+  if (!messages.length) return;
+  const records = new Array(messages.length);
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
+    const c = classify(m);
+    records[i] = {
+      id: m.id,
+      threadId: m.threadId,
+      from: m.from,
+      subject: m.subject,
+      snippet: m.snippet,
+      date: m.date,
+      unread: m.unread,
+      starred: m.starred,
+      category: c.category,
+      confidence: c.confidence,
+      source: c.source,
+      reason: c.reason,
+    };
+  }
+  store.upsertMany(records); // one batch -> one notification -> one frame
+}
+
+async function loadPage(pageToken = '') {
+  if (state.loading) return;
+  state.loading = true;
+  setBusy(true);
+  try {
+    const { messages, nextPageToken } = await send('SYNC_PAGE', {
+      opts: { pageToken, max: PAGE },
+    });
+    ingest(messages);
+    state.nextPageToken = nextPageToken;
+    $('btn-more').disabled = !nextPageToken;
+  } catch (err) {
+    reportError(err);
+  } finally {
+    state.loading = false;
+    setBusy(false);
+  }
+}
+
+/** Delta refresh. Cheap; safe to call on demand. Never on a timer. */
+async function refresh() {
+  if (state.loading) return;
+  state.loading = true;
+  setBusy(true);
+  try {
+    const res = await send('SYNC_DELTA');
+    if (res.kind === 'resync' || res.kind === 'none') {
+      store.clear?.();
+      renderedIds = [];
+      nodeById.clear();
+      await loadPageInner('');
+    } else {
+      store.batch(() => {
+        ingestInto(res.added);
+        for (const id of res.removed) store.remove(id);
+        for (const p of res.patched) {
+          const { id, ...fields } = p;
+          store.patch(id, fields);
+        }
+      });
+      const n = res.added.length;
+      toast(n ? `${n} new message${n > 1 ? 's' : ''}` : 'Up to date');
+    }
+  } catch (err) {
+    reportError(err);
+  } finally {
+    state.loading = false;
+    setBusy(false);
+  }
+}
+
+function ingestInto(messages) {
+  ingest(messages);
+}
+
+async function loadPageInner(token) {
+  const { messages, nextPageToken } = await send('SYNC_PAGE', { opts: { pageToken: token, max: PAGE } });
+  ingest(messages);
+  state.nextPageToken = nextPageToken;
+  $('btn-more').disabled = !nextPageToken;
+}
+
+function setBusy(on) {
+  el.shell.setAttribute('aria-busy', String(on));
+  $('btn-refresh').disabled = on;
+}
+
+function reportError(err) {
+  const msg = String(err?.message || err);
+  if (/client ID/i.test(msg)) {
+    showGate(msg);
+  } else if (/401|invalid_grant|No refresh token/i.test(msg)) {
+    state.signedIn = false;
+    showGate('Session expired. Sign in again.');
+  } else {
+    toast(msg.slice(0, 140));
+  }
+}
+
+// -------------------------------------------------------------------- gate --
+
+function showGate(message) {
+  el.gate.hidden = false;
+  el.gateError.hidden = !message;
+  el.gateError.textContent = message || '';
+}
+
+function hideGate() {
+  el.gate.hidden = true;
+}
+
+// ------------------------------------------------------------------ events --
+
+// One delegated listener for the whole list. The old version attached three
+// listeners per row; at 200 rows that is 600 listeners to create and tear down
+// on every refresh.
+el.list.addEventListener('click', (e) => {
+  const row = e.target.closest('.row');
+  if (!row) return;
+  const id = row.dataset.id;
+  if (e.target.closest('.r-star')) {
+    e.stopPropagation();
+    act('star', id);
+    return;
+  }
+  openMessage(id);
+});
+
+el.cats.addEventListener('click', (e) => {
+  const b = e.target.closest('.cat');
+  if (!b) return;
+  state.category = b.dataset.cat;
+  el.scroller.scrollTop = 0;
+  renderList();
+  renderSidebar();
+});
+
+$('r-actions').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-act]');
+  if (!b || !state.selected) return;
+  act(b.dataset.act, state.selected);
+});
+
+// Search: debounced by ONE frame, not by a timer. Typing feels instant and
+// still costs at most one render per frame.
+let searchFrame = 0;
+el.search.addEventListener('input', () => {
+  if (searchFrame) return;
+  searchFrame = requestAnimationFrame(() => {
+    searchFrame = 0;
+    state.query = el.search.value;
+    el.scroller.scrollTop = 0;
+    renderList();
+  });
+});
+
+$('btn-refresh').addEventListener('click', refresh);
+$('btn-more').addEventListener('click', () => loadPage(state.nextPageToken));
+$('btn-gmail').addEventListener('click', release);
+$('btn-signout').addEventListener('click', async () => {
+  await send('SIGN_OUT').catch(() => {});
+  state.signedIn = false;
+  showGate('Signed out.');
+});
+$('btn-signin').addEventListener('click', doSignIn);
+$('btn-options').addEventListener('click', () => chrome.runtime.openOptionsPage());
+$('btn-theme').addEventListener('click', () => {
+  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next;
+  chrome.storage.local.set({ theme: next });
+});
+
+async function doSignIn() {
+  const btn = $('btn-signin');
+  btn.disabled = true;
+  btn.textContent = 'Opening Google…';
+  try {
+    await send('SIGN_IN');
+    state.signedIn = true;
+    hideGate();
+    await start();
+  } catch (err) {
+    showGate(String(err.message || err));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Sign in with Google';
+  }
+}
+
+/** Hand the page back to Gmail. The content script does the actual unwind. */
+function release() {
+  parent.postMessage({ type: 'BMM_RELEASE' }, '*');
+}
+
+// Keyboard. Gmail-compatible where it makes sense, so muscle memory survives.
+document.addEventListener('keydown', (e) => {
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+
+  if (e.key === 'Escape') {
+    if (typing) {
+      el.search.blur();
+      return;
+    }
+    if (state.selected) return closeReader();
+    return release();
+  }
+  if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
+
+  switch (e.key) {
+    case '/':
+      e.preventDefault();
+      el.search.focus();
+      el.search.select();
+      break;
+    case 'j':
+      move(1);
+      break;
+    case 'k':
+      move(-1);
+      break;
+    case 'Enter':
+      if (state.selected) openMessage(state.selected);
+      break;
+    case 'e':
+      if (state.selected) act('archive', state.selected);
+      break;
+    case 's':
+      if (state.selected) act('star', state.selected);
+      break;
+    case 'u':
+      if (state.selected) act('unread', state.selected);
+      break;
+    case '#':
+      if (state.selected) act('trash', state.selected);
+      break;
+    case 'r':
+      refresh();
+      break;
+  }
+});
+
+function move(delta) {
+  if (renderedIds.length === 0) return;
+  const i = state.selected ? renderedIds.indexOf(state.selected) : -1;
+  const next = renderedIds[Math.max(0, Math.min(renderedIds.length - 1, i + delta))];
+  if (!next || next === state.selected) return;
+  openMessage(next);
+  nodeById.get(next)?.scrollIntoView({ block: 'nearest' });
+}
+
+// The content script pings us when the takeover is fully visible. Focus lands
+// here so keyboard shortcuts work without a click.
+window.addEventListener('message', (e) => {
+  if (e.data?.type === 'BMM_SHOWN') el.scroller.focus({ preventScroll: true });
+});
+
+// ------------------------------------------------------------------- start --
+
+async function start() {
+  try {
+    const p = await send('PROFILE');
+    el.account.textContent = p.emailAddress || '';
+  } catch {
+    /* not fatal; the list is what matters */
+  }
+  await loadPage('');
+  // Only after the inbox is on screen do we spend a request on a delta check.
+  if (store.size) refresh();
+}
+
+async function boot() {
+  const { theme } = await chrome.storage.local.get('theme');
+  if (theme) document.documentElement.dataset.theme = theme;
+
+  buildSidebar();
+  renderSidebar();
+
+  // Tell the content script we have painted. It waits for this before it
+  // reveals the takeover, which is what prevents the white flash the old
+  // separate-tab approach had.
+  requestAnimationFrame(() => parent.postMessage({ type: 'BMM_READY' }, '*'));
+
+  try {
+    const { signedIn } = await send('AUTH_STATUS');
+    state.signedIn = signedIn;
+    if (!signedIn) return showGate('');
+    hideGate();
+    await start();
+  } catch (err) {
+    showGate(String(err.message || err));
+  }
+}
+
+// ------------------------------------------------------------------ format --
+
+function displayName(from) {
+  // "Aviral Gupta <f2024@pilani...>" -> "Aviral Gupta"
+  const lt = from.indexOf('<');
+  if (lt > 0) return from.slice(0, lt).trim().replace(/^"|"$/g, '') || from;
+  return from.replace(/[<>]/g, '');
+}
+
+const DAY = 86400000;
+function shortDate(ms) {
+  if (!ms) return '';
+  const d = new Date(ms);
+  const now = Date.now();
+  if (now - ms < DAY && d.getDate() === new Date(now).getDate()) {
+    return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  }
+  if (now - ms < 300 * DAY) {
+    return d.toLocaleDateString([], { day: 'numeric', month: 'short' });
+  }
+  return d.toLocaleDateString([], { year: 'numeric', month: 'short' });
+}
+
+function fullDate(ms) {
+  if (!ms) return '';
+  return new Date(ms).toLocaleString([], {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+boot();

@@ -271,3 +271,36 @@ test('PERF: a single patch does not touch the whole store', () => {
   // 500 individual patches. If this reindexed everything it would be seconds.
   assert.ok(ms < 200, `500 patches took ${ms.toFixed(1)}ms`);
 });
+
+test('clear() empties every index and notifies once, structurally', () => {
+  // Needed when Gmail says our historyId expired: stale archived mail must not
+  // survive the resync.
+  const s = new Store();
+  s.upsertMany([
+    msg('a', { category: 'augsd', subject: 'fee registration' }),
+    msg('b', { category: 'clubs', subject: 'audition' }),
+  ]);
+  let calls = 0;
+  let last = null;
+  s.subscribe((p) => {
+    calls++;
+    last = p;
+  });
+
+  s.clear();
+
+  assert.equal(calls, 1);
+  assert.equal(last.structural, true);
+  assert.equal(s.size, 0);
+  assert.deepEqual(s.idsFor('all'), []);
+  assert.deepEqual(s.counts(), {});
+  assert.deepEqual(s.search('registration'), []);
+});
+
+test('clear() on an empty store does not fire subscribers', () => {
+  const s = new Store();
+  let calls = 0;
+  s.subscribe(() => calls++);
+  s.clear();
+  assert.equal(calls, 0);
+});

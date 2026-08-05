@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BITS Mail Manager</title>
+    <link rel="stylesheet" href="src/app/app.css" />
+  </head>
+  <body>
+    <!--
+      Structure is static HTML, not built by JS.
+
+      The old version created the entire chrome (sidebar, toolbar, panes) with
+      document.createElement on every mount. That is a guaranteed layout thrash
+      before a single message is on screen. Here the shell is parsed by the
+      HTML parser once and only the message rows are dynamic.
+    -->
+    <div id="shell" aria-busy="true">
+      <aside id="sidebar">
+        <div id="brand">
+          <span id="brand-mark" aria-hidden="true"></span>
+          <span id="brand-text">
+            <strong>BITS Mail</strong>
+            <small id="account">not signed in</small>
+          </span>
+        </div>
+
+        <nav id="cats" aria-label="Categories"><!-- built once by app.js --></nav>
+
+        <div id="side-foot">
+          <button id="btn-gmail" class="ghost" type="button" title="Return to Gmail (Esc)">
+            Back to Gmail
+          </button>
+          <button id="btn-signout" class="ghost small" type="button">Sign out</button>
+        </div>
+      </aside>
+
+      <main id="main">
+        <header id="topbar">
+          <div id="searchwrap">
+            <svg id="searchicon" viewBox="0 0 20 20" aria-hidden="true">
+              <circle cx="9" cy="9" r="6" fill="none" stroke="currentColor" stroke-width="2" />
+              <path d="M13.5 13.5 18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            </svg>
+            <input
+              id="search"
+              type="search"
+              placeholder="Search subject or sender…"
+              autocomplete="off"
+              spellcheck="false"
+              aria-label="Search mail"
+            />
+            <kbd id="searchkbd">/</kbd>
+          </div>
+          <div id="toolbar" role="toolbar" aria-label="Message actions">
+            <button id="btn-refresh" class="ghost" type="button" title="Refresh (r)">Refresh</button>
+            <button id="btn-more" class="ghost" type="button" title="Load 100 more">Load more</button>
+            <button id="btn-theme" class="ghost icon" type="button" title="Toggle theme" aria-label="Toggle theme">◐</button>
+          </div>
+        </header>
+
+        <section id="panes">
+          <div id="listpane">
+            <div id="listhead">
+              <span id="listtitle">Inbox</span>
+              <span id="listcount"></span>
+            </div>
+            <!--
+              The scroller is the only element with overflow. Row height is
+              fixed in CSS so the browser never has to measure text to know
+              where a row lands.
+            -->
+            <div id="scroller" tabindex="0" role="listbox" aria-label="Messages">
+              <ul id="list"></ul>
+              <div id="empty" hidden>Nothing here.</div>
+            </div>
+          </div>
+
+          <div id="readpane" aria-live="polite">
+            <div id="reader-empty">
+              <div id="reader-empty-mark" aria-hidden="true"></div>
+              <p>Select a message.</p>
+              <p class="hint"><kbd>j</kbd>/<kbd>k</kbd> move · <kbd>e</kbd> archive · <kbd>s</kbd> star · <kbd>u</kbd> unread · <kbd>Esc</kbd> Gmail</p>
+            </div>
+            <article id="reader" hidden>
+              <div id="reader-head">
+                <h1 id="r-subject"></h1>
+                <div id="r-meta">
+                  <span id="r-from"></span>
+                  <span id="r-date"></span>
+                </div>
+                <div id="r-tags"></div>
+                <div id="r-actions">
+                  <button data-act="star" class="ghost" type="button">Star</button>
+                  <button data-act="unread" class="ghost" type="button">Mark unread</button>
+                  <button data-act="archive" class="ghost" type="button">Archive</button>
+                  <button data-act="trash" class="ghost danger" type="button">Delete</button>
+                  <a id="r-open" class="ghost" target="_blank" rel="noopener">Open in Gmail</a>
+                </div>
+              </div>
+              <div id="r-bodywrap">
+                <div id="r-loading">Loading…</div>
+                <!--
+                  sandbox has NO allow-scripts and NO allow-same-origin. The
+                  body is therefore inert and origin-less: it cannot read this
+                  page, cannot reach chrome.* and cannot phone home on load.
+                -->
+                <iframe
+                  id="r-body"
+                  sandbox="allow-popups allow-popups-to-escape-sandbox"
+                  referrerpolicy="no-referrer"
+                  title="Message body"
+                ></iframe>
+              </div>
+            </article>
+          </div>
+        </section>
+      </main>
+
+      <!-- Sign-in gate. Shown instead of the panes when there is no token. -->
+      <div id="gate" hidden>
+        <div id="gate-card">
+          <h2>Connect your BITS mail</h2>
+          <p>Sign in with Google to let BITS Mail Manager read and sort your inbox.</p>
+          <p class="fine">
+            The extension asks for one scope, <code>gmail.modify</code>, and uses PKCE — there is
+            no client secret in this build.
+          </p>
+          <button id="btn-signin" class="primary" type="button">Sign in with Google</button>
+          <p id="gate-error" class="err" hidden></p>
+          <button id="btn-options" class="ghost small" type="button">Set OAuth client ID…</button>
+        </div>
+      </div>
+
+      <div id="toast" role="status" aria-live="polite" hidden></div>
+    </div>
+
+    <script type="module" src="src/app/app.js"></script>
+  </body>
+</html>

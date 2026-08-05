@@ -241,6 +241,22 @@ export class Store {
     }
   }
 
+  /**
+   * Drop everything.
+   *
+   * Needed for exactly one case: Gmail says our historyId is too old, so the
+   * delta cursor is gone and we must resync from scratch. Keeping stale
+   * messages around in that case would leave archived mail visible forever.
+   */
+  clear() {
+    if (this.byId.size === 0) return;
+    this.byId.clear();
+    this.order.length = 0;
+    this.byCategory.clear();
+    this.searchIndex.clear();
+    this._touch('*', true);
+  }
+
   // --------------------------------------------------------------- reading --
 
   get size() {

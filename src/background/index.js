@@ -9,6 +9,8 @@
  */
 
 import { signIn, signOut, getToken, isSignedIn } from './auth.js';
+import { getFull, modify, batchModify, trash, profile } from './gmail.js';
+import { syncPage, syncDelta } from './sync.js';
 
 /** Toolbar click: tell the content script in THIS tab to toggle. */
 chrome.action.onClicked.addListener(async (tab) => {
@@ -71,6 +73,38 @@ async function handle(msg) {
       return { signedIn: false };
     case 'GMAIL':
       return gmail(msg.path, msg.init);
+
+    case 'PROFILE':
+      return profile();
+
+    // ---- sync ----------------------------------------------------------
+    case 'SYNC_PAGE':
+      return syncPage(msg.opts || {});
+    case 'SYNC_DELTA':
+      return syncDelta();
+
+    // ---- reading -------------------------------------------------------
+    case 'GET_BODY':
+      return extractBody(await getFull(msg.id));
+
+    // ---- triage --------------------------------------------------------
+    // Every one of these is fire-and-await from the app, but the app has
+    // ALREADY applied the change optimistically. Gmail round trips are
+    // 200-600ms; making the UI wait for them is what made the old version
+    // feel dead on click.
+    case 'MARK_READ':
+      return modify(msg.id, [], ['UNREAD']);
+    case 'MARK_UNREAD':
+      return modify(msg.id, ['UNREAD'], []);
+    case 'STAR':
+      return modify(msg.id, msg.on ? ['STARRED'] : [], msg.on ? [] : ['STARRED']);
+    case 'ARCHIVE':
+      return modify(msg.id, [], ['INBOX']);
+    case 'TRASH':
+      return trash(msg.id);
+    case 'BULK':
+      return batchModify(msg.ids, msg.add || [], msg.remove || []);
+
     default:
       throw new Error(`Unknown message: ${msg?.type}`);
   }
@@ -90,4 +124,55 @@ async function gmail(path, init = {}) {
     throw new Error(`Gmail API ${res.status} on ${path}`);
   }
   return res.json();
+}
+
+/**
+ * Pull a displayable body out of Gmail's MIME tree.
+ *
+ * Done in the WORKER, not in the app document, for one reason: the worker has
+ * no DOM, so a malicious body cannot do anything here no matter how it is
+ * shaped. The app receives inert strings and renders them into a sandboxed
+ * iframe with no allow-scripts.
+ *
+ * Gmail nests parts arbitrarily deep (multipart/mixed > multipart/alternative
+ * > text/html). The old version only looked one level down and therefore
+ * showed "(no content)" for any mail with an attachment.
+ */
+function extractBody(full) {
+  const out = { id: full.id, threadId: full.threadId, html: '', text: '', attachments: [] };
+  walk(full.payload);
+  return out;
+
+  function walk(part) {
+    if (!part) return;
+    const mime = part.mimeType || '';
+    const filename = part.filename || '';
+    if (filename && part.body?.attachmentId) {
+      out.attachments.push({
+        filename,
+        mimeType: mime,
+        size: part.body.size || 0,
+        attachmentId: part.body.attachmentId,
+      });
+    } else if (mime === 'text/html' && part.body?.data && !out.html) {
+      out.html = b64url(part.body.data);
+    } else if (mime === 'text/plain' && part.body?.data && !out.text) {
+      out.text = b64url(part.body.data);
+    }
+    for (const child of part.parts || []) walk(child);
+  }
+}
+
+/** Gmail returns base64url with no padding. atob wants base64 with padding. */
+function b64url(data) {
+  const b64 = data.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+  try {
+    // Round-trip through bytes so UTF-8 (e.g. curly quotes, ₹) survives.
+    const bin = atob(padded);
+    const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+    return new TextDecoder('utf-8').decode(bytes);
+  } catch {
+    return '';
+  }
 }

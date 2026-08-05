@@ -1,0 +1,722 @@
+/*
+ * BITS Mail Manager — app styles.
+ *
+ * RULES THIS FILE FOLLOWS (learned from the old version's motion audit, which
+ * found 11 transition durations, 12 easings and 7 near-identical keyframes):
+ *
+ *   1. THREE durations. Fast 120ms, base 180ms, slow 260ms. Nothing else.
+ *   2. ONE easing for entrances, one for exits. Nothing else.
+ *   3. Animate ONLY transform and opacity. Never height, top, width, filter,
+ *      box-shadow or background-position — those hit layout or paint on every
+ *      frame and are exactly why the old build stuttered while scrolling.
+ *   4. No animation runs forever. There is no infinite keyframe in this file.
+ *   5. prefers-reduced-motion kills all of it.
+ */
+
+:root {
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --dur-slow: 260ms;
+  --ease-in: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out: cubic-bezier(0.4, 0, 1, 1);
+
+  --row-h: 62px;
+  --sidebar-w: 232px;
+  --radius: 10px;
+}
+
+html[data-theme='light'] {
+  --bg: #f6f7f9;
+  --bg-raised: #ffffff;
+  --bg-sunken: #eceef2;
+  --fg: #16181d;
+  --fg-dim: #5b6270;
+  --fg-faint: #8a91a0;
+  --line: #dfe3ea;
+  --accent: #1a4fd6;
+  --accent-soft: #e6ecfb;
+  --danger: #c0392b;
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 8px 24px rgba(16, 24, 40, 0.07);
+}
+
+html[data-theme='dark'] {
+  --bg: #101216;
+  --bg-raised: #171a20;
+  --bg-sunken: #0b0d10;
+  --fg: #e8eaef;
+  --fg-dim: #a2a9b8;
+  --fg-faint: #6d7484;
+  --line: #262a33;
+  --accent: #7aa2ff;
+  --accent-soft: #1b2338;
+  --danger: #ff6b5e;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font: 14px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden; /* the scroller scrolls, never the page */
+}
+
+kbd {
+  font: inherit;
+  font-size: 11px;
+  padding: 1px 5px;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  color: var(--fg-dim);
+  background: var(--bg-raised);
+}
+
+/* ------------------------------------------------------------------ shell -- */
+
+#shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) 1fr;
+  height: 100%;
+}
+
+/* ---------------------------------------------------------------- sidebar -- */
+
+#sidebar {
+  background: var(--bg-sunken);
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+#brand {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 14px 16px 12px;
+}
+
+#brand-mark {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  flex: none;
+  background: linear-gradient(135deg, var(--accent), #8b5cf6);
+}
+
+#brand-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+#brand-text strong {
+  font-size: 13.5px;
+  letter-spacing: 0.2px;
+}
+#account {
+  color: var(--fg-faint);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#cats {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 8px 8px;
+}
+
+.cat {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  /* colour only — no layout properties in the transition */
+  transition: background-color var(--dur-fast) linear, color var(--dur-fast) linear;
+}
+.cat:hover {
+  background: var(--bg-raised);
+  color: var(--fg);
+}
+.cat[aria-current='true'] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+.cat.muted {
+  opacity: 0.62;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--c, var(--fg-faint));
+}
+
+.cat-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cat-count {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-faint);
+}
+.cat-count.unread {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+#side-foot {
+  padding: 8px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* --------------------------------------------------------------- controls -- */
+
+button,
+a.ghost {
+  font: inherit;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background-color var(--dur-fast) linear, color var(--dur-fast) linear,
+    border-color var(--dur-fast) linear;
+}
+
+.ghost {
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  color: var(--fg-dim);
+  padding: 6px 11px;
+  font-size: 12.5px;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+.ghost:hover {
+  color: var(--fg);
+  border-color: var(--fg-faint);
+}
+.ghost.small {
+  padding: 4px 9px;
+  font-size: 11.5px;
+}
+.ghost.icon {
+  padding: 6px 9px;
+}
+.ghost.danger:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.primary {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: #fff;
+  padding: 9px 18px;
+  font-weight: 600;
+}
+.primary:hover {
+  filter: brightness(1.06);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------- topbar -- */
+
+#main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+#topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-raised);
+}
+
+#searchwrap {
+  position: relative;
+  flex: 1;
+  max-width: 560px;
+  display: flex;
+  align-items: center;
+}
+
+#searchicon {
+  position: absolute;
+  left: 10px;
+  width: 16px;
+  height: 16px;
+  color: var(--fg-faint);
+  pointer-events: none;
+}
+
+#search {
+  width: 100%;
+  padding: 8px 34px 8px 32px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+}
+#search:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+#search::-webkit-search-cancel-button {
+  cursor: pointer;
+}
+
+#searchkbd {
+  position: absolute;
+  right: 8px;
+  pointer-events: none;
+}
+#search:focus + #searchkbd {
+  opacity: 0;
+}
+
+#toolbar {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* ----------------------------------------------------------------- panes -- */
+
+#panes {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(300px, 400px) 1fr;
+}
+
+#listpane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+}
+
+#listhead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 9px 14px;
+  font-size: 12px;
+  color: var(--fg-faint);
+  border-bottom: 1px solid var(--line);
+}
+#listtitle {
+  font-weight: 700;
+  color: var(--fg);
+  font-size: 13px;
+}
+
+#scroller {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* Tell the compositor this layer scrolls on its own. */
+  contain: strict;
+}
+#scroller:focus {
+  outline: none;
+}
+
+#list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  position: relative;
+}
+
+/*
+ * A row.
+ *
+ * `contain: layout paint style` means a change inside one row can never
+ * invalidate layout for the other 1999 rows. `content-visibility: auto` with
+ * a matching `contain-intrinsic-size` lets the browser skip rendering rows
+ * that are off screen entirely — this is what makes a 2000-row list scroll at
+ * 60fps without a hand-written virtualiser, and it is the single biggest
+ * reason this list is faster than the old one.
+ */
+.row {
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
+  gap: 10px;
+  align-items: start;
+  height: var(--row-h);
+  padding: 10px 14px 10px 10px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+  contain: layout paint style;
+  content-visibility: auto;
+  contain-intrinsic-size: var(--row-h);
+  background: var(--bg);
+  transition: background-color var(--dur-fast) linear;
+}
+.row:hover {
+  background: var(--bg-raised);
+}
+.row[aria-selected='true'] {
+  background: var(--accent-soft);
+}
+.row.unread .r-subj {
+  font-weight: 700;
+  color: var(--fg);
+}
+.row.unread .r-from {
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.r-bar {
+  width: 3px;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--c, transparent);
+}
+
+.r-mid {
+  min-width: 0;
+}
+
+.r-line1 {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.r-from {
+  font-size: 12.5px;
+  color: var(--fg-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.r-subj {
+  font-size: 13px;
+  color: var(--fg-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.r-snip {
+  font-size: 12px;
+  color: var(--fg-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.r-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.r-date {
+  font-size: 11px;
+  color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.r-star {
+  border: 0;
+  background: none;
+  padding: 0 2px;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--fg-faint);
+}
+.r-star[aria-pressed='true'] {
+  color: #eab308;
+}
+
+.tag {
+  font-size: 10px;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--bg-sunken);
+  color: var(--fg-dim);
+  border: 1px solid var(--line);
+  white-space: nowrap;
+}
+.tag.low {
+  border-style: dashed;
+}
+
+#empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--fg-faint);
+  font-size: 13px;
+}
+
+/* ---------------------------------------------------------------- reader -- */
+
+#readpane {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-raised);
+}
+
+#reader-empty {
+  margin: auto;
+  text-align: center;
+  color: var(--fg-faint);
+}
+#reader-empty-mark {
+  width: 44px;
+  height: 44px;
+  margin: 0 auto 14px;
+  border-radius: 12px;
+  border: 2px dashed var(--line);
+}
+#reader-empty .hint {
+  font-size: 11.5px;
+  margin-top: 18px;
+}
+
+#reader {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+#reader-head {
+  padding: 18px 22px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+#r-subject {
+  margin: 0 0 8px;
+  font-size: 18px;
+  line-height: 1.3;
+  font-weight: 650;
+}
+
+#r-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 12.5px;
+  color: var(--fg-dim);
+  flex-wrap: wrap;
+}
+#r-date {
+  color: var(--fg-faint);
+}
+
+#r-tags {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+#r-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+#r-bodywrap {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+#r-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--fg-faint);
+  font-size: 12.5px;
+  background: var(--bg-raised);
+}
+
+#r-body {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+}
+
+/* Reader swap: 180ms, transform+opacity only, runs once per open. */
+@keyframes swap-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+#reader.swap {
+  animation: swap-in var(--dur-base) var(--ease-in) both;
+}
+
+/* ------------------------------------------------------------------ gate -- */
+
+#gate {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  z-index: 20;
+}
+
+#gate-card {
+  width: min(420px, 88vw);
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  padding: 26px;
+  text-align: center;
+}
+#gate-card h2 {
+  margin: 0 0 8px;
+  font-size: 17px;
+}
+#gate-card p {
+  color: var(--fg-dim);
+  font-size: 13px;
+  margin: 0 0 12px;
+}
+#gate-card .fine {
+  font-size: 11.5px;
+  color: var(--fg-faint);
+}
+#gate-card code {
+  font-size: 11px;
+  background: var(--bg-sunken);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+#gate-card .primary {
+  margin: 6px 0 10px;
+}
+.err {
+  color: var(--danger) !important;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+/* ----------------------------------------------------------------- toast -- */
+
+#toast {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  transform: translate3d(-50%, 0, 0);
+  background: var(--fg);
+  color: var(--bg-raised);
+  padding: 9px 16px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  box-shadow: var(--shadow);
+  z-index: 30;
+  animation: toast-in var(--dur-base) var(--ease-in) both;
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate3d(-50%, 10px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+/* ------------------------------------------------------------- responsive -- */
+
+@media (max-width: 1080px) {
+  #panes {
+    grid-template-columns: minmax(280px, 340px) 1fr;
+  }
+}
+@media (max-width: 860px) {
+  :root {
+    --sidebar-w: 64px;
+  }
+  #brand-text,
+  .cat-name,
+  #btn-gmail,
+  #btn-signout {
+    display: none;
+  }
+  .cat {
+    justify-content: center;
+  }
+}
+
+/* Rule 5. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}

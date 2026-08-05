@@ -4,52 +4,66 @@
   "version": "2.0.0",
   "description": "Takes over Gmail with a faster, BITS-aware inbox. Sorts mail by AUGSD, PS, clubs, placements and more.",
   "minimum_chrome_version": "116",
-
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-
-  "permissions": ["identity", "storage", "alarms"],
-
+  "permissions": [
+    "identity",
+    "storage",
+    "alarms"
+  ],
   "host_permissions": [
     "https://gmail.googleapis.com/*",
     "https://oauth2.googleapis.com/*"
   ],
-
   "content_scripts": [
     {
-      "matches": ["https://mail.google.com/*"],
-      "js": ["src/takeover/content.js"],
-      "css": ["src/takeover/takeover.css"],
+      "matches": [
+        "https://mail.google.com/*"
+      ],
+      "js": [
+        "src/takeover/content.js"
+      ],
+      "css": [
+        "src/takeover/takeover.css"
+      ],
       "run_at": "document_idle"
     }
   ],
-
   "web_accessible_resources": [
     {
-      "resources": ["app.html", "src/*", "icons/*"],
-      "matches": ["https://mail.google.com/*"]
+      "resources": [
+        "app.html",
+        "src/*",
+        "icons/*"
+      ],
+      "matches": [
+        "https://mail.google.com/*"
+      ]
     }
   ],
-
   "background": {
     "service_worker": "src/background/index.js",
     "type": "module"
   },
-
   "action": {
     "default_title": "Take over Gmail (Ctrl+Shift+M)"
   },
-
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
   "commands": {
     "toggle-takeover": {
-      "suggested_key": { "default": "Ctrl+Shift+M", "mac": "Command+Shift+M" },
+      "suggested_key": {
+        "default": "Ctrl+Shift+M",
+        "mac": "Command+Shift+M"
+      },
       "description": "Take over / release Gmail"
     }
   },
-
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'none'; connect-src 'self' https://gmail.googleapis.com https://oauth2.googleapis.com"
   }

@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>BITS Mail Manager — Options</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        font: 14px/1.55 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+        max-width: 620px; margin: 40px auto; padding: 0 20px; color: #16181d;
+      }
+      h1 { font-size: 19px; margin: 0 0 4px; }
+      .sub { color: #5b6270; margin: 0 0 26px; font-size: 13px; }
+      fieldset { border: 1px solid #dfe3ea; border-radius: 12px; padding: 18px; margin: 0 0 18px; }
+      legend { font-weight: 650; font-size: 13px; padding: 0 6px; }
+      label { display: block; font-size: 12.5px; color: #5b6270; margin-bottom: 6px; }
+      input[type='text'] {
+        width: 100%; padding: 9px 11px; border: 1px solid #dfe3ea; border-radius: 9px;
+        font: inherit; font-size: 13px; box-sizing: border-box;
+      }
+      input:focus { outline: 2px solid #1a4fd6; outline-offset: 1px; border-color: #1a4fd6; }
+      .hint { font-size: 11.5px; color: #8a91a0; margin-top: 8px; }
+      code { background: #f2f4f8; padding: 1px 5px; border-radius: 4px; font-size: 11.5px; }
+      button {
+        font: inherit; font-size: 13px; padding: 8px 16px; border-radius: 9px; cursor: pointer;
+        background: #1a4fd6; color: #fff; border: 1px solid #1a4fd6; font-weight: 600;
+      }
+      button.ghost { background: #fff; color: #5b6270; border-color: #dfe3ea; font-weight: 400; }
+      .row { display: flex; gap: 8px; align-items: center; margin-top: 14px; }
+      #status { font-size: 12.5px; color: #1e9e6a; }
+      .warn {
+        background: #fff6e6; border: 1px solid #f0d49a; border-radius: 10px;
+        padding: 12px 14px; font-size: 12.5px; color: #6b4e10; margin-bottom: 22px;
+      }
+      .warn b { display: block; margin-bottom: 4px; }
+      ol { padding-left: 20px; font-size: 12.5px; color: #5b6270; }
+      li { margin-bottom: 5px; }
+    </style>
+  </head>
+  <body>
+    <h1>BITS Mail Manager</h1>
+    <p class="sub">Version 2 — PKCE auth, no client secret.</p>
+
+    <div class="warn">
+      <b>Security notice, carried over from version 1</b>
+      Version 1 hard-coded a Google OAuth <em>client secret</em> in <code>lib/auth.js</code> in a
+      public repository. That secret is in git history and must be treated as compromised.
+      <strong>Rotate it at console.cloud.google.com/apis/credentials.</strong> This version never
+      uses a secret at all — it uses PKCE (RFC 7636), which is the correct flow for a public client
+      like a browser extension.
+    </div>
+
+    <fieldset>
+      <legend>Google OAuth client ID</legend>
+      <label for="clientId">Client ID from your Google Cloud project</label>
+      <input
+        id="clientId"
+        type="text"
+        spellcheck="false"
+        autocomplete="off"
+        placeholder="000000000000-xxxxxxxxxxxxxxxx.apps.googleusercontent.com"
+      />
+      <p class="hint">
+        A client ID is <em>not</em> a secret — it is sent in every authorization URL by design. Only
+        the secret was ever confidential, and this build does not use one.
+      </p>
+      <div class="row">
+        <button id="save" type="button">Save</button>
+        <button id="useDefault" class="ghost" type="button">Use v1 client ID</button>
+        <span id="status"></span>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Setting up your own client ID</legend>
+      <ol>
+        <li>Open <code>console.cloud.google.com</code> and create (or pick) a project.</li>
+        <li>Enable the <strong>Gmail API</strong>.</li>
+        <li>OAuth consent screen → External → add your BITS address as a test user.</li>
+        <li>Credentials → Create credentials → <strong>OAuth client ID</strong> → <strong>Web application</strong>.</li>
+        <li>
+          Add this redirect URI exactly:<br />
+          <code id="redirect">loading…</code>
+        </li>
+        <li>Copy the client ID into the box above. Ignore the secret — you do not need it.</li>
+      </ol>
+      <p class="hint">
+        Scope requested: <code>gmail.modify</code> only. Version 1 asked for six scopes including
+        <code>gmail.send</code>; this build cannot send mail, so it does not ask.
+      </p>
+    </fieldset>
+
+    <script src="src/options/options.js" type="module"></script>
+  </body>
+</html>
