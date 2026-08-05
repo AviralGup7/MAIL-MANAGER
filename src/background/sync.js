@@ -66,6 +66,12 @@ export async function syncPage({ pageToken = '', max = BATCH_SIZE, q = '', label
  *   { kind: 'resync' }   — cursor expired, caller must do a full syncPage run
  *   { kind: 'none' }     — no cursor yet
  */
+/**
+ * Beyond this many new messages in one delta, a full resync is both cheaper
+ * and safer than a very long chain of batch requests.
+ */
+const MAX_DELTA_ADDS = 500;
+
 export async function syncDelta() {
   const start = await getHistoryId();
   if (!start) return { kind: 'none' };
@@ -76,43 +82,100 @@ export async function syncDelta() {
     return { kind: 'resync' };
   }
 
-  const addedIds = new Set();
-  const removed = new Set();
-  /** @type {Map<string,{id:string,unread?:boolean,starred?:boolean}>} */
-  const patched = new Map();
+  const { addIds, removeIds, patched } = reduceHistory(res.changes);
 
-  for (const h of res.changes) {
+  if (addIds.length > MAX_DELTA_ADDS) {
+    // Do NOT advance the cursor: the resync is what will cover these.
+    return { kind: 'resync' };
+  }
+
+  // Chunked, not truncated. BATCH_SIZE is Gmail's cap on one /batch request,
+  // not a cap on how much mail can arrive between two syncs.
+  const added = [];
+  for (let i = 0; i < addIds.length; i += BATCH_SIZE) {
+    added.push(...(await batchMetadata(addIds.slice(i, i + BATCH_SIZE))));
+  }
+
+  // Only now, after every page was read and every add was fetched.
+  await setHistoryId(res.historyId);
+
+  return { kind: 'delta', added, removed: removeIds, patched };
+}
+
+/**
+ * Fold a list of history records into a final state per message.
+ *
+ * WHY A SINGLE ORDERED MAP AND NOT TWO SETS
+ * -----------------------------------------
+ * History records are chronological and one message can appear in many of
+ * them: arrive, get starred, get archived, get un-archived. The first version
+ * of this function accumulated an `added` set and a `removed` set
+ * independently, which meant a message that was archived and then un-archived
+ * ended up in BOTH, and the caller's apply order silently decided whether the
+ * message survived.
+ *
+ * What the API actually gives us is a sequence of events. Only the last event
+ * per message matters. Writing them into one map in order makes that true by
+ * construction, and guarantees the returned `added` and `removed` are
+ * disjoint — so the caller cannot get it wrong either.
+ *
+ * Exported for testing; this is the part with all the ordering subtlety.
+ */
+export function reduceHistory(records) {
+  /** @type {Map<string, 'add'|'remove'>} id -> final presence in our inbox */
+  const fate = new Map();
+  /** @type {Map<string, {id:string, unread?:boolean, starred?:boolean}>} */
+  const patches = new Map();
+
+  const patchFor = (id) => {
+    let p = patches.get(id);
+    if (!p) patches.set(id, (p = { id }));
+    return p;
+  };
+
+  for (const h of records || []) {
     for (const { message } of h.messagesAdded || []) {
-      if ((message.labelIds || []).includes('INBOX')) addedIds.add(message.id);
+      // A brand-new message. Only interesting if it landed in the inbox.
+      if ((message.labelIds || []).includes('INBOX')) fate.set(message.id, 'add');
     }
+
     for (const { message } of h.messagesDeleted || []) {
-      removed.add(message.id);
-      addedIds.delete(message.id);
+      fate.set(message.id, 'remove');
     }
+
     for (const { message, labelIds } of h.labelsAdded || []) {
-      const p = patched.get(message.id) || { id: message.id };
-      if (labelIds.includes('UNREAD')) p.unread = true;
-      if (labelIds.includes('STARRED')) p.starred = true;
-      // Archiving = INBOX removed. Adding INBOX back means it is inbox again.
-      patched.set(message.id, p);
+      const ls = labelIds || [];
+      if (ls.includes('UNREAD')) patchFor(message.id).unread = true;
+      if (ls.includes('STARRED')) patchFor(message.id).starred = true;
+      // Gaining INBOX means un-archived, or a thread pulled back by a reply.
+      // This never produces a messagesAdded record — that fires only when a
+      // message first enters the mailbox — so if we ignore it here the message
+      // stays invisible until the next full resync.
+      if (ls.includes('INBOX')) fate.set(message.id, 'add');
+      if (ls.includes('TRASH') || ls.includes('SPAM')) fate.set(message.id, 'remove');
     }
+
     for (const { message, labelIds } of h.labelsRemoved || []) {
-      const p = patched.get(message.id) || { id: message.id };
-      if (labelIds.includes('UNREAD')) p.unread = false;
-      if (labelIds.includes('STARRED')) p.starred = false;
-      if (labelIds.includes('INBOX')) removed.add(message.id);
-      patched.set(message.id, p);
+      const ls = labelIds || [];
+      if (ls.includes('UNREAD')) patchFor(message.id).unread = false;
+      if (ls.includes('STARRED')) patchFor(message.id).starred = false;
+      // Losing INBOX is an archive.
+      if (ls.includes('INBOX')) fate.set(message.id, 'remove');
     }
   }
 
-  const ids = [...addedIds].slice(0, BATCH_SIZE);
-  const added = ids.length ? await batchMetadata(ids) : [];
-  await setHistoryId(res.historyId);
+  const addIds = [];
+  const removeIds = [];
+  for (const [id, what] of fate) (what === 'add' ? addIds : removeIds).push(id);
 
-  return {
-    kind: 'delta',
-    added,
-    removed: [...removed],
-    patched: [...patched.values()].filter((p) => 'unread' in p || 'starred' in p),
-  };
+  // A message we are about to fetch fresh does not need a patch — the fetched
+  // metadata is newer. A message we are about to remove cannot use one.
+  const skip = new Set([...addIds, ...removeIds]);
+  const patched = [];
+  for (const p of patches.values()) {
+    if (skip.has(p.id)) continue;
+    if ('unread' in p || 'starred' in p) patched.push(p);
+  }
+
+  return { addIds, removeIds, patched };
 }

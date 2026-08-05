@@ -13,8 +13,34 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+/**
+ * A signed-in stub. getToken() short-circuits on a live accessToken, so the
+ * network tests below never reach the refresh path — they only exercise the
+ * Gmail layer, which is the point.
+ */
+const fakeStorage = {
+  accessToken: 'fake-token',
+  expiresAt: Date.now() + 3600_000,
+  refreshToken: 'fake-refresh',
+  clientId: 'test.apps.googleusercontent.com',
+};
+
 globalThis.chrome = {
-  storage: { local: { get: async () => ({}), set: async () => {}, remove: async () => {} } },
+  storage: {
+    local: {
+      async get(k) {
+        if (Array.isArray(k)) {
+          const o = {};
+          for (const key of k) if (key in fakeStorage) o[key] = fakeStorage[key];
+          return o;
+        }
+        if (typeof k === 'string') return k in fakeStorage ? { [k]: fakeStorage[k] } : {};
+        return { ...fakeStorage };
+      },
+      async set() {},
+      async remove() {},
+    },
+  },
   identity: { getRedirectURL: () => 'https://abc.chromiumapp.org/' },
   runtime: { id: 'test' },
 };
@@ -139,4 +165,73 @@ test('normalise gives a subject placeholder rather than an empty row', () => {
 test('normalise returns null for a record with no id', () => {
   assert.equal(normalise({}), null);
   assert.equal(normalise(null), null);
+});
+
+// ------------------------------------------------------------------ history --
+
+/**
+ * BUG 1 regression: the history endpoint's `historyId` is the mailbox's
+ * CURRENT id, not the id of the last record on the page. Reading page 1 and
+ * then storing that value advances the cursor past pages 2..n, and those
+ * changes can never be requested again. Either every page is drained, or the
+ * cursor must not move.
+ */
+test('BUG 1: history() drains every page before returning', async () => {
+  const { history } = await import('../src/background/gmail.js');
+  const pages = [
+    { history: [{ id: '1' }], nextPageToken: 'p2', historyId: '900' },
+    { history: [{ id: '2' }], nextPageToken: 'p3', historyId: '900' },
+    { history: [{ id: '3' }], historyId: '900' },
+  ];
+  let calls = 0;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => pages[calls++],
+  });
+  try {
+    const res = await history('100');
+    assert.equal(calls, 3, 'must follow nextPageToken to the end');
+    assert.deepEqual(res.changes.map((c) => c.id), ['1', '2', '3']);
+    assert.equal(res.historyId, '900');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('BUG 1: an unbounded page chain forces a resync rather than losing records', async () => {
+  const { history } = await import('../src/background/gmail.js');
+  let calls = 0;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => {
+      calls++;
+      return { history: [{ id: String(calls) }], nextPageToken: 'more', historyId: '900' };
+    },
+  });
+  try {
+    const res = await history('100');
+    assert.equal(res.tooOld, true, 'must resync, not advance the cursor');
+    assert.ok(calls <= 10, `page cap must hold, got ${calls}`);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('history() reports an expired cursor as tooOld', async () => {
+  const { history } = await import('../src/background/gmail.js');
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: false,
+    status: 404,
+    text: async () => 'not found',
+  });
+  try {
+    assert.deepEqual(await history('1'), { tooOld: true });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });

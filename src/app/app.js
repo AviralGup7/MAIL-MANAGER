@@ -558,17 +558,22 @@ function ingest(messages) {
   store.upsertMany(records); // one batch -> one notification -> one frame
 }
 
+/** Fetch and ingest one page. Throws; callers own the error reporting. */
+async function fetchPage(pageToken) {
+  const { messages, nextPageToken } = await send('SYNC_PAGE', {
+    opts: { pageToken, max: PAGE },
+  });
+  ingest(messages);
+  state.nextPageToken = nextPageToken;
+  $('btn-more').disabled = !nextPageToken;
+}
+
 async function loadPage(pageToken = '') {
   if (state.loading) return;
   state.loading = true;
   setBusy(true);
   try {
-    const { messages, nextPageToken } = await send('SYNC_PAGE', {
-      opts: { pageToken, max: PAGE },
-    });
-    ingest(messages);
-    state.nextPageToken = nextPageToken;
-    $('btn-more').disabled = !nextPageToken;
+    await fetchPage(pageToken);
   } catch (err) {
     reportError(err);
   } finally {
@@ -584,40 +589,44 @@ async function refresh() {
   setBusy(true);
   try {
     const res = await send('SYNC_DELTA');
+
     if (res.kind === 'resync' || res.kind === 'none') {
-      store.clear?.();
+      // The history cursor expired (Gmail keeps about a week) or we never had
+      // one. Everything we hold may be stale, including messages archived
+      // elsewhere, so start clean rather than merge.
+      store.clear();
       renderedIds = [];
       nodeById.clear();
-      await loadPageInner('');
-    } else {
-      store.batch(() => {
-        ingestInto(res.added);
-        for (const id of res.removed) store.remove(id);
-        for (const p of res.patched) {
-          const { id, ...fields } = p;
-          store.patch(id, fields);
-        }
-      });
-      const n = res.added.length;
-      toast(n ? `${n} new message${n > 1 ? 's' : ''}` : 'Up to date');
+      closeReader();
+      await fetchPage('');
+      return;
     }
+
+    // ONE batch for the whole delta: adds, removes and patches together
+    // produce a single notification and therefore a single render.
+    //
+    // `added` and `removed` are guaranteed disjoint by reduceHistory(), so
+    // the order of these three loops does not affect the result. The first
+    // draft did not guarantee that, and an archive-then-unarchive silently
+    // lost the message. See notes/SYNC_BUGS.md.
+    store.batch(() => {
+      ingest(res.added);
+      for (const id of res.removed) store.remove(id);
+      for (const { id, ...fields } of res.patched) store.patch(id, fields);
+    });
+
+    // If the open message was archived or deleted elsewhere, the reading pane
+    // is now showing something that is no longer in the list.
+    if (state.selected && !store.get(state.selected)) closeReader();
+
+    const n = res.added.length;
+    toast(n ? `${n} new message${n > 1 ? 's' : ''}` : 'Up to date');
   } catch (err) {
     reportError(err);
   } finally {
     state.loading = false;
     setBusy(false);
   }
-}
-
-function ingestInto(messages) {
-  ingest(messages);
-}
-
-async function loadPageInner(token) {
-  const { messages, nextPageToken } = await send('SYNC_PAGE', { opts: { pageToken: token, max: PAGE } });
-  ingest(messages);
-  state.nextPageToken = nextPageToken;
-  $('btn-more').disabled = !nextPageToken;
 }
 
 function setBusy(on) {

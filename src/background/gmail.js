@@ -210,20 +210,48 @@ export async function profile() {
  * stored historyId has expired (Gmail keeps ~1 week) and a full resync is
  * required. Callers must handle `tooOld`; the old version did not, which is
  * why it silently stopped updating after a long absence.
+ *
+ * PAGINATION IS NOT OPTIONAL HERE.
+ * The response's `historyId` is the mailbox's CURRENT id, not the id of the
+ * last record on this page. So if we read page 1 and then store that value, we
+ * have advanced the cursor past pages 2..n without ever reading them, and
+ * those changes are unrecoverable. Either we drain every page, or we do not
+ * move the cursor at all.
  */
+const MAX_HISTORY_PAGES = 10; // 10 * 500 = 5000 records; past that, resync is cheaper
+
 export async function history(startHistoryId) {
-  const params = new URLSearchParams({
-    startHistoryId: String(startHistoryId),
-    maxResults: '500',
-  });
-  for (const t of ['messageAdded', 'messageDeleted', 'labelAdded', 'labelRemoved']) {
-    params.append('historyTypes', t);
+  const changes = [];
+  let pageToken = '';
+  let historyId = null;
+
+  for (let page = 0; page < MAX_HISTORY_PAGES; page++) {
+    const params = new URLSearchParams({
+      startHistoryId: String(startHistoryId),
+      maxResults: '500',
+    });
+    for (const t of ['messageAdded', 'messageDeleted', 'labelAdded', 'labelRemoved']) {
+      params.append('historyTypes', t);
+    }
+    if (pageToken) params.set('pageToken', pageToken);
+
+    let data;
+    try {
+      data = await api(`/history?${params}`);
+    } catch (err) {
+      // 404 = the cursor is older than Gmail's retention window.
+      if (String(err).includes('404')) return { tooOld: true };
+      throw err;
+    }
+
+    if (data.history) changes.push(...data.history);
+    historyId = data.historyId || historyId;
+    pageToken = data.nextPageToken || '';
+    if (!pageToken) return { changes, historyId };
   }
-  try {
-    const data = await api(`/history?${params}`);
-    return { changes: data.history || [], historyId: data.historyId };
-  } catch (err) {
-    if (String(err).includes('404')) return { tooOld: true };
-    throw err;
-  }
+
+  // Still paging after MAX_HISTORY_PAGES. Advancing the cursor now would skip
+  // whatever is left, so treat it as a resync instead of losing mail.
+  return { tooOld: true };
 }
+
