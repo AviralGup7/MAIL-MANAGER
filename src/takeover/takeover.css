@@ -1,0 +1,106 @@
+/*
+ * Takeover animation.
+ *
+ * THE ONE RULE: only `transform` and `opacity` are animated. Both are handled
+ * by the compositor on the GPU — they do not trigger layout or paint. Animating
+ * width/height/top/left/filter would force a layout pass on every frame, which
+ * on a page as heavy as Gmail is exactly how a "nice animation" becomes jank.
+ *
+ * The whole thing lasts 380ms and then stops. Nothing here runs continuously.
+ * The previous version kept a requestAnimationFrame canvas alive for the life
+ * of the page; that is the mistake this file exists to not repeat.
+ *
+ * Everything is scoped under #bmm-takeover-host and uses `all: initial` at the
+ * root, so Gmail's stylesheet cannot reach in and we cannot leak out.
+ */
+
+#bmm-takeover-host {
+  all: initial;
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647; /* max — Gmail uses high z-indexes for its own dialogs */
+
+  /* Start state: slightly small, slightly forward, invisible. */
+  opacity: 0;
+  transform: scale(0.965) translateY(8px);
+  transform-origin: 50% 42%;
+
+  /* Promote to its own layer up front so the first frame is not janky. */
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+
+  /* Not interactive until it is actually up. */
+  pointer-events: none;
+}
+
+/*
+ * The entrance.
+ *
+ * 380ms with a gentle overshoot-free ease-out. Long enough to read as
+ * deliberate, short enough that a user who does this fifty times a day never
+ * waits for it. Material's guidance for a full-screen transition is 300-400ms
+ * and that matches how this feels.
+ *
+ * cubic-bezier(0.22, 1, 0.36, 1) is a strong ease-out: it covers most of the
+ * distance immediately, so the UI feels like it is already there.
+ */
+#bmm-takeover-host.bmm-enter {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+  transition:
+    opacity 380ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 380ms cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: auto;
+}
+
+/*
+ * Once the transition is done we drop `will-change`. Leaving it on permanently
+ * pins a compositor layer and costs memory for no benefit — a very common
+ * and easily-missed leak.
+ */
+#bmm-takeover-host.bmm-active {
+  will-change: auto;
+  pointer-events: auto;
+}
+
+/* The exit is quicker than the entrance: leaving should feel immediate. */
+#bmm-takeover-host.bmm-leave {
+  opacity: 0;
+  transform: scale(0.985) translateY(4px);
+  transition:
+    opacity 260ms cubic-bezier(0.4, 0, 1, 1),
+    transform 260ms cubic-bezier(0.4, 0, 1, 1);
+  pointer-events: none;
+}
+
+/* prefers-reduced-motion: no animation at all, just present. */
+#bmm-takeover-host.bmm-instant {
+  opacity: 1;
+  transform: none;
+  transition: none;
+  pointer-events: auto;
+}
+
+#bmm-takeover-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  background: #0f1115;
+}
+
+/*
+ * A belt-and-braces override. If the OS asks for reduced motion we honour it
+ * in CSS as well as in JS, so a code path that misses the check still cannot
+ * animate.
+ */
+@media (prefers-reduced-motion: reduce) {
+  #bmm-takeover-host,
+  #bmm-takeover-host.bmm-enter,
+  #bmm-takeover-host.bmm-leave {
+    transition: none !important;
+    transform: none !important;
+  }
+}
