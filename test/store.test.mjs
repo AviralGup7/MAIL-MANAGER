@@ -304,3 +304,33 @@ test('clear() on an empty store does not fire subscribers', () => {
   s.clear();
   assert.equal(calls, 0);
 });
+
+test('idsFor returns a copy, not the live order array', () => {
+  // A real bug caught by the jsdom integration harness. The app keeps the
+  // result as `renderedIds` to diff the NEXT render against. When idsFor
+  // returned `this.order` itself, `renderedIds` and `store.order` became the
+  // same object, so every subsequent "has the list changed?" check compared
+  // the array to itself and said no. Removing a message updated the store and
+  // never touched the DOM: archiving looked like it did nothing at all.
+  const s = new Store();
+  s.upsertMany([msg('a'), msg('b'), msg('c')]);
+
+  const snapshot = s.idsFor('all');
+  assert.equal(snapshot.length, 3);
+  assert.notEqual(snapshot, s.order, 'must not be the same object reference');
+
+  s.remove(snapshot[0]);
+
+  assert.equal(snapshot.length, 3, 'the caller-held snapshot must not mutate');
+  assert.equal(s.idsFor('all').length, 2, 'a fresh call reflects the removal');
+});
+
+test('mutating the array idsFor returned cannot corrupt the store', () => {
+  const s = new Store();
+  s.upsertMany([msg('a'), msg('b')]);
+  const ids = s.idsFor('all');
+  ids.push('injected');
+  ids.length = 0;
+  assert.equal(s.size, 2, 'store survives a caller abusing the returned array');
+  assert.equal(s.idsFor('all').length, 2);
+});

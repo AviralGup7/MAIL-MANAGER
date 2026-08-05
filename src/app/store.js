@@ -269,7 +269,18 @@ export class Store {
 
   /** Ids for a category, newest first. `null` category means everything. */
   idsFor(category) {
-    if (!category || category === 'all') return this.order;
+    // A COPY, never the live array.
+    //
+    // Returning `this.order` itself was a real bug: the app keeps the result
+    // as `renderedIds` to diff the next render against, so `renderedIds` and
+    // `store.order` became the same object. Every subsequent comparison of
+    // "what is on screen" against "what should be on screen" compared the
+    // array to itself and reported no change — so removing a message updated
+    // the store and never updated the DOM. Archiving appeared to do nothing.
+    //
+    // slice() of at most a few thousand strings is a few microseconds and is
+    // not worth the aliasing hazard.
+    if (!category || category === 'all') return this.order.slice();
     const set = this.byCategory.get(category);
     if (!set || set.size === 0) return [];
     // Walk `order` so the result stays newest-first without a sort.

@@ -113,3 +113,58 @@ harmless by luck, not by design.
 
 **Fix:** patches for ids whose final state is `remove` are dropped in
 `syncDelta`.
+
+---
+
+# Two more, found by the jsdom integration harness
+
+`test/app.integration.test.mjs` boots the real `app.html` in a real DOM and
+drives it as a user would. It found both of these on its first run. Neither was
+reachable by a unit test, because both are about how two correct pieces are
+wired together.
+
+## Bug 6 — archiving updated the store and never updated the screen
+
+`Store.idsFor('all')` returned `this.order` — the live internal array, not a
+copy. The app stores that result as `renderedIds`, the baseline it diffs the
+next render against. So `renderedIds` and `store.order` became **the same
+object**.
+
+Every later render then did:
+
+```js
+if (sameOrder(next, renderedIds))   // next IS renderedIds
+```
+
+…comparing the array against itself, always true, always taking the fast path
+that only patches existing rows. Removing a message mutated `store.order`,
+which mutated `renderedIds` at the same time, so the diff could never observe
+a difference.
+
+Symptom: archive or delete a message and nothing happens. The store is correct,
+Gmail is correct, the DOM is stale forever. The kind of bug that gets described
+as "it became extremely slow and unusual".
+
+**Fix:** `idsFor` returns `this.order.slice()`. A few microseconds for a few
+thousand strings, against an aliasing hazard that silently breaks the render
+loop. Two regression tests, including one that mutates the returned array to
+confirm the store is unaffected.
+
+## Bug 7 — an empty inbox showed a blank pane with no explanation
+
+Two independent causes, both of which had to be fixed:
+
+1. `el.empty.hidden` was assigned only at the **end** of `renderList`, after
+   the fast-path `return`. With zero messages `next` and `renderedIds` are both
+   `[]`, `sameOrder` is true, and the function returned before ever revealing
+   "Nothing here."
+2. More fundamentally, `renderList()` was only ever called from a store
+   notification, and the store does not notify when nothing changed. An account
+   that syncs zero messages produced **no render at all**.
+
+Symptom: a new user, an empty inbox, or any category with no mail gets an empty
+grey rectangle and no indication whether it is loading, broken, or genuinely
+empty.
+
+**Fix:** set the empty state on both paths, and call `renderList()` once during
+boot so the first paint is always explicit.

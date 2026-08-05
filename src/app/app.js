@@ -180,6 +180,15 @@ function renderList() {
   const ids = visibleIds();
   const next = ids.length > 400 ? ids.slice(0, 400) : ids;
 
+  // The empty state is set on BOTH paths.
+  //
+  // It used to live only after the diff, below the fast-path return. On a
+  // genuinely empty inbox `next` and `renderedIds` are both [], so the fast
+  // path returned early and "Nothing here." was never revealed — a new user
+  // with no mail, or any category with no messages, saw a blank pane and no
+  // explanation.
+  el.empty.hidden = next.length > 0;
+
   // Fast path: identical id list, only content changed.
   if (sameOrder(next, renderedIds)) {
     for (const id of next) patchRow(id);
@@ -210,7 +219,6 @@ function renderList() {
   }
 
   renderedIds = next;
-  el.empty.hidden = next.length > 0;
   updateCounts(ids.length);
 }
 
@@ -823,6 +831,11 @@ async function boot() {
 
   buildSidebar();
   renderSidebar();
+  // Render the (empty) list once up front. The store only notifies when it
+  // actually changes, so an inbox that syncs zero messages never triggers a
+  // render at all — and the "Nothing here." state stayed hidden behind a
+  // blank pane with no explanation.
+  renderList();
 
   // Tell the content script we have painted. It waits for this before it
   // reveals the takeover, which is what prevents the white flash the old

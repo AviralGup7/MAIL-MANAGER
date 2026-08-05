@@ -6,6 +6,12 @@
   "description": "Takes over Gmail with a faster, BITS-aware mail client",
   "scripts": {
     "test": "node --test test/",
-    "bench": "node test/bench.mjs"
+    "test:unit": "node --test test/classify.test.mjs test/store.test.mjs test/gmail.test.mjs test/sync.test.mjs test/package.test.mjs",
+    "bench": "node test/bench.mjs",
+    "preview": "node tools/make-preview.mjs",
+    "icons": "python3 tools/make-icons.py"
+  },
+  "devDependencies": {
+    "jsdom": "^24.0.0"
   }
 }
