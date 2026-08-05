@@ -208,17 +208,33 @@ async function refresh(refreshToken) {
 }
 
 export async function signOut() {
-  const { accessToken } = await chrome.storage.local.get('accessToken');
-  if (accessToken) {
-    // Best effort: tell Google to drop it too, not just forget it locally.
-    await fetch(`${REVOKE_ENDPOINT}?token=${accessToken}`, {
+  const { accessToken, refreshToken } = await chrome.storage.local.get([
+    'accessToken',
+    'refreshToken',
+  ]);
+
+  // Revoke the REFRESH token by preference. Revoking an access token kills one
+  // hour-long credential; revoking the refresh token kills the entire grant,
+  // which is what "sign out" has to mean. The old version cleared local
+  // storage only, so a live refresh token was left standing on Google's side
+  // forever — a user who signed out was still authorised.
+  const token = refreshToken || accessToken;
+  if (token) {
+    await fetch(`${REVOKE_ENDPOINT}?token=${encodeURIComponent(token)}`, {
       method: 'POST',
-    }).catch(() => {});
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    }).catch(() => {
+      /* offline; local removal below still happens */
+    });
   }
+
+  // historyId goes too. Keeping a delta cursor across accounts would apply the
+  // previous account's deltas to the next one.
   await chrome.storage.local.remove([
     'accessToken',
     'refreshToken',
     'expiresAt',
+    'historyId',
   ]);
 }
 
