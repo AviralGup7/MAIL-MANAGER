@@ -74,14 +74,18 @@ What changed:
 | OAuth scopes | 6 | **1** (`gmail.modify`) |
 | Transition durations / easings | 11 / 12 | **3 / 2** |
 
-Measured (`npm run bench`, 2000 synthetic messages):
+Measured (`npm run bench`, 2000 synthetic messages, 2-core sandbox — absolute
+numbers vary with the machine, the **renders count does not**):
 
 ```
-classify  10.5 ms
-store     30.1 ms
-TOTAL     40.6 ms      renders triggered: 1
-100 searches           20.9 ms
+classify  10-22 ms
+store     30-46 ms
+TOTAL     41-68 ms     renders triggered: 1   (old version: dozens)
+100 searches  21-29 ms
 ```
+
+For scale: 2000 messages is ten times v1's entire 200-message cap, and the
+whole ingest finishes inside two animation frames.
 
 Three structural decisions do most of the work:
 
