@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+# Never commit real credentials. The previous version shipped an OAuth client
+# secret in lib/auth.js; this build uses PKCE and has no secret to leak.
+secrets.json
+.env
