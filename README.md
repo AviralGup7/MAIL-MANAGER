@@ -178,11 +178,29 @@ src/
   app/store.js              Incremental indexes, batched notification.
   classify/                 Categories, sender rules, pattern rules, scoring.
   options/options.js
-test/                       65 tests. `npm test`
+test/                       108 tests. `npm test`
+  app.integration.test.mjs  Boots the real app.html in jsdom and drives it.
+  package.test.mjs          Fails if the manifest names a file that is absent.
+notes/SYNC_BUGS.md          Seven sync/render bugs found before shipping.
 tools/make-icons.py         Deterministic icon generation.
+tools/make-preview.mjs      Builds preview.html — the UI on synthetic mail.
 ```
 
-No build step and no dependencies. `npm test` runs `node --test test/`.
+No build step and no runtime dependencies. `npm test` runs `node --test test/`.
+
+`jsdom` is an optional devDependency used only by the integration tests. Without
+it they skip and the suite still passes; with it, `npm install && npm test`
+runs all 108.
+
+### Seeing it without installing it
+
+```
+npm run preview      # writes preview.html, open it in any browser
+```
+
+That is the real app — real classifier, real store, real render loop — running
+on 20 synthetic BITS emails. Only the network is faked, so if the rules
+mis-file something the preview mis-files it too.
 
 ---
 
@@ -210,8 +228,20 @@ No build step and no dependencies. `npm test` runs `node --test test/`.
 
 ## Status
 
-Working and tested (65 tests, all passing) but **not yet verified on physical
-hardware.** Load it unpacked and try it.
+Feature-complete. **108 tests pass**, including 12 that boot the real
+`app.html` in a real DOM and drive it as a user would — click a row, type in
+search, press `j`/`k`, archive, star.
+
+**Not yet run in Chrome against a real inbox.** Everything the tests cannot
+reach is unverified: the OAuth consent screen, the takeover animation on a live
+Gmail page, and how Gmail behaves when its roots are hidden. Load it unpacked
+and tell me what breaks.
+
+Seven bugs were found and fixed *after* the code was written but *before* it
+ever ran — five in the delta-sync reducer, two in the render loop. Four of them
+lost mail silently. They are written up in `notes/SYNC_BUGS.md` because that is
+the same failure class that made version 1 feel broken, and the write-up is
+what stops them coming back.
 
 Known gaps: no compose or reply by design; attachments list but do not download
 (open in Gmail); no thread view — messages are listed individually.
