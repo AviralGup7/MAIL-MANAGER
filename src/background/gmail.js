@@ -333,3 +333,171 @@ export async function history(startHistoryId) {
   return { tooOld: true };
 }
 
+
+// ============================================================================
+// COMPOSE
+// ============================================================================
+
+/**
+ * RFC 2047 encoded-word, for header values containing non-ASCII.
+ *
+ * Subject lines carrying a rupee sign or a name with a diacritic are common in
+ * BITS mail, and a raw 8-bit byte in a header is a protocol violation that
+ * Gmail rejects outright. Base64 is used rather than quoted-printable because
+ * it cannot produce a line that needs folding for a realistic subject.
+ */
+function encodeHeader(value) {
+  const s = String(value ?? '');
+  // eslint-disable-next-line no-control-regex
+  if (/^[\x20-\x7E]*$/.test(s)) return s; // pure ASCII: leave it readable
+  const bytes = new TextEncoder().encode(s);
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return `=?UTF-8?B?${btoa(bin)}?=`;
+}
+
+/** base64url, which is what the Gmail API wants for a raw RFC 2822 message. */
+function b64urlEncode(text) {
+  const bytes = new TextEncoder().encode(text);
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/**
+ * Build an RFC 2822 message.
+ *
+ * Deliberately hand-built rather than pulled from a MIME library: the whole
+ * extension has zero runtime dependencies, and a correct multipart/alternative
+ * for this narrow case is about thirty lines. Anything a library would add
+ * beyond that (attachments with content-disposition, nested multiparts) is not
+ * something this build sends.
+ *
+ * @param {{to:string, cc?:string, bcc?:string, subject:string, body:string,
+ *   inReplyTo?:string, references?:string, from?:string}} m
+ */
+export function buildMime(m) {
+  const boundary = `bmm_${Math.random().toString(36).slice(2)}`;
+  const headers = [
+    m.from ? `From: ${m.from}` : null,
+    `To: ${m.to}`,
+    m.cc ? `Cc: ${m.cc}` : null,
+    m.bcc ? `Bcc: ${m.bcc}` : null,
+    `Subject: ${encodeHeader(m.subject)}`,
+    // Threading. Without these two a reply starts a NEW conversation, which is
+    // the single most visible way a mail client looks broken.
+    m.inReplyTo ? `In-Reply-To: ${m.inReplyTo}` : null,
+    m.references ? `References: ${m.references}` : null,
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+  ].filter(Boolean);
+
+  const plain = m.body;
+  const html = plainToHtml(m.body);
+
+  const parts = [
+    `--${boundary}`,
+    'Content-Type: text/plain; charset="UTF-8"',
+    'Content-Transfer-Encoding: 8bit',
+    '',
+    plain,
+    '',
+    `--${boundary}`,
+    'Content-Type: text/html; charset="UTF-8"',
+    'Content-Transfer-Encoding: 8bit',
+    '',
+    html,
+    '',
+    `--${boundary}--`,
+    '',
+  ];
+
+  return `${headers.join('\r\n')}\r\n\r\n${parts.join('\r\n')}`;
+}
+
+/** Minimal, escaped plain-text -> HTML. Never interpolates raw user text. */
+function plainToHtml(text) {
+  const esc = String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  return `<div style="white-space:pre-wrap;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif">${esc}</div>`;
+}
+
+/**
+ * Send a message.
+ * `threadId` keeps a reply inside its conversation.
+ */
+export async function sendMessage(mime, threadId) {
+  const body = { raw: b64urlEncode(mime) };
+  if (threadId) body.threadId = threadId;
+  return api('/messages/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+/** Save a draft rather than sending. */
+export async function saveDraft(mime, threadId, draftId) {
+  const message = { raw: b64urlEncode(mime) };
+  if (threadId) message.threadId = threadId;
+  const payload = JSON.stringify({ message });
+  if (draftId) {
+    return api(`/drafts/${encodeURIComponent(draftId)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload,
+    });
+  }
+  return api('/drafts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: payload,
+  });
+}
+
+// ============================================================================
+// LABELS
+// ============================================================================
+
+export async function listLabels() {
+  const data = await api('/labels');
+  return (data.labels || [])
+    .filter((l) => l.type === 'user')
+    .map((l) => ({ id: l.id, name: l.name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function createLabel(name) {
+  return api('/labels', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name,
+      labelListVisibility: 'labelShow',
+      messageListVisibility: 'show',
+    }),
+  });
+}
+
+// ============================================================================
+// ATTACHMENTS
+// ============================================================================
+
+/**
+ * Fetch one attachment as a data: URL.
+ *
+ * Returned as a data URL rather than a blob because the worker has no DOM and
+ * therefore no URL.createObjectURL. The app turns it into a download. Gmail's
+ * attachment payloads are base64url, which is NOT what a data: URL wants, so
+ * the padding and alphabet are converted here.
+ */
+export async function getAttachment(messageId, attachmentId, mimeType) {
+  const data = await api(
+    `/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`
+  );
+  const b64 = String(data.data || '').replace(/-/g, '+').replace(/_/g, '/');
+  const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+  return `data:${mimeType || 'application/octet-stream'};base64,${padded}`;
+}

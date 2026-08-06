@@ -9,8 +9,13 @@
  */
 
 import { signIn, signOut, isSignedIn } from './auth.js';
-import { getFull, modify, batchModify, trash, profile } from './gmail.js';
+import {
+  getFull, modify, batchModify, trash, profile,
+  buildMime, sendMessage, saveDraft,
+  listLabels, createLabel, getAttachment,
+} from './gmail.js';
 import { syncPage, syncDelta } from './sync.js';
+import { api } from './gmail.js';
 
 /**
  * Is this a Gmail tab?
@@ -190,6 +195,27 @@ async function handle(msg) {
       return trash(msg.id);
     case 'BULK':
       return batchModify(msg.ids, msg.add || [], msg.remove || []);
+    case 'UNARCHIVE':
+      // The inverse of archive, for undo. Gmail has no such button.
+      return modify(msg.id, ['INBOX'], []);
+    case 'UNTRASH':
+      return api(`/messages/${encodeURIComponent(msg.id)}/untrash`, { method: 'POST' });
+
+    // ---- compose ---------------------------------------------------------
+    case 'SEND':
+      return sendMessage(buildMime(msg.draft), msg.draft.threadId);
+    case 'SAVE_DRAFT':
+      return saveDraft(buildMime(msg.draft), msg.draft.threadId, msg.draftId);
+
+    // ---- labels ----------------------------------------------------------
+    case 'LIST_LABELS':
+      return listLabels();
+    case 'CREATE_LABEL':
+      return createLabel(msg.name);
+
+    // ---- attachments -----------------------------------------------------
+    case 'GET_ATTACHMENT':
+      return { dataUrl: await getAttachment(msg.messageId, msg.attachmentId, msg.mimeType) };
 
     default:
       throw new Error(`Unknown message: ${msg?.type}`);
@@ -210,7 +236,32 @@ async function handle(msg) {
  * showed "(no content)" for any mail with an attachment.
  */
 function extractBody(full) {
-  const out = { id: full.id, threadId: full.threadId, html: '', text: '', attachments: [] };
+  // Headers needed to REPLY correctly, not just to display.
+  //
+  // Without Message-ID and References a reply arrives as a brand-new
+  // conversation in the recipient's client -- the single most visible way a
+  // mail client looks broken, and invisible to the person sending it.
+  const h = Object.create(null);
+  for (const { name, value } of full.payload?.headers || []) {
+    h[name.toLowerCase()] = value;
+  }
+
+  const out = {
+    id: full.id,
+    threadId: full.threadId,
+    html: '',
+    text: '',
+    attachments: [],
+    // For threading and for pre-filling reply-all.
+    messageId: h['message-id'] || '',
+    references: h.references || '',
+    from: h.from || '',
+    to: h.to || '',
+    cc: h.cc || '',
+    replyTo: h['reply-to'] || '',
+    subject: h.subject || '',
+    listUnsubscribe: h['list-unsubscribe'] || '',
+  };
   walk(full.payload);
   return out;
 
