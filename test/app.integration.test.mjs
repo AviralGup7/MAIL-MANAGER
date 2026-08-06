@@ -60,7 +60,7 @@ const MESSAGES = [
  * Boot app.html in jsdom.
  * Returns { win, doc, calls, settle } — `calls` records every worker message.
  */
-async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bodyOverride = {}, syncLatency = 0, perLabel = false, emptyLabels = [], labels = [] } = {}) {
+async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bodyOverride = {}, syncLatency = 0, perLabel = false, emptyLabels = [], labels = [], timetableData = null, storageTimetable = undefined } = {}) {
   const html = readFileSync(join(ROOT, 'app.html'), 'utf8');
   const dom = new JSDOM(html, {
     url: 'chrome-extension://test/app.html',
@@ -70,12 +70,31 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
   const { window: win } = dom;
   const calls = [];
   const storage = { ...storageSeed };
+  if (storageTimetable !== undefined) storage.timetable = storageTimetable;
+
+  /*
+   * The timetable catalogue is a static JSON asset fetched at boot. Serving a
+   * small fixture keeps these tests fast and independent of the 600KB real
+   * file; passing `timetableData: 'real'` loads the genuine parsed data for
+   * the tests that need to prove it works end to end.
+   */
+  win.fetch = async (url) => {
+    if (String(url).includes('timetable/data.json')) {
+      const body = timetableData === 'real'
+        ? JSON.parse(readFileSync(join(ROOT, 'src/timetable/data.json'), 'utf8'))
+        : (timetableData || { schemaVersion: 1, semester: 'TEST SEM', courses: [], changes: [] });
+      return { ok: true, status: 200, async json() { return body; } };
+    }
+    return { ok: false, status: 404, async json() { return {}; } };
+  };
 
   win.chrome = {
     runtime: {
       id: 'test',
       lastError: null,
       openOptionsPage() {},
+      // The timetable feature fetches its static data through getURL.
+      getURL: (p) => `chrome-extension://test/${p}`,
       sendMessage(msg, cb) {
         calls.push(msg);
         // Async, like the real thing — synchronous replies would hide
@@ -153,7 +172,7 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
   const prev = {};
   for (const k of ['window', 'document', 'chrome', 'requestAnimationFrame',
                    'cancelAnimationFrame', 'parent', 'setTimeout', 'clearTimeout',
-                   'queueMicrotask', 'HTMLElement', 'Node']) {
+                   'queueMicrotask', 'HTMLElement', 'Node', 'fetch']) {
     prev[k] = globalThis[k];
   }
   globalThis.window = win;
@@ -164,6 +183,7 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
   globalThis.HTMLElement = win.HTMLElement;
   globalThis.Node = win.Node;
   globalThis.parent = win; // app.js posts BMM_READY to parent
+  globalThis.fetch = win.fetch; // the timetable data is fetched, not imported
 
   // Cache-bust so each boot gets a fresh module instance with its own Store.
   const url = pathToFileURL(join(ROOT, 'src/app/app.js')).href + `?t=${Math.random()}`;
@@ -171,6 +191,9 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
   // Captured once the module graph exists, so teardown can scrub the state
   // that outlives a single boot.
   ({ _resetFeatureState: featureState } = await import('../src/app/features.js'));
+  ({ _resetTimetableUI: timetableState } = await import('../src/app/timetable-ui.js'));
+  const ttStore = await import('../src/app/timetable-store.js');
+  ttStore._resetSourceData(); // the catalogue is memoised per module, not per boot
 
   const settle = async (frames = 4) => {
     for (let i = 0; i < frames; i++) {
@@ -203,6 +226,12 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
     } catch {
       // Same rule: never mask the real result.
     }
+    // timetable-ui.js holds module state for the same reason features.js does.
+    try {
+      timetableState?.();
+    } catch {
+      // Never mask the real result.
+    }
     Object.assign(globalThis, prev);
   };
 
@@ -211,6 +240,8 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
 
 /** features.js reset, captured at boot. See restore(). */
 let featureState = null;
+/** timetable-ui.js reset, same reasoning. */
+let timetableState = null;
 
 const rows = (doc) => [...doc.querySelectorAll('#list .row')];
 
@@ -2928,3 +2959,405 @@ test('DELIGHT: the drain line restarts on every toast', async (t) => {
   assert.ok(fn.includes('offsetWidth'), 'must force a reflow between');
 });
 
+
+/* ========================================================================== *
+ * TIMETABLE — the builder driven through the real UI
+ * ========================================================================== */
+
+/** A two-course catalogue: one with an ambiguous lab, one with a single tutorial. */
+const TT_DATA = {
+  schemaVersion: 1,
+  semester: 'FIRST SEMESTER 2026-2027',
+  courses: [
+    {
+      comCode: '1008', courseNo: 'CS F111', title: 'COMPUTER PROGRAMMING',
+      credits: ['3', '1', '-', '-', '4'],
+      sections: [
+        { section: 'L1', kind: 'lecture', instructors: ['VINTI AGARWAL'], room: '5105',
+          daysHours: 'M W 3', unresolved: [],
+          meetings: [
+            { day: 'M', dayName: 'Monday', hour: 3, startMin: 600, endMin: 650 },
+            { day: 'W', dayName: 'Wednesday', hour: 3, startMin: 600, endMin: 650 }] },
+        { section: 'L2', kind: 'lecture', instructors: ['Yash Sinha'], room: '5105',
+          daysHours: 'T 8', unresolved: [],
+          meetings: [{ day: 'T', dayName: 'Tuesday', hour: 8, startMin: 900, endMin: 950 }] },
+        { section: 'P1', kind: 'practical', instructors: ['Manasvi Singh(RS)'], room: '6117',
+          daysHours: 'M 6', unresolved: [],
+          meetings: [{ day: 'M', dayName: 'Monday', hour: 6, startMin: 780, endMin: 830 }] },
+        { section: 'P2', kind: 'practical', instructors: ['Radhika Bohra(RS)'], room: '6118',
+          daysHours: 'F 6', unresolved: [],
+          meetings: [{ day: 'F', dayName: 'Friday', hour: 6, startMin: 780, endMin: 830 }] },
+      ],
+    },
+    {
+      comCode: '2863', courseNo: 'BIO F101', title: 'INTRO TO BIO SCI',
+      credits: ['2', '1', '-', '-', '3'],
+      sections: [
+        { section: 'L1', kind: 'lecture', instructors: ['SHASHI PRAKASH SINGH'], room: '5102',
+          daysHours: 'Th 2', unresolved: [],
+          meetings: [{ day: 'Th', dayName: 'Thursday', hour: 2, startMin: 540, endMin: 590 }] },
+        { section: 'T1', kind: 'tutorial', instructors: ['Shashi Prakash Singh'], room: '6103',
+          daysHours: 'F 7', unresolved: [],
+          meetings: [{ day: 'F', dayName: 'Friday', hour: 7, startMin: 840, endMin: 890 }] },
+      ],
+    },
+  ],
+  changes: [],
+};
+
+const openTT = async (doc, win, settle) => {
+  doc.getElementById('btn-timetable').click();
+  await settle(6);
+  return doc.getElementById('tt-panel');
+};
+
+const ttSearch = async (doc, win, settle, q) => {
+  const input = doc.getElementById('tt-q');
+  input.value = q;
+  input.dispatchEvent(new win.Event('input', { bubbles: true }));
+  await settle(4);
+  return [...doc.querySelectorAll('#tt-results .tt-result')];
+};
+
+test('TIMETABLE: the panel opens and offers to add a course', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, win, settle, restore } = await boot({ timetableData: TT_DATA });
+  try {
+    const panel = await openTT(doc, win, settle);
+    assert.ok(panel, 'the timetable panel should open');
+    assert.equal(panel.getAttribute('role'), 'dialog');
+    assert.ok(doc.getElementById('tt-q'), 'an empty timetable offers a course search');
+
+    const results = await ttSearch(doc, win, settle, 'CS F111');
+    assert.equal(results.length, 1);
+    assert.match(results[0].textContent, /COMPUTER PROGRAMMING/);
+  } finally {
+    restore();
+  }
+});
+
+test('TIMETABLE: building a course auto-attaches a single tutorial', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * BIO F101 has exactly one tutorial, so there is no choice to make and
+   * attaching it is deterministic. This is the ONLY case where a linked
+   * section may be added without asking.
+   */
+  const { doc, win, settle, restore } = await boot({ timetableData: TT_DATA });
+  try {
+    await openTT(doc, win, settle);
+    const results = await ttSearch(doc, win, settle, 'BIO F101');
+    results[0].querySelector('button').click();
+    await settle(4);
+
+    doc.querySelector('.tt-chooser .tt-section').click();
+    await settle(8);
+
+    const { getTimetableState } = await import('../src/app/timetable-ui.js');
+    const st = getTimetableState();
+    assert.equal(st.entries.length, 2, 'the lecture and its only tutorial');
+    assert.deepEqual(st.entries.map((e) => e.section).sort(), ['L1', 'T1']);
+  } finally {
+    restore();
+  }
+});
+
+test('TIMETABLE: an ambiguous lab is ASKED for, never chosen for you', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * THE CENTRAL GUARANTEE, driven through the UI. CS F111 L1 has two labs and
+   * the official document states no mapping between them and the lecture. The
+   * builder must add the lecture and then ask.
+   */
+  const { doc, win, settle, restore } = await boot({ timetableData: TT_DATA });
+  try {
+    await openTT(doc, win, settle);
+    const results = await ttSearch(doc, win, settle, 'CS F111');
+    results[0].querySelector('button').click();
+    await settle(4);
+
+    // Choose lecture L1.
+    const lectures = [...doc.querySelectorAll('.tt-chooser .tt-section')];
+    lectures.find((b) => b.textContent.startsWith('L1')).click();
+    await settle(8);
+
+    const { getTimetableState } = await import('../src/app/timetable-ui.js');
+    assert.equal(getTimetableState().entries.length, 1, 'only the lecture so far');
+
+    const chooser = doc.querySelector('.tt-chooser');
+    assert.ok(chooser, 'the builder must ask which lab');
+    assert.match(chooser.textContent, /does not say which of these/,
+      'and must say WHY it is asking');
+    const labs = [...chooser.querySelectorAll('.tt-section')];
+    assert.equal(labs.length, 2, 'both labs offered');
+
+    labs.find((b) => b.textContent.startsWith('P2')).click();
+    await settle(8);
+    const st = getTimetableState();
+    assert.deepEqual(st.entries.map((e) => e.section).sort(), ['L1', 'P2']);
+    assert.equal(st.entries.find((e) => e.section === 'P2').linkedTo, 'L1');
+  } finally {
+    restore();
+  }
+});
+
+test('TIMETABLE: the built timetable survives a restart', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Persistence is the whole point: a timetable you rebuild every session is
+  // not a timetable.
+  const first = await boot({ timetableData: TT_DATA });
+  let saved;
+  try {
+    await openTT(first.doc, first.win, first.settle);
+    const r = await ttSearch(first.doc, first.win, first.settle, 'BIO F101');
+    r[0].querySelector('button').click();
+    await first.settle(4);
+    first.doc.querySelector('.tt-chooser .tt-section').click();
+    await first.settle(8);
+    saved = first.storage.timetable;
+    assert.ok(saved, 'the timetable must have been written to storage');
+  } finally {
+    first.restore();
+  }
+
+  const second = await boot({ timetableData: TT_DATA, storageTimetable: saved });
+  try {
+    await openTT(second.doc, second.win, second.settle);
+    const rows = [...second.doc.querySelectorAll('#tt-panel .tt-entry')];
+    assert.equal(rows.length, 2, 'the timetable came back');
+    assert.ok(
+      second.doc.querySelector('#tt-panel .tt-grid'),
+      'and it shows the week rather than the build wizard'
+    );
+  } finally {
+    second.restore();
+  }
+});
+
+test('TIMETABLE: an overlap is detected and explained', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // CS F111 L1 (Mon hour 3) and a fixture course deliberately placed on top.
+  const clash = {
+    ...TT_DATA,
+    courses: [
+      TT_DATA.courses[0],
+      {
+        comCode: '9999', courseNo: 'ZZ F999', title: 'CLASH', credits: ['3'],
+        sections: [{
+          section: 'L1', kind: 'lecture', instructors: ['Someone'], room: '1111',
+          daysHours: 'M 3', unresolved: [],
+          meetings: [{ day: 'M', dayName: 'Monday', hour: 3, startMin: 600, endMin: 650 }],
+        }],
+      },
+    ],
+  };
+  const { doc, win, settle, restore } = await boot({ timetableData: clash });
+  try {
+    await openTT(doc, win, settle);
+    let r = await ttSearch(doc, win, settle, 'ZZ F999');
+    r[0].querySelector('button').click();
+    await settle(4);
+    doc.querySelector('.tt-chooser .tt-section').click();
+    await settle(8);
+
+    r = await ttSearch(doc, win, settle, 'CS F111');
+    r[0].querySelector('button').click();
+    await settle(4);
+    const lectures = [...doc.querySelectorAll('.tt-chooser .tt-section')];
+    lectures.find((b) => b.textContent.startsWith('L1')).click();
+    await settle(10);
+
+    const conflicts = doc.querySelector('#tt-panel .tt-conflicts');
+    assert.ok(conflicts, 'the overlap must be surfaced');
+    assert.match(conflicts.textContent, /Monday/);
+    assert.match(conflicts.textContent, /ZZ F999|CS F111/);
+  } finally {
+    restore();
+  }
+});
+
+test('TIMETABLE: a room-change email is proposed, quoting the sentence', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * The deterministic mail path, end to end. The mail must produce a PROPOSAL
+   * carrying the verbatim sentence — never a silent edit.
+   */
+  const mail = [{
+    id: 'tt1', threadId: 'tt1',
+    from: 'AUGSD <augsd@pilani.bits-pilani.ac.in>',
+    subject: 'CS F111 L1 venue change',
+    snippet: 'From next week CS F111 L1 will be held in room 6101.',
+    date: Date.now(), unread: true, starred: false, labels: ['INBOX', 'UNREAD'],
+  }];
+  const { doc, win, settle, restore } = await boot({
+    timetableData: TT_DATA, messages: mail,
+  });
+  try {
+    await openTT(doc, win, settle);
+    const r = await ttSearch(doc, win, settle, 'CS F111');
+    r[0].querySelector('button').click();
+    await settle(4);
+    [...doc.querySelectorAll('.tt-chooser .tt-section')]
+      .find((b) => b.textContent.startsWith('L1')).click();
+    await settle(8);
+
+    // Re-scan now that the course is in the timetable, then reopen.
+    const { scanForUpdates, closeTimetable, openTimetable } =
+      await import('../src/app/timetable-ui.js');
+    scanForUpdates(mail);
+    closeTimetable();
+    await settle(4);
+    openTimetable();
+    await settle(6);
+
+    const proposal = doc.querySelector('#tt-panel .tt-proposal');
+    assert.ok(proposal, 'the email should produce a proposal');
+    assert.match(proposal.textContent, /6101/);
+    assert.match(
+      proposal.querySelector('.tt-evidence').textContent,
+      /will be held in room 6101/,
+      'the user must see the actual sentence'
+    );
+
+    // Nothing has changed yet.
+    const { getTimetableState } = await import('../src/app/timetable-ui.js');
+    assert.equal(
+      getTimetableState().entries.find((e) => e.section === 'L1').room, '5105',
+      'a proposal must not have been applied silently'
+    );
+
+    /*
+     * PRECEDENCE APPLIES HERE, and the UI must not pretend otherwise.
+     *
+     * Mail is below the official timetable, so this change cannot be applied
+     * as "the email said so" -- that is the rule that stops a stray message
+     * rewriting the schedule. The panel therefore says why, and offers to
+     * record it as the USER's decision, which outranks everything.
+     */
+    assert.match(
+      proposal.textContent, /Not applied automatically/,
+      'the panel must explain that mail cannot override the official timetable'
+    );
+
+    proposal.querySelector('.primary').click();
+    await settle(8);
+    const after = getTimetableState().entries.find((e) => e.section === 'L1');
+    assert.equal(after.room, '6101');
+    assert.equal(
+      after.provenance.room.source, 'manual',
+      'accepted-from-mail is recorded as the user\'s own edit, not as the mail\'s'
+    );
+    assert.match(after.history[after.history.length - 1].detail, /room changed/);
+  } finally {
+    restore();
+  }
+});
+
+test('TIMETABLE: every entry can show where each field came from', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, win, settle, restore } = await boot({ timetableData: TT_DATA });
+  try {
+    await openTT(doc, win, settle);
+    const r = await ttSearch(doc, win, settle, 'BIO F101');
+    r[0].querySelector('button').click();
+    await settle(4);
+    doc.querySelector('.tt-chooser .tt-section').click();
+    await settle(8);
+
+    const entry = doc.querySelector('#tt-panel .tt-entry');
+    [...entry.querySelectorAll('button')].find((b) => b.textContent === 'Source').click();
+    await settle(4);
+
+    const prov = entry.querySelector('.tt-prov');
+    assert.ok(prov, 'source traceability must be reachable from the entry');
+    assert.match(prov.textContent, /official timetable/);
+    assert.match(prov.textContent, /5102/, 'the room and its origin');
+    assert.match(prov.textContent, /History/, 'and the change log');
+  } finally {
+    restore();
+  }
+});
+
+test('TIMETABLE: the real parsed catalogue drives the real UI', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * The fixtures above are hand-written, so they prove the UI works but not
+   * that it works against the ACTUAL BITS documents. This one uses the real
+   * generated data: 688 offerings parsed from the AUGSD PDF text.
+   */
+  const { doc, win, settle, restore } = await boot({ timetableData: 'real' });
+  try {
+    await openTT(doc, win, settle);
+    const results = await ttSearch(doc, win, settle, 'CS F111');
+    assert.ok(results.length >= 1, 'the real catalogue should contain CS F111');
+    assert.match(results[0].textContent, /COMPUTER PROGRAMMING/);
+    // 4 lectures and 21 labs in the real document; the point is that both
+    // kinds were parsed and counted, not the exact figures.
+    assert.match(results[0].textContent, /lectures? · \d+ labs?/);
+
+    results[0].querySelector('button').click();
+    await settle(4);
+    const lectures = [...doc.querySelectorAll('.tt-chooser .tt-section')];
+    assert.ok(lectures.length >= 2, 'the real course has several lecture sections');
+    // Teacher chips come from the real instructor names.
+    assert.ok(doc.querySelector('.tt-chooser .tt-chip'), 'teachers offered for selection');
+
+    lectures.find((b) => b.textContent.startsWith('L1')).click();
+    await settle(10);
+
+    const { getTimetableState } = await import('../src/app/timetable-ui.js');
+    const e = getTimetableState().entries.find((x) => x.section === 'L1');
+    assert.equal(e.courseNo, 'CS F111');
+    assert.equal(e.room, '5105', 'the real room from the real document');
+    assert.ok(e.meetings.length >= 2, 'and the real meeting times');
+  } finally {
+    restore();
+  }
+});
+
+test('TIMETABLE: signing out clears it from the screen', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // The timetable belongs to the account. It stays on disk, but the next
+  // person to sign in must not see the previous one's classes.
+  const { doc, win, settle, restore } = await boot({ timetableData: TT_DATA });
+  try {
+    await openTT(doc, win, settle);
+    const r = await ttSearch(doc, win, settle, 'BIO F101');
+    r[0].querySelector('button').click();
+    await settle(4);
+    doc.querySelector('.tt-chooser .tt-section').click();
+    await settle(8);
+
+    const { getTimetableState } = await import('../src/app/timetable-ui.js');
+    assert.ok(getTimetableState().entries.length > 0, 'precondition');
+
+    doc.getElementById('btn-signout').click();
+    await settle(12);
+    assert.equal(
+      getTimetableState().entries.length, 0,
+      "the previous account's timetable stayed in memory"
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('TIMETABLE: Escape closes the panel without leaving Gmail', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // It is a layer, so it must unwind before the takeover does.
+  const { doc, win, settle, restore } = await boot({ timetableData: TT_DATA });
+  try {
+    let released = false;
+    win.parent = { postMessage(m) { if (m?.type === 'BMM_RELEASE') released = true; } };
+
+    await openTT(doc, win, settle);
+    assert.ok(doc.getElementById('tt-panel'));
+
+    press(doc, win, 'Escape');
+    await settle(6);
+    assert.equal(doc.getElementById('tt-panel'), null, 'the panel should close');
+    assert.equal(released, false, 'and must not drop the user back into Gmail');
+  } finally {
+    restore();
+  }
+});

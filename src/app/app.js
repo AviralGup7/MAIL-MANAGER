@@ -55,6 +55,9 @@ import {
   openCompose, closeCompose, wireCompose, startReply,
   restoreDraftIfAny, flushDraft, refreshLabels, _setLabels,
 } from './features.js';
+import {
+  initTimetable, openTimetable, scanForUpdates, _resetTimetableUI,
+} from './timetable-ui.js';
 import { classify } from '../classify/index.js';
 import {
   CATEGORY_LABELS,
@@ -431,6 +434,10 @@ function resetView({ allMailboxes = false } = {}) {
     // So do the label names -- they are the previous account's private data,
     // and leaving them would leak them into the next user's palette.
     _setLabels([]);
+    // The timetable belongs to the account too. It stays on disk (it is
+    // expensive to rebuild and the same person usually signs back in), but it
+    // is dropped from memory and from the screen.
+    _resetTimetableUI();
     state.category = 'all';
     state.query = '';
     if (el.search) el.search.value = '';
@@ -3328,6 +3335,10 @@ const ctx = {
     renderViews();
     updateSaveAffordance();
   },
+  // The timetable panel quotes email and offers to open it, and needs a
+  // failure channel for a storage write.
+  toast,
+  openMessage,
 };
 
 window.__bmmIngest = ingest;
@@ -3358,6 +3369,16 @@ async function start() {
   // lands, and behaves exactly as before until it does. Not awaited, because
   // nothing on screen depends on it.
   refreshLabels(ctx);
+
+  /*
+   * The timetable loads from storage and then looks at the mail we already
+   * hold. Not awaited: a stored timetable is not needed to paint the inbox,
+   * and a slow read must not delay first paint. Failures inside degrade to an
+   * empty timetable rather than propagating.
+   */
+  initTimetable(ctx)
+    .then(() => scanForUpdates(store.idsFor('all').map((id) => store.get(id)).filter(Boolean)))
+    .catch(() => { /* the timetable is optional; the inbox is not */ });
 
   // Cache-first.
   //
@@ -3513,6 +3534,7 @@ async function boot() {
   wireCompose(ctx);
   wireRadar(ctx);
   $('btn-compose').addEventListener('click', () => openCompose(ctx));
+  $('btn-timetable')?.addEventListener('click', () => openTimetable(ctx));
   // Render the (empty) list once up front. The store only notifies when it
   // actually changes, so an inbox that syncs zero messages never triggers a
   // render at all — and the "Nothing here." state stayed hidden behind a
