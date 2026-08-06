@@ -47,6 +47,12 @@
       }
       label.check input { margin: 0; }
       input[type='range'] { width: 100%; margin: 2px 0 0; accent-color: #1a4fd6; }
+      textarea {
+        width: 100%; padding: 9px 11px; border: 1px solid #dfe3ea; border-radius: 9px;
+        font: inherit; font-size: 13px; box-sizing: border-box; resize: vertical;
+        color: #16181d;
+      }
+      textarea:focus { outline: 2px solid #1a4fd6; outline-offset: 1px; border-color: #1a4fd6; }
       fieldset label:not(:first-of-type) { margin-top: 16px; }
     </style>
   </head>
@@ -119,6 +125,19 @@
         Remote images tell the sender when and where you read their mail. Blocking
         by default is stronger than Gmail, which proxies them but still confirms
         the read. Choosing “always from this sender” in the reader adds an exception.
+      </p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Composing</legend>
+      <label for="signature">Signature</label>
+      <textarea id="signature" rows="3" spellcheck="true"
+                placeholder="Aviral Gupta&#10;f20240294@pilani.bits-pilani.ac.in"></textarea>
+      <p class="hint">
+        Added when you open a new message, above any quoted text — so you can
+        see it, edit it, or delete it before sending. Separated with the
+        standard <code>-- </code> marker that mail clients use to detect a
+        signature.
       </p>
     </fieldset>
 

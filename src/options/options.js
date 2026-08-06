@@ -160,3 +160,40 @@ const fmtDelay = (ms) => (ms === 0 ? 'off' : `${(ms / 1000).toFixed(1)}s`);
     await settings.set('remoteImages', images.value);
   });
 })();
+
+/*
+ * Signature.
+ *
+ * Debounced on `input` rather than written per keystroke, for the same reason
+ * the delay slider commits on `change`: a storage round trip per character is
+ * waste. `blur` flushes, so leaving the field always persists.
+ */
+(async function wireSignature() {
+  const box = $('signature');
+  if (!box) return;
+
+  let timer = 0;
+  const commit = () => settings.set('signature', box.value);
+
+  /*
+   * Await the load explicitly rather than deferring by a task.
+   *
+   * `settings.loadSettings()` caches, so this second call is nearly free and
+   * resolves after the same fetch the preferences block awaits. A
+   * `setTimeout(0)` happened to work, but it depended on the storage promise
+   * settling within one task -- true in jsdom, not guaranteed in Chrome, and
+   * the failure mode is a silently EMPTY signature box that then overwrites
+   * the stored value on blur.
+   */
+  await settings.loadSettings();
+  box.value = settings.get('signature');
+
+  box.addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(commit, 400);
+  });
+  box.addEventListener('blur', () => {
+    clearTimeout(timer);
+    commit();
+  });
+})();

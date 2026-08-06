@@ -20,7 +20,7 @@ try {
 
 const ROOT = new URL('..', import.meta.url).pathname;
 
-async function bootOptions(seed = {}) {
+async function bootOptions(seed = {}, { slowMs = 0 } = {}) {
   const html = readFileSync(`${ROOT}/options.html`, 'utf8');
   const dom = new JSDOM(html, {
     url: 'chrome-extension://test/options.html',
@@ -37,6 +37,9 @@ async function bootOptions(seed = {}) {
     storage: {
       local: {
         async get(k) {
+          // Optional latency, to prove the page waits for storage rather than
+          // for a task tick.
+          if (slowMs) await new Promise((r) => setTimeout(r, slowMs));
           if (Array.isArray(k)) {
             const o = {};
             for (const x of k) if (x in store) o[x] = store[x];
@@ -204,6 +207,75 @@ test('the client-ID guard still refuses a pasted secret', async (t) => {
     await new Promise((r) => setTimeout(r, 20));
     assert.equal(store.clientId, undefined, 'a secret must never be stored');
     assert.match(doc.getElementById('status').textContent, /secret/i);
+  } finally {
+    restore();
+  }
+});
+
+/* ------------------------------------------------------------- signature -- */
+
+test('an existing signature loads into the field', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, restore } = await bootOptions({ signature: 'Aviral Gupta' });
+  try {
+    assert.equal(doc.getElementById('signature').value, 'Aviral Gupta');
+  } finally {
+    restore();
+  }
+});
+
+test('the signature field does not race a slow storage read', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * This was a real hazard. The field was populated from a `setTimeout(0)`,
+   * which happens to win in jsdom but is not guaranteed in Chrome. The failure
+   * mode is nasty: the box renders EMPTY, and the blur handler then writes
+   * that empty value over the user's stored signature.
+   */
+  const { doc, restore } = await bootOptions({ signature: 'Persisted' }, { slowMs: 25 });
+  try {
+    assert.equal(
+      doc.getElementById('signature').value, 'Persisted',
+      'the field must wait for storage, not for a task tick'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('leaving the signature field persists it', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, win, store, restore } = await bootOptions();
+  try {
+    const box = doc.getElementById('signature');
+    box.value = 'New Sig';
+    box.dispatchEvent(new win.Event('blur'));
+    await new Promise((r) => setTimeout(r, 30));
+    assert.equal(store.signature, 'New Sig');
+  } finally {
+    restore();
+  }
+});
+
+test('every setting in the schema has a control on this page', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * `clientId` and `theme` are handled elsewhere (its own fieldset, and the
+   * in-app theme picker). Everything else must be reachable, or it is a
+   * setting the user cannot change -- which is how dead schema entries start.
+   */
+  const { doc, restore } = await bootOptions();
+  try {
+    const schema = readFileSync(`${ROOT}/src/app/settings.js`, 'utf8');
+    const declared = [...schema.matchAll(/^ {2}([a-zA-Z][a-zA-Z0-9]*): \{ type:/gm)]
+      .map((m) => m[1]);
+
+    const ELSEWHERE = new Set(['clientId', 'theme']);
+    const missing = declared
+      .filter((k) => !ELSEWHERE.has(k))
+      .filter((k) => !doc.getElementById(k));
+
+    assert.deepEqual(missing, [], 'settings with no control on the options page');
   } finally {
     restore();
   }

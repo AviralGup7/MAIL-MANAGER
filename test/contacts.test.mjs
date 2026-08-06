@@ -217,8 +217,16 @@ test('Cc gets autocomplete too, not just To', () => {
 test('the contact book is built per open, not per keystroke', () => {
   // Walking 2000 messages on every keypress is the one genuinely expensive
   // thing in the compose path.
-  const open = feat.slice(feat.indexOf('export function openCompose'));
-  assert.ok(open.slice(0, 900).includes('refreshContacts(ctx)'));
+  /*
+   * Bounded by the END OF THE FUNCTION, not by a character count. The original
+   * `slice(0, 900)` broke when an unrelated comment was added inside
+   * openCompose -- the call had not moved, the window had. A test that fails
+   * when a comment is added is measuring the wrong thing.
+   */
+  const start = feat.indexOf('export function openCompose');
+  const next = feat.indexOf('\nexport ', start + 1);
+  const open = feat.slice(start, next === -1 ? undefined : next);
+  assert.ok(open.includes('refreshContacts(ctx)'), 'openCompose must rebuild the address book');
   const wire = feat.slice(feat.indexOf('input.addEventListener(\'input\''));
   assert.ok(!wire.slice(0, 300).includes('refreshContacts'));
 });

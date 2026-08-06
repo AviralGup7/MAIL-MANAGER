@@ -21,6 +21,7 @@ import { buildReply } from './query.js';
 import { UndoStack } from './undo.js';
 import { icon } from './icons.js';
 import { createDraftSaver, loadDraft, isMeaningful } from './draft-store.js';
+import * as settings from './settings.js';
 import {
   buildContacts, matchContacts, currentFragment, completeValue, invalidAddresses,
 } from './contacts.js';
@@ -353,7 +354,23 @@ export function openCompose(ctx, prefill = {}) {
   $('c-to').value = prefill.to || '';
   $('c-cc').value = prefill.cc || '';
   $('c-subject').value = prefill.subject || '';
-  $('c-text').value = prefill.quoted ? `\n\n${prefill.quoted}` : '';
+
+  /*
+   * SIGNATURE.
+   *
+   * Inserted when the panel OPENS, not injected at send time. A signature the
+   * user cannot see before sending is a signature they cannot edit, delete for
+   * one message, or write above -- and the first they know of a mistake in it
+   * is when it has gone out. Gmail does the same for the same reason.
+   *
+   * It goes ABOVE any quoted original, which is where a reply's signature
+   * belongs.
+   */
+  const sig = settings.get('signature').trim();
+  const sigBlock = sig ? `\n\n-- \n${sig}` : '';
+  $('c-text').value = prefill.quoted
+    ? `\n\n${sigBlock ? `${sigBlock}\n` : ''}${prefill.quoted}`
+    : sigBlock;
   $('c-cc-row').hidden = !prefill.cc;
   $('c-status').textContent = '';
 

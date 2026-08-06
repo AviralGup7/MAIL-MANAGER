@@ -36,9 +36,25 @@
 
 /** @type {Record<string, Setting>} */
 export const SCHEMA = {
+  /*
+   * WHAT IS *NOT* HERE, AND WHY
+   *
+   * `density`, `undoSendSeconds` and `autoSyncMinutes` were declared here
+   * before anything read them. A schema entry is a PROMISE: `undoSendSeconds:
+   * 8` states that undo-send exists and is configurable, when no undo-send
+   * feature existed anywhere in the codebase.
+   *
+   * That is worse than an absent setting, because the next reader believes it.
+   * The same mistake as the six dead CSS tokens, and as `LIST_LABELS` --
+   * "unfinished" reads as "implemented but unsurfaced".
+   *
+   * They were removed rather than stubbed. They are specified in
+   * audits/08-GMAIL-COMPETITIVE-V2.md and each returns HERE on the commit that
+   * implements it, not before. A test enforces this.
+   */
+
   // ---- appearance ----
   theme: { type: 'string', def: 'daylight' },
-  density: { type: 'enum', def: 'comfortable', values: ['comfortable', 'compact'] },
 
   // ---- reading ----
   /*
@@ -58,10 +74,6 @@ export const SCHEMA = {
 
   // ---- composing ----
   signature: { type: 'string', def: '' },
-  undoSendSeconds: { type: 'int', def: 8, min: 0, max: 30 },
-
-  // ---- sync ----
-  autoSyncMinutes: { type: 'int', def: 5, min: 0, max: 60 },
 
   // ---- auth ----
   clientId: { type: 'string', def: '' },
