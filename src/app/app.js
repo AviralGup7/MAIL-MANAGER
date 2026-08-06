@@ -36,6 +36,7 @@ import { parseQuery, buildReply } from './query.js';
 import * as settings from './settings.js';
 import { addressOf } from './contacts.js';
 import { renderShortcuts } from './shortcuts.js';
+import { openLayer, closeTopLayer, hasLayers, closeAllLayers } from './layers.js';
 import {
   MAILBOXES, DEFAULT_MAILBOX, getMailbox, isMailbox, showsCategories, actionsFor,
 } from './mailboxes.js';
@@ -2152,31 +2153,52 @@ function setTheme(id) {
   if (state.selected && lastBody) el.rBody.srcdoc = renderBody(lastBody);
 }
 
+/** The open theme-menu layer, or null. */
+let themeLayer = null;
+
 function openThemeMenu() {
+  if (themeLayer) return;
   buildThemeMenu();
   el.themeMenu.hidden = false;
   $('btn-theme').setAttribute('aria-expanded', 'true');
-  const current = el.themeMenu.querySelector('[aria-checked="true"]') || el.themeMenu.firstElementChild;
+  themeLayer = openLayer({
+    name: 'theme',
+    node: el.themeMenu,
+    dismissOnOutsideClick: true,
+    // Focus returns to the button that opened it, which is what a menu should
+    // do and what the old `restoreFocus` flag did by hand at each call site.
+    restoreFocusTo: $('btn-theme'),
+    onClose: () => {
+      el.themeMenu.hidden = true;
+      $('btn-theme').setAttribute('aria-expanded', 'false');
+      themeLayer = null;
+    },
+  });
+  const current =
+    el.themeMenu.querySelector('[aria-checked="true"]') || el.themeMenu.firstElementChild;
   current?.focus();
 }
 
-function closeThemeMenu({ restoreFocus = false } = {}) {
-  if (el.themeMenu.hidden) return;
-  el.themeMenu.hidden = true;
-  $('btn-theme').setAttribute('aria-expanded', 'false');
-  if (restoreFocus) $('btn-theme').focus();
+/*
+ * `restoreFocus` is gone: the layer always restores to the trigger. The flag
+ * existed because focus handling was the caller's job; now it is not, and
+ * every call site wanted `true` anyway except the outside-click path, which
+ * the primitive handles.
+ */
+function closeThemeMenu() {
+  themeLayer?.close();
 }
 
 $('btn-theme').addEventListener('click', (e) => {
   e.stopPropagation();
-  el.themeMenu.hidden ? openThemeMenu() : closeThemeMenu({ restoreFocus: true });
+  themeLayer ? closeThemeMenu() : openThemeMenu();
 });
 
 el.themeMenu.addEventListener('click', (e) => {
   const item = e.target.closest('.theme-item');
   if (!item) return;
   setTheme(item.dataset.theme);
-  closeThemeMenu({ restoreFocus: true });
+  closeThemeMenu();
 });
 
 // Arrow keys inside the menu, as a menu is expected to behave.
@@ -2192,11 +2214,19 @@ el.themeMenu.addEventListener('keydown', (e) => {
     items[e.key === 'Home' ? 0 : items.length - 1].focus();
   } else if (e.key === 'Escape') {
     e.preventDefault();
-    closeThemeMenu({ restoreFocus: true });
+    closeThemeMenu();
   }
 });
 
-document.addEventListener('click', () => closeThemeMenu());
+/*
+ * Outside-click dismissal is the layer primitive's job now.
+ *
+ * This document-level `click` listener was the theme menu's own copy of a
+ * mechanism two other overlays also hand-rolled. Keeping it would mean two
+ * dismissal paths for one menu, firing on different events (`click` here,
+ * `mousedown` in the primitive) — which is how a menu ends up closing before
+ * the click that was meant to land inside it.
+ */
 
 async function doSignIn() {
   const btn = $('btn-signin');
@@ -2416,27 +2446,37 @@ function openSnoozeMenu(id, anchor) {
  * reads, presses Escape, and their next `j` goes nowhere because focus is on
  * `<body>`.
  */
-let helpReturnFocus = null;
+/** The open help layer, or null. Lifecycle belongs to layers.js. */
+let helpLayer = null;
 
 /** Pending `g` prefix for the two-key category jump. Expires; see the handler. */
 let goPending = null;
 
+/*
+ * The first overlay migrated onto the layer stack.
+ *
+ * Focus capture and restoration used to be hand-rolled here (and separately in
+ * three other overlays). The primitive owns both now, so this function is
+ * reduced to what is actually specific to help: render the shortcut table,
+ * reveal the node, move focus in.
+ */
 function openHelp() {
-  if (!el.help || !el.help.hidden) return;
+  if (!el.help || helpLayer) return;
   renderShortcuts(el.helpBody, document);
-  helpReturnFocus = document.activeElement;
   el.help.hidden = false;
+  helpLayer = openLayer({
+    name: 'help',
+    node: el.help,
+    onClose: () => {
+      el.help.hidden = true;
+      helpLayer = null;
+    },
+  });
   el.helpClose.focus();
 }
 
 function closeHelp() {
-  if (!el.help || el.help.hidden) return;
-  el.help.hidden = true;
-  // Restore focus, but only if the old node is still in the document.
-  const back = helpReturnFocus;
-  helpReturnFocus = null;
-  if (back && back.isConnected && typeof back.focus === 'function') back.focus();
-  else el.list?.focus?.();
+  helpLayer?.close();
 }
 
 /** Hand the page back to Gmail. The content script does the actual unwind. */

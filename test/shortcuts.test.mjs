@@ -152,13 +152,32 @@ test('help is the innermost Escape layer', () => {
   assert.ok(help < release, 'help must unwind before releasing the takeover');
 });
 
-test('help restores focus when it closes', () => {
-  // A modal that drops focus on the body breaks j/k for the next keystroke.
-  assert.ok(appSrc.includes('helpReturnFocus'), 'no focus restoration');
+test('help delegates its lifecycle to the layer stack', () => {
+  /*
+   * This used to assert on `helpReturnFocus` and `back.isConnected` — the
+   * NAMES of variables inside openHelp/closeHelp. That is an implementation
+   * detail, and it broke the moment focus handling moved into the layer
+   * primitive even though the BEHAVIOUR was unchanged.
+   *
+   * The behaviour itself is covered where it belongs, by driving the real DOM:
+   * "HELP: ? opens the overlay and Escape restores focus to where it was" in
+   * app.integration.test.mjs. What is worth asserting HERE is the structural
+   * rule: help must not hand-roll a lifecycle again.
+   */
+  assert.match(appSrc, /helpLayer = openLayer\(/, 'help must use the layer primitive');
   assert.ok(
-    appSrc.includes('back.isConnected'),
-    'must check the node still exists before focusing it'
+    !/helpReturnFocus/.test(appSrc),
+    'help should not manage focus itself; the primitive owns that'
   );
+});
+
+test('the layer primitive restores focus, and checks the node still exists', () => {
+  // The guarantee the deleted assertions were reaching for, asserted against
+  // the module that now actually provides it.
+  const layers = readFileSync(new URL('../src/app/layers.js', import.meta.url), 'utf8');
+  assert.match(layers, /returnFocus\.isConnected/,
+    'focusing a detached node silently moves focus to <body>');
+  assert.match(layers, /doc\?\.activeElement/, 'focus must be captured on open');
 });
 
 test('single-letter shortcuts are swallowed while help is open', () => {
