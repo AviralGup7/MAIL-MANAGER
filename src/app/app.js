@@ -449,7 +449,7 @@ function buildRow(id) {
     '</span>' +
     '<span class="r-right">' +
     '<span class="r-date"></span>' +
-    '<button class="r-star" type="button" aria-label="Star"></button>' +
+    '<button class="r-star" type="button" tabindex="-1" aria-label="Star"></button>' +
     '<span class="tag"></span>' +
     '</span>';
   // The star is a real icon, not the `★` glyph. A glyph renders in whatever
@@ -527,6 +527,10 @@ function catButton(key, label, color) {
   b.className = 'cat' + (MUTED_CATEGORIES.has(key) ? ' muted' : '');
   b.dataset.cat = key;
   b.setAttribute('aria-current', String(state.category === key));
+  // Roving tabindex: only the CURRENT category is tabbable. Sixteen separate
+  // tab stops for one navigation list means a keyboard user traverses the
+  // whole sidebar to reach the message list.
+  b.tabIndex = state.category === key ? 0 : -1;
   const dot = document.createElement('span');
   dot.className = 'dot';
   if (color) dot.style.setProperty('--c', color);
@@ -552,7 +556,9 @@ function renderSidebar() {
     const t = key === 'all' ? store.size : counts[key] || 0;
     setText(countEl, u ? String(u) : t ? String(t) : '');
     countEl.classList.toggle('unread', u > 0);
-    b.setAttribute('aria-current', String(state.category === key));
+    const current = state.category === key;
+    b.setAttribute('aria-current', String(current));
+    b.tabIndex = current ? 0 : -1;
   }
 }
 
@@ -970,6 +976,33 @@ el.list.addEventListener('click', (e) => {
     return;
   }
   openMessage(id);
+});
+
+/*
+ * Arrow-key navigation inside the sidebar.
+ *
+ * The counterpart to the roving tabindex: Tab reaches the nav as a single
+ * stop, arrows move within it, Home and End jump to the ends. Without this
+ * half the pattern is missing and the non-current categories become
+ * unreachable by keyboard entirely -- a worse bug than the sixteen tab stops
+ * it replaced.
+ */
+el.cats.addEventListener('keydown', (e) => {
+  const items = [...el.cats.children];
+  const i = items.indexOf(document.activeElement);
+  if (i === -1) return;
+  let next = -1;
+  if (e.key === 'ArrowDown') next = (i + 1) % items.length;
+  else if (e.key === 'ArrowUp') next = (i - 1 + items.length) % items.length;
+  else if (e.key === 'Home') next = 0;
+  else if (e.key === 'End') next = items.length - 1;
+  else return;
+  e.preventDefault();
+  // Move focus without selecting. Selecting on arrow would fire a render per
+  // keypress and fight the user as they scan for the category they want.
+  items[i].tabIndex = -1;
+  items[next].tabIndex = 0;
+  items[next].focus();
 });
 
 el.cats.addEventListener('click', (e) => {

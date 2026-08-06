@@ -886,3 +886,99 @@ test('CTX: archive from the toolbar removes the row', async (t) => {
     restore();
   }
 });
+
+// -------------------------------------------------- keyboard traversal ----
+
+test('A11Y: the tab order is constant, not proportional to message count', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // MEASURED KEYBOARD TRAP: every row's star was a tab stop. With 20 messages
+  // that is 44 stops; at the 2000-message cap it is ~2024, so a keyboard user
+  // pressing Tab from the sidebar to the reader would press it two thousand
+  // times.
+  //
+  // ARIA authoring practice: a listbox is ONE stop, and movement inside is by
+  // arrow keys — which this app already had via j/k and aria-activedescendant.
+  const visible = (el, doc) => {
+    for (let n = el; n && n !== doc.body; n = n.parentElement) if (n.hidden) return false;
+    return true;
+  };
+  const stops = (doc) =>
+    [...doc.querySelectorAll('a[href],button,input,textarea,select,[tabindex]')]
+      .filter((e) => visible(e, doc) && e.tabIndex >= 0);
+
+  const small = await boot({ messages: MESSAGES });
+  const nSmall = stops(small.doc).length;
+  small.restore();
+
+  const large = await boot({ messages: bulk(200) });
+  const nLarge = stops(large.doc).length;
+  try {
+    assert.equal(
+      stops(large.doc).filter((e) => e.classList.contains('r-star')).length,
+      0,
+      'row stars must not be tab stops'
+    );
+    assert.ok(
+      Math.abs(nLarge - nSmall) <= 1,
+      `tab stops scale with message count: ${nSmall} for 3 vs ${nLarge} for 200`
+    );
+    assert.ok(nLarge < 20, `expected a small constant number of stops, got ${nLarge}`);
+  } finally {
+    large.restore();
+  }
+});
+
+test('A11Y: the sidebar is one tab stop with arrow-key movement', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Roving tabindex. Sixteen categories were sixteen stops; a nav list should
+  // be one. The arrow handler is the other half of the pattern — without it
+  // the non-current categories become unreachable by keyboard entirely, which
+  // is a worse bug than the stops it replaced.
+  const { doc, win, settle, restore } = await boot();
+  try {
+    const cats = [...doc.getElementById('cats').children];
+    assert.equal(cats.filter((c) => c.tabIndex === 0).length, 1, 'exactly one tabbable category');
+
+    cats[0].focus();
+    const fire = (key) =>
+      doc.getElementById('cats').dispatchEvent(
+        new win.KeyboardEvent('keydown', { key, bubbles: true })
+      );
+
+    fire('ArrowDown');
+    await settle();
+    assert.equal(doc.activeElement, cats[1], 'ArrowDown moves focus');
+
+    fire('End');
+    await settle();
+    assert.equal(doc.activeElement, cats[cats.length - 1], 'End jumps to the last');
+
+    fire('Home');
+    await settle();
+    assert.equal(doc.activeElement, cats[0], 'Home jumps to the first');
+
+    // Focus movement must NOT select — that would render on every keypress and
+    // fight the user as they scan.
+    assert.equal(cats[0].getAttribute('aria-current'), 'true', 'arrows move focus, not selection');
+  } finally {
+    restore();
+  }
+});
+
+test('A11Y: the star is still operable by keyboard after leaving the tab order', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Removing a tab stop is only correct if the action survives another way.
+  const { doc, win, settle, restore } = await boot();
+  try {
+    rows(doc)[0].click();
+    await settle();
+    doc.dispatchEvent(new win.KeyboardEvent('keydown', { key: 's', bubbles: true }));
+    await settle();
+    assert.equal(
+      doc.querySelector('.row[aria-selected="true"] .r-star').getAttribute('aria-pressed'),
+      'true'
+    );
+  } finally {
+    restore();
+  }
+});
