@@ -48,7 +48,26 @@ const VERSION = 1;
  */
 export const CACHE_MAX = 500;
 
-/** Fields worth persisting. Anything derived is recomputed on load. */
+/**
+ * Fields worth persisting.
+ *
+ * This comment used to say "anything derived is recomputed on load". That was
+ * NOT TRUE, and two bugs lived in the gap:
+ *
+ *   - `dueAt` was neither stored nor recomputed, so a warm start showed no
+ *     deadline radar at all until the delta returned. That one really is
+ *     derivable -- from the subject and snippet, both cached -- so `app.js`
+ *     re-derives it on hydrate (see `withDeadline`).
+ *   - `hasAttachment` was neither stored nor recomputed, so `has:attachment`
+ *     silently matched nothing for every cached message. This one CANNOT be
+ *     recomputed: it comes from the Gmail payload, not from any cached text.
+ *     So it is stored, in the spare bits of the flags byte.
+ *
+ * The rule now: a field is either cached here or re-derived on hydrate, and
+ * which one is a deliberate choice per field, not an accident.
+ *
+ * Flags byte: 1 = unread, 2 = starred, 4 = hasAttachment.
+ */
 function pack(m) {
   return [
     m.id,
@@ -57,7 +76,7 @@ function pack(m) {
     m.subject,
     m.snippet,
     m.date,
-    (m.unread ? 1 : 0) | (m.starred ? 2 : 0),
+    (m.unread ? 1 : 0) | (m.starred ? 2 : 0) | (m.hasAttachment ? 4 : 0),
     m.category,
     m.confidence,
     m.source || '',
@@ -75,6 +94,10 @@ function unpack(a) {
     date: a[5],
     unread: (a[6] & 1) !== 0,
     starred: (a[6] & 2) !== 0,
+    // Bit 4 is new. An OLD cache blob simply has it clear, which reads as
+    // "no attachment" -- the same answer the bug gave, and it self-corrects
+    // on the next sync. No version bump needed for a widening flags byte.
+    hasAttachment: (a[6] & 4) !== 0,
     category: a[7],
     confidence: a[8],
     source: a[9],

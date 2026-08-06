@@ -1,0 +1,720 @@
+ BIRLA INSTITUTE OF TECHNOLOGY AND SCIENCE, PILANI
+ AUGS/AGSR DIVISION
+ No.AUGS /T/5   FIRST SEMESTER 2026 - 2027   Date: 04 - Aug - 2026
+ The following changes have been made w.e.f.   0 5 - Aug - 2026   in the Timetable for   FIRST SEMESTER 2026 - 2027 .
+ A. New Course/Section Offered
+ Changed
+ Comp
+Course Title   Sec Course No.  
+ Code  
+ From   To
+ PRIYA
+ CHRISTINA
+ 10   PETRO REFINERY ENGG   L1   -  SANDE CHE G617  
+ MWF 8 07/12
+ AN
+RAJEEV
+ 2069   LABORATORY PROJECT   L1   -   PHA G642  
+ TALIYAN
+ Ankan Pal
+ 3118   DIFFERENTIAL EQUATIO   L1   -  MW 2 T 9 MATH F201  
+ 01/12 AN
+ Pramod Eyyunni
+ 3118   DIFFERENTIAL EQUATIO   L10   -  TThF 4 01/12 MATH F201  
+ AN
+ Vaidya
+ Rishikesh D
+ 3118   DIFFERENTIAL EQUATIO   L11   - MATH F201  
+ TThF 5 01/12
+ AN
+ Sudarshan
+ 3118   DIFFERENTIAL EQUATIO   L12   -  Santra   TThF 5 MATH F201  
+ 01/12 AN
+ Pramod Eyyunni
+ 3118   DIFFERENTIAL EQUATIO   L2   -  MW 2 T 9 MATH F201  
+ 01/12 AN
+ Chandra
+ Shekhar   MW
+ 3118   DIFFERENTIAL EQUATIO   L3   - MATH F201  
+ 3 Th 9 01/12
+ AN
+ A. New Course/Section Offered
+ Changed
+ Comp
+Course Title   Sec Course No.  
+ Code  
+ From   To
+Page   1   of   12
+
+ Aritra Banerjee
+ 3118   DIFFERENTIAL EQUATIO   L4   -  MW 3 Th 9 MATH F201  
+ 01/12 AN
+ Ashish Tiwari
+ 3118   DIFFERENTIAL EQUATIO   L5   -  MTThF 7 01/12 MATH F201  
+ AN
+ Deepak Bhoriya
+ 3118   DIFFERENTIAL EQUATIO   L6   -  MWF 7 01/12 MATH F201  
+ AN
+ Shailesh Trivedi
+ 3118   DIFFERENTIAL EQUATIO   L7   -  MWF 8 01/12 MATH F201  
+ AN
+Rakhee   TThF
+ 3118   DIFFERENTIAL EQUATIO   L8   -   MATH F201  
+ 8 01/12 AN
+ KRISHNENDRA
+ SHEKHAWAT
+ 3118   DIFFERENTIAL EQUATIO   L9   - MATH F201  
+ TThF 4 01/12
+ AN
+ 3118   DIFFERENTIAL EQUATIO   T1   -   Ankan Pal   T 1 MATH F201  
+Pramod Eyyunni
+ 3118   DIFFERENTIAL EQUATIO   T10   -   MATH F201  
+ Th 1
+ A. New Course/Section Offered
+ Changed
+ Comp
+Course Title   Sec Course No.  
+ Code  
+ From   To
+ 3118   DIFFERENTIAL EQUATIO   T11   -   Rakhee   Th 1 MATH F201  
+Rijubrata Kundu
+ 3118   DIFFERENTIAL EQUATIO   T12   -   MATH F201  
+ Th 1
+Ashish Tiwari
+ 3118   DIFFERENTIAL EQUATIO   T2   -   MATH F201  
+ T 1
+Chandra Shekhar
+ 3118   DIFFERENTIAL EQUATIO   T3   -   MATH F201  
+ T 1
+Aritra Banerjee
+ 3118   DIFFERENTIAL EQUATIO   T4   -   MATH F201  
+ T 1
+Deepak Bhoriya
+ 3118   DIFFERENTIAL EQUATIO   T5   -   MATH F201  
+ T 1
+ KRISHNENDRA
+ 3118   DIFFERENTIAL EQUATIO   T6   -  SHEKHAWAT MATH F201  
+ T 1
+Shailesh Trivedi
+ 3118   DIFFERENTIAL EQUATIO   T7   -   MATH F201  
+ Th 1
+Page   2   of   12
+
+ A. New Course/Section Offered
+ Changed
+ Comp
+Course Title   Sec Course No.  
+ Code  
+ From   To
+ Vaidya
+ 3118   DIFFERENTIAL EQUATIO   T8   -  Rishikesh D MATH F201  
+ Th 1
+ Vaidya
+ 3118   DIFFERENTIAL EQUATIO   T9   -  Rishikesh D MATH F201  
+ Th 1
+RAJEEV
+ 6631   Laboratory Projects   L1   -   PHA G642  
+ TALIYAN
+ B. Change of Room
+ Changed
+ Comp
+Course Title   Sec Course No.  
+ Code  
+ From   To
+ 6107(F)
+ADV DRUG DELIVERY 6107(F)
+ 145   L1    6108(T) PHA G617  
+ SYSTEM    6108(T Th)
+ 6108(Th)
+ADVANCED CELL MOLE
+ 151   L1   6156   6160 BIO G542  
+ BIO  
+ 1125   ALGEBRA I   T2   6160   6158 MATH F215  
+INTRO TO CONFLICT
+ 1173   L1   6101   6153 GS F311  
+ MGMT  
+PROCESS DES PRINCIPLES
+ 1187   T1   1232   6114 CHE F314  
+ I  
+PROCESS DES PRINCIPLES
+ 1187   T2   1203   6119 CHE F314  
+ I  
+MICROELECTRONIC
+ 1241   L1   1205 EEE F244  
+ CIRCUITS  
+ 1297   MEDICINAL CHEMISTRY I   L1   6153   6160 PHA F312  
+Page   3   of   12
+
+ B. Change of Room
+ Changed
+ Comp
+Course Title   Sec Course No.  
+ Code  
+ From   To
+COMMUNICATION
+ 1389   P2   6016   6119 ECE F311  
+ SYSTEMS  
+INTRODUCTION TO
+ 1469   L1   2203   6101 MATH F311  
+ TOPOLOGY  
+ 1471   NUMERICAL ANALYSIS   L1   6155   6101 MATH F313  
+DERIVATIVES & RISK
+ 1565   L1   6152   6109 ECON F354  
+ MGMT  
+SCIENCE TECH &
+ 1892   L1   6109   6152 BITS F214  
+ MODERNITY  
+FINANCIAL RISK ANAL
+ 1942   L1   1202   6101 FIN F414  
+ AND MGMT  
+ADV POWER
+ 2126   L1   2203   1219 EEE G559  
+ ELECTRONICS  
+PETROLEUM REFINING
+ 2178   L1   1225 CHE F422  
+ TECHNOLOGY  
+ B. Change of Room
+ Changed
+ Comp
+Course Title   Sec Course No.  
+ Code  
+ From   To
+FUNDA OF SOLID STATE
+ 2805   T1   6158   1201 SNS F214  
+ PHYSICS  
+ C. Change of IC/Instructor
+ Changed
+ Comp
+Course Title   Sec Course No.  
+ Code  
+ From   To
+PHY & MO OF MICROEL Khichar Anita  Rohit Kumar
+ 744   P2   MEL G631  
+ DEV    Omprakash(RS)  Shaw(RS)
+Page   4   of   12
+
+HARI OM
+ 1077   ELECTRICAL MACHINES   L1   Hari Om Bansal   EEE F211  
+ BANSAL
+HARI OM
+ 1077   ELECTRICAL MACHINES   T1   Hari Om Bansal   EEE F211  
+ BANSAL
+ To Be
+ 1080   ELECTRONIC DEVICES   T7  Announced By  Ritesh Vyas EEE F214  
+ Chemistry Dept
+HARI OM
+ 1096   ELECTRICAL MACHINES   L1   Hari Om Bansal   INSTR F211  
+ BANSAL
+HARI OM
+ 1096   ELECTRICAL MACHINES   T1   Hari Om Bansal   INSTR F211  
+ BANSAL
+ To Be
+ 1099   ELECTRONIC DEVICES   T7  Announced By  Ritesh Vyas INSTR F214  
+ Chemistry Dept
+ Charudutt
+ SYAMANTAK  Poonia(RS)
+ MAJUMDER  SYAMANTAK
+ 1113   CELL BIOLOGY   T1 BIO F213  
+ Shashi Prakash  MAJUMDER
+ Singh  Shashi Prakash
+ Singh
+ C. Change of IC/Instructor
+ Changed
+ Comp
+Course Title   Sec Course No.  
+ Code  
+ From   To
+ Deepti
+ Kaushik(RS)  Jitendra Panwar
+ 1114   MICROBIOLOGY   L1  Jitendra Panwar  PRABHAT BIO F212  
+ PRABHAT  NATH JHA
+ NATH JHA
+ Anun
+ Kanika
+ Pandit(RS)
+ 1114   MICROBIOLOGY   P2  Hada(RS) Nidhi BIO F212  
+ Nidhi S
+ S Hallikeri(RS)
+ Hallikeri(RS)
+ TO BE
+MICROELECTRONIC
+ 1241   L1  ANNOUNCED  ANU GUPTA EEE F244  
+ CIRCUITS  
+ BY EEE DEPT
+ Akhil Misra(RS)  Akhil Misra(RS)
+COMMUNICATION
+ 1242   P5  Ananya  Zarna Dinesh EEE F311  
+ SYSTEMS  
+ Garg(RS)  Solanki(RS)
+ To Be
+COMMUNICATION
+ 1242   T5  Announced By  Ritesh Vyas EEE F311  
+ SYSTEMS  
+ Eee Dept
+ Aniket
+ Kanwardeep
+ Kumar(RS)
+ 1256   DIGITAL SIGNAL PROCESS   P1  Singh EEE F434  
+ Rahul
+ Gahlot(RS)
+ Runthala(RS)
+Page   5   of   12
+
+ Sudhir
+ Kumar(RS)
+ Kanwardeep  Kanwardeep
+ Singh  Singh
+ 1256   DIGITAL SIGNAL PROCESS   P2  Gahlot(RS)  Gahlot(RS) EEE F434  
+ Rahul  Sudhir
+ Runthala(RS)  Kumar(RS)
+ Kanwardeep
+ Aniket
+ Singh
+ Kumar(RS)
+ 1256   DIGITAL SIGNAL PROCESS   P3  Gahlot(RS) EEE F434  
+ Rahul
+ Rahul
+ Runthala(RS)
+ Runthala(RS)
+ C. Change of IC/Instructor
+ Changed
+ Comp
+Course Title   Sec Course No.  
+ Code  
+ From   To
+HARI OM
+ 1380   ELECTRICAL MACHINES   L1   Hari Om Bansal   ECE F211  
+ BANSAL
+HARI OM
+ 1380   ELECTRICAL MACHINES   T1   Hari Om Bansal   ECE F211  
+ BANSAL
+ To Be
+ 1383   ELECTRONIC DEVICES   T7  Announced By  Ritesh Vyas ECE F214  
+ Chemistry Dept
+ Akhil Misra(RS)  Akhil Misra(RS)
+COMMUNICATION
+ 1389   P5  Ananya  Zarna Dinesh ECE F311  
+ SYSTEMS  
+ Garg(RS)  Solanki(RS)
+ To Be
+COMMUNICATION
+ 1389   T5  Announced By  Ritesh Vyas ECE F311  
+ SYSTEMS  
+ Eee Dept
+ Aniket
+ Aniket
+ Kumar(RS)
+ Kumar(RS)
+ 1392   DIGITAL SIGNAL PROCESS   P1  Kanwardeep ECE F434  
+ Rahul
+ Singh
+ Runthala(RS)
+ Gahlot(RS)
+ Kanwardeep  Kanwardeep
+ Singh  Singh
+ 1392   DIGITAL SIGNAL PROCESS   P2  Gahlot(RS)  Gahlot(RS) ECE F434  
+ Rahul  Sudhir
+ Runthala(RS)  Kumar(RS)
+ Kanwardeep
+ Rahul
+ Singh
+ Runthala(RS)
+ 1392   DIGITAL SIGNAL PROCESS   P3  Gahlot(RS) ECE F434  
+ Sudhir
+ Rahul
+ Kumar(RS)
+ Runthala(RS)
+Page   6   of   12
+
+ C. Change of IC/Instructor
+ Changed
+ Comp
+Course Title   Sec Course No.  
+ Code  
+ From   To
+ Hariharan J(RS)  Ananya Bhatt(RS)
+ Rajdeep  Rajdeep
+ Chowdhury  Chowdhury
+ 1429   ANIMAL PHYSIOLOGY   T1 BIO F313  
+ Ritobrata  Ritobrata
+ Bhattacharyya(RS)  Bhattacharyya(RS)
+ SHILPI GARG  SHILPI GARG
+ Abha Gupta(RS)
+ Anun Pandit(RS)  Abha Gupta(RS)
+ Karnika(RS)  Mukul Joshi Rahul
+GENETIC ENGINEERING  Mukul Joshi Rahul  Bhati(RS)
+ 1434   P1 BIO F418  
+ TECH    Bhati(RS)  SANDHYA
+ SANDHYA  AMOL
+ AMOL  MARATHE
+ MARATHE
+ Aditi Gehlot(RS)
+ Bharti Khungar
+ Antima Saini(RS)
+ DALIP KUMAR
+ Bharti Khungar
+ Gadekar Amol
+ DALIP KUMAR
+ Bhagwanrao(RS)
+ Gadekar Amol
+ Nidhi(RS) Nitika
+ Bhagwanrao(RS)
+ Grover Nitika(RS)
+ Nidhi(RS) Nitika
+ Parmeshthi
+ 1555   CHEMICAL EXPER I   P1  Grover Nitika(RS) CHEM F242  
+ Parikh(RS) Pragati
+ Pragati
+ Shrivastava(RS)
+ Shrivastava(RS)
+ Reena Jangir(RS)
+ Reena Jangir(RS)
+ Ri tu Rani(RS)
+ Sandip Kumar
+ Sandip Kumar
+ Deb(RS)
+ Deb(RS) Shruti
+ Subhendu
+ Soni(RS)
+ Adhikari(RS )
+ Chetan
+ Shrivastava(RS)  SUDESHNA
+ Kaustav Mohan  MUKHERJEE
+ANIMAL CELL  Chatterjee(RS)  Saswata Rath(RS)
+ 2008   P1 BIO G524  
+ TECHNOLOGY    SUDESHNA  Satya
+ MUKHERJEE  Omprabha(RS)
+ Saswata Rath(RS)  Soumitra Ghosh
+ Soumitra Ghosh
+ Pranali
+ Pranali  Vijaykumar
+ Vijaykumar  Kuthe(RS)
+MODERN PHARMACEUT
+ 2387   P2  Kuthe(RS)  Ranapangu PHA G540  
+ ANALY TECHNI  
+ Ranapangu  Bhargav(RS)
+ Bhargav(RS)  Vishal Babasaheb
+ Galave(RS)
+ To Be Announced
+ 2807   ELECTRONIC DEVICES   T7  By Chemistry  Ritesh Vyas SNS F242  
+ Dept
+Page   7   of   12
+
+ Km Vidisha  Mukul
+ 2863   INTRO TO BIO SCI   P10  Kumari(RS) P R  Srivastava(RS) P BIO F101  
+ Deepa  R Deepa
+ B Vani Kaustav
+B Vani Satya
+ 2863   INTRO TO BIO SCI   P13    Mohan BIO F101  
+ Omprabha(RS)
+ Chatterjee(RS)
+ C. Change of IC/Instructor
+ Changed
+ Comp
+Course Title   Sec Course No.  
+ Code  
+ From   To
+ Rahul Bhati(RS)  Karnika(RS)
+ 2863   INTRO TO BIO SCI   P2  Sandhya Amol  Sandhya Amol BIO F101  
+ Marathe  Marathe
+ Gitika
+ Gitika
+ Sharma(RS)
+ 2863   INTRO TO BIO SCI   P6  Sharma(RS) BIO F101  
+ Shibasish
+ Sushmita Basu
+ Chowdhury
+ Shibasish
+ Shreeja
+ Chowdhury
+ 2863   INTRO TO BIO SCI   P7  Sinha(RS) BIO F101  
+ Shreeja
+ Sushmita Basu
+ Sinha(RS)
+ Charudutt  Himadri
+ 2863   INTRO TO BIO SCI   P8  Poonia(RS) P.  Sharma(RS) P. BIO F101  
+ Yadukrishnan  Yadukrishnan
+ Afrisham
+ Afrisham
+ Ahmad(RS)
+ Ahmad(RS)
+ Harshi
+ Harshi
+ 2864   FUNDA OF CHEM   P1  Saxena(RS) CHEM F101  
+ Saxena(RS)
+ Ram Kinkar Roy
+ Ram Kinkar Roy
+ Ritu
+ Vandana(RS)
+ Kumari(RS)
+ Aditi  Ayesha
+ Gehlot(RS)  Rahman(RS)
+ Ayesha  Prashant Mani
+ Rahman(RS)  Tripathi(RS)
+ 2864   FUNDA OF CHEM   P2 CHEM F101  
+ Prashant Mani  Ritu
+ Tripathi(RS)  Kumari(RS)
+ Subhendu  Sakshi
+ Adhikari(RS)  Kushwaha(RS)
+ Ankit Payal(RS)
+ Ankit Payal(RS)
+ Pinki
+ Pinki
+ Kanodia(RS)
+ 2864   FUNDA OF CHEM   P3  Kanodia(RS) CHEM F101  
+ Pinki(RS)
+ Pinki(RS)
+ Sakshi
+ Ritu(RS)
+ Bajaj(RS)
+ Ankita  Ankita
+ 2864   FUNDA OF   CHEM   P4  Narain(RS)  Narain(RS) CHEM F101  
+ Prashant Mani  Parmeshthi
+Page   8   of   12
+
+ Tripathi(RS)  Parikh(RS)
+ Rohit  Prashant Mani
+ Sharma(RS)  Tripathi(RS)
+ Subhendu  Rohit
+ Adhikari(RS)  Sharma(RS)
+ C. Change of IC/Instructor
+ Changed
+ Comp
+Course Title   Sec Course No.  
+ Code  
+ From   To
+ Kamal
+ Kamal Lochan(RS)  Lochan(RS)
+ Naina Kathuria(RS)  Ram Kinkar
+ 2864   FUNDA OF CHEM   P5 CHEM F101  
+ Ram Kinkar Roy  Roy Ritu
+ Teena(RS)  Rani(RS)
+ Teena(RS)
+ Afrisham
+ Ahmad(RS)
+ Afrisham Ahmad(RS)
+ Bibhas Ranjan
+ Bibhas Ranjan Sarkar
+ 2864   FUNDA OF CHEM   P6  Sarkar Harshi CHEM F101  
+ Harshi Saxena(RS)
+ Saxena(RS)
+ Vandana(RS)
+ Sakshi
+ Kushwaha(RS)
+ Aashima(RS)
+ Aashima(RS) Harsh  Anish Rao
+ Parashar(RS)  Harsh
+ 2864   FUNDA OF CHEM   P8 CHEM F101  
+ Priyamvada  Parashar(RS)
+ Singh(RS) Ritu(RS)  Priyamvada
+ Singh(RS)
+INTRO TO OSCIL & JAYENDRA NATH  MADHUKAR
+ 2892   L1   PHY F102  
+ WAVES    BANDYOPADHYAY  MISHRA
+INTRO TO OSCIL & JAYENDRA NATH  MADHUKAR
+ 2892   P1   PHY F102  
+ WAVES    BANDYOPADHYAY  MISHRA
+INTRO TO OSCIL & JAYENDRA NATH  MADHUKAR
+ 2892   T1   PHY F102  
+ WAVES    BANDYOPADHYAY  MISHRA
+FOUND OF To Be Announced By  Ravindra
+ 5002   P5   BITS U104  
+ MEASUREMENT & EXPT    Civil Dept  Dwivedi
+ Km Vidisha  Mukul
+INTRO TO BIO
+ 5063   P10  Kumari(RS) P R  Srivastava(RS) BIO U101  
+ SCIENCES  
+ Deepa  P R Deepa
+ C. Change of IC/Instructor
+Page   9   of   12
+
+ Changed
+ Comp
+Course Title   Sec Course No.  
+ Code  
+ From   To
+ B Vani Kaustav
+B Vani Satya
+ 5063   INTRO TO BIO SCIENCES   P13    Mohan BIO U101  
+ Omprabha(RS)
+ Chatterjee(RS)
+ Rahul Bhati(RS)  Karnika(RS)
+ 5063   INTRO TO BIO SCIENCES   P2  Sandhya Amol  Sandhya Amol BIO U101  
+ Marathe  Marathe
+ Charudutt  Himadri
+ 5063   INTRO TO BIO SCIENCES   P8  Poonia(RS) P.  Sharma(RS) P. BIO U101  
+ Yadukrishnan  Yadukrishnan
+ Afrisham
+ Afrisham
+ Ahmad(RS)
+ Ahmad(RS)
+ Harshi
+ Harshi
+ 5238   CHEMISTRY LABORATORY   P1  Saxena(RS) CHEM U110  
+ Saxena(RS)
+ Ram Kinkar Roy
+ Ram Kinkar Roy
+ Ritu
+ Vandana(RS)
+ Kumari(RS)
+ Aditi  Ayesha
+ Gehlot(RS)  Rahman(RS)
+ Ayesha  Prashant Mani
+ Rahman(RS)  Tripathi(RS)
+ 5238   CHEMISTRY LABORATORY   P2 CHEM U110  
+ Prashant Mani  Ritu
+ Tripathi(RS)  Kumari(RS)
+ Subhendu  Sakshi
+ Adhikari(RS )  Kushwaha(RS)
+ Ankit Payal(RS)
+ Ankit Payal(RS)
+ Pinki
+ Pinki
+ Kanodia(RS)
+ 5238   CHEMISTRY LABORATORY   P3  Kanodia(RS) CHEM U110  
+ Pinki(RS)
+ Pinki(RS)
+ Sakshi
+ Ritu(RS)
+ Bajaj(RS)
+ Ankita  Ankita
+ Narain(RS)  Narain(RS)
+ Prashant Mani  Parmeshthi
+ Tripathi(RS)  Parikh(RS)
+ 5238   CHEMISTRY LABORATORY   P4 CHEM U110  
+ Rohit  Prashant Mani
+ Sharma(RS)  Tripathi(RS)
+ Subhendu  Rohit
+ Adhikari(RS)  Sharma(RS)
+ Kamal
+ Kamal
+ Lochan(RS)
+ Lochan(RS)
+ Nain a
+ 5238   CHEMISTRY LABORATORY   P5  Ram Kinkar Roy CHEM U110  
+ Kathuria(RS)
+ Ritu Rani(RS)
+ Ram Kinkar Roy
+ Teena(RS)
+ Teena(RS)
+ C. Change of IC/Instructor
+Page   10   of   12
+
+ Changed
+ Comp
+Course Title   Sec Course No.  
+ Code  
+ From   To
+ Afrisham
+ Afrisham
+ Ahmad(RS)
+ Ahmad(RS)
+ BIBHAS
+ BIBHAS
+ RANJAN
+ RANJAN
+ 5238   CHEMISTRY LABORATORY   P6  SARKAR CHEM U110  
+ SARKAR
+ Harshi
+ Harshi
+ Saxena(RS)
+ Saxena(RS)
+ Sakshi
+ Vandana(RS)
+ Kushwaha(RS)
+ Aashima(RS)
+ Aashima(RS)
+ Harsh
+ Anish Rao Harsh
+ Parashar(RS)
+ 5238   CHEMISTRY LABORATORY   P8  Parashar(RS) CHEM U110  
+ Priyamvada
+ Priyamvada
+ Singh(RS)
+ Singh(RS)
+ Ritu(RS)
+ Km Pooja  Laxmi(RS)
+ 5378   ELECTRICAL SCIENCES   P8  Maurya(RS)  Nimish EEE U111  
+ Laxmi(RS)  Kumar(RS)
+INTRO TO CLASSIC & MADHUKAR  MADHUKAR
+ 5833   L1   PHY U102  
+ QUANT WAVES    MISHRA  MISHRA
+INTRO TO CLASSIC & MADHUKAR  MADHUKAR
+ 5833   T1   PHY U102  
+ QUANT WAVES    MISHRA  MISHRA
+ TO BE
+MACHINE LEARN
+ 6265   L1  ANNOUNCED  RITESH VYAS EEE G513  
+ ELECTRONICS ENG  
+ BY EEE DEPT
+ Pranali
+ Vijaykumar
+ Pranali
+ Kuthe(RS)
+ Vijaykumar
+MOD PHARMA  Ranapangu
+ 6605   P2  Kuthe(RS) PHA G540  
+ ANALYTICAL TECH    Bhargav(RS)
+ Ranapangu
+ Vishal
+ Bhargav(RS)
+ Babasaheb
+ Galave(RS)
+ D. Change of Class Time
+ Changed
+ Comp
+Course Title   Sec Course No.  
+ Code  
+ From   To
+ADV ANALOG & MIX SIG
+ 932   L1   MW 2 T 9   MW 4 T 9 MEL G625  
+ DES  
+MICROELECTRONIC
+ 1241   L1   MW 3 Th 9   MWF 10 EEE F244  
+ CIRCUITS  
+Page   11   of   12
+
+ 1471   NUMERICAL ANALYSIS   L1   MWF 10   TThF 5 MATH F313  
+ 1551   FINANCIAL ENGINEERING   L1   TThF 2   TThF 6 ECON F413  
+FUNDA OF SOLID STATE
+ 2805   L1   TThF 2   TTh 2 W 9 SNS F214  
+ PHYSICS  
+FUNDA OF SOLID STATE
+ 2805   T1   W 9   M 1 SNS F214  
+ PHYSICS  
+MATERIAL TESTING &
+ 3026   P1   T 7 8   W 8 9 DE G612  
+ SELECTION  
+MATERIAL TESTING &
+ 6231   P1   T 7 8   W 8 9 DE G612  
+ SELECTION  
+ADV ANALOG & MIXED
+ 6506   L1   MW 2 T 9   MW 4 T 9 MEL G625  
+ SIGNAL DESN  
+ E. Change of Compre Exam Date
+ Changed
+ Comp
+Course Title   Sec Course No.  
+ Code  
+ From   To
+ 14/12 AN
+MICROELECTRONIC
+ 1241   L1  Midsem: 09/10 EEE F244  
+ CIRCUITS  
+ AN2
+ 12/12 AN
+ 1551   FINANCIAL ENGINEERING   L1   12/12 FN  Midsem: 08/10 ECON F413  
+ AN2
+ 07/12 AN
+PETROLEUM REFINING
+ 2178   L1   07/12 FN  Midsem: 06/10 CHE F422  
+ TECHNOLOGY  
+ AN2
+ Note: Please inform these changes to your students
+ (Dr. K. Hari Babu )
+ Faculty   Incharge Time - table
+ CC (through email) :
+ Concerned Instructor - in - charge/Instructor/ Concerned HODs
+ Associate Dean, AUGSD
+ Associate Dean, AGSRD
+Page   12   of   12

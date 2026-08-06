@@ -451,6 +451,40 @@ test('RADAR: a warm cache start still finds the deadlines', async (t) => {
   }
 });
 
+test('CACHE: has:attachment still works after a warm start', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * THE SAME ROOT CAUSE AS THE RADAR BUG, second victim.
+   *
+   * `pack()` does not store `hasAttachment` either, so on a warm start every
+   * cached message looks attachment-less and `has:attachment` returns nothing
+   * -- a search operator that silently answers "no" for the entire cache.
+   *
+   * Unlike the deadline this CANNOT be re-derived: the flag comes from the
+   * Gmail payload, not from the subject or snippet. So the honest fix is to
+   * cache it, which is what the packed flags byte now carries.
+   */
+  const withAtt = MESSAGES.map((m, i) => ({ ...m, hasAttachment: i === 0 }));
+  const { doc, win, settle, restore } = await boot({
+    messages: withAtt,
+    storageSeed: { msgCache: cacheBlob(withAtt), historyId: '12345' },
+  });
+  try {
+    await settle(10);
+    const search = doc.getElementById('search');
+    search.value = 'has:attachment';
+    search.dispatchEvent(new win.Event('input'));
+    await settle(8);
+
+    assert.equal(
+      rows(doc).length, 1,
+      'a warm start lost the attachment flag, so has:attachment found nothing'
+    );
+  } finally {
+    restore();
+  }
+});
+
 test('EMPTY: clearing the last message reads differently from arriving empty', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');
   /*
@@ -918,7 +952,8 @@ function cacheBlob(msgs) {
     t: Date.now(),
     m: msgs.map((m) => [
       m.id, m.threadId, m.from, m.subject, m.snippet, m.date,
-      (m.unread ? 1 : 0) | (m.starred ? 2 : 0),
+      // Must mirror pack() in cache.js, including bit 4 for hasAttachment.
+      (m.unread ? 1 : 0) | (m.starred ? 2 : 0) | (m.hasAttachment ? 4 : 0),
       m.category || 'augsd', m.confidence ?? 0.9, m.source || 'sender', m.reason || '',
     ]),
   };

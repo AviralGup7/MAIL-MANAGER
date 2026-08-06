@@ -45,6 +45,7 @@ const msg = (i, over = {}) => ({
   date: 1700000000000 - i * 1000,
   unread: false,
   starred: false,
+  hasAttachment: false,
   category: 'augsd',
   confidence: 0.95,
   source: 'sender',
@@ -65,8 +66,9 @@ test('a saved cache reads back identically', async () => {
 });
 
 test('boolean flags survive the bit-packing', async () => {
-  // unread and starred are packed into one integer; every combination must
-  // round-trip or the list lies about read state.
+  // unread, starred and hasAttachment share one integer; every combination
+  // must round-trip or the list lies about read state -- and has:attachment
+  // silently matches nothing, which is how the third flag came to be stored.
   const s = fakeStorage();
   await saveCache(
     [
@@ -74,18 +76,53 @@ test('boolean flags survive the bit-packing', async () => {
       msg(1, { unread: true, starred: false }),
       msg(2, { unread: false, starred: true }),
       msg(3, { unread: true, starred: true }),
+      msg(4, { unread: false, starred: false, hasAttachment: true }),
+      msg(5, { unread: true, starred: true, hasAttachment: true }),
     ],
     s
   );
   const got = await loadCache(s);
   assert.deepEqual(
-    got.messages.map((m) => [m.unread, m.starred]),
+    got.messages.map((m) => [m.unread, m.starred, m.hasAttachment]),
     [
-      [false, false],
-      [true, false],
-      [false, true],
-      [true, true],
+      [false, false, false],
+      [true, false, false],
+      [false, true, false],
+      [true, true, false],
+      [false, false, true],
+      [true, true, true],
     ]
+  );
+});
+
+test('a cache written before hasAttachment existed still loads', async () => {
+  /*
+   * BACKWARD COMPATIBILITY, deliberately not a version bump.
+   *
+   * The attachment flag was added to the existing flags byte as bit 4. A blob
+   * written by the previous build simply has that bit clear, which unpacks as
+   * "no attachment" -- the same answer the bug gave -- and self-corrects on
+   * the next sync. Discarding the whole cache for this would cost every
+   * existing user one cold start to fix a search operator.
+   */
+  const s = fakeStorage();
+  await s.set({
+    msgCache: {
+      v: 1,
+      t: Date.now(),
+      // Eleven fields, flags = 3 (unread + starred), no bit 4 at all.
+      m: [['m0', 't0', 'A <a@b.c>', 'Subject', 'snippet', 1700000000000,
+        3, 'augsd', 0.9, 'sender', 'because']],
+    },
+  });
+
+  const got = await loadCache(s);
+  assert.equal(got?.messages.length, 1, 'an older blob must still load');
+  assert.equal(got.messages[0].unread, true);
+  assert.equal(got.messages[0].starred, true);
+  assert.equal(
+    got.messages[0].hasAttachment, false,
+    'a missing bit must read as false, not undefined'
   );
 });
 

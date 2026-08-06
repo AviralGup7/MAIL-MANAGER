@@ -328,12 +328,42 @@ ruins:
 | D-4 | `:active` press states | moderate | immediate | Everything feels tactile | **done** |
 | D-5 | Star pop | moderate | immediate | One moment of pleasure | **done** |
 | D-7 | Send names the recipient | moderate | immediate | Answers the real anxiety | **done** |
-| D-8 | Rail count typography | subtle | immediate | Scannable, 22× per glance | |
-| D-9 | "Updated N min ago" | subtle | immediate | Removes background doubt | |
-| D-6 | Radar shows its working | moderate | optional | Smart becomes trustworthy | |
-| D-10 | Achieved-empty state | subtle | optional | Notices the user finished | |
+| D-8 | Rail count typography | subtle | immediate | Scannable, 22× per glance | **done** |
+| D-9 | "Updated N min ago" | subtle | immediate | Removes background doubt | **done** |
+| D-6 | Radar shows its working | moderate | optional | Smart becomes trustworthy | **done** |
+| D-10 | Achieved-empty state | subtle | optional | Notices the user finished | **done** |
+
+**All ten are implemented.** Notes on the four completed after the first pass
+are below, including one that turned up a real defect.
 
 ### Implementation notes
+
+**D-6 found a bug that had nothing to do with delight.** Writing the test for
+"the radar explains where it got the date" meant booting with a warm cache —
+and the radar was empty. `pack()` stores eleven positional fields and `dueAt`
+is not one of them, so cached messages reach the store through `store.upsert`
+directly and never pass through `ingest`, which is the only place
+`extractDeadline` runs. **Every warm start showed no deadlines at all** until
+the delta returned. The most differentiated feature in the product was missing
+from precisely the start that is supposed to be the fast one, and eight audits
+had not noticed. Fixed by re-deriving on hydrate rather than widening the cache
+format: the deadline is a pure function of subject and snippet, both already
+cached, whereas a stored `dueAt` would be correct while the urgency band
+computed from it drifted.
+
+**D-10's first test was worthless and its first fix was unnecessary.**
+Sabotaging the achieved-empty detector changed no test, because the fixture
+returned three messages for every label and the "empty" mailbox never was.
+Having fixed that, I added a view-key guard against a misfire on mailbox
+switch — and sabotage showed *that* was inert too, because `selectMailbox`
+already resets `renderedIds`. The guard came out; the test stayed, and it now
+trips if that reset is ever removed (verified by simulating it). Two rounds of
+sabotage, two things learned, one line of code.
+
+**D-8 is two spans, not one string.** Rendering `3/41` and asserting on
+`textContent` would let a test pass on a concatenation that merely looks right.
+The digits are `aria-hidden` behind a visually-hidden sentence, because "3 41"
+read aloud is worse than the slash ever was.
 
 **D-1 was harder than it looked.** The first attempt animated rows that had
 already been detached by `replaceChildren`, so the motion was invisible.
