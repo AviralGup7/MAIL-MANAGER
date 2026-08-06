@@ -157,3 +157,74 @@ red. Given that the classifier's 802 missing keys survived both review and a
   lacks `allow-scripts`. This suite catches whole classes of mistake cheaply.
 - **Data-pack fidelity** — 891/891 keys and 0 weight differences, mechanically
   verified. The single most valuable test in the repo.
+
+---
+
+## Addendum — autonomous defect-hunting session
+
+Ten investigation cycles, each using a **different** discovery technique.
+Suite went 545 → 615 tests. Every fix was verified by sabotage before being
+trusted.
+
+### Defects found and fixed
+
+| # | Defect | Found by | Severity |
+|---|---|---|---|
+| 1 | `views.js` mutators rejected into `async` click handlers — a failed write vanished as an unhandled promise, the view stayed on screen, no error shown | failure injection | High |
+| 2 | A **global** `state.loading` flag guarded **per-mailbox** work: switching mid-load left a mailbox **permanently** empty for the session, unrecoverable by re-clicking | race testing (120ms latency) | High |
+| 3 | `normalise()` crashed on a header with no `name`, killing a whole page of mail; non-string values flowed downstream and crashed `classify()` and `buildReply()` | fuzzing | High |
+| 4 | The same header-parsing crash existed at **three** sites; fixed by extracting one `headerMap()` | regression expansion | High |
+| 5 | `Store.patch()` did not reposition on a date change — the identical corruption `upsert()` was already fixed for, reachable through a second door | stress testing | Medium (latent) |
+| 6 | Sanitiser's attribute allow-list was **never independently covered**; the `on*` guard silently compensated | mutation testing | Medium |
+| 7 | Seven behaviours with no test at all: `Selection.live()`, `saveRules` return value, correction type-validation, `wakeLabel` at zero, empty-name overwrite, `pending` getter, `clear()` no-op notify | mutation testing | Low–Medium |
+
+### Root causes, not symptoms
+
+Three fixes changed the **shape** of the code rather than patching a branch:
+
+- **One failure channel.** `saveView` returned `{ok,error}`; two siblings
+  returned `void`, so there was nowhere for their errors to go. All three now
+  share one guarded `write()`.
+- **One header parser.** The same unchecked destructure appeared three times.
+  A test now fails if a fourth appears.
+- **One loading flag per mailbox**, and `state.loading` is *derived* in exactly
+  one place — asserted by a test that counts its assignments.
+
+### On equivalent mutants
+
+Six surviving mutants were analysed and proven **equivalent** — no input can
+distinguish them (e.g. `rawScore >= 5` vs `> 5`, because the fallthrough
+computes `0.3 + (5/5)*0.1 = 0.4`). They are documented in the tests rather
+than chased, because killing them would mean writing tests that cannot fail.
+
+One mutant is **unkillable in Node**: `cache.js`'s `cancelIdleCallback` branch,
+since `requestIdleCallback` is browser-only. Recorded as an environmental
+limit, not as coverage.
+
+### Tests that were wrong, not the code
+
+Four times the first version of a test was the defect. Recorded because the
+reflex to "fix the code" would have introduced bugs:
+
+- Asserted `loadCache` returns an array; it returns `{messages, savedAt} | null`
+  and the caller guards correctly.
+- Seeded `bmmCache` instead of `msgCache`, so the corrupt-cache case never ran.
+- Flushed the draft saver without scheduling, then asserted a write that
+  correctly never happened.
+- Used "due 29/02/2024" when bare `due` is not a trigger phrase for numeric
+  dates. The parser was right.
+- A `noscript` XSS vector looked like a leak because `onerror=` appeared in the
+  output — inside an attribute **value**, as inert text.
+
+### Tooling added
+
+`npm run mutate <testFile> <source...>` — applies seven semantic mutations and
+reports any the suite fails to catch. This is what found defects 6 and 7, none
+of which any other technique surfaced.
+
+### Diminishing returns
+
+Cycle 10 produced one real finding against three equivalent mutants. Every
+core module now kills every non-equivalent mutant. Remaining risk is
+concentrated in what **cannot** be tested here: real-browser rendering, screen
+readers, and classifier accuracy against real BITS mail.

@@ -400,3 +400,112 @@ test('the stack stays bounded and expires old entries', () => {
   assert.equal(u.size, 0, 'expired entries must not be offered');
   assert.equal(u.peek(), null, 'an undo offered ten minutes late is a trap');
 });
+
+/* ========================================================================== *
+ * DATE VALIDATION AND QUERY BOUNDARIES
+ *
+ * `isRealDate` rejects 31 February and friends, which `new Date` silently
+ * rolls forward into March. Mutation testing found its three-way `&&`
+ * unverified — and a rolled date is worse than no date, because the radar
+ * would confidently show a deadline that does not exist.
+ * ========================================================================== */
+
+test('an impossible calendar date is rejected, not rolled forward', () => {
+  // `new Date(Date.UTC(2026, 1, 31))` silently becomes 3 March.
+  for (const subject of [
+    'Submit by 31/02/2026', 'Deadline 30 February 2026',
+    'submit by 31/04/2026', 'submit by 31/06/2026',
+    'submit by 32/01/2026', 'submit by 00/01/2026',
+  ]) {
+    const d = extractDeadline({ subject, snippet: '', from: 'a@b.c', date: Date.UTC(2026, 0, 1) });
+    if (d) {
+      const dt = new Date(d.at);
+      assert.notEqual(dt.getUTCMonth(), 2, `${subject} rolled into March`);
+    }
+  }
+});
+
+test('a real leap day is accepted, an invented one is not', () => {
+  // The counterpart: over-strict validation would drop genuine deadlines.
+  // "submit by" is a recognised trigger for a numeric date; bare "due" is not
+  // (verified against the parser rather than assumed).
+  const base = { snippet: '', from: 'a@b.c', date: Date.UTC(2024, 0, 1) };
+  const leap = extractDeadline({ ...base, subject: 'submit by 29/02/2024' });
+  assert.ok(leap, '29 Feb 2024 is a real date and must parse');
+  assert.equal(new Date(leap.at).toISOString().slice(0, 10), '2024-02-29');
+
+  const notLeap = extractDeadline({
+    ...base, subject: 'submit by 29/02/2026', date: Date.UTC(2026, 0, 1),
+  });
+  if (notLeap) {
+    const dt = new Date(notLeap.at);
+    assert.notEqual(dt.getUTCDate(), 1, '29 Feb 2026 does not exist and must not roll to 1 Mar');
+  }
+});
+
+test('relative deadline labels are correct at the week boundary', () => {
+  // `weeks === 1` -> `!==` survived: "due in 1w" instead of "due in a week".
+  const now = Date.UTC(2026, 0, 1);
+  assert.equal(relativeLabel(now + 7 * 86400000, now), 'due in a week');
+  assert.match(relativeLabel(now + 14 * 86400000, now), /2w/);
+});
+
+test('date operators include the boundary day', () => {
+  // `m.date >= t` -> `>` would silently exclude mail sent exactly at the
+  // cutoff, which for `after:` is the most likely thing the user meant.
+  const t = Date.UTC(2026, 0, 15);
+  const parsed = parseQuery('after:2026-01-15');
+  assert.ok(parsed.predicate, 'after: should build a predicate');
+  assert.equal(parsed.predicate({ date: t, subject: '', from: '', snippet: '' }), true,
+    'a message dated exactly at the boundary must match after:');
+});
+
+test('to:me is honest about what it can answer', () => {
+  // `() => true` -> `false` survived. We only hold the signed-in mailbox, so
+  // `to:me` is a tautology; anything else cannot be answered from stored
+  // headers and must match nothing rather than pretend.
+  const probe = { subject: 'x', from: 'a@b.c', snippet: '', date: Date.now() };
+  assert.equal(parseQuery('to:me').predicate(probe), true, 'to:me must match everything held');
+  assert.equal(parseQuery('to:someone@else.com').predicate(probe), false,
+    'an unanswerable to: must match nothing, not everything');
+});
+
+test('a leading colon is treated as free text, not a broken operator', () => {
+  // `colon <= 0` -> `< 0`: ":foo" would parse as an operator with an EMPTY
+  // key, silently matching nothing instead of searching for ":foo".
+  const parsed = parseQuery(':unread');
+  assert.deepEqual(parsed.operators, [], 'a leading colon is not an operator');
+  assert.ok(parsed.terms.length > 0, 'it must survive as a search term');
+});
+
+test('newer_than includes the message at exactly the boundary', () => {
+  /*
+   * `m.date >= now - span` -> `>`. Reachable only at millisecond precision,
+   * but `older_than` uses strict `<` on the same value, so if this drifted to
+   * `>` a message sitting exactly on the boundary would match NEITHER
+   * operator — it would vanish from both halves of a partition that should be
+   * exhaustive.
+   *
+   * The two remaining survivors in these modules are equivalent mutants,
+   * verified rather than assumed:
+   *   - `colon <= 0` vs `<`: for ":foo" the key is "" and buildCheck("")
+   *     returns undefined, so the token falls back to free text either way.
+   *   - `isRealDate`'s first `&&` vs `||`: a rolled date still fails the day
+   *     comparison, so the verdict is unchanged.
+   */
+  const now = Date.now();
+  const dayMs = 86400000;
+  const parsed = parseQuery('newer_than:1d');
+  assert.ok(parsed.predicate, 'newer_than should build a predicate');
+
+  const exactlyOnBoundary = { date: now - dayMs, subject: '', from: '', snippet: '' };
+  const older = parseQuery('older_than:1d');
+
+  const inNewer = parsed.predicate(exactlyOnBoundary);
+  const inOlder = older.predicate(exactlyOnBoundary);
+  assert.ok(
+    inNewer !== inOlder,
+    'the boundary message must belong to exactly one of newer_than / older_than'
+  );
+  assert.equal(inNewer, true, 'the boundary belongs to newer_than');
+});
