@@ -153,7 +153,22 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
   };
   await settle();
 
-  return { win, doc: win.document, calls, storage, settle, restore: () => Object.assign(globalThis, prev) };
+  /*
+   * Teardown must cancel the app's pending timers BEFORE the globals are
+   * swapped back. The search fallback arms a real 420ms timer; left running,
+   * it fires into a torn-down document and surfaces as an unhandledRejection
+   * attributed to whichever test happened to be running at the time.
+   */
+  const restore = () => {
+    try {
+      win.__bmmTeardown?.();
+    } catch {
+      // Teardown is best-effort; a failure here must not mask the real result.
+    }
+    Object.assign(globalThis, prev);
+  };
+
+  return { win, doc: win.document, calls, storage, settle, restore };
 }
 
 const rows = (doc) => [...doc.querySelectorAll('#list .row')];

@@ -1786,8 +1786,95 @@ el.search.addEventListener('input', () => {
     renderList();
     renderViews();
     updateSaveAffordance();
+    scheduleServerSearch();
   });
 });
+
+/* ========================================================================== *
+ * SERVER SEARCH FALLBACK
+ * ========================================================================== */
+
+/**
+ * The local index covers SUBJECT AND SENDER ONLY (`store.js` tokenize).
+ *
+ * That is a deliberate size trade, but it means a search for a phrase the user
+ * remembers from the BODY returns nothing and they conclude the mail is gone.
+ * A confidently wrong answer is worse than a slow one.
+ *
+ * So: local results appear instantly, and if the query looks under-served we
+ * ask Gmail the same question and merge what comes back, labelled as such.
+ * This is FASTER than Gmail on the common path and equal on the rare one.
+ *
+ * The debounce is a timer rather than a frame: this one costs a network round
+ * trip, so it waits until the user has actually stopped typing.
+ */
+const SERVER_SEARCH_MS = 420;
+const SERVER_SEARCH_MIN = 3;
+let serverSearchTimer = 0;
+let serverSearchToken = 0;
+
+function scheduleServerSearch() {
+  clearTimeout(serverSearchTimer);
+  const q = state.query.trim();
+
+  // Nothing typed, or too short to be worth a round trip.
+  if (q.length < SERVER_SEARCH_MIN) {
+    serverSearchToken++; // cancel anything in flight
+    setSearchNote('');
+    return;
+  }
+  // Only the inbox has a local index worth supplementing; other mailboxes are
+  // already fetched in full.
+  if (state.mailbox !== 'inbox') return;
+
+  serverSearchTimer = setTimeout(runServerSearch, SERVER_SEARCH_MS);
+}
+
+async function runServerSearch() {
+  const q = state.query.trim();
+  const token = ++serverSearchToken;
+  const before = new Set(visibleIds());
+
+  setSearchNote('Searching all mail…');
+  try {
+    const { messages } = await send('SYNC_PAGE', {
+      // `q` goes to Gmail verbatim: its operator syntax is a superset of ours,
+      // so `from:x report` means the same thing on both sides.
+      opts: { q, max: 40, anchorHistory: false },
+    });
+
+    // A newer keystroke has superseded this request. Dropping the response is
+    // what stops results from an old query flashing over a newer one.
+    if (token !== serverSearchToken) return;
+
+    const fresh = messages.filter((m) => !before.has(m.id));
+    if (!fresh.length) {
+      setSearchNote(before.size ? '' : 'No matches in your mail.');
+      return;
+    }
+
+    // Merged into the inbox store so they render, sort and open exactly like
+    // any other message. They carry `fromSearch` so a later refresh can tell
+    // them apart from genuine inbox mail.
+    ingest(fresh.map((m) => ({ ...m, fromSearch: true })));
+    setSearchNote(
+      `${fresh.length} more found by searching message bodies in Gmail.`
+    );
+  } catch (err) {
+    if (token !== serverSearchToken) return;
+    // A failed fallback must never look like "no results": the local results
+    // are still valid and still on screen.
+    setSearchNote('Could not search Gmail. Showing local results only.');
+  }
+}
+
+/** The one-line note under the search box. */
+function setSearchNote(text) {
+  const note = $('search-note');
+  if (!note) return;
+  setText(note, text);
+  note.hidden = !text;
+}
 
 /**
  * Offer to keep the current search.
@@ -2196,6 +2283,8 @@ function release() {
   // Flush before the frame is destroyed, so triage done in this session is on
   // disk for the next one.
   saver.flush();
+  flushDraft();
+  cancelPendingWork();
   parent.postMessage({ type: 'BMM_RELEASE' }, '*');
 }
 
@@ -2633,7 +2722,28 @@ window.addEventListener('pagehide', () => {
   // A half-written message must survive the tab closing. The debounce timer
   // will never fire here, so it is flushed explicitly.
   flushDraft();
+  // Cancel work that would otherwise land after the document is gone. The
+  // server-search debounce is a real timer, so without this it fires into a
+  // torn-down DOM and throws from a context nothing can catch.
+  cancelPendingWork();
 });
+
+/**
+ * Stop every pending timer and in-flight response handler.
+ *
+ * Called on pagehide and on release. Bumping the token is what makes an
+ * already-dispatched fetch a no-op when it resolves: clearing the timer alone
+ * only stops requests that have not started yet.
+ */
+function cancelPendingWork() {
+  clearTimeout(serverSearchTimer);
+  serverSearchTimer = 0;
+  serverSearchToken++;
+  if (searchFrame) {
+    cancelAnimationFrame(searchFrame);
+    searchFrame = 0;
+  }
+}
 
 /**
  * Test seam.
@@ -2679,6 +2789,15 @@ const ctx = {
 
 window.__bmmIngest = ingest;
 window.__bmmStore = store;
+/*
+ * Teardown seam.
+ *
+ * A harness that swaps the globals back out from under this module leaves any
+ * armed timer pointing at a dead document, where it throws from a context
+ * nothing can catch. Real browsers get the same cleanup via `pagehide`; tests
+ * need to be able to ask for it directly.
+ */
+window.__bmmTeardown = cancelPendingWork;
 
 // ------------------------------------------------------------------- start --
 

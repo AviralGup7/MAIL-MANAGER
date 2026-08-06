@@ -2286,6 +2286,36 @@ html[data-scheme='dark'] #thememenu {
   margin-left: auto;
 }
 
+/*
+ * Search provenance note.
+ *
+ * Floats beneath the field rather than occupying layout, so the toolbar does
+ * not jump by a line the moment the user types the third character. Movement
+ * in the chrome while typing is one of the most distracting things an
+ * interface can do.
+ */
+#search-note {
+  position: absolute;
+  top: calc(100% + var(--s-2));
+  left: 0;
+  right: 0;
+  z-index: 3;
+  margin: 0;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-sm);
+  color: var(--fg-dim);
+  font-size: var(--t-xs);
+  animation: note-in var(--dur-fast) var(--ease-out) both;
+}
+
+@keyframes note-in {
+  from { opacity: 0; transform: translate3d(0, -3px, 0); }
+  to   { opacity: 1; transform: none; }
+}
+
 /* ------------------------------------------------- contact autocomplete --- */
 
 .ac-list {
