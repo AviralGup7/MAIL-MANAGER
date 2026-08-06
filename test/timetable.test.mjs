@@ -1589,3 +1589,127 @@ test('IDEMPOTENT: a message already applied stays suppressed across a reload', (
   };
   assert.deepEqual(scanMessages([msg], { ...state, appliedMail: ['m1'] }), []);
 });
+
+/* ========================================== the Pass 3 final integrity check == */
+
+test('SEMESTER: a full semester of updates leaves the timetable coherent', async () => {
+  /*
+   * PASS 3's FINAL CHECKLIST, AS A SIMULATION.
+   *
+   * The individual hardening behaviours each have focused tests. This exists
+   * because integrity is a property of a SEQUENCE, not of any single call --
+   * repeated updates, reloads and duplicate sources are exactly where a
+   * record-keeping system rots, and none of the unit tests would notice drift
+   * that only appears after twenty operations.
+   *
+   * It walks a plausible semester and then asserts every invariant Pass 3
+   * lists under "final integrity checks" at once.
+   */
+  const lecture = CS.sections.find((s) => s.section === 'L1');
+  const lab = CS.sections.find((s) => s.section === 'P1');
+
+  // Week 0: build.
+  let st = addCourse(emptyState(), CS, {
+    lecture, extraSections: [lab], ref: 'official timetable',
+  }).state;
+
+  // Week 1: an official notice moves the room. Applied twice, as a re-issued
+  // notice would be.
+  for (let i = 0; i < 2; i++) {
+    const r = applyFieldChange(st.entries[0], 'room', '6101', {
+      source: 'notice', ref: 'n1',
+    });
+    if (r.applied) st = { ...st, entries: [r.entry, ...st.entries.slice(1)] };
+  }
+
+  // Week 2: the user overrides the room themselves.
+  st = manualEdit(st, st.entries[0].id, 'room', '7001').state;
+
+  // Week 3: a mail tries to change it back. It must lose to the manual edit.
+  const beaten = applyFieldChange(st.entries[0], 'room', '5105', {
+    source: 'mail', ref: 'm9',
+  });
+  assert.equal(beaten.applied, false, 'mail must not overwrite a manual edit');
+
+  // Week 4: lock the class, then a notice tries again.
+  st = setLocked(st, st.entries[0].id, true);
+  const blocked = applyFieldChange(st.entries[0], 'room', '8001', {
+    source: 'notice', ref: 'n2',
+  });
+  assert.equal(blocked.applied, false, 'a locked entry rejects automation');
+  assert.equal(blocked.needsPermission, true, 'and says why');
+
+  // Week 5: save, reload, and keep going on the reloaded state.
+  let disk = null;
+  const w = await saveTimetable(st, { set: async (o) => { disk = JSON.parse(JSON.stringify(o.timetable)); } });
+  assert.equal(w.ok, true);
+  const reloaded = await loadTimetable({ get: async () => ({ timetable: disk }) });
+  assert.equal(reloaded.dropped, 0, 'nothing may be lost on reload');
+
+  // ---- the invariants, all at once ------------------------------------
+
+  // 1. No duplicate events.
+  const ids = reloaded.entries.map((e) => e.id);
+  assert.equal(new Set(ids).size, ids.length, 'duplicate entries');
+
+  // 2. Every entry still traces to a source.
+  for (const e of reloaded.entries) {
+    for (const f of ['room', 'meetings', 'instructors']) {
+      assert.ok(e.provenance?.[f]?.source, `${e.section}.${f} lost its source`);
+    }
+  }
+
+  // 3. The manual override survived every automatic attempt AND the reload.
+  const l1 = reloaded.entries.find((e) => e.section === 'L1');
+  assert.equal(l1.room, '7001', 'the manual room must survive');
+  assert.equal(l1.provenance.room.source, 'manual');
+  assert.equal(l1.locked, true, 'and so must the lock');
+
+  // 4. History is append-only and records the losing values.
+  const rooms = l1.history.filter((h) => h.field === 'room');
+  assert.ok(rooms.length >= 2, 'each accepted room change is recorded');
+  assert.ok(
+    rooms.some((h) => String(h.from).includes('5105')),
+    'the original value must still be recoverable from history'
+  );
+
+  // 5. Linked sections remain reachable and consistent.
+  const p1 = reloaded.entries.find((e) => e.section === 'P1');
+  assert.equal(p1.linkedTo, 'L1');
+  assert.ok(
+    reloaded.entries.some((e) => e.section === p1.linkedTo),
+    'the linked lecture must still be present'
+  );
+  assert.deepEqual(
+    detectConflicts(reloaded.entries).filter((c) => c.kind === 'orphan-link'), [],
+    'an intact pair must not be reported as orphaned'
+  );
+
+  // 6. Time conversion is still faithful to the source notation.
+  assert.equal(l1.daysHours, 'M W 3 Th 9', 'the source notation is preserved');
+  assert.deepEqual(
+    l1.meetings.map((m) => `${m.day}${m.hour}`), ['M3', 'W3', 'Th9'],
+    'and the expansion still matches it'
+  );
+  assert.equal(l1.meetings[0].startMin, 600, 'slot 3 is 10:00 per the legend');
+
+  // 7. Exams survive and stay typed.
+  const exams = examEvents(reloaded.entries);
+  assert.ok(exams.some((e) => e.type === 'compre'), 'the compre must survive');
+
+  // 8. Mail already handled stays handled.
+  assert.deepEqual(
+    scanMessages([{
+      id: 'm9', from: 'AUGSD <augsd@pilani.bits-pilani.ac.in>',
+      subject: 'CS F111 L1 venue change',
+      snippet: 'CS F111 L1 will be held in room 6101.', date: Date.now(),
+    }], { ...reloaded, appliedMail: ['m9'] }),
+    [], 'an applied message must not return'
+  );
+
+  // 9. Still matches the catalogue it was built from.
+  assert.deepEqual(
+    validateAgainstSource(reloaded, { courses: [CS] }), [],
+    'a timetable built from this catalogue must not read as stale'
+  );
+});

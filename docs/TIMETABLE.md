@@ -262,7 +262,13 @@ entry.
 
 Detected and surfaced, never silently resolved: `overlap` (two classes in one
 slot), `exam-clash` (two courses examined in one session), `duplicate`,
-`missing-link`, `unresolved` (a section the document could not describe).
+`missing-link`, `orphan-link` (a lab whose lecture was removed), `unresolved`
+(a section the document could not describe).
+
+Two more are computed against the current catalogue at render time rather than
+stored — `stale-course` and `stale-section` — because they depend on
+(state, catalogue) while the rest depend on entries alone. Storing them would
+make the conflict list vary with whether an async fetch had landed.
 
 Recomputed from scratch on every mutation. The list is at most a few dozen
 entries, and a conflict set that drifts out of sync with reality is worse than
@@ -283,6 +289,43 @@ a cheap recompute.
 
 Grouped by entry, not by field: one email that moves a class *and* changes its
 room is one link, not two.
+
+---
+
+## Hardening (Pass 3)
+
+Five defects, every one found by probing the running code rather than by
+reading it.
+
+| Failure | What happened | What it does now |
+|---|---|---|
+| **Corrupt record** | One `null` in `entries` threw on first render — the panel would not open at all | Unusable records are dropped, **counted**, and reported |
+| **Orphaned lab** | Removing a lecture left its practical pointing at a section that no longer existed, silently | `orphan-link` conflict; the lab is **not** auto-deleted |
+| **Stale catalogue** | A regenerated document could drop a section you hold, and nothing noticed | `stale-section` / `stale-course`, surfaced not applied |
+| **Failed write** | A toast, then the panel kept showing an edit that would vanish on reload | Persistent banner naming the error, with a retry |
+| **Duplicate mail** | The same message twice in one scan raised two identical proposals | Deduped by id within the scan as well as across sessions |
+
+Three principles run through all of them:
+
+- **Nothing is repaired with defaults.** A record patched up to look valid is a
+  fabricated one — it would assert a class exists with no time and no source.
+  Drop it and say so.
+- **Nothing is auto-deleted.** An orphaned lab and a withdrawn section are both
+  real classes on a real schedule. Removing one silently is worse than showing
+  a broken link.
+- **Nothing is rolled back on a write failure.** Discarding what someone just
+  typed because storage was briefly full is its own data loss.
+
+And one deliberate silence: **an absent or empty catalogue means no opinion.**
+`loadSourceData` degrades to `{courses: []}` on a failed fetch, and reading
+that as evidence would flag every class as withdrawn — a transient error
+rendered as a screenful of alarming nonsense.
+
+The whole checklist runs as one simulation (`SEMESTER:` in the tests): build,
+a re-issued notice, a manual override, a mail that must lose, a lock, a save,
+a reload — then every invariant asserted at once. It exists because integrity
+is a property of a *sequence*, and no unit test would catch drift that only
+appears after twenty operations.
 
 ---
 
@@ -323,7 +366,12 @@ fixtures copied the bug.
 `value: null, actionable: false`, so the second-highest authority in the system
 was inert for 31 real changes.
 
-**Three more worthless tests, each caught by sabotage rather than by review:**
+**Pass 3 found five more defects, none of them visible on inspection.** Every
+one turned up by running the code against a hostile input — a corrupt blob, a
+regenerated catalogue, a rejected write, a duplicated message — and none by
+re-reading a function that looked correct. Details in *Hardening* above.
+
+**Three worthless tests, each caught by sabotage rather than by review:**
 
 - *"a mixed-case section claims no in-charge"* used the hand-written fixture,
   which never runs the parser — so a parser ignoring capitalisation entirely
@@ -350,7 +398,7 @@ src/app/timetable.js        the model: entries, precedence, conflicts, trace,
 src/app/timetable-mail.js   deterministic mail patterns
 src/app/timetable-store.js  persistence and course search
 src/app/timetable-ui.js     the panel: wizard, manager, proposals
-test/timetable.test.mjs     81 tests
+test/timetable.test.mjs     94 tests
 ```
 
 Layering: `timetable.js` is **pure domain** — no DOM, no storage, no `chrome`.
