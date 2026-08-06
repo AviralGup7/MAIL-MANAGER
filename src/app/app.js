@@ -283,8 +283,21 @@ function wireStore(id) {
   const s = storeFor(id);
   if (s._bmmWired) return s;
   s._bmmWired = true;
-  s.subscribe(() => {
-    if (stores.get(state.mailbox) === s) scheduleRender();
+  /*
+   * FORWARD THE CHANGE DETAIL.
+   *
+   * This used to be `() => scheduleRender()`, discarding the `{changed,
+   * structural}` payload the store emits. `scheduleRender` then fell back to
+   * its `structural: true` default, so EVERY change took the full re-render
+   * path and its per-id fast path was unreachable dead code.
+   *
+   * Measured on 2000 rows: starring one message cost 549ms of render work,
+   * because `renderList` walked and re-filled all 2000 rows. `patch()` already
+   * marked itself non-structural and `_flush` already carried the id — only
+   * this callback threw the information away.
+   */
+  s.subscribe((detail) => {
+    if (stores.get(state.mailbox) === s) scheduleRender(detail);
   });
   // Only the inbox is cached for warm start. Caching Sent as well would
   // multiply the 10MB budget across mailboxes the user rarely opens cold.

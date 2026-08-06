@@ -39,6 +39,15 @@ export class Selection {
     this.ids = new Set();
     /** Last plainly-clicked row, the anchor for shift-range. */
     this.anchor = null;
+    /*
+     * Selection as it stood when the current shift-range began.
+     *
+     * A shift-range is RECOMPUTED on every shift-click, so it must be laid
+     * over the selection that existed before the range started rather than
+     * over the previous range's result. Null whenever no range is in progress;
+     * anything that moves the anchor discards it.
+     */
+    this._preRange = null;
     this.listeners = new Set();
   }
 
@@ -67,6 +76,8 @@ export class Selection {
     if (this.ids.has(id)) this.ids.delete(id);
     else this.ids.add(id);
     this.anchor = id;
+    // A plain click starts a NEW range origin, so the old snapshot is stale.
+    this._preRange = null;
     this._notify();
   }
 
@@ -74,6 +85,7 @@ export class Selection {
     if (this.ids.has(id)) return;
     this.ids.add(id);
     this.anchor = id;
+    this._preRange = null;
     this._notify();
   }
 
@@ -95,6 +107,24 @@ export class Selection {
       this.add(id);
       return;
     }
+    /*
+     * A RANGE REPLACES THE PREVIOUS RANGE. It does not union with it.
+     *
+     * THIS WAS A BUG. The loop below only ever added, so a shift-range could
+     * grow but never SHRINK: shift-click `e`, then shift-click `d`, and `e`
+     * stayed selected. The user corrects their overshoot, sees the row still
+     * ticked, and the count never comes back down -- so the only way out is to
+     * clear the whole selection and start again.
+     *
+     * Gmail, Finder and Explorer all behave the same way here: the live range
+     * is transient and is recomputed from the anchor on every shift-click,
+     * while anything selected BEFORE the anchor (by ctrl-click, say) survives.
+     * That distinction is why `_preRange` is snapshotted rather than simply
+     * clearing `ids`.
+     */
+    if (!this._preRange) this._preRange = new Set(this.ids);
+    this.ids = new Set(this._preRange);
+
     const [lo, hi] = a < b ? [a, b] : [b, a];
     for (let i = lo; i <= hi; i++) this.ids.add(orderedIds[i]);
     // The anchor deliberately does NOT move: repeated shift-clicks should keep
@@ -105,10 +135,12 @@ export class Selection {
   selectAll(orderedIds) {
     for (const id of orderedIds) this.ids.add(id);
     this.anchor = orderedIds[orderedIds.length - 1] || null;
+    this._preRange = null;
     this._notify();
   }
 
   clear() {
+    this._preRange = null;
     if (this.ids.size === 0) return;
     this.ids.clear();
     this.anchor = null;

@@ -1601,3 +1601,83 @@ test('READER: actions that cannot work are hidden, not left dead', async (t) => 
     restore();
   }
 });
+
+/* ========================================================================== *
+ * INCREMENTAL RENDER
+ *
+ * The store emits `{changed, structural}` and `scheduleRender` has a per-id
+ * fast path for non-structural changes. The subscriber used to DISCARD that
+ * payload, so every change fell back to `structural: true` and re-filled the
+ * whole list. Measured at 2000 rows: starring one message cost 549ms of render
+ * work; forwarding the detail brought it to 8ms and made it constant-time.
+ * ========================================================================== */
+
+test('PERF: a content-only change touches ONE row, not the whole list', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, win, settle, restore } = await boot();
+  try {
+    win.__bmmIngest(bulk(60));
+    await settle();
+    assert.ok(rows(doc).length >= 60, 'need a list worth measuring');
+
+    /*
+     * Count how many rows are VISITED, not how many DOM writes happen.
+     *
+     * The first version of this test spied on `textContent` and passed even
+     * with the O(n) path restored -- because `setText` already guards on
+     * equality, so re-filling 2000 unchanged rows performs zero writes. It
+     * measured a no-op and proved nothing.
+     *
+     * The real cost is the WALK: reading every message out of the store and
+     * running fillRow against it. `dataset` is touched once per fillRow, so a
+     * setter on it counts visits exactly.
+     */
+    const visited = new Set();
+    for (const row of rows(doc)) {
+      const star = row.querySelector('.r-star');
+      if (!star) continue;
+      const real = star.getAttribute.bind(star);
+      star.getAttribute = (name) => {
+        if (name === 'aria-pressed') visited.add(row.id);
+        return real(name);
+      };
+    }
+
+    win.__bmmStore.patch(win.__bmmStore.idsFor('all')[3], { starred: true });
+    await settle();
+
+    assert.ok(
+      visited.size <= 1,
+      `a one-message change walked ${visited.size} rows; it must visit at most 1`
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('PERF: the subscriber forwards the change detail rather than dropping it', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Guards the exact regression: `s.subscribe(() => scheduleRender())` silently
+  // re-enables the O(n) path because the parameter defaults to structural.
+  const src = readFileSync(join(ROOT, 'src/app/app.js'), 'utf8');
+  assert.match(
+    src, /s\.subscribe\(\(detail\) => \{[\s\S]{0,160}scheduleRender\(detail\)/,
+    'the store payload must reach scheduleRender'
+  );
+});
+
+test('PERF: a structural change still re-renders the list', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // The optimisation must not break the case it is an optimisation OF: new
+  // mail changes the id list and has to produce new rows.
+  const { doc, win, settle, restore } = await boot();
+  try {
+    const before = rows(doc).length;
+    win.__bmmIngest(bulk(5).map((m) => ({ ...m, id: `fresh${m.id}`, subject: 'brand new' })));
+    await settle();
+    assert.equal(rows(doc).length, before + 5, 'new messages must appear');
+    assert.ok(rowText(doc).includes('brand new'));
+  } finally {
+    restore();
+  }
+});

@@ -514,6 +514,21 @@ a.ghost {
   overflow-x: hidden;
   /* Tell the compositor this layer scrolls on its own. */
   contain: strict;
+  /*
+   * SCROLL ANCHORING, stated rather than assumed.
+   *
+   * A delta sync inserts new mail at the TOP of the list, above whatever the
+   * user is currently reading. Without anchoring the viewport keeps its
+   * scrollTop and the content slides down under the pointer -- the row you
+   * were about to click moves as you click it.
+   *
+   * `auto` is the browser default, so this is documentation rather than a
+   * behaviour change. It is written out because `contain: strict` above sits
+   * one line away and it is genuinely unclear, reading this rule, whether
+   * containment suppresses anchoring. It does not, and now nobody has to
+   * re-derive that.
+   */
+  overflow-anchor: auto;
 }
 /*
  * The listbox is the tab stop, because it is the element carrying

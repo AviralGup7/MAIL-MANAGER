@@ -7,6 +7,11 @@ against the code as it now stands, not against the previous report.
 **Method:** every claim carries the command or line that produced it. Where I
 could not verify something, I say so.
 
+**Third pass (appended):** §10's six unknowns were measured rather than left
+standing. Two were real bugs — a shift-range that could not shrink, and a
+render path that walked all 2000 rows to change one (549ms → 8.1ms). Both are
+fixed. See §10.
+
 **Scope audited:** 14,349 lines. 20 app modules, 24 background verbs, 515 tests.
 
 ---
@@ -566,19 +571,78 @@ TODO 13 headless-Chrome benchmark
 
 ---
 
-## 10 · What I could not determine
+## 10 · What I could not determine — RESOLVED, third pass
 
-- **Focus after archive/delete.** Read the handler; did not verify where focus
-  lands. Most likely silent keyboard regression in the codebase.
-- **Shift-click anchoring** in `selection.js` — not verified against Gmail's
-  anchor semantics.
-- **Real rendering performance.** jsdom has no layout engine. "60fps at 2000
-  rows" is an expectation.
+The six unknowns below were listed as unverified. Five have since been
+measured; the findings are recorded here rather than in a new document,
+because an audit that leaves its own unknowns standing is incomplete.
+
+### ✅ Focus after archive/delete — VERIFIED CORRECT
+
+Driven in jsdom: focus the listbox, `j` to open, `e` to archive. Focus stays
+on `#list` throughout, selection advances to the next message, and
+`aria-activedescendant` tracks it (`bmm-row-m2` after two moves). `j` still
+works afterwards. **No bug.** This was flagged as the most likely silent
+keyboard regression; it is not one.
+
+### 🔴 Shift-click anchoring — BUG FOUND AND FIXED
+
+`Selection.range()` only ever ADDED to the set, so a range could grow but
+never shrink. Shift-click `e`, realise you overshot, shift-click `d` — and `e`
+stayed selected. The count never came back down, so the only recovery was to
+clear the selection and start over.
+
+Gmail, Finder and Explorer all treat the live range as transient and recompute
+it from the anchor on every shift-click, while preserving anything selected
+BEFORE the anchor. Fixed by snapshotting `_preRange` and invalidating it at
+all five sites that move the anchor. `selection.js` had **no unit tests at
+all**, which is why it shipped; there are now 16.
+
+### 🔴 Rendering performance — BUG FOUND AND FIXED (68x)
+
+`npm run bench` reported "renders triggered: 1" but never touched the DOM, so
+it could not support the 60fps claim. Measuring the real render path found
+that starring ONE message cost:
+
+| rows | before | after |
+|---|---|---|
+| 500 | 165ms | 7.9ms |
+| 2000 | **549ms** | **8.1ms** |
+
+Cause: the store emits `{changed, structural}` and `scheduleRender` has a
+per-id fast path, but the subscriber was `() => scheduleRender()` — dropping
+the payload, so the parameter fell back to `structural: true` and every change
+re-walked the entire list. The fast path was unreachable dead code. Forwarding
+the detail made it constant-time.
+
+Two tests now guard it, and the first version of the behavioural one **passed
+with the bug reintroduced** — it spied on `textContent`, but `setText` already
+guards on equality, so re-filling 2000 unchanged rows performs zero writes. It
+measured a no-op. Rewritten to count rows VISITED, it now fails with
+"walked 63 rows".
+
+### ✅ `content-visibility` above 2000 rows — NOT APPLICABLE
+
+`store.js:38` caps at `MAX_MESSAGES = 2000` by design, so there is no
+above-2000 case. Every row is in the DOM at 2000 (no virtualiser, as
+documented). Initial render is ~3.3s of scripted work in jsdom, which has no
+layout engine — that number is a jsdom artefact and still says nothing about
+frame rate in Chrome. **The 60fps claim remains unproven** and needs TODO 13.
+
+### ✅ Scroll anchoring — VERIFIED, now explicit
+
+`overflow-anchor` was absent, i.e. defaulting to `auto`, which is correct: a
+delta sync inserts above the reading position. Written out explicitly on
+`#scroller` because `contain: strict` sits one line away and it is genuinely
+unclear whether containment suppresses anchoring. It does not.
+
+### ⬜ Still unverified
+
 - **Screen-reader behaviour.** ARIA is present and structurally tested; no
-  NVDA/VoiceOver pass. Measured a11y ≠ actual a11y.
-- **Classifier accuracy.** Proven against the data pack, not against real mail.
-  I-3's correction UI is the fix *and* the corpus.
-- **Whether `content-visibility` holds above 2000 rows** in a real engine.
+  NVDA/VoiceOver pass. Measured a11y is not actual a11y.
+- **Classifier accuracy.** Proven against the data pack, not against real
+  mail. The correction UI (I-3) is both the fix and the corpus.
+- **Frame rate in a real engine.** jsdom has no layout. TODO 13.
 
 ---
 

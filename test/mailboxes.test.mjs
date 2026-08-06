@@ -146,7 +146,9 @@ test('only the inbox is written to the warm-start cache', () => {
 });
 
 test('a background mailbox load does not repaint the active one', () => {
-  assert.match(app, /if \(stores\.get\(state\.mailbox\) === s\) scheduleRender\(\)/);
+  // The guard is the `stores.get(...) === s` check; the argument now carries
+  // the store's change detail so the per-id fast path is reachable.
+  assert.match(app, /if \(stores\.get\(state\.mailbox\) === s\) scheduleRender\(detail\)/);
 });
 
 test('the category rail is hidden where categories are meaningless', () => {
