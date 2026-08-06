@@ -432,3 +432,85 @@ test('the host is pointer-interactive in every revealed state', async (t) => {
     );
   }
 });
+
+test('LONG SESSION: 15 round trips with late Gmail nodes leave no residue', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * The existing repeated-toggle test runs three clean cycles. Gmail is a SPA
+   * that keeps appending top-level nodes, so a real session interleaves late
+   * arrivals with toggles — and the late-node observer is the one piece of
+   * state that is created and destroyed on every cycle.
+   *
+   * Residue here would mean permanently inert Gmail chrome: the user's real
+   * Gmail becomes unclickable after using the extension for a while, and
+   * nothing short of a reload fixes it.
+   */
+  const h = mount();
+  const before = h.styleSnapshot();
+  const lateNodes = [];
+
+  for (let i = 0; i < 15; i++) {
+    await enter(h);
+
+    // Gmail appends something while the takeover is up.
+    const late = h.doc.createElement('div');
+    late.id = `late-${i}`;
+    h.doc.body.appendChild(late);
+    lateNodes.push(late);
+    await h.tick();
+
+    h.send({ type: 'BMM_TOGGLE' });
+    await h.tick(400);
+  }
+
+  assert.equal(h.doc.querySelectorAll('#bmm-takeover-host').length, 0, 'a host was stranded');
+  assert.equal(
+    h.doc.querySelectorAll('[data-bmm-inerted]').length, 0,
+    'an inert marker survived release'
+  );
+  for (const node of lateNodes) {
+    assert.ok(!node.hasAttribute('inert'), `${node.id} was left inert — Gmail stays unclickable`);
+  }
+
+  // The original roots must be byte-identical, ignoring the late nodes we added.
+  const originals = new Set(before.map((s) => s.id));
+  assert.deepEqual(
+    h.styleSnapshot().filter((s) => originals.has(s.id)),
+    before,
+    '15 cycles drifted the inline styles'
+  );
+});
+
+test('LONG SESSION: the late-node observer is not duplicated across cycles', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * `watchForLateNodes` guards with `if (lateObserver) return`, and release
+   * disconnects. If a cycle ever leaked one, each subsequent takeover would
+   * add another observer on <body> — every Gmail mutation then costs N
+   * callbacks, which is exactly the unbounded-observer problem this codebase
+   * was rewritten to remove.
+   *
+   * Counted by observing how many times a single added node is processed.
+   */
+  const h = mount();
+  for (let i = 0; i < 5; i++) {
+    await enter(h);
+    h.send({ type: 'BMM_TOGGLE' });
+    await h.tick(400);
+  }
+
+  await enter(h);
+  let marks = 0;
+  const probe = h.doc.createElement('div');
+  probe.id = 'probe';
+  // dataset writes are what the observer performs; count them.
+  Object.defineProperty(probe, 'dataset', {
+    value: new Proxy({}, { set: (o, k, v) => { if (k === 'bmmInerted') marks++; o[k] = v; return true; } }),
+  });
+  h.doc.body.appendChild(probe);
+  await h.tick();
+
+  assert.equal(marks, 1, `the node was processed ${marks} times — duplicate observers`);
+  h.send({ type: 'BMM_TOGGLE' });
+  await h.tick(400);
+});
