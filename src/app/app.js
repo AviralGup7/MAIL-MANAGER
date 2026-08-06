@@ -39,6 +39,10 @@ import {
   MAILBOXES, DEFAULT_MAILBOX, getMailbox, isMailbox, showsCategories, actionsFor,
 } from './mailboxes.js';
 import {
+  emptyRules, loadRules, saveRules, toggleMute, toggleAutoArchive,
+  isMuted, isAutoArchived, applyCorrection, correctSender, mutedCount,
+} from './rules.js';
+import {
   presets as snoozePresets, addSnooze, removeSnooze,
   loadSnoozed, pending as pendingSnoozes, wakeLabel,
 } from './snooze.js';
@@ -324,9 +328,41 @@ function resetView() {
   renderSidebar();
 }
 
+/**
+ * Category rules (mute / auto-archive / corrections). Loaded once at boot.
+ */
+let rules = emptyRules();
+
+/**
+ * Muted categories are hidden from the INBOX list only.
+ *
+ * Not from search, not from a category the user has explicitly opened, and
+ * never from the store. Muting is "stop competing for my attention", not
+ * "delete" -- so the moment the user asks for the thing directly, it is there.
+ */
+/** How many messages the current mute rules are hiding right now. */
+function mutedHiddenCount() {
+  if (!rules.muted.length || state.mailbox !== 'inbox') return 0;
+  if (state.category !== 'all' || state.query) return 0;
+  const all = store.idsFor('all');
+  return all.length - applyMute(all).length;
+}
+
+function applyMute(ids) {
+  if (!rules.muted.length) return ids;
+  if (state.mailbox !== 'inbox') return ids;
+  if (state.category !== 'all') return ids; // they asked for it by name
+  if (state.query) return ids; // an explicit search overrides a mute
+  const muted = new Set(rules.muted);
+  return ids.filter((id) => {
+    const m = store.get(id);
+    return m && !muted.has(m.category);
+  });
+}
+
 /** The ids the list should currently show. */
 function visibleIds() {
-  if (!state.query) return store.idsFor(state.category);
+  if (!state.query) return applyMute(store.idsFor(state.category));
 
   // Operators are applied as a PREDICATE over what the index returns, not by
   // scanning every message. The index still does the fast token lookup; the
@@ -460,6 +496,24 @@ function updateEmptyState(count) {
     el.emptyTitle.textContent = `No ${label} mail`;
     el.emptySub.textContent = 'Nothing has been filed here yet.';
     clear('Show all mail', () => ctx.selectCategory('all'));
+  } else if (store.size > 0 && mutedHiddenCount() > 0) {
+    /*
+     * The list is empty ONLY because of a mute rule.
+     *
+     * Saying "you're all caught up" here would be a lie, and a mute that can
+     * make mail vanish with no trace is exactly the kind of feature that
+     * loses people's trust. Name the rule and offer the way out.
+     */
+    const n = mutedHiddenCount();
+    el.emptyTitle.textContent = 'Everything here is muted';
+    el.emptySub.textContent =
+      `${n} message${n === 1 ? '' : 's'} hidden by your category rules.`;
+    clear('Show muted mail', () => {
+      rules = { ...rules, muted: [] };
+      saveRules(rules);
+      renderList();
+      renderSidebar();
+    });
   } else if (store.size === 0) {
     // Each mailbox says something true about itself. "Inbox empty" while
     // looking at Trash is the kind of small wrongness that reads as a bug.
@@ -748,6 +802,12 @@ function renderSidebar() {
     setText(countEl, u ? String(u) : t ? String(t) : '');
     countEl.classList.toggle('unread', u > 0);
     b.setAttribute('aria-current', String(state.category === key));
+    // A muted category is dimmed and says so, so the rule is discoverable
+    // from the place it applies rather than only from a settings page.
+    const muted = isMuted(rules, key);
+    b.classList.toggle('is-muted', muted);
+    if (muted) b.title = `${CATEGORY_LABELS[key] || key} is muted — hidden from the inbox list`;
+    else if (b.title) b.removeAttribute('title');
   }
 
   /*
@@ -1293,7 +1353,9 @@ function ingestInto(mailboxId, messages, classified) {
     if (classified) {
       const c = classify(m);
       const d = extractDeadline(m);
-      records[i] = {
+      // A user correction outranks the generated rules. Someone who has said
+      // where a sender belongs should not have to say it twice.
+      records[i] = applyCorrection(rules, {
         ...base,
         dueAt: d ? d.at : undefined,
         dueKind: d ? d.kind : undefined,
@@ -1301,7 +1363,7 @@ function ingestInto(mailboxId, messages, classified) {
         confidence: c.confidence,
         source: c.source,
         reason: c.reason,
-      };
+      });
     } else {
       records[i] = { ...base, category: 'other', confidence: 1, source: 'mailbox' };
     }
@@ -1320,7 +1382,7 @@ function ingest(messages) {
     // than at render time means search operators (is:due, is:overdue) can use
     // it without re-parsing on every keystroke.
     const d = extractDeadline(m);
-    records[i] = {
+    records[i] = applyCorrection(rules, {
       dueAt: d ? d.at : undefined,
       dueKind: d ? d.kind : undefined,
       hasAttachment: !!m.hasAttachment,
@@ -1336,9 +1398,42 @@ function ingest(messages) {
       confidence: c.confidence,
       source: c.source,
       reason: c.reason,
-    };
+    });
   }
   store.upsertMany(records); // one batch -> one notification -> one frame
+  autoArchive(records);
+}
+
+/**
+ * Auto-archive whole categories on arrival.
+ *
+ * Deliberately NOT silent. It reports what it did and offers an undo, because
+ * a rule that removes mail without saying so is indistinguishable from mail
+ * going missing -- and the user cannot debug what they never saw.
+ *
+ * Only ever touches UNREAD, newly-arrived mail: re-archiving something the
+ * user has already dealt with would fight them.
+ */
+function autoArchive(records) {
+  if (!rules.autoArchive.length) return;
+  const targets = new Set(rules.autoArchive);
+  const hits = records.filter((m) => targets.has(m.category) && m.unread);
+  if (!hits.length) return;
+
+  const ids = hits.map((m) => m.id);
+  const snapshots = hits.map((m) => ({ ...m }));
+  for (const id of ids) store.remove(id);
+
+  send('BULK', { ids, remove: ['INBOX'] }).catch(() => {
+    for (const s of snapshots) store.upsert(s);
+    toast('Could not auto-archive');
+  });
+
+  toast(`Auto-archived ${ids.length} message${ids.length === 1 ? '' : 's'}`);
+  recordUndo(ctx, `Auto-archived ${ids.length}`, async () => {
+    for (const s of snapshots) store.upsert(s);
+    await send('BULK', { ids, add: ['INBOX'] });
+  });
 }
 
 /** Fetch and ingest one page. Throws; callers own the error reporting. */
@@ -1551,6 +1646,21 @@ el.cats.addEventListener('click', (e) => {
   if (!b) return;
   if (b.dataset.mailbox) selectMailbox(b.dataset.mailbox);
   else selectCategory(b.dataset.cat);
+});
+
+/*
+ * Right-click a category to mute or auto-archive it.
+ *
+ * This is the feature Gmail structurally cannot offer: it does not know what
+ * "Ext Promotions" or "Clubs" means. Reached by context menu because it is a
+ * per-category setting, and the category button is the obvious place to look
+ * for it -- but it is also in the command palette, so it is not mouse-only.
+ */
+el.cats.addEventListener('contextmenu', (e) => {
+  const b = e.target.closest('.cat[data-cat]');
+  if (!b || b.dataset.cat === 'all') return;
+  e.preventDefault();
+  openCategoryMenu(b.dataset.cat, b);
 });
 
 /**
@@ -1857,6 +1967,106 @@ async function doSignIn() {
   }
 }
 
+// ------------------------------------------------------------ category rules --
+
+let catMenu = null;
+
+function closeCategoryMenu() {
+  if (!catMenu) return;
+  const back = catMenu.returnFocus;
+  catMenu.node.remove();
+  document.removeEventListener('mousedown', catMenu.onDocDown, true);
+  catMenu = null;
+  if (back?.isConnected) back.focus?.();
+}
+
+/**
+ * Per-category triage menu.
+ *
+ * Mute and auto-archive are presented as a pair with clearly different
+ * strengths, and the copy says what each one actually does. "Mute" in most
+ * clients is vague; here it means "hide from the inbox list", and saying so
+ * is the difference between a feature people use and one they are scared of.
+ */
+function openCategoryMenu(category, anchor) {
+  closeCategoryMenu();
+  const label = CATEGORY_LABELS[category] || category;
+
+  const node = document.createElement('div');
+  node.className = 'snooze-menu cat-menu';
+  node.setAttribute('role', 'menu');
+  node.setAttribute('aria-label', `${label} rules`);
+
+  const mk = (text, sub, on, run) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'snooze-opt';
+    b.setAttribute('role', 'menuitemcheckbox');
+    b.setAttribute('aria-checked', String(on));
+    const left = document.createElement('span');
+    const name = document.createElement('span');
+    name.textContent = text;
+    const hint = document.createElement('span');
+    hint.className = 'sc-when';
+    hint.textContent = sub;
+    left.append(name, hint);
+    const mark = document.createElement('span');
+    mark.className = 'snooze-when';
+    mark.textContent = on ? 'On' : '';
+    b.append(left, mark);
+    b.addEventListener('click', async () => {
+      closeCategoryMenu();
+      await run();
+    });
+    node.appendChild(b);
+  };
+
+  mk(
+    `Mute ${label}`,
+    'Hide from the inbox list. Still searchable, nothing deleted.',
+    isMuted(rules, category),
+    async () => {
+      rules = toggleMute(rules, category);
+      await saveRules(rules);
+      renderList();
+      renderSidebar();
+      toast(isMuted(rules, category) ? `${label} muted` : `${label} unmuted`);
+    }
+  );
+
+  mk(
+    `Auto-archive ${label}`,
+    'Archive new mail in this category as it arrives.',
+    isAutoArchived(rules, category),
+    async () => {
+      rules = toggleAutoArchive(rules, category);
+      await saveRules(rules);
+      renderSidebar();
+      toast(
+        isAutoArchived(rules, category)
+          ? `New ${label} mail will be archived`
+          : `Auto-archive off for ${label}`
+      );
+    }
+  );
+
+  node.addEventListener('keydown', (e) => {
+    const items = [...node.querySelectorAll('.snooze-opt')];
+    const i = items.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1) % items.length]?.focus(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); items[(i - 1 + items.length) % items.length]?.focus(); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeCategoryMenu(); }
+  });
+
+  const onDocDown = (ev) => { if (!node.contains(ev.target)) closeCategoryMenu(); };
+  document.addEventListener('mousedown', onDocDown, true);
+  catMenu = { node, onDocDown, returnFocus: anchor || document.activeElement };
+
+  anchor.style.position = anchor.style.position || 'relative';
+  anchor.appendChild(node);
+  node.querySelector('.snooze-opt')?.focus();
+}
+
 // ----------------------------------------------------------------- snooze --
 
 /**
@@ -2005,6 +2215,10 @@ document.addEventListener('keydown', (e) => {
     }
     if (snoozeMenu) {
       closeSnoozeMenu();
+      return;
+    }
+    if (catMenu) {
+      closeCategoryMenu();
       return;
     }
     if (!$('palette').hidden) {
@@ -2633,6 +2847,10 @@ async function boot() {
     state.signedIn = signedIn;
     if (!signedIn) return showGate('');
     hideGate();
+    // Rules must be loaded BEFORE the first ingest, or the first page is
+    // classified without the user's corrections and auto-archive silently
+    // does not run on it.
+    rules = await loadRules();
     await start();
     // Only after the inbox is up: an unsent message from a previous session
     // is offered back rather than silently lost.

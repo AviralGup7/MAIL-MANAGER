@@ -2329,6 +2329,25 @@ html[data-scheme='dark'] #thememenu {
   color: var(--accent);
 }
 
+/*
+ * A muted category. Dimmed, with a struck-through name -- the count stays
+ * legible because knowing HOW MUCH you are ignoring is the point.
+ */
+.cat.is-muted .cat-name {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+
+.cat.is-muted .dot {
+  opacity: 0.4;
+}
+
+.cat-menu {
+  top: calc(100% + var(--s-1));
+  left: var(--s-2);
+  min-width: 268px;
+}
+
 /* -------------------------------------------------------------- snooze --- */
 
 /*
