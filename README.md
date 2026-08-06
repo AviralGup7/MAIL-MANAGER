@@ -1,7 +1,7 @@
 # BITS Mail Manager
 
 A Chrome extension that takes over the Gmail tab and replaces it with a faster,
-BITS-Pilani-aware inbox. One click (or `Ctrl+Shift+M`), Gmail slides out, this
+BITS-Pilani-aware inbox. One click (or `Alt+Shift+M`), Gmail slides out, this
 slides in. `Esc` gives the page back.
 
 Version 2. Version 1 worked but became slow and drifted from the idea; the
@@ -59,7 +59,9 @@ Run `npm run contrast` before committing — CI runs it too.
    pick this folder.
 2. Open the extension's **Options** and paste a Google OAuth **client ID**
    (see below). The page shows the exact redirect URI to register.
-3. Open Gmail, click the toolbar icon or press `Ctrl+Shift+M`.
+3. Open a **fresh** Gmail tab, then click the toolbar icon or press
+   `Alt+Shift+M`. (Not `Ctrl+Shift+M` — that combination is the browser's own
+   profile switcher and never reaches an extension.)
 
 ### Getting a client ID
 
@@ -96,7 +98,7 @@ What changed:
 | Timers/polling | 300 ms `silentRefresh` | **0** |
 | Classification | async + concurrency semaphore, for pure string matching | synchronous |
 | Message cap | 200 | 2000 |
-| Permissions | 7 | **2** |
+| Permissions | 7 | **3** |
 | OAuth scopes | 6 | **1** (`gmail.modify`) |
 | Transition durations / easings | 11 / 12 | **3 / 2** |
 

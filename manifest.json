@@ -50,7 +50,7 @@
     "type": "module"
   },
   "action": {
-    "default_title": "Take over Gmail (Ctrl+Shift+M)"
+    "default_title": "Take over Gmail (Alt+Shift+M)"
   },
   "options_ui": {
     "page": "options.html",
