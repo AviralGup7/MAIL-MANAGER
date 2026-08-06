@@ -226,18 +226,63 @@ test('messages are classified and tagged, newest first', async (t) => {
   }
 });
 
-test('the sidebar shows a live per-category unread count', async (t) => {
+test('the sidebar shows BOTH unread and total, never unread alone', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * THE USER-REPORTED BUG: "only mail that is not read is appearing".
+   *
+   * Read mail was always in the list — but the rail rendered `unread || total`,
+   * so a category with 1 unread and 40 read displayed "1". The rail is what
+   * people scan, so it looked as though read mail had not been fetched.
+   *
+   * The fixture has 3 messages: 2 unread, 1 already read. The read one is in
+   * `external-services`, which is precisely the case that used to be
+   * indistinguishable — it showed "1" whether that 1 was read or unread.
+   */
   const { doc, restore } = await boot();
   try {
     const byCat = {};
     for (const b of doc.querySelectorAll('#cats .cat')) {
       byCat[b.dataset.cat] = b.lastElementChild.textContent;
     }
-    assert.equal(byCat.all, '2', 'two unread overall');
-    assert.equal(byCat.augsd, '1');
-    assert.equal(byCat.ps, '1');
-    assert.equal(byCat['external-services'], '1');
+
+    assert.equal(byCat.all, '2/3', 'two unread out of three total');
+    assert.equal(byCat.augsd, '1/1');
+    assert.equal(byCat.ps, '1/1');
+    // The read-only category shows a bare total, with no unread emphasis.
+    assert.equal(
+      byCat['external-services'], '1',
+      'a fully-read category shows its total, not nothing'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('a category holding only READ mail still reports its messages', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // The regression in its starkest form: mail that is entirely read must
+  // never make a populated category look empty.
+  const allRead = MESSAGES.map((m) => ({ ...m, unread: false, labels: ['INBOX'] }));
+  const { doc, restore } = await boot({ messages: allRead });
+  try {
+    const all = [...doc.querySelectorAll('#cats .cat')]
+      .find((b) => b.dataset.cat === 'all').lastElementChild.textContent;
+    assert.equal(all, String(allRead.length), 'all-read inbox must show its total');
+    assert.equal(rows(doc).length, allRead.length, 'and every read message must be listed');
+  } finally {
+    restore();
+  }
+});
+
+test('the sidebar count carries an explanatory title', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // "2/3" is compact but not self-describing; the tooltip spells it out.
+  const { doc, restore } = await boot();
+  try {
+    const all = [...doc.querySelectorAll('#cats .cat')]
+      .find((b) => b.dataset.cat === 'all').lastElementChild;
+    assert.match(all.getAttribute('title') || '', /3 messages, 2 unread/);
   } finally {
     restore();
   }

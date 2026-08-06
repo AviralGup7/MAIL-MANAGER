@@ -840,12 +840,17 @@ function renderSidebar() {
       const s = stores.get(id);
       const loaded = mailboxState.get(id)?.loaded;
       let text = '';
+      let un = 0;
       if (id === state.mailbox || loaded) {
-        const un = s ? sumUnread(s) : 0;
-        text = un ? String(un) : s && s.size ? String(s.size) : '';
+        un = s ? sumUnread(s) : 0;
+        const total = s ? s.size : 0;
+        // Same rule as the category rail: never let the unread figure stand
+        // in for the total, or a mailbox with read mail looks empty.
+        text = un ? `${un}/${total}` : total ? String(total) : '';
       }
       setText(countEl, text);
-      countEl.classList.toggle('unread', text !== '' && !!sumUnread(stores.get(id)));
+      setAttr(countEl, 'title', text ? `${s?.size || 0} message(s), ${un} unread` : '');
+      countEl.classList.toggle('unread', un > 0);
       b.setAttribute('aria-current', String(state.mailbox === id));
       continue;
     }
@@ -853,7 +858,23 @@ function renderSidebar() {
     const key = b.dataset.cat;
     const u = key === 'all' ? totalUnread : unread[key] || 0;
     const t = key === 'all' ? store.size : counts[key] || 0;
-    setText(countEl, u ? String(u) : t ? String(t) : '');
+    /*
+     * SHOW BOTH COUNTS, not just the unread one.
+     *
+     * This used to render `u ? u : t` — the unread count when non-zero, and
+     * the total only when everything was read. A category holding 3 unread
+     * and 40 read therefore displayed "3", which reads as "there are three
+     * messages here". Read mail was always in the list, but the rail said
+     * otherwise, and the rail is what people scan.
+     *
+     * Now: "3/43" when some are unread, plain "43" when none are. The unread
+     * figure keeps its emphasis, and the total is always visible.
+     */
+    setText(countEl, u ? `${u}/${t}` : t ? String(t) : '');
+    setAttr(
+      countEl, 'title',
+      t ? `${t} message${t === 1 ? '' : 's'}, ${u} unread` : ''
+    );
     countEl.classList.toggle('unread', u > 0);
     b.setAttribute('aria-current', String(state.category === key));
     // A muted category is dimmed and says so, so the rule is discoverable

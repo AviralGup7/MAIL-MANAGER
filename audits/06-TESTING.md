@@ -1,6 +1,6 @@
 # Audit 6 — Testing
 
-Scope: what the 121 tests actually cover, and — more usefully — what they do
+Scope: what the tests actually cover, and — more usefully — what they do
 not.
 Method: count assertions per module, then trace which `src/` files are executed
 by any test versus merely mentioned.

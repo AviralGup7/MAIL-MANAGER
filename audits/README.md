@@ -1,8 +1,13 @@
 # Audits
 
-Six audits of the v2 codebase, written after the build was feature-complete and
-before it had ever run in a browser. Every finding was verified by executing
-the code, not by reading it — where a claim was testable, the proof is quoted.
+Eight audits of the v2 codebase. The first six were written after the build was
+feature-complete and before it had ever run in a browser; 07 and 08 are
+competitive gap analyses against Gmail, and 06 carries the record of thirteen
+autonomous defect-hunting cycles.
+
+Every finding was verified by executing the code, not by reading it — where a
+claim was testable, the proof is quoted. Findings that turned out to be wrong
+are retracted in place rather than deleted.
 
 | # | Audit | Findings | Worst |
 |---|---|---|---|
@@ -11,7 +16,7 @@ the code, not by reading it — where a claim was testable, the proof is quoted.
 | [03](03-PERFORMANCE.md) | Performance | 3 | No rendering benchmark exists — the untested half |
 | [04](04-ACCESSIBILITY.md) | Accessibility | 4 | Invalid listbox tree: the message list announces nothing |
 | [05](05-ARCHITECTURE.md) | Architecture | 5 | Dead `GMAIL` proxy widens the app's capability |
-| [06](06-TESTING.md) | Testing | 5 | The takeover and PKCE sign-in have zero direct tests |
+| [06](06-TESTING.md) | Testing + 13 defect-hunt cycles | 5 + 11 | Sign-out undone by an in-flight token renewal (security); sign-out left every other mailbox populated |
 | [07](07-GMAIL-COMPETITIVE.md) | Gmail competitive gap (v0.9) | 40+ | Remote and inline images are both silently broken; no Sent/Drafts/Trash; no threading |
 | [08](08-GMAIL-COMPETITIVE-V2.md) | Gmail competitive gap (v1.0) | 35+ | Four settings declared and never read; two verbs still unreachable; threading is the last true gap. **§10 third pass:** shift-range could not shrink; one-row updates re-walked 2000 rows (549ms → 8.1ms) |
 

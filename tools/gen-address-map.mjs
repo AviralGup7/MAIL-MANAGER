@@ -21,7 +21,11 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const PACK = process.argv[2] || '/home/user/uploads/CLASSIFICATION_DATA_PACK.md';
+// Defaults to the copy committed in this repo. The old default pointed at an
+// upload directory that only existed on one machine, so regenerating failed
+// for anyone else with a confusing ENOENT.
+const PACK =
+  process.argv[2] || new URL('../docs/CLASSIFICATION_DATA_PACK.md', import.meta.url).pathname;
 const OUT = join(ROOT, 'src/classify/address-map.js');
 
 const md = readFileSync(PACK, 'utf8');

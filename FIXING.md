@@ -249,13 +249,36 @@ asserts computed `display` is `none`.
 That is the difference between testing what the code did and testing what the
 user sees, and it is the third bug in this run that only a real browser found.
 
+## Gmail's console is noisy — most of it is not us
+
+Opening DevTools on Gmail shows a wall of errors on every load. These are
+Google's own and appear with the extension disabled:
+
+| Message | Whose |
+|---|---|
+| `Deprecated API for given entry type` | Google's perf bundle (`xUg.activate`, `Ai`) |
+| `Unrecognized feature: 'attribution-reporting'` / `'speaker'` | Google's iframe `allow=` attributes |
+| `_frameReady` cross-origin SecurityError | Google Chat talking to Gmail |
+| `manifest.json: 'migrate_from' ignored` | A **different** extension — ours has no `migrate_from` |
+| `frame-ancestors` / `worker-src` CSP violations | Meet and OGS, both **report-only** |
+
+**To see only our messages, type `BMM` in the DevTools filter box.**
+
+And note the service worker logs to a **separate console**:
+`chrome://extensions` → the blue **"service worker"** link. That is where
+`[BMM] ready. Shortcut: Alt+Shift+M` appears — or `[BMM] startup problems:`
+with the reason. If neither shows, the worker did not start.
+
 ## Still to check once it loads
 
 - Does the takeover animate in over Gmail?
-- Does sign-in complete? (Options → paste your OAuth client ID first, or click
-  **Use v1 client ID**.)
-- Does `Esc` hand Gmail back cleanly?
+- Does sign-in complete? (Options → paste your OAuth client ID first.)
+- Press **`?`** — does the shortcut overlay list all 23?
+- Does `Esc` hand Gmail back cleanly, with Gmail fully interactive again?
+- Do **read** messages appear, not just unread? The rail should read
+  `unread/total`, e.g. `3/41`.
+- Does compose send, and does a draft survive closing the panel?
 - Does the second account (`/mail/u/1/`) behave?
 
-Tell me what breaks. 235 automated tests pass, and they clearly do not
+Tell me what breaks. 633 automated tests pass, and they still do not
 substitute for one real browser.

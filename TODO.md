@@ -1,255 +1,115 @@
-# TODO — next 15 steps
+# TODO
 
-Ordered by **risk × user impact**, not by effort. Every item traces to a
-specific finding in `audits/`, and each states the finding, the fix, and how
-you will know it worked.
+Ordered by **risk × user impact**, not by effort. Twelve of the original
+fifteen items are done; the rest are below, followed by the historical record
+of what the finished work found.
 
 Two things are not on this list because they are not code, and they outrank
 everything on it:
 
 - 🔴 **Rotate the v1 Google OAuth client secret.** It is in public git history.
   <https://console.cloud.google.com/apis/credentials>
-- 🔴 **Revoke the GitHub PAT** used to push this repo.
+- 🔴 **Revoke the GitHub PATs** used to push this repo.
   <https://github.com/settings/tokens>
 
 Legend — **S**evere · **M**oderate · **L**ow
 
 ---
 
-### 1 · Load the extension in Chrome and drive it against a real inbox — **S**
+### 1 · Run it in Chrome against a real inbox — **S**
 
-*Nothing below is trustworthy until this happens.* **515 tests pass and the
+*Nothing below is trustworthy until this happens.* **633 tests pass and the
 extension has never run in a browser.** Unverified: the OAuth consent screen,
 the takeover animation on live Gmail, how Gmail reacts to having its roots
 hidden, and whether `chrome.identity.getRedirectURL()` matches what you
 registered.
 
-`chrome://extensions` → Developer mode → Load unpacked → Options → *Use v1
-client ID* → open Gmail → `Alt+Shift+M`.
+`chrome://extensions` → Developer mode → Load unpacked → Options → paste a
+client ID → open Gmail → `Alt+Shift+M`. Then press **`?`**.
 
-Once inside, press **`?`** — the shortcut overlay lists everything the app can
-do, and it is generated from the same table the key handler uses.
+The service worker logs to its OWN console: `chrome://extensions` → the blue
+**"service worker"** link. Expect `[BMM] ready. Shortcut: Alt+Shift+M`.
 
-**Done when:** you have opened, read, starred, archived and released, and have
-written down every defect. Expect several. Ref: `01`, all.
-
----
-
-### ~~2~~ · ✅ DONE — Fix the 400-row cap that silently hides mail — **S**
-
-`app.js:181` truncates to 400 and sets `renderedIds` to the truncated list, so
-messages 401+ are unreachable by scroll, click **and** keyboard. The sidebar
-counts them; the list cannot open them. *Load more* makes the hidden set grow.
-
-Remove the slice and rely on `content-visibility: auto`, which is the
-documented reason no virtualiser exists. Measure before and after with 2000
-rows.
-
-**Done when:** 600 messages in one category are all reachable by `j`, and a
-2000-row scroll holds 60 fps. Ref: `01` C-1, `03` P-3.
+**Done when:** you have opened, read, starred, archived, snoozed and composed,
+and written down every defect. Expect several.
 
 ---
 
-### ~~3~~ · ✅ DONE — Test the takeover — **S**
+### 2 · Conversation threading — **S**
 
-266 lines implementing the entire product, with zero tests. If
-`restoreGmail()` is not a lossless round trip, the user's Gmail tab is
-permanently broken after one toggle.
+The largest remaining feature gap. Messages are listed individually, so a
+five-part exchange is five rows that scatter as new mail arrives between them.
+For BITS mail this is the common case: "Revised schedule" → "Corrigendum" →
+"Final revised schedule".
 
-Build a fake Gmail DOM in jsdom, drive `BMM_TOGGLE`, and assert: roots hidden
-on enter; inline `visibility`/`display` restored **byte-identically** on
-release; mid-animation toggles ignored; `waitForAppReady` times out cleanly;
-`pagehide` restores.
+Harder than it was in v0.9 because the store is now per-mailbox: threading must
+work across six independent `Store` instances, and interact correctly with
+selection, category rules and the mark-read grace period.
 
-**Done when:** ~10 tests, and deliberately breaking `restoreGmail` turns them
-red. Ref: `06` T-1.
-
----
-
-### ~~4~~ · ✅ DONE — Test PKCE sign-in — **S**
-
-244 lines of security-critical auth with no direct test. Stub `fetch` and
-`chrome.identity` — `gmail.test.mjs` already does this for history pagination.
-
-Assert: `code_challenge === BASE64URL(SHA256(verifier))`; a mismatched `state`
-**throws**; concurrent `getToken()` calls issue exactly one refresh;
-`signOut()` revokes the **refresh** token; a 400 on refresh clears storage and
-throws `NOT_SIGNED_IN`.
-
-**Done when:** turning the `state` check into a no-op fails the suite. Ref:
-`06` T-2.
+**Do the IndexedDB migration (item 3) first.** Specified in
+[`audits/08-GMAIL-COMPETITIVE-V2.md`](audits/08-GMAIL-COMPETITIVE-V2.md) §C-1.
 
 ---
 
-### ~~5~~ · ✅ DONE — Persist the message cache — **S**
+### 3 · Migrate the cache to IndexedDB — **M**
 
-`store.js:30` advertises "DELTA PERSISTENCE" as a headline fix. **Nothing is
-persisted.** Every takeover cold-fetches ~100 messages, and the `historyId`
-cursor has no local state to be a delta against, which makes the History API
-integration mostly decorative.
-
-Write headers on a debounced idle write; hydrate in `boot()` before first
-render; then run `SYNC_DELTA` instead of `SYNC_PAGE`.
-
-**Done when:** second open paints from cache in <100 ms and issues a delta, not
-a full page. Ref: `01` C-2.
+`chrome.storage.local` is a 10MB budget and `CACHE_MAX` is 500 messages, which
+is why only the inbox is cached. It blocks threading (item 2), attachment
+preview and offline support simultaneously.
 
 ---
 
-### ~~6~~ · ✅ DONE — Fix the listbox ARIA tree — **S**
+### 4 · Background sync and notifications — **M**
 
-`listbox > ul > option` is invalid: the `<ul>` breaks the ownership
-relationship, so screen readers announce the message list as empty. No row is
-focusable and there is no `aria-activedescendant`, so selection is written to
-the DOM and never surfaced.
-
-Drop the `<ul>`, append `role="option"` rows directly to the scroller, give
-each a stable id, and maintain `aria-activedescendant` in `openMessage()`.
-
-**Done when:** VoiceOver or NVDA announces "Messages, list box, 3 items" and
-reads the selected row on `j`/`k`. Ref: `04` A-1.
+`app.js` still says *"Never on a timer"*. The blocker is gone: `alarms` is
+permitted and already drives the snooze wake. Pair it with classifier-driven
+notification rules — notify on `augsd` and `academics`, never on
+`external-promotions` — which is what makes notifications wanted rather than
+annoying, and which Gmail structurally cannot offer.
 
 ---
 
-### ~~7~~ · ✅ DONE — Add retry with backoff for 429 / 5xx — **M**
+### 5 · Undo Send — **M**
 
-Every non-2xx is fatal and identical. Gmail returns `429` with `Retry-After`
-under normal load — a 100-message batch is a burst by definition — and the user
-gets `Gmail 429 /messages` with no recovery. Clicking Refresh reissues the same
-burst.
-
-Bounded exponential backoff in `api()`: 3 attempts, honour `Retry-After`,
-jitter. Distinguish retryable (`429`, `500`, `502`, `503`, `504`) from terminal.
-
-**Done when:** a stubbed 429-then-200 succeeds without surfacing an error. Ref:
-`01` C-3.
+The undo stack covers archive, delete, star, snooze and bulk — everything
+except the one thing Gmail *can* undo. Client-side hold, then send. The timer
+belongs in the service worker so closing the app still delivers.
 
 ---
 
-### ~~8~~ · ✅ DONE — Assert the render invariant — **M**
+### 6 · Gmail's own labels — decide, then act — **M**
 
-The most important property in the codebase — one render per settled state — is
-enforced by convention only. `bench.mjs` *prints* `renders triggered: 1`; it
-does not assert it. A regression to per-mutation rendering, the exact defect
-that made v1 unusable, would pass green.
-
-**Done when:** ingesting 200 messages asserts exactly one render, and removing
-the `batch()` wrapper fails. Ref: `06` T-3, `05` A-3.
+`LIST_LABELS` and `CREATE_LABEL` are implemented and called by nothing, and
+`label:` is a search operator with nothing behind it. Carried unfixed across
+two audits. **Either finish it minimally or delete the verbs** — the current
+state is the worst of both.
 
 ---
 
-### ~~9~~ · ✅ DONE — Delete the dead `GMAIL` proxy and the unused `alarms` permission — **M**
+### 7 · Add a real rendering benchmark — **M**
 
-`background/index.js:74` routes `type:'GMAIL'` to a generic path builder that
-nothing calls. It is a strictly worse interface than the specific verbs — it
-would let the app document construct arbitrary Gmail paths, the exact
-capability the worker/app split exists to deny.
-
-`alarms` is declared and never used, undermining the 7→3 permission story.
-
-**Done when:** both removed, tests green, `permissions` is `["identity",
-"storage"]`. Ref: `05` A-2.
+jsdom has no layout engine, so the 60fps claim remains an expectation. The
+data-layer bench measures classification and store cost only; it cannot see a
+dropped frame. Needs headless Chrome.
 
 ---
 
-### ~~10~~ · ✅ DONE — Fix the reading-pane live region — **M**
+### 8 · Validate the classifier against real BITS mail — **M**
 
-`aria-live="polite"` on the whole `#readpane` announces the subject, sender,
-date, all tag chips and the action buttons on every open.
-
-Remove it. Make the reader `role="article"` with
-`aria-labelledby="r-subject"` and move focus to the subject heading — focus
-movement is the correct "you are now here" signal, and it also fixes keyboard
-focus being stranded in the list after a click.
-
-**Done when:** opening a message announces the subject once. Ref: `04` A-3.
+Fidelity to `docs/CLASSIFICATION_DATA_PACK.md` is proven; accuracy is not.
+The classifier-correction UI is both the fix for a wrong bucket and the
+mechanism that would generate the corpus.
 
 ---
 
-### ~~11~~ · ✅ DONE — Harden the app's `postMessage` listener — **M**
+### 9 · Screen-reader pass — **L**
 
-Two of three listeners validate `e.source`; `app.js:810` does not, so any frame
-with a handle can post `BMM_SHOWN` and steal focus. Both outbound calls target
-`'*'`.
-
-Check `e.source === parent`; replace `'*'` with the Gmail origin.
-
-**Done when:** a message from an unexpected source is ignored, with a test.
-Ref: `02` S-2.
+ARIA is present and structurally tested; no NVDA or VoiceOver has ever run
+against it. Measured accessibility is not actual accessibility.
 
 ---
 
-### ~~12~~ · ✅ DONE — Decide what the body sanitiser is, and label it honestly — **M**
-
-`<svg/onload=alert(1)>` **survives** the regex chain — the `on*` stripper
-requires leading whitespace and a solidus is a valid separator. Not exploitable
-today because the sandbox has no `allow-scripts`, but the code calls the regex
-"defence in depth", inviting someone to add `allow-scripts` believing a second
-layer exists.
-
-Either relabel it "cosmetic cleanup, not a security control", or replace it
-with a `DOMParser` allow-list walk (~60 lines, no dependency).
-
-**Done when:** the `<svg/onload>` case is in the test corpus and the comment
-matches reality. Ref: `02` S-1.
-
----
-
-### 13 · Add a real rendering benchmark — **M**
-
-Every performance number is headless. Nothing measures `renderList()` against a
-layout engine, and the 60 fps claim rests entirely on `content-visibility:
-auto` behaving as expected. A regression there is invisible to all 121 tests
-and presents as exactly the symptom that killed v1.
-
-Headless-Chrome harness over `preview.html` with 2000 rows: time to first
-paint, scroll frame duration, full category-switch render time.
-
-**Done when:** CI fails if a scroll frame exceeds 16 ms. Ref: `03` P-1.
-
----
-
-### ~~14~~ · ✅ DONE — Add `npm run test:ci` that fails on skips — **M**
-
-Without `jsdom`, `npm test` reports `96 pass, 13 skipped` and exits **zero**. CI
-lacking an install step would report success while running no DOM tests —
-including the two that caught the most recent real bugs.
-
-Keep the graceful skip for local use; add a CI script that installs `jsdom` and
-fails if any test skips. Wire it to GitHub Actions.
-
-**Done when:** deleting `node_modules` fails `test:ci` and still passes `test`.
-Ref: `06` T-4.
-
----
-
-### 15 · Validate the classifier against real BITS mail — **M**
-
-The rules are now byte-faithful to the data pack (891/891 keys, 0 weight
-differences, sender order identical) and 152 previously-dead addresses are
-loaded. **But the pack is v1's rules, not a corpus.** What is proven is fidelity
-plus two genuine repairs — not accuracy on your inbox.
-
-Send ~12 real emails (subject + sender, bodies redacted). Build
-`test/corpus.test.mjs` asserting the expected category for each, and treat
-every miss as a rule bug to fix in the **pack**, then regenerate.
-
-**Done when:** a real-mail corpus test exists and passes. Ref: `01`, `README`
-Status.
-
----
-
-## Status
-
-**12 of 15 done.** 206 tests, all passing, none skipped.
-
-The three that remain cannot be closed from here:
-
-| # | Item | Blocked on |
-|---|---|---|
-| 1 | Load it in Chrome | You. Nothing below the surface is trustworthy until this happens. |
-| 13 | Rendering benchmark | Needs headless Chrome; jsdom has no layout engine, so a scroll-frame budget cannot be measured in this sandbox. |
-| 15 | Validate on real mail | The ~12 sample emails. |
+## Historical record
 
 ### What the finished work actually found
 
@@ -292,7 +152,8 @@ A test that has never been seen to fail is a hypothesis, not a test.
 ## Session log — audit execution
 
 Built from the gap analysis in `audits/07-GMAIL-COMPETITIVE.md`, in its
-priority order. **515 tests, 0 skipped. All six themes pass WCAG AA.**
+priority order. At the time of that session: **515 tests, 0 skipped.**
+(Now 633 — see the header.)
 
 ### Tier 0 — live defects
 

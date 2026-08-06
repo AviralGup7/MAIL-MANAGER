@@ -96,14 +96,27 @@ authorization URL by design. The options page refuses any value beginning with
 
 - Tokens live **only in the service worker**. The app document — the one that
   renders untrusted HTML from strangers — never holds one.
-- The app sends `{type:'GMAIL', …}` messages and the worker performs the fetch.
-  A successful XSS in the app therefore still cannot read the token.
+- The app sends **named verbs** (`SYNC_PAGE`, `STAR`, `SEND`, …) and the worker
+  performs the fetch. There is no generic passthrough: an earlier `{type:
+  'GMAIL', path}` proxy was deleted precisely because it let the app name any
+  endpoint. A successful XSS in the app still cannot read the token, and now
+  cannot reach an arbitrary Gmail URL either.
 - There is **no refresh token to store** — the implicit flow does not issue
   one. Only a one-hour access token is ever at rest, in `chrome.storage.local`,
   readable only by this extension.
 - **Sign out revokes.** The worker calls
   `https://oauth2.googleapis.com/revoke` and then clears storage. v1 cleared
-  storage only, leaving a live refresh token on Google's side.
+  storage only, leaving a live credential on Google's side.
+- **Sign out cannot be undone by work already in flight.** A silent renewal
+  running when the user signs out used to call `persist()` afterwards and write
+  a fresh, live token back — the gate appeared while a working credential sat
+  in storage. Every operation that writes credentials now captures a session
+  epoch first and refuses to commit if it moved. The same guard stops a stale
+  renewal for a previous account overwriting a new sign-in.
+- **Signing out clears every mailbox, not just the visible one.** The stores
+  are per-mailbox; clearing only the active one left the previous account's
+  Sent and Trash one click away behind the gate. Fetching is also gated on
+  `state.signedIn`, so an ended session issues no network requests.
 
 ## 4. Rendering hostile mail
 
@@ -140,12 +153,13 @@ capability than it needed.
 | | v1 | v2 |
 |---|---|---|
 | `identity` | ✅ | ✅ needed for the OAuth flow |
-| `storage` | ✅ | ✅ client ID, refresh token, historyId, theme |
-| `alarms` | ✅ | ✅ |
+| `storage` | ✅ | ✅ client ID, access token, historyId, settings, cache |
+| `alarms` | ✅ | ✅ snooze wake — the only reliable MV3 timer |
+| `scripting` | — | ✅ injects the takeover on demand |
 | `unlimitedStorage` | ✅ | ❌ headers only, nowhere near the 5 MB quota |
 | `sidePanel` | ✅ | ❌ no side panel |
 | `tabs` | ✅ | ❌ the content script knows its own tab |
-| `notifications` | ✅ | ❌ never used |
+| `notifications` | ✅ | ❌ not yet — see TODO item 4 |
 | `generativelanguage.googleapis.com` host | ✅ | ❌ **no code referenced it** |
 
 Scopes went from six to one:
