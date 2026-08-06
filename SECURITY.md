@@ -42,28 +42,50 @@ The first two sentences are true. The conclusion does not follow.
 - "The secret is bound to a specific extension ID" — it is not. A Google *Web
   application* client secret is bound to nothing but the client ID. Anyone
   holding both can mint tokens against your project from anywhere.
-- "is required for OAuth token exchange" — only for the confidential-client
-  flow. The correct flow here is **Authorization Code with PKCE (RFC 7636)**,
-  which exists for exactly this situation and requires no secret at all.
+- "is required for OAuth token exchange" — required only for a *code exchange*.
+  Do not exchange a code and the question does not arise.
 
 The right response to "we cannot keep a secret" is not "ship it anyway"; it is
 "use a flow that does not need one."
 
 ## 2. What version 2 does instead
 
-**PKCE, S256.**
+**Implicit flow (`response_type=token`), with silent renewal.**
 
-1. Generate a 32-byte random `code_verifier` via `crypto.getRandomValues`.
-2. `code_challenge = BASE64URL(SHA-256(code_verifier))`.
-3. Send the challenge with the authorization request, along with a random
-   `state`.
-4. `chrome.identity.launchWebAuthFlow` returns the code; the `state` is
-   **verified** before the code is used.
-5. Exchange code + `code_verifier` for tokens. **No `client_secret` field is
-   sent, because there is no secret.**
+This started as Authorization Code + PKCE, which is the textbook answer for a
+public client. **It does not work against Google from an extension**, and the
+reason is worth recording because it is the same wall v1 hit:
 
-An attacker who intercepts the authorization code cannot redeem it: they do not
-have the verifier, and the challenge is a one-way hash of it.
+| Attempt | Result |
+|---|---|
+| Web application client + PKCE, no secret | `400 invalid_request` — *"client_secret is missing."* PKCE does not exempt you |
+| Chrome Extension client (a true public client) | Rejects `chromiumapp.org` redirects; only supports `getAuthToken` |
+| `chrome.identity.getAuthToken` | Chrome-only. Does not work in Brave, Edge or Firefox |
+
+Every code-exchange route demands a secret. v1's answer was to hardcode one,
+and that is how it ended up published.
+
+So: **do not exchange anything.**
+
+1. Generate a random `state` via `crypto.getRandomValues`.
+2. `chrome.identity.launchWebAuthFlow` with `response_type=token`.
+3. Google returns the access token in the redirect **fragment**.
+4. The `state` is verified before the token is read.
+5. There is no token-endpoint call, so no `client_secret` can be demanded.
+
+**The trade, stated plainly.** Tokens last one hour and there is no refresh
+token. Renewal is silent: `launchWebAuthFlow({interactive: false})` with
+`prompt=none` mints a fresh token with no UI while the Google session cookie
+lives. The user consents once.
+
+**This is not a security downgrade.** A one-hour token that cannot be refreshed
+is a strictly smaller prize than a refresh token granting `gmail.modify`
+indefinitely — which is what the PKCE design would have stored on disk.
+
+The residual weakness is real and worth naming: the token arrives in a URL
+fragment rather than a POST response body. In this context the fragment is
+handled entirely inside `chrome.identity`'s own flow, is never committed to a
+page's history, and never reaches a document that renders mail.
 
 The client **ID** remains in `chrome.storage.local`, user-supplied via Options.
 A client ID is not confidential — it is transmitted in plaintext in every
@@ -76,8 +98,9 @@ authorization URL by design. The options page refuses any value beginning with
   renders untrusted HTML from strangers — never holds one.
 - The app sends `{type:'GMAIL', …}` messages and the worker performs the fetch.
   A successful XSS in the app therefore still cannot read the token.
-- The refresh token is in `chrome.storage.local`, which is readable only by
-  this extension.
+- There is **no refresh token to store** — the implicit flow does not issue
+  one. Only a one-hour access token is ever at rest, in `chrome.storage.local`,
+  readable only by this extension.
 - **Sign out revokes.** The worker calls
   `https://oauth2.googleapis.com/revoke` and then clears storage. v1 cleared
   storage only, leaving a live refresh token on Google's side.

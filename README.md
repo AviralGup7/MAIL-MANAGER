@@ -69,19 +69,57 @@ Run `npm run contrast` before committing — CI runs it too.
 2. Enable the **Gmail API**.
 3. OAuth consent screen → External → add your BITS address as a test user.
 4. Credentials → Create credentials → OAuth client ID → application type
-   **Chrome Extension**.
+   **Web application**.
 
-   > **Not "Web application".** Google classes that as a *confidential* client
-   > and requires a `client_secret` on the token exchange even when PKCE is
-   > used, so sign-in fails with `invalid_client`. "Chrome Extension" is a
-   > *public* client: no secret, PKCE accepted. An earlier version of these
-   > instructions said Web application, and it was wrong.
+   > Yes, "Web application", even though this is an extension. Google's
+   > "Chrome Extension" client type only supports `getAuthToken`, which is
+   > Chrome-only and does not work in Brave. This is confirmed by Google's own
+   > extensions DevRel; see the header of `src/background/auth.js`.
 
-5. Paste the **extension ID** into the client's Item ID field. The Options page
-   shows it, and it is stable because `manifest.json` pins the public `key`.
-   A Chrome Extension client is matched by ID and needs no redirect URI.
-6. Paste the client ID into Options. There is no secret to copy — this build
-   does not use one and never will. See `SECURITY.md`.
+5. Under **Authorized redirect URIs** add the URI shown on the extension's
+   Options page, exactly, trailing slash included:
+
+   ```
+   https://dgeanijfllibcphbblkhacjcbdehihcp.chromiumapp.org/
+   ```
+
+   That is derived from the extension ID, which is pinned by the `key` field in
+   the manifest and does not change between reloads.
+
+6. OAuth consent screen → **Test users** → add your BITS address. Without this
+   Google refuses consent before the flow starts.
+7. Paste the client ID into Options. **Ignore the client secret** — this build
+   never sends one.
+
+### Why the implicit flow, and not PKCE
+
+This started as authorization-code + PKCE, which is the correct answer for a
+public client in the abstract. It cannot work against Google from an extension:
+
+- Google's token endpoint requires `client_secret` for
+  `grant_type=authorization_code` on a **Web application** client. **PKCE does
+  not exempt you.** The response is
+  `400 invalid_request / "client_secret is missing."`
+- Switching the client to type **Chrome Extension**, which *is* a public
+  client, does not help: those clients only accept `getAuthToken`-style flows
+  and reject a `chromiumapp.org` redirect.
+- `chrome.identity.getAuthToken` would avoid the whole problem but is
+  Chrome-only, and this is used in Brave.
+
+So every code-exchange route demands a secret. This is the same wall v1 hit,
+and v1's answer was to hardcode the secret — which is how it ended up published
+in a public repository.
+
+`response_type=token` returns the access token directly in the redirect
+fragment. There is no exchange, so no secret can be demanded.
+
+**The trade, stated plainly:** tokens last one hour and there is no refresh
+token. Renewal is silent — `launchWebAuthFlow({interactive: false})` with
+`prompt=none` mints a new token with no UI while the Google session cookie is
+alive. You see a consent screen once.
+
+Security-wise this is not a loss: a one-hour token that cannot be refreshed is
+a smaller prize than a refresh token granting `gmail.modify` indefinitely.
 
 ---
 
@@ -247,7 +285,7 @@ src/
   takeover/content.js       Iframe-over-Gmail, enter/exit animation, Esc, pagehide.
   takeover/takeover.css     transform + opacity only.
   background/index.js       Service worker: click routing, message router.
-  background/auth.js        PKCE (RFC 7636). No secret.
+  background/auth.js        Implicit flow + silent renewal. No secret.
   background/gmail.js       REST + multipart batch + MIME body extraction.
   background/sync.js        Page sync and History API deltas.
   app/app.js                Render loop, triage, keyboard.
@@ -295,12 +333,13 @@ mis-file something the preview mis-files it too.
 
 ## Security
 
-- **PKCE, no client secret.** v1 shipped a live Google OAuth client secret
+- **No client secret, anywhere.** v1 shipped a live Google OAuth client secret
   hard-coded in `lib/auth.js` in a public repository, with a comment claiming
   this was not a vulnerability. The premise was right — extensions cannot keep
-  secrets — but the conclusion was backwards. Extensions are *public clients*;
-  the answer is PKCE, not shipping the secret. **That secret is in git history
-  and must be rotated.** See `SECURITY.md`.
+  secrets — but the conclusion was backwards: the answer is a flow that does
+  not need one. Google blocks the textbook answer (PKCE) for extensions, so
+  this uses the implicit flow instead; see above. **That secret is in git
+  history and must be rotated.** See `SECURITY.md`.
 - The access token lives **only in the service worker**. The app document,
   which renders untrusted mail, never sees it and asks the worker to make calls
   on its behalf.
@@ -356,7 +395,7 @@ from disk and asks only for a delta; the invalid `listbox > ul > option` tree
 that made the message list announce as empty; retry with backoff, so a routine
 Gmail rate-limit is no longer a hard error; a real `DOMParser` sanitiser
 replacing a regex chain that `<svg/onload=>` walked straight through; and
-direct tests for the takeover and PKCE sign-in, the two things the product is
+direct tests for the takeover and sign-in, the two things the product is
 named for, which previously had none.
 
 **Still open:** it has not run in Chrome (1), there is no rendering benchmark
