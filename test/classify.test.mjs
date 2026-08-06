@@ -12,11 +12,13 @@ import {
   extractAddress,
   extractDomain,
   ruleCount,
+  classifyBySender,
 } from '../src/classify/sender.js';
 import { normalizeConfidence } from '../src/classify/scoring.js';
 import { CATEGORIES, SIDEBAR_ORDER } from '../src/classify/categories.js';
 import { SENDER_RULES } from '../src/classify/sender-rules.js';
 import { PATTERN_RULES } from '../src/classify/pattern-rules.js';
+import { ADDRESS_MAP } from '../src/classify/address-map.js';
 
 // ---------------------------------------------------------------- parsing --
 
@@ -69,11 +71,15 @@ test('Registrar mail is admin regardless of subject', () => {
     snippet: 'club recruitment inductions',
   });
   assert.equal(r.category, 'admin');
-  assert.equal(r.source, 'sender');
+  // `address`, not `sender`: registrar@bits-pilani.ac.in is one of the 152
+  // curated exact addresses, so stage 0 claims it before the substring rules
+  // are consulted. The category is the same either way.
+  assert.equal(r.source, 'address');
 });
 
 test('AUGSD is recognised from a bare display name', () => {
-  // Bug fixed during the port: old list only had augsd WITH @bits-pilani.
+  // NOT a bug fixed during the port -- the old list already had bare 'augSD'
+  // and 'Academic Section'. See notes/CLASSIFIER_CORRECTION.md.
   const r = classify({
     from: 'AUGSD <noreply@somehost.in>',
     subject: 'Course registration opens Monday',
@@ -149,7 +155,15 @@ test('an unknown BITS sender is classified on keywords', () => {
     subject: 'Mid semester exam schedule and timetable',
   });
   assert.equal(r.source, 'pattern');
-  assert.equal(r.category, 'augsd');
+  // `academics`, not `augsd`. Under the ORIGINAL weights (data pack section 6)
+  // augsd's subject list contains neither "exam" nor "timetable" and scores
+  // zero here, while academics scores exam(60) + timetable(40) with
+  // diminishing returns = 115.2.
+  //
+  // This test previously asserted `augsd`, which only passed because the first
+  // hand-written port had invented its own weights. See
+  // notes/CLASSIFIER_CORRECTION.md.
+  assert.equal(r.category, 'academics');
 });
 
 test('placement keywords beat generic ones', () => {
@@ -247,16 +261,31 @@ test('all patterns are lowercase (matching is case-folded)', () => {
   }
 });
 
-test('no sender pattern appears under two categories', () => {
-  // This is the class of bug that sent Placement Unit mail to Clubs.
-  const seen = new Map();
+test('a duplicated sender pattern is always won by the earlier rule', () => {
+  // This test used to assert that no pattern appears twice, on the belief that
+  // 'placement unit' being in both `clubs` and `internship` misfiled Placement
+  // Unit mail. That was wrong: `internship` is rule 7 and `clubs` is rule 11,
+  // so internship already won and the duplicate is simply unreachable.
+  // See notes/CLASSIFIER_CORRECTION.md.
+  //
+  // What is worth asserting is the property that made the duplicate harmless:
+  // first rule wins, so a duplicate can never change a classification.
+  const firstOwner = new Map();
+  const dupes = [];
   for (const r of SENDER_RULES) {
     for (const p of r.patterns) {
-      if (seen.has(p)) {
-        assert.fail(`"${p}" is in both ${seen.get(p)} and ${r.category}`);
-      }
-      seen.set(p, r.category);
+      const key = p.toLowerCase();
+      if (firstOwner.has(key)) dupes.push({ pattern: key, first: firstOwner.get(key), also: r.category });
+      else firstOwner.set(key, r.category);
     }
+  }
+  for (const d of dupes) {
+    const hit = classifyBySender(`Someone <x@pilani.bits-pilani.ac.in>`.replace('Someone', d.pattern), true);
+    assert.equal(
+      hit?.category,
+      d.first,
+      `duplicate "${d.pattern}" must resolve to the earlier rule ${d.first}, not ${d.also}`
+    );
   }
 });
 
@@ -286,4 +315,171 @@ test('classifying 500 messages is fast enough to be synchronous', () => {
   // bound so this is not flaky on a loaded CI box, but 200ms would still
   // catch a regression to per-message Promises.
   assert.ok(ms < 200, `took ${ms.toFixed(1)}ms`);
+});
+
+// ------------------------------------- fidelity to the data pack -----------
+//
+// These guard the two REAL bugs found by diffing src/classify against
+// CLASSIFICATION_DATA_PACK.md, plus the shape of the data itself. Unlike the
+// four claims in the first port, each of these was verified against the
+// authoritative export before being written. See notes/CLASSIFIER_CORRECTION.md.
+
+test('sender rule order matches the data pack exactly', () => {
+  // Order IS behaviour: first match wins. An "improvement" here silently
+  // reclassifies mail. A previous pass swapped external-services ahead of
+  // external-promotions and moved newsletter@substack.com between categories.
+  assert.deepEqual(
+    SENDER_RULES.map((r) => r.category),
+    [
+      'admin', 'library', 'ps', 'augsd', 'academics', 'administration',
+      'internship', 'external-promotions', 'external-services',
+      'competitions', 'clubs', 'events', 'spam',
+    ]
+  );
+});
+
+test('REAL BUG: senderExact is a substring test, not equality', () => {
+  // Data pack section 8: "If rule.senderExact && email includes any exact".
+  // The port used `fromLower === e`, which made every senderExact list
+  // unreachable -- 4 in internship, 4 in spam, 29 in technology, plus admin,
+  // augsd and ps. `technology` is driven entirely by that list, so technology
+  // mail scored zero and fell through to whatever matched next.
+  // Use a sender that stage 1 does NOT claim, so stage 2 actually runs.
+  // (`nvidia.com` is an external-services sender rule and short-circuits.)
+  const r = classify({
+    from: 'Weekly Digest <hello@some-dev-blog.io>',
+    subject: 'Release notes and new feature digest',
+    snippet: 'newsletter',
+  });
+  assert.equal(r.category, 'technology', 'senderExact must match as a substring');
+
+  // Direct proof at the unit level: 'nvidia' is a technology senderExact
+  // entry and could never equal a whole From header.
+  const tech = PATTERN_RULES.find((x) => x.category === 'technology');
+  assert.ok(tech.senderExact.includes('nvidia'));
+  assert.ok(
+    tech.senderExact.some((e) => 'nvidia developer <news@nvidia.com>'.includes(e)),
+    'substring semantics are what make this list reachable'
+  );
+});
+
+test('REAL BUG: an external sender cannot match an internal BITS rule', () => {
+  // Data pack section 8, STEP 2, second half of the filter:
+  //   If !isBits && category NOT external- && !== "spam" -> SKIP
+  // Without it a stranger sending as "Placement Office <careers@evil.example>"
+  // was presented to the student as internal placement mail. That is a
+  // phishing shape, in the category a student is most likely to act on.
+  assert.equal(
+    classifyBySender('Placement Office <careers@evil.example>', false),
+    null,
+    'stage 1 must not match an internal rule for an external sender'
+  );
+  // And the same sender still matches genuinely external buckets.
+  assert.equal(classifyBySender('newsletter@evil.example', false)?.category, 'external-promotions');
+
+  // The genuine internal one still works.
+  const ok = classify({
+    from: 'Placement Unit <pu@pilani.bits-pilani.ac.in>',
+    subject: 'Campus recruitment drive',
+    snippet: 'apply now',
+  });
+  assert.equal(ok.category, 'internship');
+});
+
+test('a BITS sender cannot be classified as an external category', () => {
+  // The other half of the same filter. A club mail whose footer says
+  // "unsubscribe" must stay a club mail.
+  for (const r of SENDER_RULES) {
+    if (!r.category.startsWith('external-')) continue;
+    for (const p of r.patterns.slice(0, 4)) {
+      const hit = classifyBySender(`${p} <x@pilani.bits-pilani.ac.in>`, true);
+      assert.ok(
+        !hit || !hit.category.startsWith('external-'),
+        `BITS sender matched external pattern "${p}"`
+      );
+    }
+  }
+});
+
+test('every pattern rule weight is a positive number', () => {
+  // Cheap guard against a bad regeneration of the generated file.
+  for (const rule of PATTERN_RULES) {
+    for (const field of ['subjectWeights', 'snippetWeights']) {
+      for (const [k, v] of Object.entries(rule[field] || {})) {
+        assert.equal(typeof v, 'number', `${rule.category}.${field}.${k}`);
+        assert.ok(v > 0, `${rule.category}.${field}.${k} = ${v}`);
+      }
+    }
+  }
+});
+
+test('the pattern rule set survived the port at full size', () => {
+  // The first hand-written port shipped 89 keys where the source had 891.
+  // It read as deliberate and was documented as a faithful carry-over.
+  let keys = 0;
+  for (const r of PATTERN_RULES) {
+    keys += (r.senderExact || []).length + (r.senderContains || []).length;
+    keys += Object.keys(r.subjectWeights || {}).length;
+    keys += Object.keys(r.snippetWeights || {}).length;
+  }
+  assert.ok(keys >= 880, `only ${keys} pattern keys, expected ~891`);
+  assert.equal(PATTERN_RULES.length, 14);
+});
+
+// ------------------------------------ stage 0: exact address map -----------
+
+test('the 152 curated addresses are loaded and decisive', () => {
+  // The old repo shipped these in email-mappings/*.json and never read them.
+  // The data pack says so explicitly: "not loaded by the classifier code at
+  // runtime". Loading them is the largest accuracy win in the pack.
+  assert.ok(ADDRESS_MAP.size >= 150, `only ${ADDRESS_MAP.size} addresses`);
+
+  const cases = [
+    ['ad.swd@pilani.bits-pilani.ac.in', 'administration'],
+    ['psd@pilani.bits-pilani.ac.in', 'ps'],
+    ['registrar@bits-pilani.ac.in', 'admin'],
+  ];
+  for (const [addr, cat] of cases) {
+    const r = classify({ from: `Someone <${addr}>`, subject: 'anything at all' });
+    assert.equal(r.category, cat, addr);
+    assert.equal(r.source, 'address');
+    assert.equal(r.confidence, 0.98);
+  }
+});
+
+test('an exact address beats a conflicting subject line', () => {
+  // The point of stage 0: the address is a fact, the keywords are a guess.
+  const r = classify({
+    from: '<psd@pilani.bits-pilani.ac.in>',
+    subject: 'Hackathon registration and prize money',
+    snippet: 'competition contest register',
+  });
+  assert.equal(r.category, 'ps');
+  assert.equal(r.source, 'address');
+});
+
+test('address lookup is case-insensitive and tolerates display names', () => {
+  for (const from of [
+    'PSD@PILANI.BITS-PILANI.AC.IN',
+    'Practice School <PSD@Pilani.BITS-Pilani.ac.in>',
+    '<psd@pilani.bits-pilani.ac.in>',
+  ]) {
+    assert.equal(classify({ from, subject: 'x' }).category, 'ps', from);
+  }
+});
+
+test('every address in the map is lowercase and well-formed', () => {
+  for (const [addr, cat] of ADDRESS_MAP) {
+    assert.equal(addr, addr.toLowerCase(), addr);
+    assert.ok(addr.includes('@'), addr);
+    assert.ok(CATEGORIES.includes(cat), `${addr} -> unknown category ${cat}`);
+  }
+});
+
+test('the address map cannot be poisoned by prototype keys', () => {
+  // The address is attacker-controlled. A Map has no prototype chain to walk,
+  // which is why this is a Map and not an object literal.
+  for (const evil of ['__proto__', 'constructor', 'toString']) {
+    assert.equal(classify({ from: `<${evil}>`, subject: 'x' }).source !== 'address', true);
+  }
 });

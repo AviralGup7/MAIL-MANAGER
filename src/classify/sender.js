@@ -95,16 +95,24 @@ export function classifyBySender(from, isBits) {
     const r = FLAT_RULES[i];
     if (!haystack.includes(r.pattern)) continue;
 
-    // A BITS-internal sender that matched an EXTERNAL bucket is almost always
-    // a false positive — e.g. a club mail whose footer says "unsubscribe", or
-    // a department newsletter. Internal mail is never external promotions.
-    if (
-      isBits &&
-      (r.category === 'external-promotions' ||
-        r.category === 'external-services')
-    ) {
-      continue;
-    }
+    // The isBits filter, both halves of it. Data pack section 8, STEP 2:
+    //
+    //   If isBits && rule.category starts with "external-"          -> SKIP
+    //   If !isBits && category NOT external- && !== "spam"          -> SKIP
+    //
+    // The first half stops a BITS club mail whose footer says "unsubscribe"
+    // being filed as a promotion.
+    //
+    // The second half is the one this file was missing, and it matters more.
+    // Without it, an OUTSIDE sender can match an internal BITS rule purely on
+    // a display-name substring. Concretely: a stranger sending as
+    // "Placement Office <careers@spam.example>" matched the `internship` rule
+    // and was presented to the user as internal placement mail. That is a
+    // phishing shape, and it is the exact category a student is most likely to
+    // act on. External senders can now only reach external-* and spam.
+    const isExternalRule = r.category.startsWith('external-');
+    if (isBits && isExternalRule) continue;
+    if (!isBits && !isExternalRule && r.category !== 'spam') continue;
 
     return {
       category: r.category,

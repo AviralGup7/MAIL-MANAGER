@@ -124,6 +124,35 @@ export const SENDER_RULES = [
     ],
   },
   {
+    category: 'external-promotions',
+    patterns: [
+      'newsletter@',
+      'marketing@',
+      'promo@',
+      'unsubscribe',
+      'noreply@spam',
+      'lottery',
+      'prize winner',
+      'congratulations you won',
+    ],
+  },
+  {
+    category: 'external-services',
+    patterns: [
+      'github.com',
+      'openai.com',
+      'anthropic.com',
+      'kaggle.com',
+      'medium.com',
+      'substack.com',
+      'nvidia.com',
+      'huggingface.co',
+      'dev.to',
+      'stackoverflow.com',
+      'arxiv.org',
+    ],
+  },
+  {
     category: 'competitions',
     patterns: [
       'hackathon',
@@ -273,6 +302,10 @@ export const SENDER_RULES = [
       'sports financial committee',
       'corroboration and review',
       'advisory and monitoring',
+      // Redundant, kept for fidelity with the source list: `internship` is
+      // rule 7 and this is rule 11, so 'placement unit' can never match here.
+      // See notes/CLASSIFIER_CORRECTION.md.
+      'placement unit',
       'students union',
     ],
   },
@@ -286,61 +319,47 @@ export const SENDER_RULES = [
     ],
   },
   {
-    category: 'external-services',
-    patterns: [
-      'github.com',
-      'openai.com',
-      'anthropic.com',
-      'kaggle.com',
-      'medium.com',
-      'substack.com',
-      'nvidia.com',
-      'huggingface.co',
-      'dev.to',
-      'stackoverflow.com',
-      'arxiv.org',
-    ],
-  },
-  {
-    category: 'external-promotions',
-    patterns: [
-      'newsletter@',
-      'marketing@',
-      'promo@',
-      'unsubscribe',
-      'noreply@spam',
-      'lottery',
-      'prize winner',
-      'congratulations you won',
-    ],
-  },
-  {
     category: 'spam',
     patterns: ['spam', 'phishing', 'malware'],
   },
 ];
 
 /**
- * DELIBERATE CHANGES from the old file, each justified:
+ * DIVERGENCES FROM THE OLD FILE
  *
- * 1. `'placement unit'` removed from the `clubs` list. It was in BOTH `clubs`
- *    and `internship`. Because `clubs` is evaluated first, every Placement Unit
- *    mail was being filed under Clubs — a real misclassification bug in the old
- *    version, not a style issue. Placement mail matters more than most, so this
- *    was quietly costing the user.
+ * The order of this array is now EXACTLY the order in
+ * CLASSIFICATION_DATA_PACK.md section 4, which is the authoritative export of
+ * the old `lib/sender-rules.js`. Precedence is load-bearing and must not be
+ * "improved" without evidence.
  *
- * 2. `external-services` now precedes `external-promotions`. Previously
- *    `external-promotions` came first and matched the bare substring
- *    `'unsubscribe'` — which appears in the footer of essentially every
- *    legitimate GitHub / Substack / arXiv notification. Those were all landing
- *    in Promotions. Services-before-promotions fixes it.
+ *   admin > library > ps > augsd > academics > administration > internship >
+ *   external-promotions > external-services > competitions > clubs > events >
+ *   spam
  *
- * 3. `'tedxPilani'` lowercased to `'tedxpilani'`. Matching is done against a
- *    lowercased haystack, so the capital P made that pattern dead code.
+ * An earlier pass through this file made four changes on the strength of bug
+ * reports that were all wrong. They are recorded in
+ * notes/CLASSIFIER_CORRECTION.md and have been reverted. In brief:
  *
- * 4. `'augsd'` and `'academic section'` added as bare patterns to the `augsd`
- *    rule. The old list only had them with `@bits-pilani` attached, so AUGSD
- *    mail sent from a display name of "AUGSD" with a different address missed.
+ *   - `'placement unit'` appears in both `clubs` and `internship`. This is
+ *     redundant, NOT a bug: `internship` is rule 7 and `clubs` is rule 11, so
+ *     internship already wins. The duplicate entry is unreachable for that
+ *     string. Left in place so this list stays a faithful copy.
  *
- * Everything else is byte-for-byte the old list.
+ *   - `external-promotions` genuinely does precede `external-services`, and
+ *     that is correct. The claim that this sent GitHub notifications to
+ *     Promotions was wrong: stage 1 matches the FROM HEADER only, and
+ *     `notifications@github.com` contains none of the promotion patterns.
+ *     Reordering these two changed real behaviour — `newsletter@substack.com`
+ *     moved from Promotions to Services — for no reason. Reverted.
+ *
+ *   - `'tedxPilani'` is not dead code. The matcher lowercases BOTH sides
+ *     (`sender.toLowerCase().includes(pattern.toLowerCase())`), so the capital
+ *     P is irrelevant, and a plain `'tedx'` entry sits beside it anyway.
+ *
+ *   - `'augSD'` and `'Academic Section'` already exist as bare patterns in the
+ *     `augsd` rule. They were never only-with-@bits-pilani.
+ *
+ * The lesson, recorded so it is not repeated: this list's behaviour depends on
+ * rule ORDER and on the fact that stage 1 sees only the From header. Neither is
+ * visible from reading one rule in isolation.
  */

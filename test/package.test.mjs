@@ -138,3 +138,36 @@ test('the body iframe never gets allow-scripts or allow-same-origin', () => {
   assert.ok(!sandbox.includes('allow-scripts'));
   assert.ok(!sandbox.includes('allow-same-origin'));
 });
+
+test('generated classifier files are in sync with the data pack', () => {
+  // pattern-rules.js and address-map.js are GENERATED from
+  // docs/CLASSIFICATION_DATA_PACK.md. If someone edits either by hand, or
+  // edits the pack without regenerating, classification silently diverges from
+  // the source of truth -- which is exactly how the first port ended up with
+  // 89 of 891 keys while claiming to be a faithful copy.
+  const pack = read('docs/CLASSIFICATION_DATA_PACK.md');
+
+  // Section 6 -> pattern-rules.js
+  const block = pack.slice(pack.indexOf('## 6. Pattern Rule Definitions'), pack.indexOf('## 7. Email Mappings'));
+  let packKeys = 0;
+  for (const sec of block.split(/\n### /).slice(1)) {
+    const code = sec.match(/```js\n([\s\S]*?)```/)?.[1];
+    if (!code) continue;
+    const obj = new Function(`return (${code.replace(/export\s+default\s*/, '').trim().replace(/;$/, '')})`)();
+    packKeys += (obj.senderExact || []).length + (obj.senderContains || []).length;
+    packKeys += Object.keys(obj.subjectWeights || {}).length + Object.keys(obj.snippetWeights || {}).length;
+  }
+
+  const rulesSrc = read('src/classify/pattern-rules.js');
+  assert.ok(rulesSrc.includes('GENERATED FILE'), 'pattern-rules.js lost its generated banner');
+  assert.ok(packKeys > 800, `data pack parsed to only ${packKeys} keys`);
+
+  // Section 7 -> address-map.js
+  const mapBlock = pack.slice(pack.indexOf('## 7. Email Mappings'), pack.indexOf('## 8. Pipeline Logic'));
+  const packAddrs = new Set([...mapBlock.matchAll(/"email":\s*"([^"]+)"/g)].map((m) => m[1].toLowerCase()));
+  const mapSrc = read('src/classify/address-map.js');
+  assert.ok(mapSrc.includes('GENERATED FILE'), 'address-map.js lost its generated banner');
+
+  const missing = [...packAddrs].filter((a) => !mapSrc.includes(`'${a}'`));
+  assert.deepEqual(missing, [], `addresses in the pack but not the map: ${missing.slice(0, 5).join(', ')}`);
+});

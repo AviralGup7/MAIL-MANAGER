@@ -1,9 +1,15 @@
 /**
  * The classifier.
  *
- * Two stages, matching the old architecture because it was sound:
- *   1. sender rules — if the sender is known, we are done
+ * Three stages. Stages 1 and 2 match the old architecture because it was sound:
+ *   0. exact address map — 152 curated BITS addresses, O(1), decisive
+ *   1. sender substring rules — if the sender is recognised, we are done
  *   2. weighted keyword scoring across sender / subject / snippet
+ *
+ * Stage 0 is new. The old repo shipped `email-mappings/*.json` with 152
+ * hand-curated address→category pairs and never loaded them (the data pack
+ * confirms: "not loaded by the classifier code at runtime"). An exact address
+ * is a fact, not a heuristic, so it outranks every substring rule.
  *
  * WHAT CHANGED, and why it matters for speed:
  *
@@ -19,7 +25,8 @@
  */
 
 import { FALLBACK_CATEGORY } from './categories.js';
-import { classifyBySender, detectBitsSource } from './sender.js';
+import { classifyBySender, detectBitsSource, extractAddress } from './sender.js';
+import { lookupAddress } from './address-map.js';
 import { PATTERN_RULES } from './pattern-rules.js';
 import {
   FIELD_WEIGHTS,
@@ -34,7 +41,7 @@ import {
  * @typedef {Object} Classification
  * @property {string}  category
  * @property {number}  confidence   0..1
- * @property {'sender'|'pattern'|'fallback'} source
+ * @property {'address'|'sender'|'pattern'|'fallback'} source
  * @property {string}  reason       human-readable, shown in the UI
  * @property {string[]} hits        keywords that fired
  */
@@ -52,6 +59,20 @@ export function classify(msg) {
   const fromLower = from.toLowerCase();
 
   const { isBits } = detectBitsSource(from);
+
+  // ---- Stage 0: exact address --------------------------------------------
+  // Decisive and O(1). No ambiguity to resolve, so nothing downstream runs.
+  const address = extractAddress(from);
+  const exact = lookupAddress(address);
+  if (exact) {
+    return {
+      category: exact,
+      confidence: 0.98,
+      source: 'address',
+      reason: `Known address ${address}`,
+      hits: [address],
+    };
+  }
 
   // ---- Stage 1: sender ---------------------------------------------------
   const senderHit = classifyBySender(from, isBits);
@@ -84,9 +105,22 @@ export function classify(msg) {
     const hits = [];
 
     // Sender-level keyword hits are worth a large flat bonus, not a weight.
+    //
+    // NOTE ON `senderExact`: despite the name it is a SUBSTRING test, not an
+    // equality test. Data pack section 8 is explicit:
+    //   "If rule.senderExact && email includes any exact -> score += 80 * 1.5"
+    // and the entries confirm it -- `['placement unit', 'training and
+    // placement', 'tpo', 'placement office']` are display-name fragments that
+    // could never equal a whole From header.
+    //
+    // This file previously used `fromLower === e`, which made every
+    // senderExact list unreachable: 4 in internship, 4 in spam, 29 in
+    // technology, plus admin, augsd and ps. The entire `technology` category
+    // is driven by that list, so technology mail scored zero and fell through
+    // to whatever matched next.
     if (rule.senderExact) {
       for (const e of rule.senderExact) {
-        if (fromLower === e) {
+        if (fromLower.includes(e)) {
           score += SENDER_EXACT_BONUS * FIELD_WEIGHTS.sender;
           hasSenderMatch = true;
           hits.push(e);
