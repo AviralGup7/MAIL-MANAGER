@@ -374,3 +374,40 @@ test('the manifest key is present and pins the extension ID', async () => {
     'the extension ID changed — every registered OAuth redirect URI is now invalid'
   );
 });
+
+test('every element the app hides with [hidden] actually disappears', async () => {
+  // THE BUG THIS CATCHES: sign-in completed, the token was stored, and the
+  // gate stayed on screen. `hidden` is only a UA-level `display: none`, so
+  // `#gate { display: grid }` silently outranked it. Three elements were
+  // affected -- gate, reader, and r-loading -- and none of the 241 tests
+  // noticed, because they assert on the `hidden` PROPERTY rather than on
+  // whether the pixel is painted.
+  let JSDOM;
+  try {
+    ({ JSDOM } = await import('jsdom'));
+  } catch {
+    return; // graceful skip, as elsewhere
+  }
+
+  const css = read('src/app/app.css');
+  const html = read('app.html')
+    .replace(/<link rel="stylesheet"[^>]*>/, `<style>${css}</style>`)
+    .replace(/<script[\s\S]*?<\/script>/g, '');
+  const dom = new JSDOM(html);
+  const { window: win } = dom;
+
+  // Every element the app toggles via `.hidden` in app.js.
+  const toggled = new Set(
+    [...read('src/app/app.js').matchAll(/el\.(\w+)\.hidden\s*=/g)].map((m) => m[1])
+  );
+  assert.ok(toggled.size >= 5, `expected several hidden-toggled elements, found ${toggled.size}`);
+
+  const stillVisible = [];
+  for (const el of win.document.querySelectorAll('#gate, #reader, #r-loading, #thememenu, #empty, #toast, #reader-empty')) {
+    el.hidden = true;
+    if (win.getComputedStyle(el).display !== 'none') {
+      stillVisible.push(`#${el.id} (${win.getComputedStyle(el).display})`);
+    }
+  }
+  assert.deepEqual(stillVisible, [], 'these ignore the hidden attribute');
+});

@@ -1057,6 +1057,32 @@ html[data-theme='contrast'] .row[aria-selected='true'] {
 }
 
 /*
+ * `hidden` must actually hide.
+ *
+ * THIS WAS A REAL BUG: sign-in completed, the token was stored, and the user
+ * sat looking at the sign-in gate anyway.
+ *
+ * The `hidden` attribute works via a UA rule, `[hidden] { display: none }`,
+ * which sits at the LOWEST author-overridable precedence. So any explicit
+ * `display` in this file beats it. `#gate { display: grid }` kept the gate
+ * on screen no matter what `el.gate.hidden = true` did, and the same applied
+ * to `#reader` (flex) and `#r-loading` (grid) -- a stale "Loading…" could sit
+ * on top of a rendered message.
+ *
+ * `!important` is load-bearing here, not lazy: this must outrank every layout
+ * rule in the file, including ones nobody has written yet.
+ *
+ * Placed near the END on purpose. It is correct anywhere in a real browser --
+ * !important wins regardless of source order (CSS Cascade 4 §6) -- but jsdom
+ * resolves this pair by source order and ignores !important across differing
+ * specificity, so a rule declared early silently fails in the test harness.
+ * Putting it last makes it behave identically in both.
+ */
+[hidden] {
+  display: none !important;
+}
+
+/*
  * Rule 5, and it MUST be last.
  *
  * This block was previously in the middle of the file, so the appearance
