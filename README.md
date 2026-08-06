@@ -24,6 +24,32 @@ fixed. Everything else was rebuilt.
   deliberately a read-and-triage tool.
 - **Keyboard first:** `j`/`k` move, `Enter` open, `e` archive, `s` star, `u`
   unread, `#` delete, `r` refresh, `/` search, `Esc` back to Gmail.
+- **Six themes**, every one audited against WCAG AA in CI — Daylight,
+  Midnight, Pilani Dusk, Solarised, Nord, and a AAA High Contrast.
+
+## Themes
+
+Themes are **data**, in `src/app/themes.js`, not hand-written CSS blocks. That
+is what lets `npm run contrast` walk every text/surface pair in every theme and
+fail the build on a violation.
+
+It was worth doing. The first run found `--fg-faint` failing AA on every
+surface in **both** original themes — 2.95:1 on the light background, 2.72:1 on
+the sidebar — and that is the colour used for dates and snippets, which is most
+of the text in the message list. Nobody spots that by looking; the
+accessibility audit had listed contrast as "not yet measured".
+
+| Theme | Scheme | For |
+|---|---|---|
+| Daylight | light | The default. Neutral, high legibility. |
+| Midnight | dark | The neutral dark. |
+| Pilani Dusk | dark | BITS colours — warm sand on deep indigo. |
+| Solarised | light | Flat luminance, for long sessions. |
+| Nord | dark | Cool and desaturated. |
+| High Contrast | light | AAA, heavy borders. Low vision and direct sunlight. |
+
+Adding one is an object in `themes.js`; it appears in the picker automatically.
+Run `npm run contrast` before committing — CI runs it too.
 
 ---
 
@@ -217,12 +243,13 @@ src/
   app/app.css               3 durations, 2 easings.
   app/store.js              Incremental indexes, batched notification.
   app/cache.js              Persisted headers; the warm start.
+  app/themes.js             Six themes as DATA, so contrast can be audited.
   app/sanitize.js           DOMParser allow-list for untrusted mail bodies.
   classify/                 Categories, sender rules, pattern rules, scoring.
     address-map.js          GENERATED. 152 exact addresses (stage 0).
     pattern-rules.js        GENERATED. 891 keys, original weights.
   options/options.js
-test/                       206 tests. `npm test` · `npm run test:ci` (CI, fails on skips)
+test/                       230 tests. `npm test` · `npm run test:ci` (CI, fails on skips)
   app.integration.test.mjs  Boots the real app.html in jsdom and drives it.
   package.test.mjs          Fails if the manifest names a file that is absent.
 audits/                     Six audits of this codebase. Start at audits/README.md.
@@ -231,6 +258,7 @@ notes/SYNC_BUGS.md          Seven sync/render bugs found before shipping.
 notes/CLASSIFIER_CORRECTION.md  Four retracted bug claims, and what was really wrong.
 docs/CLASSIFICATION_DATA_PACK.md  Source of truth for every rule and weight.
 tools/make-icons.py         Deterministic icon generation.
+tools/check-contrast.mjs    WCAG AA audit of every theme. `npm run contrast`
 tools/make-preview.mjs      Builds preview.html — the UI on synthetic mail.
 tools/gen-pattern-rules.mjs Regenerates pattern-rules.js from the data pack.
 tools/gen-address-map.mjs   Regenerates address-map.js from the data pack.
@@ -240,7 +268,7 @@ No build step and no runtime dependencies. `npm test` runs `node --test test/`.
 
 `jsdom` is an optional devDependency used only by the integration tests. Without
 it they skip and the suite still passes; with it, `npm install && npm test`
-runs all 206.
+runs all 230.
 
 ### Seeing it without installing it
 
@@ -278,7 +306,7 @@ mis-file something the preview mis-files it too.
 
 ## Status
 
-Feature-complete. **206 tests pass**, including 27 that boot the real
+Feature-complete. **230 tests pass**, including 39 that boot the real
 `app.html` in a real DOM and drive it as a user would — click a row, type in
 search, press `j`/`k`, archive, star.
 

@@ -14,7 +14,7 @@ semantics while scoring higher on keyboard.
 
 ---
 
-## A-1 — SEVERE — the listbox/option ARIA tree is invalid, so the list is unreadable to a screen reader
+## A-1 — SEVERE — ✅ FIXED — the listbox/option ARIA tree is invalid, so the list is unreadable to a screen reader
 
 `app.html:73` declares the container:
 
@@ -103,7 +103,7 @@ in `release()`.
 
 ---
 
-## A-3 — MODERATE — the reading pane is a live region that will announce entire emails
+## A-3 — MODERATE — ✅ FIXED — the reading pane is a live region that will announce entire emails
 
 `app.html:79`
 
@@ -164,9 +164,13 @@ hidden rather than depending on `title`.
 
 ## Not yet verified
 
-- **Contrast ratios have not been measured.** The dark palette in particular
-  (`--fg-faint: #6d7484` on `--bg-raised: #171a20`) is a candidate for failing
-  AA on small text. Needs a contrast checker run over both themes.
+- ~~**Contrast ratios have not been measured.**~~ **RESOLVED, and the suspicion
+  was correct.** `tools/check-contrast.mjs` now audits every text/surface pair
+  in every theme, and CI fails on a violation. The first run found `--fg-faint`
+  failing AA on **every surface in both themes** — 2.95:1 and 2.72:1 against a
+  4.5:1 requirement — which is the colour used for dates and snippets. Fixed in
+  both, plus five near-misses found while adding four more themes, plus
+  `lineStrong` at 1.5:1 reading as decoration rather than structure.
 - **No screen reader has been run against this build.** All findings above are
   derived from the ARIA spec and the produced DOM, not from NVDA/VoiceOver
   output. A-1 in particular should be confirmed with a real reader before and
