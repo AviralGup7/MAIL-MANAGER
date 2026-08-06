@@ -33,6 +33,8 @@
  * the fix for a wrong bucket AND the mechanism that generates that corpus.
  */
 
+import { addressOf } from './contacts.js';
+
 const KEY = 'categoryRules';
 
 /**
@@ -118,11 +120,15 @@ export function isAutoArchived(rules, category) {
   return rules.autoArchive.includes(category);
 }
 
-/** The bare address out of a `Name <a@b>` header, lowercased. */
-export function addressOf(from) {
-  const m = /<([^>]+)>/.exec(String(from || ''));
-  return (m ? m[1] : String(from || '')).trim().toLowerCase();
-}
+/*
+ * Address parsing lives in contacts.js, which owns the concept. Re-exported
+ * so existing callers keep working, rather than keeping a fourth copy of a
+ * rule that was already duplicated three times.
+ *
+ * Imported AND re-exported: `export { x } from` alone creates no local
+ * binding, so the three internal callers below would throw at runtime.
+ */
+export { addressOf };
 
 /**
  * Record that a sender belongs in a different category than the classifier

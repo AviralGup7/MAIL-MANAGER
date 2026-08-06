@@ -493,13 +493,19 @@ test('newer_than includes the message at exactly the boundary', () => {
    *   - `isRealDate`'s first `&&` vs `||`: a rolled date still fails the day
    *     comparison, so the verdict is unchanged.
    */
-  const now = Date.now();
+  /*
+   * `now` is INJECTED. The first version called Date.now() in the test and
+   * let parseQuery capture its own a moment later, so the boundary moved by a
+   * millisecond under load — it passed alone and failed in the full suite.
+   * A test that races the clock is a flake, not a test.
+   */
+  const now = Date.UTC(2026, 2, 10, 9, 0);
   const dayMs = 86400000;
-  const parsed = parseQuery('newer_than:1d');
+  const parsed = parseQuery('newer_than:1d', now);
   assert.ok(parsed.predicate, 'newer_than should build a predicate');
 
   const exactlyOnBoundary = { date: now - dayMs, subject: '', from: '', snippet: '' };
-  const older = parseQuery('older_than:1d');
+  const older = parseQuery('older_than:1d', now);
 
   const inNewer = parsed.predicate(exactlyOnBoundary);
   const inOlder = older.predicate(exactlyOnBoundary);

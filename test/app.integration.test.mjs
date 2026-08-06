@@ -116,7 +116,8 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
           DRAFT: 'draft', STARRED: 'star' }[label] || 'other';
         const out = Array.from({ length: 3 }, (_, i) => ({
           id: `${tag}${i}`, threadId: `t${tag}${i}`,
-          from: `S${i} <s${i}@pilani.bits-pilani.ac.in>`,
+          // Sender encodes the mailbox, so a cross-store leak is detectable.
+          from: `S${i} <${tag}${i}@pilani.bits-pilani.ac.in>`,
           subject: `${tag} message ${i}`, snippet: 's',
           date: Date.now() - i * 60000, unread: false, starred: false, labels: ['INBOX'],
         }));
@@ -2160,6 +2161,75 @@ test('SEAM: selection does not survive a mailbox switch', async (t) => {
 
     const bar = doc.getElementById('bulk-bar');
     assert.ok(!bar || bar.hidden, 'the bulk bar survived a mailbox switch');
+  } finally {
+    restore();
+  }
+});
+
+/* ========================================================================== *
+ * ARCHITECTURAL BOUNDARIES
+ *
+ * `ctx` is the declared contract between app.js and features.js. It is the
+ * only sanctioned path across that boundary, so its correctness is structural
+ * rather than cosmetic.
+ * ========================================================================== */
+
+test('ARCH: ctx.store follows the active mailbox, it is not frozen to the inbox', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * `store` is a `let` rebound on every mailbox switch, but `ctx` was built
+   * once with `store,` — capturing the INBOX store by value forever. Every
+   * consumer in features.js then read the inbox regardless of what the user
+   * was looking at: the deadline radar scanned inbox mail while Trash was
+   * open, and contact autocomplete suggested inbox senders while composing
+   * from Sent.
+   *
+   * Publishing a live binding through a frozen object is the general form of
+   * this error; the getter is the general fix.
+   */
+  const { doc, win, settle, restore } = await boot({ perLabel: true });
+  try {
+    doc.querySelector('.cat[data-mailbox="sent"]').click();
+    await settle(8);
+
+    doc.getElementById('btn-compose').click();
+    await settle(6);
+
+    const to = doc.getElementById('c-to');
+    const suggestionsFor = async (text) => {
+      to.value = text;
+      to.dispatchEvent(new win.Event('input'));
+      await settle(6);
+      return [...doc.querySelectorAll('#c-to-list .ac-opt')].length;
+    };
+
+    // The `perLabel` fixture names senders after their mailbox.
+    assert.ok(await suggestionsFor('sent') > 0, 'Sent contacts should be offered');
+    assert.equal(
+      await suggestionsFor('inbox'), 0,
+      'inbox contacts were offered while composing from Sent — ctx.store is stale'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('ARCH: the test seam exposes the active store too', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // `window.__bmmStore` had the identical capture-by-value flaw, which would
+  // have made future tests silently assert against the wrong collection.
+  const { doc, win, settle, restore } = await boot({ perLabel: true });
+  try {
+    const inboxSize = win.__bmmStore.size;
+    doc.querySelector('.cat[data-mailbox="sent"]').click();
+    await settle(8);
+    const sentIds = win.__bmmStore.idsFor('all');
+    assert.ok(sentIds.length > 0, 'the seam should see the Sent store');
+    assert.ok(
+      sentIds.every((id) => id.startsWith('sent')),
+      `the seam still reports the inbox: ${JSON.stringify(sentIds.slice(0, 3))}`
+    );
+    assert.ok(inboxSize >= 0);
   } finally {
     restore();
   }

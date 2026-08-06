@@ -24,6 +24,7 @@
  */
 
 import { DAY_MS } from './deadlines.js';
+import { addressOf as addr } from './contacts.js';
 
 // Imported rather than redeclared. Two modules each defining their own
 // DAY_MS is legal under ES modules but is duplicated truth, and it broke the
@@ -202,10 +203,7 @@ export function describeQuery(parsed) {
 // ============================================================================
 
 /** Pull the bare address out of a header value. */
-function addr(v) {
-  const m = String(v || '').match(/<([^>]+)>/);
-  return (m ? m[1] : String(v || '')).trim().toLowerCase();
-}
+// `addr` is contacts.js's addressOf, imported above — one definition.
 
 /** Split a comma-separated address header, respecting quoted display names. */
 function splitAddrs(v) {

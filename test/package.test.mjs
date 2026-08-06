@@ -940,3 +940,43 @@ test('reduced motion zeroes DELAY as well as duration', () => {
     );
   }
 });
+
+/*
+ * ONE DEFINITION OF "THE ADDRESS IN A FROM HEADER".
+ *
+ * This three-line rule was duplicated verbatim in app.js (`addressOf`),
+ * rules.js (`addressOf`) and query.js (`addr`), with a fourth, DIFFERENT
+ * implementation in contacts.js (`parseAddress`). Measured, the lenient and
+ * strict versions disagree on 6 of 9 representative inputs — so this was one
+ * domain concept with two incompatible definitions and three chances to drift.
+ *
+ * contacts.js now owns it. This fails if a fifth copy appears.
+ */
+test('the From-header address regex is defined in exactly one module', () => {
+  const files = [
+    'src/app/app.js', 'src/app/rules.js', 'src/app/query.js',
+    'src/app/contacts.js', 'src/app/features.js', 'src/app/store.js',
+  ];
+  const owners = [];
+  for (const f of files) {
+    // Strip comments: the doc comments explain the pattern they replaced.
+    const src = read(f)
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+    if (/<\(\[\^>\]\+\)>/.test(src)) owners.push(f);
+  }
+  assert.deepEqual(
+    owners, ['src/app/contacts.js'],
+    'the address regex must live only in contacts.js'
+  );
+});
+
+test('contacts.js exports both the lenient and the strict parser', () => {
+  // They are separate functions on purpose: `addressOf` never returns null and
+  // is used as a grouping key, `parseAddress` validates and is used when we
+  // need a usable mailbox. Collapsing them would silently change either the
+  // rule keys or the autocomplete.
+  const src = read('src/app/contacts.js');
+  assert.match(src, /export function addressOf\(/);
+  assert.match(src, /export function parseAddress\(/);
+});

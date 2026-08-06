@@ -34,6 +34,7 @@ import { loadViews, saveView, removeView } from './views.js';
 import { extractDeadline, relativeLabel, urgency } from './deadlines.js';
 import { parseQuery, buildReply } from './query.js';
 import * as settings from './settings.js';
+import { addressOf } from './contacts.js';
 import { renderShortcuts } from './shortcuts.js';
 import {
   MAILBOXES, DEFAULT_MAILBOX, getMailbox, isMailbox, showsCategories, actionsFor,
@@ -1148,10 +1149,7 @@ async function allowSenderImages(address, storage = chrome.storage?.local) {
 }
 
 /** The bare address out of a `Name <a@b>` header. */
-function addressOf(from) {
-  const m = /<([^>]+)>/.exec(String(from || ''));
-  return (m ? m[1] : String(from || '')).trim().toLowerCase();
-}
+// addressOf now lives in contacts.js; imported above.
 
 /**
  * Decide whether this message may load remote images, and render it.
@@ -2929,7 +2927,25 @@ function cancelPendingWork() {
  * known set of functions.
  */
 const ctx = {
-  store,
+  /*
+   * A GETTER, NOT A CAPTURED VALUE.
+   *
+   * THIS WAS A REAL BUG. `store` is a `let` rebound on every mailbox switch
+   * (`store = wireStore(id)`), but `ctx` was built once at module load with
+   * `store,` — capturing the INBOX store by value, permanently. Every consumer
+   * in features.js then read the inbox no matter what the user was looking at:
+   * the deadline radar scanned inbox mail while Trash was open, and contact
+   * autocomplete suggested inbox senders while composing from Sent. Verified
+   * by driving the real app.
+   *
+   * The class of error is publishing a live binding through a frozen object.
+   * `state` and `el` beside it are safe because they are `const` objects
+   * mutated in place — only `store` is ever REASSIGNED, and only it needs the
+   * indirection. A test pins this.
+   */
+  get store() {
+    return store;
+  },
   state,
   send,
   toast,
@@ -2954,7 +2970,9 @@ const ctx = {
 };
 
 window.__bmmIngest = ingest;
-window.__bmmStore = store;
+// Same live-binding hazard as ctx.store: defined as a getter so a harness
+// inspecting it after a mailbox switch sees the ACTIVE store, not the inbox.
+Object.defineProperty(window, '__bmmStore', { get: () => store, configurable: true });
 /*
  * Teardown seam.
  *

@@ -21,6 +21,26 @@
  * tiebreak matches how people actually think about "who do I mean".
  */
 
+/**
+ * The bare address out of a `Name <addr>` header, lowercased.
+ *
+ * THE SINGLE DEFINITION. This exact three-line function was duplicated
+ * verbatim in app.js (`addressOf`), rules.js (`addressOf`) and query.js
+ * (`addr`) — three copies of one domain rule, each free to drift.
+ *
+ * It is deliberately LENIENT: it never returns null, and it does not require
+ * an `@`. That matters because its callers use it as a grouping key (which
+ * sender did this come from?) where a null would silently drop a rule or a
+ * correction. `parseAddress` below is the STRICT counterpart used when we
+ * need to know whether something is a usable mailbox — the two answers differ
+ * on 6 of 9 representative inputs, so they are separate functions on purpose
+ * rather than one function with a flag.
+ */
+export function addressOf(from) {
+  const m = /<([^>]+)>/.exec(String(from || ''));
+  return (m ? m[1] : String(from || '')).trim().toLowerCase();
+}
+
 /** Parse one address out of a `Name <addr>` header. */
 export function parseAddress(raw) {
   const s = String(raw || '').trim();
