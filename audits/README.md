@@ -1,6 +1,6 @@
 # Audits
 
-Eight audits of the v2 codebase. The first six were written after the build was
+Nine audits of the v2 codebase. The first six were written after the build was
 feature-complete and before it had ever run in a browser; 07 and 08 are
 competitive gap analyses against Gmail, and 06 carries the record of thirteen
 autonomous defect-hunting cycles.
@@ -19,6 +19,7 @@ are retracted in place rather than deleted.
 | [06](06-TESTING.md) | Testing + 13 defect-hunt cycles | 5 + 11 | Sign-out undone by an in-flight token renewal (security); sign-out left every other mailbox populated |
 | [07](07-GMAIL-COMPETITIVE.md) | Gmail competitive gap (v0.9) | 40+ | Remote and inline images are both silently broken; no Sent/Drafts/Trash; no threading |
 | [08](08-GMAIL-COMPETITIVE-V2.md) | Gmail competitive gap (v1.0) | 35+ | Four settings declared and never read; two verbs still unreachable; threading is the last true gap. **§10 third pass:** shift-range could not shrink; one-row updates re-walked 2000 rows (549ms → 8.1ms) |
+| [09](09-ARCHITECTURE-POST-CHANGE.md) | Post-change architecture | 4 | `ctx.store` frozen to the inbox; one domain concept with four implementations; `app.js` at 27% of the codebase |
 
 Actions are consolidated and prioritised in [`../TODO.md`](../TODO.md).
 
