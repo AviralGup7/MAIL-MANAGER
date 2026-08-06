@@ -148,59 +148,65 @@ Redirect URI : https://dgeanijfllibcphbblkhacjcbdehihcp.chromiumapp.org/
 Options page now shows both the URI and the live extension ID, and turns the ID
 red if it is not the expected one.
 
-## "Token exchange failed (400)" — the client is the wrong TYPE
+## Sign-in: I sent you down a dead end, twice. Here is the settled answer.
 
-Your client ID is fine. The **application type** is wrong, and my setup
-instructions caused it: they said to create a **Web application** client.
-
-Google classes a Web application client as a **confidential** client, which
-means it demands a `client_secret` on the token exchange — even when PKCE is
-used. This build deliberately ships no secret (that is the entire point of the
-PKCE rewrite, after v1 leaked one). So Google answers:
-
-```
-400 {"error":"invalid_client","error_description":"client_secret is missing."}
-```
-
-### Fix — create a Chrome Extension client instead
+**Do this:**
 
 1. <https://console.cloud.google.com/apis/credentials>
-2. **Create credentials → OAuth client ID**
-3. Application type: **Chrome Extension** ← not Web application
-4. **Item ID**: paste your extension ID
+2. **Create credentials → OAuth client ID → Web application**
+   (yes, "Web application", even for an extension — see below)
+3. **Authorized redirect URIs** → add exactly, trailing slash included:
 
    ```
-   dgeanijfllibcphbblkhacjcbdehihcp
+   https://dgeanijfllibcphbblkhacjcbdehihcp.chromiumapp.org/
    ```
-5. Copy the new client ID into the extension's Options and sign in again.
+4. **OAuth consent screen → Test users** → add your BITS address
+5. Paste the client ID into the extension's Options. Ignore the client secret.
+6. `git pull`, reload the extension, sign in.
 
-A Chrome Extension client is a **public** client: no secret, PKCE accepted, and
-it is matched by extension ID so there is no redirect URI to register at all.
-The old Web application client can be deleted.
+### What I got wrong
 
-Also make sure your BITS address is listed under **OAuth consent screen → Test
-users**, or consent is refused before the exchange even happens.
+I told you to switch the client to type **Chrome Extension**. That was wrong,
+and it is why you then got `invalid_request`. Google's own extensions DevRel
+has confirmed that Chrome Extension clients only support `getAuthToken`-style
+flows and reject `chromiumapp.org` redirects.
 
-### And the reason this was hard to diagnose
+Before that I told you to use **Web application** with PKCE. Also wrong:
+Google's token endpoint requires `client_secret` for
+`grant_type=authorization_code` on that client type, and **PKCE does not exempt
+you**.
 
-The error you saw was the whole message. `Token exchange failed (400).` threw
-away Google's response body — the one field that says *which* of three
-unrelated setup mistakes occurred. That was my bug, not a Google limitation.
+My error message made it worse. It matched on the error *code* and ignored the
+*description*, so `invalid_request` + *"client_secret is missing."* printed
+advice about trailing spaces in the client ID. The description was the entire
+signal and the code threw it away.
 
-Errors now read the body and translate it into an action, e.g.:
+### The real constraint
 
-> Google rejected the sign-in: invalid_client (client_secret is missing.)
->
-> Your OAuth client is a "Web application" type, which Google treats as a
-> confidential client and requires a client secret for — even with PKCE. This
-> extension deliberately ships no secret.
->
-> FIX: in Google Cloud Console create a NEW OAuth client ID of type
-> "Chrome Extension", paste your extension ID into it, and use that client ID
-> here instead.
+| Route | Result |
+|---|---|
+| Web application + PKCE, no secret | `400` — *"client_secret is missing."* |
+| Chrome Extension client | Rejects `chromiumapp.org` redirects |
+| `chrome.identity.getAuthToken` | Chrome-only — dead in Brave |
 
-Six tests cover the translation, including one asserting that no failure
-message is ever again a bare status code.
+Every code-exchange route demands a secret. **This is the same wall v1 hit**,
+and v1's answer was to hardcode the secret — which is how it ended up published
+in a public repository. I spent this entire rewrite criticising that decision
+without first establishing that the alternative actually works.
+
+### What now ships
+
+`response_type=token` — the implicit flow. The token comes back in the redirect
+fragment, there is no token-endpoint call, so no secret can be demanded.
+
+**The trade:** tokens last one hour and there is no refresh token. Renewal is
+silent — `prompt=none` with `interactive: false` mints a new token with no UI
+while your Google session is alive. You consent once and should never see a
+popup again.
+
+**Not a security downgrade.** A one-hour token that cannot be refreshed is a
+smaller prize than a refresh token granting `gmail.modify` indefinitely, which
+is what the PKCE design would have written to disk.
 
 ## Still to check once it loads
 
