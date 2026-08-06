@@ -189,6 +189,21 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
 }
 
 const rows = (doc) => [...doc.querySelectorAll('#list .row')];
+
+/**
+ * Wait for departing rows to finish leaving.
+ *
+ * Archived, deleted and snoozed rows animate out (see `dismissRow`), so they
+ * remain in the DOM for ~140ms after the store has already dropped them.
+ * Counting rows immediately after an archive therefore measures mid-flight
+ * state. Filtering is unaffected — a filtered row is removed synchronously,
+ * because nothing happened to the message.
+ */
+const settled = async (doc, settle) => {
+  await new Promise((r) => setTimeout(r, 260));
+  await settle(4);
+  return rows(doc);
+};
 const rowText = (doc) => rows(doc).map((r) => r.querySelector('.r-subj').textContent);
 
 // --------------------------------------------------------------------------
@@ -446,7 +461,8 @@ test('archiving removes the row and selects a neighbour', async (t) => {
     doc.querySelector('#r-actions button[data-act="archive"]').click();
     await settle();
 
-    assert.equal(rows(doc).length, 2, 'archived row should be gone');
+    // The row animates out, so it lingers ~140ms after the store drops it.
+    assert.equal((await settled(doc, settle)).length, 2, 'archived row should be gone');
     assert.ok(!rowText(doc).includes('Registration for Semester II'));
     assert.ok(calls.some((c) => c.type === 'ARCHIVE' && c.id === 'm1'));
     // The reading pane should have moved on, not gone blank.
@@ -1030,7 +1046,7 @@ test('CTX: archive from the toolbar removes the row', async (t) => {
     doc.getElementById('ctx-archive').click();
     await settle();
 
-    assert.equal(rows(doc).length, before - 1);
+    assert.equal((await settled(doc, settle)).length, before - 1);
   } finally {
     restore();
   }
@@ -1232,8 +1248,7 @@ test('BULK: archiving many undoes as ONE step', async (t) => {
 
     doc.getElementById('bulk-archive').click();
     await settle();
-    await settle();
-    assert.equal(rows(doc).length, 5, 'three removed');
+    assert.equal((await settled(doc, settle)).length, 5, 'three removed');
     assert.match(doc.getElementById('toast').textContent, /Archived 3 messages/);
 
     doc.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
@@ -2272,4 +2287,109 @@ test('ARCH: settings are loaded before anything reads one', async () => {
   const firstGet = src.indexOf('settings.get(', bootAt);
   assert.ok(loadAt > 0, 'boot() must load settings');
   assert.ok(loadAt < firstGet, 'loadSettings() must precede the first settings.get()');
+});
+
+/* ========================================================================== *
+ * DELIGHT — rows leave, they do not vanish
+ *
+ * Archiving is the most repeated gesture in the product and had NO motion:
+ * rows animated in with a staggered cascade and disappeared mid-frame on the
+ * way out. Somebody designed arrival; nobody designed departure.
+ *
+ * The correctness risk in animating a removal is stranding the node, so these
+ * pin both halves: it must linger long enough to be seen, and it must always
+ * be cleaned up.
+ * ========================================================================== */
+
+test('DELIGHT: an archived row animates out instead of vanishing', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, win, settle, restore } = await boot();
+  try {
+    const before = rows(doc).length;
+    rows(doc)[0].click();
+    await settle(4);
+
+    doc.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'e', bubbles: true }));
+    await settle(6);
+
+    const leaving = doc.querySelectorAll('#list .row.leaving');
+    assert.equal(leaving.length, 1, 'the departing row should be marked and still present');
+    assert.ok(
+      doc.getElementById('list').contains(leaving[0]),
+      'it must remain IN the list while animating, or the motion is invisible'
+    );
+    assert.equal(rows(doc).length, before, 'it has not been removed yet');
+  } finally {
+    restore();
+  }
+});
+
+test('DELIGHT: the departing row is always cleaned up', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // The failure mode of animated removal is a stranded node. `dismissRow` uses
+  // a timeout as the real mechanism and `animationend` only as an
+  // optimisation, because animations do not fire in a background tab or under
+  // reduced motion.
+  const { doc, win, settle, restore } = await boot();
+  try {
+    const before = rows(doc).length;
+    rows(doc)[0].click();
+    await settle(4);
+    doc.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'e', bubbles: true }));
+
+    await new Promise((r) => setTimeout(r, 350));
+    await settle(4);
+
+    assert.equal(rows(doc).length, before - 1, 'the row must actually go');
+    assert.equal(doc.querySelectorAll('.leaving').length, 0, 'no stranded nodes');
+  } finally {
+    restore();
+  }
+});
+
+test('DELIGHT: a departing row cannot be addressed by the keyboard', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * The row lingers in the DOM but is removed from `nodeById` immediately, so
+   * `move()` (j/k), `patchRow()` and the selection can never target something
+   * on its way out. Without that, pressing `j` during the animation would
+   * select a message that no longer exists.
+   */
+  const { doc, win, settle, restore } = await boot();
+  try {
+    rows(doc)[0].click();
+    await settle(4);
+    const archivedSubject = doc.getElementById('r-subject').textContent;
+
+    doc.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'e', bubbles: true }));
+    await settle(6);
+    doc.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'j', bubbles: true }));
+    await settle(4);
+
+    assert.notEqual(
+      doc.getElementById('r-subject').textContent, archivedSubject,
+      'j selected the message that was being archived'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('DELIGHT: bulk archive does not strand any of its rows', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Several rows depart at once; each gets its own timer.
+  const { doc, win, settle, restore } = await boot();
+  try {
+    doc.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true }));
+    await settle(4);
+    doc.getElementById('bulk-archive')?.click();
+
+    await new Promise((r) => setTimeout(r, 400));
+    await settle(6);
+
+    assert.equal(rows(doc).length, 0, 'every selected row should be gone');
+    assert.equal(doc.querySelectorAll('.leaving').length, 0, 'no stranded nodes');
+  } finally {
+    restore();
+  }
 });

@@ -490,14 +490,51 @@ function renderList() {
     }
     frag.appendChild(node); // appendChild moves an existing node — no re-create
   }
-  el.list.replaceChildren(frag);
 
-  for (const [id, node] of nodeById) {
-    if (!seen.has(id)) {
+  /*
+   * DEPARTING ROWS ARE CLAIMED BEFORE THE REBUILD, NOT AFTER.
+   *
+   * `replaceChildren` below detaches every node that is not in `frag` —
+   * including the ones being archived. Animating them after that point is
+   * invisible, because they are no longer in the document. (Found the hard
+   * way: the exit animation ran on orphaned nodes and the user saw nothing.)
+   *
+   * So each departing row is pulled out of `nodeById` here, appended to the
+   * fragment so it survives the swap, and handed to `dismissRow` to leave
+   * under its own animation. It is removed from the index immediately, so
+   * `move()`, `patchRow()` and the selection can never address a row that is
+   * on its way out.
+   */
+  for (const [id, node] of [...nodeById]) {
+    if (seen.has(id)) continue;
+    nodeById.delete(id);
+
+    /*
+     * ONLY A REAL DEPARTURE ANIMATES.
+     *
+     * A row disappears for two very different reasons, and they should not
+     * look the same:
+     *
+     *   REMOVED  — archived, deleted, snoozed. The message left the mailbox.
+     *              That is an action the user performed, and it earns motion.
+     *   FILTERED — a category was clicked, a search was typed, a mailbox was
+     *              switched. Nothing happened TO the message; the view simply
+     *              shows something else now. Animating these makes changing
+     *              filters feel laggy, and it briefly leaves stale rows on
+     *              screen next to the new ones.
+     *
+     * The distinction is whether the store still holds the message. If it
+     * does, this is a filter and the row goes immediately.
+     */
+    if (store.get(id)) {
       node.remove();
-      nodeById.delete(id);
+      continue;
     }
+    frag.appendChild(node);
+    dismissRow(node);
   }
+
+  el.list.replaceChildren(frag);
 
   // Stagger the FIRST populated render only.
   //
@@ -609,6 +646,34 @@ function setSkeleton(on) {
   }
   el.skeleton.hidden = !on;
   el.list.hidden = on;
+}
+
+/**
+ * Let a removed row leave, instead of deleting it mid-frame.
+ *
+ * CORRECTNESS FIRST: the node is removed on `animationend`, but that event is
+ * not guaranteed — reduced motion zeroes the duration, a background tab may
+ * not run animations at all, and the row may be detached by a re-render before
+ * it finishes. A timeout slightly longer than the animation is therefore the
+ * actual removal mechanism, and `animationend` is only an optimisation that
+ * removes it sooner.
+ *
+ * Both paths funnel through one idempotent `done()`, so a row can never be
+ * removed twice and can never be left behind.
+ */
+function dismissRow(node) {
+  let finished = false;
+  const done = () => {
+    if (finished) return;
+    finished = true;
+    clearTimeout(timer);
+    node.remove();
+  };
+  // 220ms: --dur-fast is 140ms, and the margin covers a frame or two of
+  // scheduling jitter without leaving a ghost row visible.
+  const timer = setTimeout(done, 220);
+  node.addEventListener('animationend', done, { once: true });
+  node.classList.add('leaving');
 }
 
 function sameOrder(a, b) {

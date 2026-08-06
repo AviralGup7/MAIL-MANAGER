@@ -1712,6 +1712,45 @@ html[data-theme='contrast'] .row[aria-selected='true'] {
 }
 
 /*
+ * ROWS LEAVE, THEY DO NOT VANISH.
+ *
+ * Rows animated IN with a staggered cascade and disappeared mid-frame on
+ * archive — somebody designed arrival and nobody designed departure. Triage is
+ * almost entirely departure: it is the single most repeated gesture in the
+ * product.
+ *
+ * The row slides in the direction it conceptually went (left = filed away),
+ * fades, and collapses its own height so the rows beneath GLIDE up rather than
+ * jump. Without the height collapse the next message teleports under the
+ * cursor, which is why the list currently loses your place.
+ *
+ * `max-height` is animated here, which the motion rules normally forbid for
+ * scroll-path work. It is correct in this one case: the element is leaving, it
+ * is a single row rather than a list, and the alternative — FLIP-animating
+ * every row below it — is far more expensive for an identical result.
+ * `pointer-events: none` stops a departing row swallowing the click meant for
+ * the row that is moving up into its place.
+ */
+.row.leaving {
+  animation: row-out var(--dur-fast) var(--ease-out) both;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+@keyframes row-out {
+  from {
+    opacity: 1;
+    transform: none;
+    max-height: 96px;
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(-14px, 0, 0);
+    max-height: 0;
+  }
+}
+
+/*
  * The radar items get the same treatment, offset so the sidebar settles a
  * beat after the list. Layered timing is what makes an interface feel
  * composed rather than simultaneous.
