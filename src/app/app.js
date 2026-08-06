@@ -1709,6 +1709,34 @@ async function act(action, id) {
       });
       break;
     }
+    /*
+     * SPAM, both directions, decided by WHERE YOU ARE.
+     *
+     * "Report spam" is meaningless on a message already sitting in Spam, so
+     * in that mailbox the same action rescues instead. One verb the user
+     * thinks of as "this is / is not junk", resolved from context rather than
+     * from two buttons they have to choose between.
+     *
+     * Undo matters more here than for archive: reporting the wrong sender
+     * trains Gmail against a correspondent you actually want.
+     */
+    case 'spam': {
+      const rescuing = state.mailbox === 'spam';
+      const snapshot = { ...m };
+      selectNeighbourThen(id);
+      store.remove(id);
+      const verb = rescuing ? 'NOT_SPAM' : 'SPAM';
+      const undoVerb = rescuing ? 'SPAM' : 'NOT_SPAM';
+      send(verb, { id }).catch(() => {
+        store.upsert(snapshot);
+        toast(rescuing ? 'Could not rescue' : 'Could not report spam', { kind: 'error' });
+      });
+      recordUndo(ctx, rescuing ? 'Moved out of spam' : 'Reported spam', async () => {
+        store.upsert(snapshot);
+        await send(undoVerb, { id });
+      });
+      break;
+    }
   }
 }
 
@@ -3018,6 +3046,11 @@ document.addEventListener('keydown', (e) => {
     case '#':
       if (state.selected) act('trash', state.selected);
       break;
+    // Gmail's own binding for report-spam, so the muscle memory carries over.
+    // In the Spam mailbox it rescues instead -- see act('spam').
+    case '!':
+      if (state.selected) act('spam', state.selected);
+      break;
     case 'r':
       refresh();
       break;
@@ -3120,6 +3153,19 @@ function syncReaderActions() {
     const act = btn.dataset.act;
     // `unread` is always available; the rest are mailbox-dependent.
     btn.hidden = act in allowed ? !allowed[act] : false;
+  }
+
+  /*
+   * The spam control is one button with two meanings, resolved by mailbox.
+   * "Report spam" on something already in Spam is a control that lies about
+   * what it will do, and a second button for the inverse would make the user
+   * choose between two things they think of as one.
+   */
+  const spamBtn = bar.querySelector('button[data-act="spam"]');
+  if (spamBtn) {
+    const rescuing = Boolean(allowed.notSpam);
+    spamBtn.textContent = rescuing ? 'Not spam' : 'Report spam';
+    spamBtn.title = rescuing ? 'Move back to the inbox (!)' : 'Report spam (!)';
   }
 }
 
@@ -3254,12 +3300,12 @@ async function bulkAct(kind) {
   const n = ids.length;
   const noun = n === 1 ? 'message' : 'messages';
 
-  const removal = kind === 'archive' || kind === 'trash';
+  const removal = kind === 'archive' || kind === 'trash' || kind === 'spam';
   if (removal && state.selected && ids.includes(state.selected)) closeReader();
 
   store.batch(() => {
     for (const id of ids) {
-      if (kind === 'archive' || kind === 'trash') store.remove(id);
+      if (kind === 'archive' || kind === 'trash' || kind === 'spam') store.remove(id);
       else if (kind === 'read') store.patch(id, { unread: false });
       else if (kind === 'star') store.patch(id, { starred: true });
     }
@@ -3267,13 +3313,19 @@ async function bulkAct(kind) {
   selection.clear();
   renderSelection();
 
-  const verb = { archive: 'Archived', trash: 'Deleted', read: 'Marked read', star: 'Starred' }[kind];
+  const verb = {
+    archive: 'Archived', trash: 'Deleted', read: 'Marked read',
+    star: 'Starred', spam: 'Reported',
+  }[kind];
 
   try {
     if (kind === 'archive') await send('BULK', { ids, remove: ['INBOX'] });
     else if (kind === 'trash') await send('BULK', { ids, add: ['TRASH'], remove: ['INBOX'] });
     else if (kind === 'read') await send('BULK', { ids, remove: ['UNREAD'] });
     else if (kind === 'star') await send('BULK', { ids, add: ['STARRED'] });
+    // Junk arrives in batches, so reporting it one message at a time is
+    // exactly the friction this product exists to remove.
+    else if (kind === 'spam') await send('BULK', { ids, add: ['SPAM'], remove: ['INBOX'] });
   } catch (err) {
     // Roll the whole batch back. A partial apply would leave the list
     // disagreeing with Gmail with no indication which half won.
@@ -3292,6 +3344,7 @@ async function bulkAct(kind) {
     else if (kind === 'trash') await send('BULK', { ids, add: ['INBOX'], remove: ['TRASH'] });
     else if (kind === 'read') await send('BULK', { ids, add: ['UNREAD'] });
     else if (kind === 'star') await send('BULK', { ids, remove: ['STARRED'] });
+    else if (kind === 'spam') await send('BULK', { ids, add: ['INBOX'], remove: ['SPAM'] });
   });
 }
 
@@ -3555,6 +3608,7 @@ async function boot() {
     ['bulk-read', 'read'],
     ['bulk-star', 'star'],
     ['bulk-archive', 'archive'],
+    ['bulk-spam', 'spam'],
     ['bulk-trash', 'trash'],
   ]) {
     $(id).addEventListener('click', () => bulkAct(kind));

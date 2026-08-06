@@ -43,6 +43,7 @@ export const SHORTCUTS = [
       { keys: ['s'], label: 'Star / unstar', when: 'reader' },
       { keys: ['u'], label: 'Mark unread', when: 'reader' },
       { keys: ['#'], label: 'Delete', when: 'reader' },
+      { keys: ['!'], label: 'Report spam (rescues, inside Spam)', when: 'reader' },
       { keys: ['x'], label: 'Tick this row (multi-select)' },
       { keys: ['Ctrl', 'A'], label: 'Select every visible message' },
       { keys: ['Ctrl', 'Z'], label: 'Undo the last action' },

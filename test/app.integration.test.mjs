@@ -4038,3 +4038,146 @@ test('TIMETABLE: the unsaved warning clears once a write succeeds', async (t) =>
     restore();
   }
 });
+
+test('MAIL: reporting spam removes the message and can be undone', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * CORE MAIL TRIAGE THAT DID NOT EXIST.
+   *
+   * You could browse the Spam mailbox but could not report a message into it,
+   * and could not rescue one out. For a Gmail replacement that is a hole in
+   * the four-verb core -- archive, delete, spam, star -- and spam was the
+   * missing one. Verified before building: grep for SPAM across src/app found
+   * nothing but the mailbox definition.
+   *
+   * Undo matters more here than for archive. Reporting the wrong sender as
+   * spam trains Gmail against a correspondent you actually want, so it must be
+   * as reversible as everything else in this product.
+   */
+  const { doc, win, calls, settle, restore } = await boot();
+  try {
+    const before = rows(doc).length;
+    rows(doc)[0].click();
+    await settle(4);
+
+    press(doc, win, '!');
+    assert.equal((await settled(doc, settle)).length, before - 1, 'the row must leave');
+
+    const spam = calls.filter((c) => c.type === 'SPAM');
+    assert.equal(spam.length, 1, 'exactly one SPAM call');
+
+    press(doc, win, 'z', { ctrlKey: true });
+    await settled(doc, settle);
+    assert.equal(rows(doc).length, before, 'undo must bring it back');
+    assert.equal(
+      calls.filter((c) => c.type === 'NOT_SPAM').length, 1,
+      'and must tell Gmail it was not spam'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('MAIL: a message can be rescued from the Spam mailbox', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * The other half. A false positive you have to go and re-file by hand is
+   * only half a rescue, so "Not spam" restores INBOX rather than merely
+   * clearing the SPAM label.
+   *
+   * In the Spam mailbox the same key means the opposite thing, because
+   * "report as spam" is meaningless on something already there.
+   */
+  const { doc, win, calls, settle, restore } = await boot({ perLabel: true });
+  try {
+    doc.querySelector('.cat[data-mailbox="spam"]').click();
+    await settle(8);
+    assert.ok(rows(doc).length, 'precondition: spam has messages');
+
+    rows(doc)[0].click();
+    await settle(4);
+    press(doc, win, '!');
+    await settled(doc, settle);
+
+    assert.equal(
+      calls.filter((c) => c.type === 'NOT_SPAM').length, 1,
+      'in Spam, ! must rescue rather than report'
+    );
+    assert.equal(
+      calls.filter((c) => c.type === 'SPAM').length, 0,
+      'and must never re-report a message already in spam'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('MAIL: the spam control says what it will actually do', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * One button, two meanings, resolved by mailbox. "Report spam" on a message
+   * already in Spam is a control that lies about what it will do, and a
+   * separate second button would make the user choose between two things they
+   * think of as one question: is this junk or not?
+   */
+  const { doc, settle, restore } = await boot({ perLabel: true });
+  try {
+    const btn = () => doc.querySelector('#r-actions button[data-act="spam"]');
+    rows(doc)[0].click();
+    await settle(6);
+    assert.ok(btn(), 'the control must exist in the inbox');
+    assert.equal(btn().hidden, false);
+    assert.match(btn().textContent, /Report spam/);
+
+    doc.querySelector('.cat[data-mailbox="spam"]').click();
+    await settle(8);
+    rows(doc)[0].click();
+    await settle(6);
+    assert.match(btn().textContent, /Not spam/, 'inside Spam it must offer the rescue');
+
+    doc.querySelector('.cat[data-mailbox="sent"]').click();
+    await settle(8);
+    assert.equal(
+      btn().hidden, true,
+      'reporting your own sent mail as spam is nonsense and must not be offered'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('MAIL: a batch of junk can be reported in one action', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * Junk arrives in batches. Reporting it one message at a time is exactly
+   * the friction this product exists to remove, and bulk had Mark read, Star,
+   * Archive and Delete but not spam.
+   *
+   * One BULK call, not N -- and reversible like every other bulk action.
+   */
+  const { doc, win, calls, settle, restore } = await boot();
+  try {
+    const before = rows(doc).length;
+    press(doc, win, 'a', { ctrlKey: true });
+    await settle(6);
+
+    const btn = doc.getElementById('bulk-spam');
+    assert.ok(btn, 'bulk must offer a spam action');
+    btn.click();
+    await settled(doc, settle);
+
+    const bulk = calls.filter((c) => c.type === 'BULK' && (c.add || []).includes('SPAM'));
+    assert.equal(bulk.length, 1, 'one request for the whole batch, not one each');
+    assert.deepEqual(
+      bulk[0].remove, ['INBOX'],
+      'reported mail must leave the inbox, or it claims to be spam while sitting in it'
+    );
+    assert.equal(rows(doc).length, 0, 'the rows must go');
+
+    press(doc, win, 'z', { ctrlKey: true });
+    await settled(doc, settle);
+    assert.equal(rows(doc).length, before, 'and undo must bring the batch back');
+  } finally {
+    restore();
+  }
+});

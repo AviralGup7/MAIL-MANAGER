@@ -226,6 +226,22 @@ async function handle(msg) {
     case 'UNTRASH':
       return api(`/messages/${encodeURIComponent(msg.id)}/untrash`, { method: 'POST' });
 
+    /*
+     * SPAM. Core mail triage that was missing entirely: you could BROWSE the
+     * spam mailbox but not report a message into it, and not rescue one out.
+     *
+     * Reporting removes INBOX as well as adding SPAM. Gmail's own UI does the
+     * same -- a message left in both places shows up in the inbox while
+     * claiming to be spam, which is the worst of both.
+     *
+     * Rescuing restores INBOX, because a false positive you have to go and
+     * re-file by hand is only half a rescue.
+     */
+    case 'SPAM':
+      return modify(msg.id, ['SPAM'], ['INBOX']);
+    case 'NOT_SPAM':
+      return modify(msg.id, ['INBOX'], ['SPAM']);
+
     // ---- compose ---------------------------------------------------------
     case 'SEND':
       return sendMessage(buildMime(msg.draft), msg.draft.threadId);

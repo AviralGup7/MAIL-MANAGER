@@ -196,6 +196,7 @@
                 <button id="bulk-read" class="ghost small" type="button">Mark read</button>
                 <button id="bulk-star" class="ghost small" type="button">Star</button>
                 <button id="bulk-archive" class="ghost small" type="button">Archive</button>
+                <button id="bulk-spam" class="ghost small" type="button">Report spam</button>
                 <button id="bulk-trash" class="ghost small danger" type="button">Delete</button>
               </div>
               <button id="bulk-cancel" class="ghost icon" type="button" aria-label="Clear selection"></button>
@@ -281,6 +282,13 @@
                   <button data-act="unread" class="ghost" type="button">Mark unread</button>
                   <button data-act="snooze" class="ghost" type="button" title="Snooze (z)">Snooze</button>
                   <button data-act="archive" class="ghost" type="button">Archive</button>
+                  <!--
+                    Spam. The label flips inside the Spam mailbox, where
+                    "report" is meaningless and "rescue" is what you want.
+                    Set in syncReaderActions.
+                  -->
+                  <button data-act="spam" class="ghost" type="button"
+                          title="Report spam (!)">Report spam</button>
                   <button data-act="trash" class="ghost danger" type="button">Delete</button>
                   <a id="r-open" class="ghost" target="_blank" rel="noopener">Open in Gmail</a>
                 </div>
