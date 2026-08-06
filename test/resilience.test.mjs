@@ -342,3 +342,63 @@ test('pure modules survive adversarial query and address input', async () => {
     assert.doesNotThrow(() => contacts.matchContacts(book, q), `matchContacts threw on ${q}`);
   }
 });
+
+/* ========================================================================== *
+ * ONE HEADER PARSER, NOT THREE
+ *
+ * `for (const { name, value } of headers)` appeared in THREE places:
+ * `normalise` in gmail.js, and both the message and part loops in
+ * `extractBody`. All three destructure without checking, so a header with no
+ * `name` — or a null entry — threw.
+ *
+ * The blast radius differed per site (a whole page of mail vs one unreadable
+ * message), but the assumption was identical, which is why the fix was to
+ * extract `headerMap` rather than to add three guards.
+ * ========================================================================== */
+
+test('headerMap tolerates every malformed header array', async () => {
+  const { headerMap } = await import('../src/background/gmail.js');
+
+  for (const input of [
+    undefined, null, 'not an array', 42, {},
+    [null], [undefined], [{ value: 'no name' }], [{ name: 123, value: 'x' }],
+    [{ name: 'A', value: null }], [{ name: 'B', value: { o: 1 } }],
+  ]) {
+    let out;
+    assert.doesNotThrow(() => { out = headerMap(input); }, `threw on ${JSON.stringify(input)}`);
+    assert.equal(typeof out, 'object');
+    for (const v of Object.values(out)) {
+      assert.equal(typeof v, 'string', 'every value must be coerced to a string');
+    }
+  }
+});
+
+test('headerMap lowercases names and keeps real values', async () => {
+  // The negative tests above pass if it always returns {}.
+  const { headerMap } = await import('../src/background/gmail.js');
+  const out = headerMap([
+    { name: 'Subject', value: 'Hello' },
+    { name: 'FROM', value: 'a@b.com' },
+    { name: 'Message-ID', value: '<x@y>' },
+  ]);
+  assert.equal(out.subject, 'Hello');
+  assert.equal(out.from, 'a@b.com');
+  assert.equal(out['message-id'], '<x@y>');
+});
+
+test('every header loop goes through the shared parser', async () => {
+  // The regression guard: a fourth hand-rolled loop would reintroduce this.
+  const { readFileSync } = await import('node:fs');
+  for (const f of ['../src/background/gmail.js', '../src/background/index.js']) {
+    // Blank out comments first: this rule is about CODE, and the doc comment
+    // on headerMap quotes the very pattern it replaced. Matching prose made
+    // this test fail on its own explanation.
+    const src = readFileSync(new URL(f, import.meta.url), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+    assert.ok(
+      !/for \(const \{ name, value \} of/.test(src),
+      `${f} still destructures headers by hand instead of using headerMap`
+    );
+  }
+});

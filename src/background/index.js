@@ -12,7 +12,7 @@ import { signIn, signOut, isSignedIn } from './auth.js';
 import {
   getFull, modify, batchModify, trash, profile,
   buildMime, sendMessage, saveDraft,
-  listLabels, createLabel, getAttachment, ensureLabel,
+  listLabels, createLabel, getAttachment, ensureLabel, headerMap,
 } from './gmail.js';
 import { SNOOZE_LABEL, loadSnoozed, removeSnooze, due } from '../app/snooze.js';
 import { syncPage, syncDelta } from './sync.js';
@@ -315,10 +315,7 @@ function extractBody(full) {
   // Without Message-ID and References a reply arrives as a brand-new
   // conversation in the recipient's client -- the single most visible way a
   // mail client looks broken, and invisible to the person sending it.
-  const h = Object.create(null);
-  for (const { name, value } of full.payload?.headers || []) {
-    h[name.toLowerCase()] = value;
-  }
+  const h = headerMap(full.payload?.headers);
 
   const out = {
     id: full.id,
@@ -360,10 +357,7 @@ function extractBody(full) {
      * noise, and it is why some clients show "3 attachments" on a message that
      * visibly has none.
      */
-    const ph = Object.create(null);
-    for (const { name, value } of part.headers || []) {
-      ph[name.toLowerCase()] = value;
-    }
+    const ph = headerMap(part.headers);
     const contentId = (ph['content-id'] || '').trim().replace(/^<|>$/g, '');
     const disposition = (ph['content-disposition'] || '').toLowerCase();
     const isInline = mime.startsWith('image/') &&

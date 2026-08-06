@@ -237,13 +237,7 @@ export function normalise(g) {
    * layer: there is one place data enters, and dozens that read it. Every
    * field below is guaranteed to be the type its JSDoc claims.
    */
-  const h = Object.create(null);
-  const headers = Array.isArray(g.payload?.headers) ? g.payload.headers : [];
-  for (const entry of headers) {
-    const name = entry?.name;
-    if (typeof name !== 'string') continue;
-    h[name.toLowerCase()] = str(entry.value);
-  }
+  const h = headerMap(g.payload?.headers);
   const labels = Array.isArray(g.labelIds) ? g.labelIds : [];
   return {
     id: str(g.id),
@@ -269,6 +263,30 @@ export function normalise(g) {
  * entire page of mail. Objects and arrays become '' rather than
  * "[object Object]", which would otherwise become searchable text.
  */
+/**
+ * Fold a Gmail header array into a lowercase-keyed object.
+ *
+ * Exported because THREE separate places parsed header arrays by hand
+ * (`normalise` here, and `extractBody`'s message and part loops in
+ * index.js), and all three used the same `for (const { name, value } of …)`
+ * shape that throws on a header with no `name` or a null entry. Fuzzing found
+ * the crash independently in each.
+ *
+ * One malformed header used to cost an entire page of mail in `normalise`,
+ * and a single unreadable message in `extractBody`. Both are now impossible
+ * because there is one parser rather than three copies of an assumption.
+ */
+export function headerMap(headers) {
+  const out = Object.create(null);
+  if (!Array.isArray(headers)) return out;
+  for (const entry of headers) {
+    const name = entry?.name;
+    if (typeof name !== 'string') continue;
+    out[name.toLowerCase()] = str(entry.value);
+  }
+  return out;
+}
+
 function str(v) {
   if (typeof v === 'string') return v;
   if (v === null || v === undefined) return '';
