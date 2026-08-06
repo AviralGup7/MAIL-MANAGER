@@ -61,6 +61,7 @@ let host = null;
 let frame = null;
 let hiddenNodes = [];
 let escHandler = null;
+let lateObserver = null;
 
 /** Respect the OS setting. If motion is reduced we cut, we do not animate. */
 const prefersReducedMotion = () =>
@@ -121,12 +122,45 @@ function suspendGmail() {
   }
   // Gmail is a single-page app and keeps appending top-level nodes after we
   // have taken over. Those are not in `hiddenNodes`, so they are neither
-  // hidden nor inert. The iframe covers them visually (position:fixed at max
-  // z-index), but a late Gmail dialog could still take focus. Marking the
-  // BODY inert covers every future child; our host lives outside that because
-  // it is explicitly un-inerted below.
-  document.body.setAttribute('inert', '');
-  host?.removeAttribute('inert');
+  // hidden nor inert.
+  //
+  // DO NOT MARK document.body INERT. A previous version did, reasoning that it
+  // would cover every future child, and then called
+  // `host.removeAttribute('inert')` to exempt our own UI. That does not work
+  // and it broke the entire application: `inert` INHERITS to every descendant,
+  // and there is no way to un-inert a child of an inert ancestor. Removing the
+  // attribute from the host is a no-op, because the host never had it -- it
+  // was inheriting. The result was a takeover in which no click anywhere did
+  // anything.
+  //
+  // Late Gmail nodes are handled by the observer below instead, which inerts
+  // each one individually and leaves our host alone.
+  watchForLateNodes();
+}
+
+/**
+ * Inert Gmail nodes that appear AFTER the takeover mounts.
+ *
+ * This is the one MutationObserver in the codebase and it is deliberate: the
+ * alternative (inerting the whole body) is what broke every click, and polling
+ * is banned here. It watches only direct children of <body>, does no work
+ * unless a node is actually added, and is disconnected on release.
+ */
+function watchForLateNodes() {
+  if (lateObserver) return;
+  lateObserver = new MutationObserver((records) => {
+    for (const r of records) {
+      for (const node of r.addedNodes) {
+        if (node.nodeType !== 1) continue;
+        if (node.id === HOST_ID) continue; // never our own UI
+        if (node.tagName === 'SCRIPT' || node.tagName === 'STYLE') continue;
+        if (node.hasAttribute('inert')) continue; // Gmail set it; leave it
+        node.setAttribute('inert', '');
+        node.dataset.bmmInerted = '1'; // so release knows to undo only ours
+      }
+    }
+  });
+  lateObserver.observe(document.body, { childList: true });
 }
 
 function fullyHideGmail() {
@@ -134,13 +168,21 @@ function fullyHideGmail() {
 }
 
 function restoreGmail() {
+  if (lateObserver) {
+    lateObserver.disconnect();
+    lateObserver = null;
+  }
   for (const n of hiddenNodes) {
     n.el.style.visibility = n.visibility;
     n.el.style.display = n.display;
     // Only clear `inert` if Gmail did not set it itself.
     if (!n.inert) n.el.removeAttribute('inert');
   }
-  document.body.removeAttribute('inert');
+  // Anything the observer inerted, and only that.
+  for (const el of document.querySelectorAll('[data-bmm-inerted]')) {
+    el.removeAttribute('inert');
+    delete el.dataset.bmmInerted;
+  }
   hiddenNodes = [];
 }
 

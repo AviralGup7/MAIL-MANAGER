@@ -301,7 +301,22 @@ test('no polling, no observers, no permanent animation loop', () => {
   // fixed; the test should assert about code.
   const code = SRC.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   assert.ok(!code.includes('setInterval'), 'no setInterval');
-  assert.ok(!code.includes('MutationObserver'), 'no MutationObserver');
+
+  // EXACTLY ONE MutationObserver is now permitted, and the constraints below
+  // are the reason it is safe where v1's was not.
+  //
+  // v1 ran an observer whose callback WROTE to the DOM, re-triggering itself
+  // in a loop, with no filter and no disconnect. Ours watches only childList
+  // on <body>, ignores anything that is not a new element, and is disconnected
+  // on release. It exists because the alternative -- inerting document.body --
+  // silently disabled every click in the application.
+  const observers = (code.match(/new MutationObserver/g) || []).length;
+  assert.equal(observers, 1, `expected exactly 1 MutationObserver, found ${observers}`);
+  assert.ok(code.includes('lateObserver.disconnect()'), 'the observer must be disconnected on release');
+  assert.ok(
+    /observe\(document\.body, \{ childList: true \}\)/.test(code),
+    'the observer must be narrowly scoped to childList on body'
+  );
   // rAF is allowed only as the two nested calls that commit the enter class.
   const rafs = code.match(/requestAnimationFrame/g) || [];
   assert.ok(rafs.length <= 2, `expected at most 2 rAF calls, found ${rafs.length}`);
@@ -326,6 +341,94 @@ test('the app frame is told which Gmail account this tab is showing', async (t) 
     assert.ok(
       src.includes(`?u=${expected}`),
       `${path} should yield ?u=${expected}, got ${src}`
+    );
+  }
+});
+
+test('CRITICAL: the takeover UI is never inert — clicks must work', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // THE WORST BUG THIS PROJECT HAS SHIPPED.
+  //
+  // A previous version marked `document.body` inert to cover Gmail nodes added
+  // after mount, then called `host.removeAttribute('inert')` to exempt our own
+  // UI. That does not work: `inert` INHERITS to every descendant and cannot be
+  // cancelled on a child. Removing the attribute from the host was a no-op,
+  // because the host never had it — it was inheriting from body.
+  //
+  // Result: the takeover rendered perfectly and no click anywhere did
+  // anything. Every one of the 279 tests passed, because they assert on DOM
+  // state and none asked whether the UI could receive input.
+  const h = mount();
+  await enter(h);
+
+  const host = h.doc.getElementById('bmm-takeover-host');
+  assert.equal(h.doc.body.hasAttribute('inert'), false, 'body must never be inert');
+  assert.equal(host.hasAttribute('inert'), false, 'the host must never be inert');
+
+  // Walk the ancestor chain: inert anywhere above us disables everything below.
+  for (let el = host; el; el = el.parentElement) {
+    assert.equal(
+      el.hasAttribute?.('inert'),
+      false,
+      `${el.tagName || el.nodeName} is inert, which disables the whole takeover`
+    );
+  }
+});
+
+test('Gmail nodes added AFTER mount are inerted, and only those', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Gmail is a SPA and keeps appending top-level nodes. They must not be able
+  // to steal focus from our search box — but covering them by inerting body
+  // is what broke the app, so each is handled individually.
+  const h = mount();
+  await enter(h);
+
+  const late = h.doc.createElement('div');
+  late.id = 'late-gmail-dialog';
+  h.doc.body.appendChild(late);
+  await h.tick();
+
+  assert.equal(late.hasAttribute('inert'), true, 'a late Gmail node must be inerted');
+  assert.equal(
+    h.doc.getElementById('bmm-takeover-host').hasAttribute('inert'),
+    false,
+    'our host must stay interactive'
+  );
+
+  h.send({ type: 'BMM_TOGGLE' });
+  await h.tick(400);
+  assert.equal(late.hasAttribute('inert'), false, 'release must undo it');
+});
+
+test("release does not clear an inert attribute Gmail set itself", async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const h = mount();
+  const own = h.doc.createElement('div');
+  own.id = 'gmail-own-inert';
+  own.setAttribute('inert', '');
+  h.doc.body.appendChild(own);
+
+  await enter(h);
+  h.send({ type: 'BMM_TOGGLE' });
+  await h.tick(400);
+
+  assert.equal(own.hasAttribute('inert'), true, "Gmail's own inert must survive");
+});
+
+test('the host is pointer-interactive in every revealed state', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // The host starts `pointer-events: none` so it cannot intercept clicks
+  // before it is visible. Every class that reveals it MUST restore
+  // interactivity — a revealed-but-unclickable overlay is the same user-facing
+  // failure as the inert bug, arriving by a different route.
+  const css = readFileSync(join(ROOT, 'src/takeover/takeover.css'), 'utf8');
+  for (const state of ['bmm-enter', 'bmm-active', 'bmm-instant']) {
+    const block = css.match(new RegExp(`#bmm-takeover-host\\.${state}\\s*\\{[^}]*\\}`));
+    assert.ok(block, `${state} rule must exist`);
+    assert.match(
+      block[0],
+      /pointer-events:\s*auto/,
+      `${state} reveals the host but leaves it click-through`
     );
   }
 });
