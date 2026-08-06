@@ -1459,3 +1459,35 @@ test('entrance animations decelerate; only exits accelerate', () => {
     `these entrances accelerate instead of settling: ${wrong.join(', ')}`
   );
 });
+
+test('only one animation is allowed to force layout, and it is documented', () => {
+  /*
+   * Animating width/height/top/left forces layout on every frame. Everything
+   * in this file animates transform, opacity or colour instead -- except
+   * `row-out`, which collapses max-height so the rows below slide up to fill
+   * the gap left by an archived message.
+   *
+   * That one is a deliberate trade: the collapse IS the explanation of where
+   * the row went, and a fade alone does not give it. It is bounded to one
+   * row, 140ms, with overflow:hidden. This test pins the exception so a
+   * SECOND layout-animating keyframe cannot be added without a decision.
+   */
+  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const LAYOUT = ['width', 'height', 'max-height', 'top', 'left', 'right', 'bottom',
+    'margin', 'padding', 'font-size'];
+
+  const offenders = [...css.matchAll(/@keyframes\s+([\w-]+)\s*\{([\s\S]*?)\n\}/g)]
+    .filter(([, , body]) => LAYOUT.some((p) => new RegExp(`\\b${p}:`).test(body)))
+    .map(([, name]) => name);
+
+  assert.deepEqual(
+    offenders, ['row-out'],
+    `unexpected layout-animating keyframes: ${offenders.join(', ')}`
+  );
+
+  // And no transition may animate one at all.
+  const badTransitions = [...css.matchAll(/transition:\s*([^;]+);/g)]
+    .flatMap(([, v]) => v.split(',').map((p) => p.trim().split(/\s+/)[0]))
+    .filter((p) => LAYOUT.includes(p));
+  assert.deepEqual(badTransitions, [], 'transitions must not animate layout');
+});
