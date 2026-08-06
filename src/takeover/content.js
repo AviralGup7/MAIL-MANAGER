@@ -43,9 +43,9 @@
  *     would force a layout on every frame.
  *   - `visibility: hidden` + `display: none` on Gmail's root once we are up,
  *     so Chrome skips the whole Gmail subtree.
- *   - Exactly ONE MutationObserver, and it is disconnected the moment it has
- *     done its job. The old version's observer re-triggered itself by writing
- *     to the DOM inside its own callback.
+ *   - ZERO MutationObservers. The old version had one that re-triggered itself
+ *     by writing to the DOM inside its own callback. We do not need to watch
+ *     Gmail at all: we hide its roots once and hand them back on release.
  *   - No polling, no intervals, no listeners left behind on release.
  */
 
@@ -213,16 +213,22 @@ function release() {
     escHandler = null;
   }
 
-  // Bring Gmail back into layout BEFORE we start fading out, so the user never
-  // sees an empty white page between the two.
-  for (const n of hiddenNodes) n.el.style.display = n.display;
-  for (const n of hiddenNodes) n.el.style.visibility = n.visibility;
+  // Bring Gmail back BEFORE we start fading out, so the user never sees an
+  // empty white page between the two.
+  //
+  // This calls restoreGmail() rather than repeating the restore inline. It
+  // used to duplicate it, which meant the un-hide logic existed in two places
+  // that had to agree: the copy here, and the one `pagehide` uses. Only the
+  // pagehide copy was covered by a test, so a bug introduced in this path --
+  // the path taken by every single normal release -- would have gone
+  // unnoticed. Proved by sabotaging restoreGmail(): the crash-recovery test
+  // failed and both round-trip tests still passed.
+  restoreGmail();
 
   const finish = () => {
     host?.remove();
     host = null;
     frame = null;
-    hiddenNodes = [];
     state = 'idle';
   };
 
