@@ -402,7 +402,11 @@ function applyMute(ids) {
   if (!rules.muted.length) return ids;
   if (state.mailbox !== 'inbox') return ids;
   if (state.category !== 'all') return ids; // they asked for it by name
-  if (state.query) return ids; // an explicit search overrides a mute
+  // Defensive: `visibleIds()` already routes a query down a branch that never
+  // calls this function, so this line is redundancy against a future caller
+  // rather than the mechanism. Kept because a mute leaking into search would
+  // make mail unfindable, and that is worth two guards.
+  if (state.query) return ids;
   const muted = new Set(rules.muted);
   return ids.filter((id) => {
     const m = store.get(id);

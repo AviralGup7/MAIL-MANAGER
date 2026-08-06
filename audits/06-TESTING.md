@@ -228,3 +228,61 @@ Cycle 10 produced one real finding against three equivalent mutants. Every
 core module now kills every non-equivalent mutant. Remaining risk is
 concentrated in what **cannot** be tested here: real-browser rendering, screen
 readers, and classifier accuracy against real BITS mail.
+
+---
+
+## Addendum 2 — cycles 11-13
+
+Three further cycles using techniques not applied in the first ten: auth
+lifecycle racing, content-script long-session testing, and cross-module seam
+testing. 615 → 631 tests.
+
+### Defects found
+
+| # | Defect | Found by | Severity |
+|---|---|---|---|
+| 8 | **Sign-out could be undone by an in-flight token renewal.** `signOut()` cleared storage, but a silent renewal already running called `persist()` afterwards and wrote a fresh LIVE access token back. The user saw the gate; a working credential sat in storage. | auth race testing | **Critical (security)** |
+| 9 | The same race let a **stale renewal for the previous account overwrite a new sign-in** — reading the wrong mailbox with no indication. | regression expansion | **Critical (security)** |
+| 10 | **Sign-out left every non-active mailbox fully populated.** `resetView()` called `store.clear()`, but `store` is a live binding onto the ACTIVE mailbox. The gate appeared; one click showed the previous account's Sent, Trash, Spam and Drafts. | state-transition testing | **High (privacy)** |
+| 11 | **`state.signedIn` was assigned in three places and read nowhere.** Clicking a mailbox behind the gate issued a fresh `SYNC_PAGE` and repainted mail for an ended session. | data-flow analysis | **High** |
+
+### Root causes
+
+Defects 8 and 9 share one cause: **clearing state cannot reach work that has
+already started.** Fixed with a session epoch — every operation that writes
+credentials captures the generation first and refuses to commit if it moved.
+A boolean "signing out" flag would not do, because sign-out completes and a
+renewal started before it must stay invalid *forever* after.
+
+Defects 10 and 11 share another: **the per-mailbox store refactor silently
+changed what "clear the store" means.** `resetView` was written when there was
+one store. It now takes `{allMailboxes}` so the resync path (inbox-only,
+correct) and the sign-out path (everything) are distinguished explicitly
+rather than by accident.
+
+### Confirmed correct under stress
+
+Not every investigation finds a bug, and the negatives are worth recording:
+
+- **Auth single-flight** — 8 concurrent `getToken()` calls produce exactly one
+  authorization flow; recovery after a failed renewal works; a mismatched
+  OAuth `state` is rejected.
+- **The takeover round-trips losslessly** across 15 cycles with late Gmail
+  nodes interleaved, preserves `inert` that Gmail set itself, and never
+  duplicates its MutationObserver.
+- **Bulk actions cannot touch muted mail.** `selection.live(store,
+  renderedIds)` resolves against the VISIBLE list, so safety comes from the
+  data flow rather than a special case.
+
+### A test that could not fail
+
+The "search overrides mute" test passed even with `applyMute`'s query guard
+deleted. Tracing both paths showed why: `visibleIds()` only calls `applyMute`
+on the no-query branch, so the search path never reaches that line. The guard
+is **defensive redundancy, not the mechanism**.
+
+The test was rewritten to assert on the specific subjects the mute removed,
+and then verified against the *real* mechanism (making the search branch apply
+the mute), where it fails correctly. Both the test and the source now say
+which is which — the fifth time in this project that a mutation "surviving"
+turned out to mean the mutant was equivalent rather than the test being weak.

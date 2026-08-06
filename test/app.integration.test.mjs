@@ -1996,3 +1996,126 @@ test('SIGNOUT: signing back in still works', async (t) => {
     restore();
   }
 });
+
+/* ========================================================================== *
+ * CROSS-MODULE INTERACTIONS
+ *
+ * Each module is now well covered in isolation. These exercise the SEAMS —
+ * selection against rules, search against mute, bulk actions against a list
+ * that changed underneath the selection.
+ * ========================================================================== */
+
+test('SEAM: a bulk action never touches mail hidden by a mute rule', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * Select everything, THEN mute a category. The selection still holds ids
+   * that are no longer rendered. Acting on invisible mail would be
+   * unrecoverable from the user's point of view: they archived things they
+   * could not see and were never shown.
+   *
+   * `bulkAct` resolves through `selection.live(store, renderedIds)`, and
+   * renderedIds is the VISIBLE list — so the safety comes from the data flow
+   * rather than from a special case. This pins it.
+   */
+  const { doc, win, calls, settle, restore } = await boot();
+  try {
+    const total = rows(doc).length;
+    assert.ok(total >= 3, 'need several messages');
+
+    doc.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true }));
+    await settle(4);
+
+    // Mute the first non-"all" category that actually has messages.
+    const cat = [...doc.querySelectorAll('.cat[data-cat]')]
+      .find((b) => b.dataset.cat !== 'all' && b.lastElementChild.textContent.trim() !== '');
+    if (!cat) return; // nothing classified into a mutable category in this fixture
+
+    cat.dispatchEvent(new win.MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    await settle(4);
+    const muteOption = doc.querySelector('.cat-menu .snooze-opt');
+    assert.ok(muteOption, 'the category rule menu should open');
+    muteOption.click();
+    await settle(8);
+
+    const visible = new Set([...doc.querySelectorAll('#list .row')].map((r) => r.dataset.id));
+    doc.getElementById('bulk-archive')?.click();
+    await settle(10);
+
+    const bulk = calls.filter((c) => c.type === 'BULK').flatMap((c) => c.ids || []);
+    for (const id of bulk) {
+      assert.ok(visible.has(id), `bulk acted on ${id}, which the mute rule had hidden`);
+    }
+  } finally {
+    restore();
+  }
+});
+
+test('SEAM: an explicit search overrides a mute rule', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * Muting means "stop competing for my attention", never "hide from me when
+   * I ask directly". A search that silently omitted muted mail would be the
+   * feature quietly losing the user's messages.
+   *
+   * The first version searched for a broad substring and proved nothing; this
+   * one identifies the exact subjects the mute removed and asserts THOSE come
+   * back.
+   *
+   * A note on why deleting `applyMute`'s `if (state.query) return ids` guard
+   * does NOT fail this test: `visibleIds()` only calls `applyMute` on the
+   * no-query branch, so the search path never reaches that line. The guard is
+   * defensive redundancy against a future caller, not the mechanism — the
+   * mechanism is the branch in `visibleIds`. Verified by tracing both paths
+   * rather than assumed, after the mutation appeared to survive.
+   */
+  const { doc, win, settle, restore } = await boot();
+  try {
+    const before = rowText(doc);
+    const cat = [...doc.querySelectorAll('.cat[data-cat]')]
+      .find((b) => b.dataset.cat !== 'all' && b.lastElementChild.textContent.trim() !== '');
+    if (!cat) return;
+
+    cat.dispatchEvent(new win.MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    await settle(4);
+    doc.querySelector('.cat-menu .snooze-opt')?.click();
+    await settle(8);
+
+    const afterMute = rowText(doc);
+    const hidden = before.filter((s2) => !afterMute.includes(s2));
+    assert.ok(hidden.length > 0, 'the mute should actually hide something');
+
+    // Search for a word taken from a message the mute removed.
+    const term = hidden[0].split(/\s+/).find((w) => w.length > 4) || hidden[0];
+    const search = doc.getElementById('search');
+    search.value = term;
+    search.dispatchEvent(new win.Event('input'));
+    await settle(6);
+
+    assert.ok(
+      rowText(doc).some((s2) => s2 === hidden[0]),
+      `searching "${term}" did not surface the muted message "${hidden[0]}" — ` +
+      'muted mail became unfindable'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('SEAM: selection does not survive a mailbox switch', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Carrying a selection into another mailbox means the bulk bar reports a
+  // count for messages that are not on screen, and acting is unpredictable.
+  const { doc, win, settle, restore } = await boot({ perLabel: true });
+  try {
+    doc.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true }));
+    await settle(4);
+
+    doc.querySelector('.cat[data-mailbox="sent"]').click();
+    await settle(8);
+
+    const bar = doc.getElementById('bulk-bar');
+    assert.ok(!bar || bar.hidden, 'the bulk bar survived a mailbox switch');
+  } finally {
+    restore();
+  }
+});
