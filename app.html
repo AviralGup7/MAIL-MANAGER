@@ -402,6 +402,8 @@
             so anyone who tabs back into a half-written message has nothing to
             tell them what the field is. aria-label survives typing.
           -->
+          <!-- Chosen files. Empty and hidden until something is attached. -->
+          <div id="c-files" hidden></div>
           <textarea id="c-text" aria-label="Message body"
                     placeholder="Write your message…" spellcheck="true"></textarea>
         </div>
@@ -409,6 +411,15 @@
           <button id="c-send" class="primary" type="button">Send</button>
           <button id="c-cc-toggle" class="ghost small" type="button">Cc</button>
           <button id="c-bcc-toggle" class="ghost small" type="button">Bcc</button>
+          <!--
+            Attach. A hidden file input driven by a normal button: the native
+            control cannot be styled and reads "No file chosen" next to itself,
+            which is noise once the chips below say the same thing better.
+          -->
+          <input id="c-file" type="file" multiple hidden aria-hidden="true"
+                 tabindex="-1" aria-label="Choose files to attach" />
+          <button id="c-attach" class="ghost small" type="button"
+                  title="Attach a file">Attach</button>
           <button id="c-draft" class="ghost small" type="button">Save draft</button>
           <span id="c-status"></span>
         </footer>

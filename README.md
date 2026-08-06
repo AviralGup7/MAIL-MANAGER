@@ -33,7 +33,8 @@ faster, and it stays out of the way when it has nothing to add.
 - **Read and triage:** open, search, star, archive, delete, report spam (and rescue
   from it), mark read/unread,
   snooze, multi-select with bulk actions, attachment download, inline images.
-- **Compose, reply, reply-all and forward**, with correct RFC 2822 threading,
+- **Compose, reply, reply-all and forward**, with file attachments, Cc/Bcc,
+  correct RFC 2822 threading,
   contact autocomplete drawn from mail you already have, and drafts that
   survive a crash.
 - **Undo everything**, not just send — archive, delete, star, snooze and bulk
@@ -366,7 +367,7 @@ src/
 timetable/data.json         GENERATED. 688 courses, 119 change rows.
 timetable/sources/          The two official documents, verbatim.
 tools/parse-timetable.mjs   Offline parser. Never runs in the extension.
-test/                       823 tests. `npm test` · `npm run test:ci` (fails on skips)
+test/                       828 tests. `npm test` · `npm run test:ci` (fails on skips)
   app.integration.test.mjs  Boots the real app.html in jsdom and drives it.
   resilience.test.mjs       Failure injection across every persistence module.
   package.test.mjs          Lints the manifest, tokens, motion rules, hit targets.
@@ -426,7 +427,7 @@ mis-file something the preview mis-files it too.
 
 ## Status
 
-**823 tests pass, 0 skipped.** 141 of them boot the real `app.html` in a real
+**828 tests pass, 0 skipped.** 143 of them boot the real `app.html` in a real
 DOM and drive it as a user would — click a row, type in search, press `j`/`k`,
 archive, snooze, sign out. All six themes pass WCAG AA in CI.
 
@@ -445,13 +446,15 @@ would produce a real corpus.
 
 ### Known gaps
 
-- **No conversation threading.** Messages are listed individually; a five-part
-  exchange is five rows. This is the largest remaining feature gap and is
-  specified in [`audits/08-GMAIL-COMPETITIVE-V2.md`](audits/08-GMAIL-COMPETITIVE-V2.md).
-- **No background sync.** The inbox refreshes on demand, never on a timer.
+- **No conversation threading.** Messages are listed individually, so a
+  five-part exchange is five rows. This is now the largest remaining gap
+  against Gmail — see [`audits/12-MAIL-LIFECYCLE.md`](audits/12-MAIL-LIFECYCLE.md).
 - **Gmail labels are searchable, not manageable.** Your labels appear in the
   command palette and `label:Thesis` filters by them, but you cannot apply,
   create or remove a label from the UI.
+- **No desktop notification for new mail.** The inbox refreshes itself every
+  two minutes, but nothing tells you while the tab is in the background.
+- **No view-original or print.**
 - **Single account.** No account switcher.
 - **Attachment preview.** Attachments download; they do not preview inline.
 

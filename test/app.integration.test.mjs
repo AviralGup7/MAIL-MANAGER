@@ -170,9 +170,13 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
   // We cannot use runScripts:'dangerously' with type=module in jsdom, so the
   // module is imported here and handed the window explicitly via globals.
   const prev = {};
+  // FileReader and File come from the window too: the attachment reader uses
+  // a bare `new FileReader()`, which resolves against the global the app
+  // module was evaluated with, not against `win`.
   for (const k of ['window', 'document', 'chrome', 'requestAnimationFrame',
                    'cancelAnimationFrame', 'parent', 'setTimeout', 'clearTimeout',
-                   'queueMicrotask', 'HTMLElement', 'Node', 'fetch']) {
+                   'queueMicrotask', 'HTMLElement', 'Node', 'fetch',
+                   'FileReader', 'File']) {
     prev[k] = globalThis[k];
   }
   globalThis.window = win;
@@ -184,6 +188,8 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
   globalThis.Node = win.Node;
   globalThis.parent = win; // app.js posts BMM_READY to parent
   globalThis.fetch = win.fetch; // the timetable data is fetched, not imported
+  globalThis.FileReader = win.FileReader; // the attachment reader
+  globalThis.File = win.File;
 
   // Cache-bust so each boot gets a fresh module instance with its own Store.
   const url = pathToFileURL(join(ROOT, 'src/app/app.js')).href + `?t=${Math.random()}`;
@@ -4353,6 +4359,98 @@ test('MAIL: auto-refresh stops when the user signs out', async (t) => {
     assert.equal(
       win.__bmmAutoRefreshPending?.(), false,
       'the poll timer itself must be cancelled, not just neutered downstream'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('MAIL: a file can be attached and travels with the message', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * AUDIT 12 C-3. "Send me the PDF" is table stakes, and a compose window
+   * that cannot attach forces the user back to Gmail -- which defeats the
+   * product entirely.
+   */
+  const { doc, win, calls, settle, restore } = await boot();
+  try {
+    press(doc, win, 'c');
+    await settle(6);
+
+    assert.ok(doc.getElementById('c-attach'), 'compose must offer Attach');
+    assert.equal(
+      doc.getElementById('c-files').hidden, true,
+      'and must show nothing until a file is chosen'
+    );
+
+    const input = doc.getElementById('c-file');
+    const file = new win.File(['hello'], 'notes.txt', { type: 'text/plain' });
+    Object.defineProperty(input, 'files', { value: [file], configurable: true });
+    input.dispatchEvent(new win.Event('change', { bubbles: true }));
+    await settle(10);
+
+    const box = doc.getElementById('c-files');
+    assert.equal(box.hidden, false, 'the chosen file must be visible');
+    assert.match(box.textContent, /notes\.txt/, 'named, so a mistake is obvious');
+
+    doc.getElementById('c-to').value = 'a@pilani.bits-pilani.ac.in';
+    doc.getElementById('c-subject').value = 'Report';
+    doc.getElementById('c-text').value = 'See attached';
+    doc.getElementById('c-send').click();
+    await settle(10);
+
+    const sent = calls.find((c) => c.type === 'SEND');
+    assert.ok(sent, 'the message must be sent');
+    assert.equal(sent.draft.attachments.length, 1, 'with the attachment');
+    assert.equal(sent.draft.attachments[0].filename, 'notes.txt');
+    assert.equal(
+      sent.draft.attachments[0].data, 'aGVsbG8=',
+      'base64 of "hello" -- the payload must survive the reader'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('MAIL: attachments do not leak into the next message', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * Attachments belong to ONE message. Carrying them into the next compose
+   * would silently attach the previous file to an unrelated recipient, which
+   * is a data-disclosure bug, not a tidiness one.
+   */
+  const { doc, win, calls, settle, restore } = await boot();
+  try {
+    press(doc, win, 'c');
+    await settle(6);
+    const input = doc.getElementById('c-file');
+    Object.defineProperty(input, 'files', {
+      value: [new win.File(['x'], 'secret.txt', { type: 'text/plain' })],
+      configurable: true,
+    });
+    input.dispatchEvent(new win.Event('change', { bubbles: true }));
+    await settle(10);
+    assert.match(doc.getElementById('c-files').textContent, /secret\.txt/);
+
+    doc.getElementById('compose-close').click();
+    await settle(6);
+    press(doc, win, 'c');
+    await settle(6);
+
+    assert.equal(
+      doc.getElementById('c-files').hidden, true,
+      'a new message must start with no attachments'
+    );
+    doc.getElementById('c-to').value = 'b@pilani.bits-pilani.ac.in';
+    doc.getElementById('c-subject').value = 'Unrelated';
+    doc.getElementById('c-text').value = 'hi';
+    doc.getElementById('c-send').click();
+    await settle(10);
+
+    const sent = calls.filter((c) => c.type === 'SEND').pop();
+    assert.deepEqual(
+      sent.draft.attachments, [],
+      'the previous file must not ride along to a different recipient'
     );
   } finally {
     restore();

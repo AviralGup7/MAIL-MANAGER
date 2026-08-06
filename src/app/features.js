@@ -445,6 +445,24 @@ export function wirePalette(ctx) {
  * COMPOSE
  * ========================================================================== */
 
+/*
+ * Files chosen for the message being composed.
+ *
+ * Declared here, beside the other compose state, rather than next to the
+ * functions that use it: closeCompose() sits above those and would hit the
+ * temporal dead zone if it ever ran during module init.
+ *
+ * Held in module state rather than in the draft, deliberately. The autosaved
+ * draft lives in chrome.storage.local, which has a ~10MB budget shared with
+ * the message cache -- putting a 5MB PDF in it would evict the inbox to
+ * recover a file the user still has on disk. Crash recovery therefore restores
+ * the text and NOT the attachments.
+ */
+let pendingFiles = [];
+
+/** Gmail rejects anything over 25MB; fail before the upload, not after. */
+const MAX_ATTACH_BYTES = 25 * 1024 * 1024;
+
 let composeCtx = null;
 let composeMeta = {};
 
@@ -519,6 +537,10 @@ export function closeCompose() {
   const panel = $('compose');
   if (panel) panel.hidden = true;
   composeMeta = {};
+  // Attachments belong to ONE message. Carrying them into the next compose
+  // would silently attach the previous file to an unrelated recipient.
+  pendingFiles = [];
+  renderFiles();
 }
 
 /** Open compose pre-filled as a reply / reply-all / forward. */
@@ -537,11 +559,104 @@ export async function startReply(ctx, mode) {
   }
 }
 
+
+/* ------------------------------------------------------------- attachments -- */
+
+/*
+ * Files chosen for the message being composed.
+ *
+ * Held in module state rather than in the draft, deliberately. The autosaved
+ * draft lives in chrome.storage.local, which has a ~10MB budget shared with
+ * the message cache -- putting a 5MB PDF in it would evict the inbox to
+ * recover a file the user still has on disk. Crash recovery therefore restores
+ * the text and NOT the attachments, and says so.
+ */
+
+function renderFiles() {
+  const box = $('c-files');
+  if (!box) return;
+  box.replaceChildren();
+  box.hidden = pendingFiles.length === 0;
+
+  pendingFiles.forEach((f, i) => {
+    const chip = document.createElement('span');
+    chip.className = 'c-file';
+
+    const name = document.createElement('span');
+    name.className = 'c-file-name';
+    name.textContent = f.filename;
+    name.title = `${f.filename} · ${fmtBytes(f.size)}`;
+
+    const size = document.createElement('span');
+    size.className = 'c-file-size';
+    size.textContent = fmtBytes(f.size);
+
+    const rm = document.createElement('button');
+    rm.type = 'button';
+    rm.className = 'ghost small';
+    rm.textContent = 'Remove';
+    rm.setAttribute('aria-label', `Remove ${f.filename}`);
+    rm.addEventListener('click', () => {
+      pendingFiles.splice(i, 1);
+      renderFiles();
+    });
+
+    chip.append(name, size, rm);
+    box.appendChild(chip);
+  });
+}
+
+function fmtBytes(n) {
+  if (!n || n < 0) return '';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+/** Read one File into the base64 the MIME builder wants. */
+function readAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onerror = () => reject(new Error(`Could not read ${file.name}`));
+    r.onload = () => {
+      // The data URL is "data:<mime>;base64,<payload>" -- take the payload.
+      const s = String(r.result || '');
+      resolve(s.slice(s.indexOf(',') + 1));
+    };
+    r.readAsDataURL(file);
+  });
+}
+
+async function addFiles(ctx, fileList) {
+  for (const file of [...(fileList || [])]) {
+    const total = pendingFiles.reduce((n, f) => n + f.size, 0);
+    if (total + file.size > MAX_ATTACH_BYTES) {
+      ctx?.toast?.(
+        `${file.name} would take this over Gmail's 25MB limit`,
+        { kind: 'error' }
+      );
+      continue;
+    }
+    try {
+      pendingFiles.push({
+        filename: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        size: file.size,
+        data: await readAsBase64(file),
+      });
+    } catch (err) {
+      ctx?.toast?.(err.message, { kind: 'error' });
+    }
+  }
+  renderFiles();
+}
+
 function collectDraft() {
   return {
     to: $('c-to').value.trim(),
     cc: $('c-cc').value.trim(),
     bcc: $('c-bcc').value.trim(),
+    attachments: pendingFiles,
     subject: $('c-subject').value.trim(),
     body: $('c-text').value,
     threadId: composeMeta.threadId,
@@ -633,6 +748,13 @@ export function wireCompose(ctx) {
       if (!row.hidden) $(inputId).focus();
     });
   }
+
+  $('c-attach')?.addEventListener('click', () => $('c-file')?.click());
+  $('c-file')?.addEventListener('change', async (e) => {
+    await addFiles(ctx, e.target.files);
+    // Reset, or choosing the same file twice in a row fires no change event.
+    e.target.value = '';
+  });
 
   $('c-send').addEventListener('click', () => doSend(ctx));
   $('c-draft').addEventListener('click', () => doDraft(ctx));
@@ -889,4 +1011,5 @@ export function _resetFeatureState() {
   composeMeta = {};
   draftSaver = null;
   contactBook = [];
+  pendingFiles = [];
 }

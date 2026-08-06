@@ -45,7 +45,7 @@ globalThis.chrome = {
   runtime: { id: 'test' },
 };
 
-const { parseBatch, normalise } = await import('../src/background/gmail.js');
+const { parseBatch, normalise, buildMime } = await import('../src/background/gmail.js');
 
 // --------------------------------------------------------------- parseBatch --
 
@@ -404,4 +404,85 @@ test('RETRY: the batch endpoint retries too', async () => {
   } finally {
     s.restore();
   }
+});
+
+/* ============================================================ attachments == */
+
+test('MIME: a message with no attachment stays multipart/alternative', () => {
+  /*
+   * The shape that has always worked must not change. Wrapping every message
+   * in multipart/mixed "for consistency" would add a layer to the 99% case to
+   * serve the 1%, and some clients render the extra nesting badly.
+   */
+  const mime = buildMime({ to: 'a@b.c', subject: 'Hi', body: 'text' });
+  assert.match(mime, /Content-Type: multipart\/alternative/);
+  assert.doesNotMatch(mime, /multipart\/mixed/);
+});
+
+test('MIME: an attachment is base64 and correctly nested', () => {
+  /*
+   * OUTBOUND ATTACHMENTS -- audit 12 C-3. "Send me the PDF" is table stakes,
+   * and a compose window that cannot attach forces the user back to Gmail,
+   * which defeats the product.
+   *
+   * The structure must be multipart/mixed wrapping the existing
+   * multipart/alternative, not replacing it. Flattening the alternative part
+   * away would lose the text/plain fallback that non-HTML clients read.
+   */
+  const mime = buildMime({
+    to: 'a@b.c',
+    subject: 'Report',
+    body: 'See attached',
+    attachments: [{
+      filename: 'notes.txt',
+      mimeType: 'text/plain',
+      // "hello" in base64.
+      data: 'aGVsbG8=',
+    }],
+  });
+
+  assert.match(mime, /Content-Type: multipart\/mixed/, 'the outer wrapper');
+  assert.match(mime, /Content-Type: multipart\/alternative/, 'the body parts survive');
+  assert.match(mime, /Content-Type: text\/plain; charset="UTF-8"/, 'plain fallback kept');
+
+  assert.match(
+    mime, /Content-Disposition: attachment; filename="notes\.txt"/,
+    'the attachment must be named'
+  );
+  assert.match(
+    mime, /Content-Transfer-Encoding: base64/,
+    'binary must not be sent 8bit'
+  );
+  assert.ok(mime.includes('aGVsbG8='), 'the payload must be present');
+
+  // The alternative boundary must be a DIFFERENT string from the mixed one,
+  // or the parser cannot tell where the inner part ends.
+  const mixed = mime.match(/multipart\/mixed; boundary="([^"]+)"/)[1];
+  const alt = mime.match(/multipart\/alternative; boundary="([^"]+)"/)[1];
+  assert.notEqual(mixed, alt, 'nested parts need distinct boundaries');
+});
+
+test('MIME: a filename with a quote or newline cannot break the headers', () => {
+  /*
+   * A filename is attacker-controlled the moment you forward something. An
+   * unescaped `"` ends the filename parameter early; a CRLF injects a whole
+   * new header. Either turns a forward into a header-injection primitive.
+   */
+  const mime = buildMime({
+    to: 'a@b.c', subject: 'x', body: 'y',
+    attachments: [{
+      filename: 'ev"il\r\nBcc: attacker@evil.com\r\n.txt',
+      mimeType: 'text/plain', data: 'AA==',
+    }],
+  });
+  assert.doesNotMatch(
+    mime, /^Bcc: attacker@evil\.com/m,
+    'a newline in a filename must not become a header'
+  );
+  const line = mime.split('\r\n').find((l) => l.startsWith('Content-Disposition'));
+  assert.ok(line, 'the disposition header must exist');
+  assert.equal(
+    (line.match(/"/g) || []).length, 2,
+    `exactly one quoted filename, got: ${line}`
+  );
 });

@@ -3536,6 +3536,36 @@ kbd {
   margin: 0;
 }
 
+/* Chosen attachments, above the body. Same chip language as the reader's. */
+#c-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  padding: var(--s-2) 0;
+}
+.c-file {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-1) var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  background: var(--bg-sunken);
+  font-size: var(--t-sm);
+  max-width: 100%;
+}
+.c-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 22ch;
+}
+.c-file-size {
+  color: var(--fg-faint);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+}
+
 .tt-entry-acts {
   display: flex;
   gap: var(--s-1);

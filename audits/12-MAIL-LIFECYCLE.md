@@ -25,12 +25,12 @@ fallback, and seven mailboxes.
 
 | Stage | State |
 |---|---|
-| Arrival | 🔴 **no periodic sync, no notification** |
+| Arrival | ✅ **auto-refresh shipped**; no desktop notification |
 | Scanning | ✅ categories, unread/total counts, deadline rail |
 | Reading | ⚠️ good; **no view-source, no print** |
 | Threading | 🔴 **absent** |
 | Reply | ✅ complete |
-| Compose | ⚠️ strong; **no attachments** |
+| Compose | ✅ **attachments shipped** |
 | Organising | ⚠️ **labels are read-only** |
 | Recovery | ✅ undo everywhere, untrash, restore-from-source |
 | Search | ✅ 20 operators, index + server fallback, saved views |
@@ -41,7 +41,7 @@ fallback, and seven mailboxes.
 
 ## 🔴 Core — these three block the claim
 
-### C-1 · Mail never arrives on its own
+### C-1 · Mail never arrives on its own — ✅ **FIXED**
 
 **What's missing.** There is exactly one alarm in the worker (`bmm-wake`, for
 snooze). `app.js` says outright: *"Delta refresh. Never on a timer."* So new
@@ -56,11 +56,14 @@ elsewhere; a desktop notification if you allow one.
 **What's preventing it.** Nothing structural — `alarms` is already permitted
 and already drives the snooze wake. `notifications` is not in the manifest.
 
-**Do first:** a periodic alarm running the existing delta sync. That alone
-fixes arrival. Notifications are a second step and need a new permission,
-plus the classifier is the thing that makes them *wanted* — notify on `augsd`
-and `academics`, never on `external-promotions`. That is the one place an
-academic feature genuinely improves a core mail task.
+**Shipped:** a repeating timeout, re-armed only after each refresh settles so
+a slow network cannot stack requests. Silent, skips hidden tabs, cancelled on
+sign-out, 120s default and adjustable to Never in Options.
+
+**Still open:** desktop notifications. They need the `notifications`
+permission, and the classifier is what would make them *wanted* — notify on
+`augsd` and `academics`, never on `external-promotions`. That is the one place
+an academic feature genuinely improves a core mail task.
 
 ### C-2 · No conversation threading
 
@@ -78,7 +81,7 @@ first, since `CACHE_MAX` is 500.
 
 **Rating: core, but the largest single piece of work in the product.**
 
-### C-3 · You cannot attach a file
+### C-3 · You cannot attach a file — ✅ **FIXED**
 
 **Probed:** no `type="file"` anywhere; `buildMime` emits
 `multipart/alternative` only.
@@ -86,9 +89,18 @@ first, since `CACHE_MAX` is 500.
 **Why it matters.** "Send me the PDF" is table stakes. A compose window that
 cannot attach forces the user back to Gmail — which defeats the product.
 
-**What's preventing it.** `buildMime` needs `multipart/mixed` wrapping the
-existing `alternative` part, plus base64 encoding. The send path already
-handles arbitrary MIME.
+**Shipped.** `multipart/mixed` now wraps the existing `alternative` rather
+than replacing it, so the `text/plain` fallback survives. Messages with no
+attachment emit exactly the old shape — adding a layer to the 99% case to
+serve the 1% is how clients start rendering oddly.
+
+Two things worth noting. Filenames are **attacker-controlled the moment you
+forward something**: an unescaped `"` closes the MIME parameter early and a
+CRLF injects a whole new header, which turns a forward into a way to add a
+`Bcc`. Both are stripped, and there is a test that fails when the stripping is
+removed. And attachments live in module state, *not* in the autosaved draft —
+`chrome.storage.local` is a ~10MB budget shared with the message cache, so a
+5MB PDF would evict the inbox to recover a file the user still has on disk.
 
 ---
 
@@ -150,12 +162,13 @@ to grep for these will have the same suspicion.
 
 ## Order of work
 
-1. **C-1 arrival** — smallest of the three, highest daily impact, unblocks
-   notifications.
-2. **C-3 attachments** — self-contained, one MIME change.
+1. ~~**C-1 arrival**~~ — done.
+2. ~~**C-3 attachments**~~ — done.
 3. **I-1 labels** — finishes a half-feature.
 4. **I-2 view-source** — nearly free given `getFull()`.
-5. **C-2 threading** — after the IndexedDB migration.
+5. **C-2 threading** — after the IndexedDB migration. The largest single piece
+   of work left in the product.
+6. **Notifications** — needs a manifest permission and a real browser to test.
 
 ---
 
@@ -163,8 +176,10 @@ to grep for these will have the same suspicion.
 
 **What stops this from feeling like a credible Gmail replacement?**
 
-Mail that does not arrive by itself, conversations that scatter into
-individual rows, and a compose window that cannot attach a file.
+Originally three things: mail that did not arrive by itself, conversations
+that scatter into individual rows, and a compose window that could not attach
+a file.
 
-Fix those three and the honest remaining answer is *"labels are read-only and
-there is no print view"* — which is polish, not credibility.
+**Two are now fixed.** The honest remaining answer is **threading** — and
+after that, labels being read-only and there being no print view, which is
+polish rather than credibility.

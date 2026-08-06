@@ -443,13 +443,16 @@ export function buildMime(m) {
     m.inReplyTo ? `In-Reply-To: ${m.inReplyTo}` : null,
     m.references ? `References: ${m.references}` : null,
     'MIME-Version: 1.0',
-    `Content-Type: multipart/alternative; boundary="${boundary}"`,
   ].filter(Boolean);
 
   const plain = m.body;
   const html = plainToHtml(m.body);
 
-  const parts = [
+  /*
+   * The body is always multipart/alternative: a text/plain fallback beside the
+   * HTML, so clients that do not render HTML still show something readable.
+   */
+  const altParts = [
     `--${boundary}`,
     'Content-Type: text/plain; charset="UTF-8"',
     'Content-Transfer-Encoding: 8bit',
@@ -466,7 +469,76 @@ export function buildMime(m) {
     '',
   ];
 
-  return `${headers.join('\r\n')}\r\n\r\n${parts.join('\r\n')}`;
+  const files = Array.isArray(m.attachments) ? m.attachments.filter(Boolean) : [];
+
+  /*
+   * NO ATTACHMENTS: EMIT EXACTLY WHAT WE ALWAYS DID.
+   *
+   * Wrapping every message in multipart/mixed "for consistency" would add a
+   * layer to the 99% case to serve the 1%, and some clients render the extra
+   * nesting badly. The common path is untouched.
+   */
+  if (!files.length) {
+    return [
+      ...headers,
+      `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    ].join('\r\n') + `\r\n\r\n${altParts.join('\r\n')}`;
+  }
+
+  /*
+   * WITH ATTACHMENTS: multipart/mixed WRAPPING the alternative, not replacing
+   * it. Flattening the alternative away would lose the text/plain fallback.
+   * The outer boundary must differ from the inner one or a parser cannot tell
+   * where the nested part ends.
+   */
+  const outer = `${boundary}_mixed`;
+  const body = [
+    `--${outer}`,
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    '',
+    ...altParts,
+  ];
+
+  for (const f of files) {
+    const name = safeFilename(f.filename);
+    body.push(
+      `--${outer}`,
+      `Content-Type: ${safeHeaderValue(f.mimeType || 'application/octet-stream')}; name="${name}"`,
+      `Content-Disposition: attachment; filename="${name}"`,
+      'Content-Transfer-Encoding: base64',
+      '',
+      // Already base64 from the reader; fold to 76 columns as RFC 2045 asks.
+      String(f.data || '').replace(/\s+/g, '').replace(/(.{76})/g, '$1\r\n'),
+      ''
+    );
+  }
+  body.push(`--${outer}--`, '');
+
+  return [
+    ...headers,
+    `Content-Type: multipart/mixed; boundary="${outer}"`,
+  ].join('\r\n') + `\r\n\r\n${body.join('\r\n')}`;
+}
+
+/**
+ * Make a filename safe to sit inside a quoted MIME parameter.
+ *
+ * A filename is ATTACKER-CONTROLLED the moment you forward something. An
+ * unescaped `"` closes the parameter early and a CRLF injects an entire new
+ * header -- which turns a forward into a header-injection primitive capable of
+ * adding a Bcc. Strip the line breaks, strip the quotes, and cap the length.
+ */
+function safeFilename(name) {
+  return String(name || 'attachment')
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/"/g, '')
+    .slice(0, 200)
+    .trim() || 'attachment';
+}
+
+/** Same rule for any value we interpolate into a header. */
+function safeHeaderValue(v) {
+  return String(v || '').replace(/[\r\n"]+/g, '').slice(0, 200);
 }
 
 /** Minimal, escaped plain-text -> HTML. Never interpolates raw user text. */
