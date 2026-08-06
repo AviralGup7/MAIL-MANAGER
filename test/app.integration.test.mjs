@@ -1189,3 +1189,80 @@ test('ATT: the strip hides for a message with no attachments', async (t) => {
     restore();
   }
 });
+
+// ------------------------------------------------------- saved views -----
+
+test('VIEWS: built-ins render with live counts', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // A count is what makes a saved view useful rather than a bookmark.
+  const { doc, restore } = await boot();
+  try {
+    const items = [...doc.querySelectorAll('.view-item')];
+    assert.ok(items.length >= 4, 'built-in views must render');
+    const unread = items.find((i) => i.querySelector('.view-name').textContent === 'Unread');
+    assert.ok(unread, 'Unread view must exist');
+    assert.equal(unread.querySelector('.view-count').textContent, '2', 'count reflects the store');
+  } finally {
+    restore();
+  }
+});
+
+test('VIEWS: clicking one applies its query and marks it current', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, settle, restore } = await boot();
+  try {
+    const unread = [...doc.querySelectorAll('.view-item')]
+      .find((i) => i.querySelector('.view-name').textContent === 'Unread');
+    unread.click();
+    await settle();
+
+    assert.equal(doc.getElementById('search').value, 'is:unread');
+    assert.equal(rows(doc).length, 2, 'the list is filtered');
+    assert.ok(doc.querySelector('.view-item[aria-current="true"]'), 'the active view is marked');
+  } finally {
+    restore();
+  }
+});
+
+test('VIEWS: switching category clears the active view', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Leaving a view highlighted after its query was cleared claims a filter is
+  // applied when it is not.
+  const { doc, settle, restore } = await boot();
+  try {
+    [...doc.querySelectorAll('.view-item')][0].click();
+    await settle();
+    assert.ok(doc.querySelector('.view-item[aria-current="true"]'));
+
+    doc.querySelector('.cat[data-cat="augsd"]').click();
+    await settle();
+    assert.equal(doc.querySelector('.view-item[aria-current="true"]'), null);
+    assert.equal(doc.getElementById('search').value, '');
+  } finally {
+    restore();
+  }
+});
+
+test('VIEWS: the save affordance appears only for an unsaved query', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // An always-present save button on an empty box is noise, and offering to
+  // save something already saved is a small lie about what it will do.
+  const { doc, win, settle, restore } = await boot();
+  try {
+    const btn = doc.getElementById('btn-save-view');
+    assert.equal(btn.hidden, true, 'hidden with no query');
+
+    const search = doc.getElementById('search');
+    search.value = 'from:augsd';
+    search.dispatchEvent(new win.Event('input'));
+    await settle();
+    assert.equal(btn.hidden, false, 'shown for a new query');
+
+    search.value = 'is:unread';
+    search.dispatchEvent(new win.Event('input'));
+    await settle();
+    assert.equal(btn.hidden, true, 'hidden for an already-saved query');
+  } finally {
+    restore();
+  }
+});

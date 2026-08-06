@@ -35,6 +35,18 @@
           <ul id="radar-list"></ul>
         </section>
 
+        <!--
+          SAVED VIEWS.
+
+          A filter you cannot keep is a filter you use once. Ships with four
+          built-ins that double as worked examples of the query syntax —
+          nobody discovers `has:deadline` by staring at a text box.
+        -->
+        <section id="views" aria-labelledby="views-title">
+          <h2 id="views-title">Views</h2>
+          <ul id="views-list"></ul>
+        </section>
+
         <nav id="cats" aria-label="Categories"><!-- built once by app.js --></nav>
 
         <div id="side-foot">
@@ -66,6 +78,8 @@
               aria-label="Search mail"
             />
             <kbd id="searchkbd">/</kbd>
+            <button id="btn-save-view" class="ghost small" type="button"
+                    title="Save this search as a view" hidden>Save view</button>
           </div>
           <div id="toolbar" role="toolbar" aria-label="Message actions">
             <!--

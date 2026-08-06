@@ -1398,14 +1398,7 @@ html[data-theme='contrast'] .row[aria-selected='true'] {
   margin-bottom: var(--s-1);
 }
 
-#radar-title {
-  font-size: var(--t-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  color: var(--fg-faint);
-  margin: 2px 0 6px 9px;
-  font-weight: var(--w-bold);
-}
+
 
 #radar-list {
   list-style: none;
@@ -2161,6 +2154,111 @@ html[data-scheme='dark'] #thememenu {
 /* A pulse while fetching. Bounded by the disabled state, so it stops. */
 .att-chip.loading .att-name {
   opacity: 0.6;
+}
+
+/* ------------------------------------------------------ saved views -- */
+
+#views {
+  padding: var(--s-1) var(--s-2) var(--s-2);
+  border-bottom: 1px solid var(--line);
+  margin-bottom: var(--s-1);
+}
+#views-title,
+#radar-title {
+  font-size: var(--t-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--track-wide);
+  color: var(--fg-faint);
+  margin: 2px 0 var(--s-1) var(--s-3);
+  font-weight: var(--w-bold);
+}
+#views-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.view-item {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-1) var(--s-3);
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: var(--t-sm);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    background-color var(--dur-instant) linear,
+    color var(--dur-instant) linear,
+    transform var(--dur-fast) var(--ease-spring);
+}
+.view-item:hover {
+  background: var(--bg-raised);
+  color: var(--fg);
+  transform: translateX(2px);
+}
+.view-item[aria-current='true'] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: var(--w-semi);
+}
+
+.view-icon {
+  display: flex;
+  color: var(--fg-faint);
+  flex: none;
+}
+.view-item[aria-current='true'] .view-icon {
+  color: var(--accent);
+}
+.view-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.view-count {
+  font-size: var(--t-xs);
+  color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Remove appears on hover, in place of the count.
+ *
+ * A delete affordance visible on every row invites misclicks on a list people
+ * use constantly; swapping it in where the count sits means no layout shift
+ * and no extra column of chrome.
+ */
+.view-remove {
+  display: none;
+  place-items: center;
+  color: var(--fg-faint);
+  border-radius: var(--r-full);
+  padding: 1px;
+}
+.view-item:hover .view-count {
+  display: none;
+}
+.view-item:hover .view-remove {
+  display: grid;
+}
+.view-remove:hover {
+  color: var(--danger);
+  background: var(--bg-sunken);
+}
+
+#btn-save-view {
+  position: absolute;
+  right: var(--s-2);
+  animation: bulk-in var(--dur-fast) var(--ease-spring) both;
 }
 
 /*
