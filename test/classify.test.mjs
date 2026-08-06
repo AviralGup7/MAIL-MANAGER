@@ -14,7 +14,7 @@ import {
   ruleCount,
   classifyBySender,
 } from '../src/classify/sender.js';
-import { normalizeConfidence } from '../src/classify/scoring.js';
+import { normalizeConfidence, resolveConflict } from '../src/classify/scoring.js';
 import { CATEGORIES, SIDEBAR_ORDER } from '../src/classify/categories.js';
 import { SENDER_RULES } from '../src/classify/sender-rules.js';
 import { PATTERN_RULES } from '../src/classify/pattern-rules.js';
@@ -482,4 +482,126 @@ test('the address map cannot be poisoned by prototype keys', () => {
   for (const evil of ['__proto__', 'constructor', 'toString']) {
     assert.equal(classify({ from: `<${evil}>`, subject: 'x' }).source !== 'address', true);
   }
+});
+
+/* ========================================================================== *
+ * SCORING BOUNDARIES
+ *
+ * The confidence ladder is a CALIBRATED lookup, not a formula — its comment
+ * says so explicitly. That makes every threshold a decision, and a `>=` that
+ * drifts to `>` silently reclassifies messages at the edge.
+ *
+ * Mutation testing found six survivors here: the existing tests checked
+ * values exactly AT each boundary, which cannot distinguish `>=` from `>`.
+ * These check just below and just above as well.
+ * ========================================================================== */
+
+test('every confidence threshold is inclusive at its lower edge', () => {
+  for (const [raw, expected] of [[5, 0.4], [25, 0.55], [45, 0.7], [65, 0.82],
+    [90, 0.9], [120, 0.95], [150, 0.98]]) {
+    assert.equal(normalizeConfidence(raw), expected, `at the ${raw} boundary`);
+    assert.notEqual(
+      normalizeConfidence(raw - 1), expected,
+      `${raw - 1} must fall into the band BELOW ${raw}; >= drifted to >`
+    );
+  }
+});
+
+test('a zero or negative score is the floor, not a computed value', () => {
+  // `rawScore <= 0` -> `< 0` would send exactly 0 into the interpolation
+  // branch, which returns 0.3 anyway — but only by coincidence. Negative
+  // scores would produce a confidence below the floor.
+  assert.equal(normalizeConfidence(0), 0.3);
+  assert.equal(normalizeConfidence(-1), 0.3);
+  assert.equal(normalizeConfidence(-1000), 0.3);
+});
+
+test('scores between 0 and 5 interpolate, never exceeding the first band', () => {
+  for (const raw of [1, 2, 3, 4]) {
+    const c = normalizeConfidence(raw);
+    assert.ok(c > 0.3 && c < 0.4, `${raw} produced ${c}, outside the interpolation band`);
+  }
+  assert.ok(normalizeConfidence(4) > normalizeConfidence(1), 'must increase monotonically');
+});
+
+test('confidence never decreases as the score rises', () => {
+  // A property, not an example: the ladder must be monotonic or a
+  // better-matching message could report lower confidence.
+  let previous = -1;
+  for (let raw = -5; raw <= 200; raw++) {
+    const c = normalizeConfidence(raw);
+    assert.ok(c >= previous, `confidence dropped at rawScore ${raw}: ${c} < ${previous}`);
+    assert.ok(c >= 0.3 && c <= 0.98, `confidence ${c} out of range at ${raw}`);
+    previous = c;
+  }
+});
+
+test('a conflict is broken by a sender match, in either direction', () => {
+  const mk = (category, score, hasSenderMatch) => ({ category, score, hasSenderMatch });
+
+  // Scores close enough to conflict (ratio >= 0.9).
+  assert.equal(
+    resolveConflict([mk('augsd', 100, true), mk('clubs', 95, false)]).category, 'augsd',
+    'the sender match should win'
+  );
+  assert.equal(
+    resolveConflict([mk('clubs', 100, false), mk('augsd', 95, true)]).category, 'augsd',
+    'the runner-up wins when only IT has a sender match'
+  );
+  // Both or neither: the higher score stands.
+  assert.equal(resolveConflict([mk('a', 100, true), mk('b', 95, true)]).category, 'a');
+  assert.equal(resolveConflict([mk('a', 100, false), mk('b', 95, false)]).category, 'a');
+});
+
+test('a clear winner is never overridden by a sender match', () => {
+  // Below the overlap ratio there is no conflict to resolve, so a weak
+  // sender-matched runner-up must not hijack a decisive score.
+  const mk = (category, score, hasSenderMatch) => ({ category, score, hasSenderMatch });
+  assert.equal(
+    resolveConflict([mk('augsd', 100, false), mk('clubs', 10, true)]).category, 'augsd',
+    'a 0.1 ratio is not a conflict'
+  );
+});
+
+test('conflict resolution handles degenerate input', () => {
+  const mk = (category, score, hasSenderMatch) => ({ category, score, hasSenderMatch });
+  assert.equal(resolveConflict([mk('only', 50, false)]).category, 'only', 'single candidate');
+  assert.equal(
+    resolveConflict([mk('a', 50, false), mk('b', 0, true)]).category, 'a',
+    'a zero-scoring runner-up is not a conflict, even with a sender match'
+  );
+  assert.equal(
+    resolveConflict([mk('a', 50, false), mk('b', -5, true)]).category, 'a',
+    'a negative runner-up is not a conflict'
+  );
+});
+
+test('the overlap ratio is inclusive at exactly 0.9', () => {
+  /*
+   * `ratio >= CONFLICT_OVERLAP_RATIO` -> `>` survived mutation testing. It is
+   * reachable: 90 against 100 is exactly 0.9, and scores are small integers,
+   * so landing precisely on the boundary is common rather than exotic.
+   *
+   * The other four survivors in this function are EQUIVALENT mutants —
+   * verified by hand, not assumed:
+   *   - `rawScore >= 5`  vs `>`: at 5 the fallthrough computes 0.3+(5/5)*0.1 = 0.4.
+   *   - `rawScore <= 0`  vs `<`: at 0 the fallthrough computes 0.3+(0/5)*0.1 = 0.3.
+   *   - `runnerUp.score <= 0` vs `<`: at 0 the ratio is 0, below the overlap
+   *     threshold, so the same `best` is returned by a longer route.
+   *   - `&&` vs `||` on the first sender-match line: identical for all four
+   *     combinations of the two booleans.
+   * Chasing those would mean writing tests that cannot fail.
+   */
+  const mk = (category, score, hasSenderMatch) => ({ category, score, hasSenderMatch });
+  assert.equal(
+    resolveConflict([mk('clubs', 100, false), mk('augsd', 90, true)]).category,
+    'augsd',
+    'a ratio of exactly 0.9 must count as a conflict and let the sender match decide'
+  );
+  // Just below the boundary is NOT a conflict.
+  assert.equal(
+    resolveConflict([mk('clubs', 100, false), mk('augsd', 89, true)]).category,
+    'clubs',
+    '0.89 is below the overlap threshold; the higher score stands'
+  );
 });

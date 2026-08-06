@@ -337,3 +337,66 @@ test('a failing undo surfaces rather than silently half-applying', async () => {
   });
   await assert.rejects(() => s.undo(), /Could not undo: archive/);
 });
+
+/* ------------------------------------------------------- undo edge cases ----
+ *
+ * Undo is the product's recovery mechanism — the thing that makes optimistic
+ * mutation safe. These pin the failure paths, which stress testing showed
+ * were unverified.
+ */
+
+test('a failed undo still advances the stack', () => {
+  /*
+   * `undo()` pops BEFORE invoking, so a thunk that throws does not wedge the
+   * stack: the next undo reaches the entry beneath it. The rethrow is
+   * deliberate — the caller surfaces it, because a silently half-applied
+   * state is worse than a visible error.
+   */
+  const u = new UndoStack({ now: () => 0 });
+  const ran = [];
+  u.push('bad', () => { throw new Error('boom'); });
+  u.push('good', () => { ran.push('good'); });
+
+  return u.undo()
+    .then((label) => {
+      assert.equal(label, 'good');
+      assert.equal(u.size, 1);
+      return u.undo().then(
+        () => assert.fail('a throwing undo must report failure'),
+        (err) => assert.match(err.message, /Could not undo: bad/)
+      );
+    })
+    .then(() => {
+      assert.equal(u.size, 0, 'the failed entry must still have been popped');
+      return u.undo();
+    })
+    .then((r) => assert.equal(r, null, 'undo on an empty stack returns null, never throws'));
+});
+
+test('clear() on an empty stack does not notify', () => {
+  // Found by mutation testing: dropping the `!this.entries.length` guard
+  // survived, so a no-op clear would repaint the undo affordance.
+  const u = new UndoStack({ now: () => 0 });
+  let notifications = 0;
+  u.subscribe(() => notifications++);
+
+  u.clear();
+  assert.equal(notifications, 0, 'clearing nothing must not notify');
+
+  u.push('x', () => {});
+  const afterPush = notifications;
+  u.clear();
+  assert.equal(notifications, afterPush + 1, 'clearing something must notify exactly once');
+  assert.equal(u.size, 0);
+});
+
+test('the stack stays bounded and expires old entries', () => {
+  let now = 0;
+  const u = new UndoStack({ max: 20, ttlMs: 1000, now: () => now });
+  for (let i = 0; i < 100; i++) u.push(`a${i}`, () => {});
+  assert.ok(u.entries.length <= 20, `unbounded: ${u.entries.length}`);
+
+  now = 5000;
+  assert.equal(u.size, 0, 'expired entries must not be offered');
+  assert.equal(u.peek(), null, 'an undo offered ten minutes late is a trap');
+});

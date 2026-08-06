@@ -8,6 +8,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 globalThis.chrome = {
   storage: { local: { get: async () => ({}), set: async () => {}, remove: async () => {} } },
@@ -180,4 +181,53 @@ test('a realistic mixed batch resolves correctly', () => {
   assert.deepEqual(r.addIds.sort(), ['new1', 'new2', 'old4']);
   assert.deepEqual(r.removeIds.sort(), ['old3', 'old5']);
   assert.deepEqual(r.patched.map((p) => p.id).sort(), ['old1', 'old2']);
+});
+
+/* ========================================================================== *
+ * THE HISTORY CURSOR GUARD
+ *
+ * `historyId` is a SINGLE account-wide cursor that the inbox delta sync
+ * depends on. Loading a page of Sent or Trash must not advance it, or inbox
+ * changes that were never fetched are skipped and are unrecoverable until the
+ * cursor expires (~a week).
+ *
+ * Mutation testing found this guard untested: changing `anchorHistory &&
+ * !pageToken` to `||` killed no test. It cannot be driven end-to-end here
+ * because `api()` requires a signed-in token before the cursor logic is
+ * reached, and stubbing the whole auth module to test one boolean would be a
+ * more fragile test than the code it guards. The structure is asserted
+ * instead, and the reasoning is recorded so nobody "simplifies" it.
+ * ========================================================================== */
+
+const syncSrc = readFileSync(new URL('../src/background/sync.js', import.meta.url), 'utf8');
+
+test('the cursor is read only for an anchoring first page', () => {
+  assert.match(
+    syncSrc, /if \(anchorHistory && !pageToken\) \{/,
+    'both conditions are required: `||` would anchor on Sent, or on page 2'
+  );
+});
+
+test('anchorHistory defaults to true, so the inbox is never accidentally skipped', () => {
+  // Defaulting to false would silently stop the inbox cursor from advancing,
+  // which is the opposite failure: endless re-syncs of the same window.
+  assert.match(syncSrc, /anchorHistory = true/);
+});
+
+test('the cursor is written only when an anchor was actually captured', () => {
+  // `if (anchor)` — writing an undefined cursor would clear it entirely and
+  // force a full resync on every startup.
+  const writes = [...syncSrc.matchAll(/if \(anchor\) await setHistoryId\(anchor\)/g)];
+  assert.ok(writes.length >= 2, 'both the empty-page and normal paths must guard the write');
+});
+
+test('page 2 and beyond never re-anchor', () => {
+  /*
+   * The subtle half. The response `historyId` is the mailbox's CURRENT id,
+   * not the id of the last record on the page — so anchoring on page 2 would
+   * advance the cursor past pages 3..n before they were read.
+   */
+  const fn = syncSrc.slice(syncSrc.indexOf('export async function syncPage'));
+  const guard = fn.slice(0, fn.indexOf('const { ids, nextPageToken }'));
+  assert.ok(guard.includes('!pageToken'), 'pagination must suppress anchoring');
 });
