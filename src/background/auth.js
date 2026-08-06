@@ -185,7 +185,22 @@ async function authorize(interactive) {
 
 /** Interactive sign-in. Persists the token. */
 export async function signIn() {
+  /*
+   * A new sign-in supersedes anything in flight too — including a silent
+   * renewal for the PREVIOUS account. Without this, switching accounts could
+   * let the old account's renewal overwrite the new account's token, which is
+   * worse than the sign-out case: the user ends up reading someone else's
+   * mailbox with no indication anything went wrong.
+   */
+  sessionEpoch++;
+  inFlight = null;
+
+  // Captured BEFORE the await, or the comparison below is against a value
+  // read after any concurrent change and can never differ.
+  const epoch = sessionEpoch;
   const tok = await authorize(true);
+  // If a signOut landed while the consent screen was open, do not persist.
+  if (epoch !== sessionEpoch) throw new Error('NOT_SIGNED_IN');
   await persist(tok);
   // Remember that consent was granted, so getToken() knows silent renewal is
   // worth attempting. Implicit flow gives us no refresh token to test for.
@@ -251,6 +266,26 @@ async function persist(tok) {
  */
 let inFlight = null;
 
+/**
+ * Session generation.
+ *
+ * THIS FIXES A REAL SECURITY DEFECT. `signOut()` cleared storage, but a silent
+ * renewal already in flight would call `persist()` AFTERWARDS and write a
+ * fresh, live access token back — so signing out during a renewal left the
+ * user believing they were signed out while a working credential sat in
+ * storage. Reproduced: sign out 10ms into a 60ms renewal, and `accessToken`
+ * came back as a valid token.
+ *
+ * Clearing storage is not enough on its own because it cannot reach work that
+ * has already started. The epoch is the missing piece: every operation that
+ * WRITES credentials captures it first and refuses to commit if it has moved.
+ *
+ * A boolean "signing out" flag would not do — sign-out completes, and a
+ * renewal that started before it must stay invalid forever after, not just
+ * during the sign-out itself.
+ */
+let sessionEpoch = 0;
+
 export async function getToken() {
   const s = await chrome.storage.local.get(['accessToken', 'expiresAt', 'authorized']);
 
@@ -274,17 +309,30 @@ export async function getToken() {
  * clear the flag so the UI prompts rather than retrying forever.
  */
 async function renew() {
+  const epoch = sessionEpoch;
   try {
     const tok = await authorize(false);
+    // The user may have signed out while this was in flight. Persisting now
+    // would resurrect the session they just ended.
+    if (epoch !== sessionEpoch) throw new Error('NOT_SIGNED_IN');
     await persist(tok);
     return tok.access_token;
-  } catch {
+  } catch (err) {
+    // Do NOT clear storage for a superseded renewal: sign-out has already
+    // cleared it, and a sign-IN may since have populated it afresh. Wiping
+    // here would sign the user back out immediately after they signed in.
+    if (epoch !== sessionEpoch) throw new Error('NOT_SIGNED_IN');
     await chrome.storage.local.remove(['accessToken', 'expiresAt', 'authorized']);
     throw new Error('NOT_SIGNED_IN');
   }
 }
 
 export async function signOut() {
+  // Invalidate any renewal already in flight BEFORE doing anything else, so
+  // it cannot commit a token after this returns. See `sessionEpoch`.
+  sessionEpoch++;
+  inFlight = null;
+
   const { accessToken } = await chrome.storage.local.get('accessToken');
 
   // Revoke server-side, not just locally. The implicit flow issues no refresh

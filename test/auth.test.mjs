@@ -377,3 +377,127 @@ test('isSignedIn tracks consent, not the presence of a token', async () => {
   const b = await load({ storage: { clientId: CLIENT_ID, authorized: true } });
   assert.equal(await b.mod.isSignedIn(), true, 'consent without a live token is still signed in');
 });
+
+/* ========================================================================== *
+ * SESSION LIFECYCLE RACES
+ *
+ * A SECURITY DEFECT lived here. `signOut()` cleared storage, but a silent
+ * renewal already in flight called `persist()` afterwards and wrote a fresh,
+ * LIVE access token back. Signing out during a renewal left the user
+ * believing they were signed out while a working credential sat in storage.
+ *
+ * Clearing storage cannot reach work that has already started, which is why
+ * the fix is a session epoch rather than another `remove()` call: every
+ * operation that writes credentials captures the epoch first and refuses to
+ * commit if it has moved.
+ * ========================================================================== */
+
+/** A reply that takes `ms` to arrive, so a race can be driven deterministically. */
+const slowGrant = (token, ms) => async (opts) => {
+  await new Promise((r) => setTimeout(r, ms));
+  const state = new URL(opts.url).searchParams.get('state');
+  return `${REDIRECT}#access_token=${token}&token_type=Bearer&expires_in=3600&state=${encodeURIComponent(state)}`;
+};
+
+test('signing out during a silent renewal does not resurrect the token', async () => {
+  const h = await load({
+    storage: { clientId: CLIENT_ID, authorized: true, accessToken: 'old', expiresAt: Date.now() - 1000 },
+  });
+  h.setReply(slowGrant('RESURRECTED', 60));
+
+  const renewal = h.mod.getToken().catch(() => 'threw');
+  await new Promise((r) => setTimeout(r, 10)); // renewal is mid-flight
+  await h.mod.signOut();
+  await renewal;
+  await new Promise((r) => setTimeout(r, 60)); // let it fully settle
+
+  assert.equal(h.store.accessToken, undefined,
+    'a revoked session must not have a token written back after signOut');
+  assert.ok(!h.store.authorized, 'the authorized flag must stay cleared');
+});
+
+test('signing out during a renewal leaves isSignedIn false', async () => {
+  // The user-visible half: the gate must appear, not a working inbox.
+  const h = await load({
+    storage: { clientId: CLIENT_ID, authorized: true, accessToken: 'old', expiresAt: Date.now() - 1000 },
+  });
+  h.setReply(slowGrant('RESURRECTED', 50));
+  const renewal = h.mod.getToken().catch(() => {});
+  await new Promise((r) => setTimeout(r, 10));
+  await h.mod.signOut();
+  await renewal;
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(await h.mod.isSignedIn(), false);
+});
+
+test('a new sign-in is not overwritten by the previous session\'s renewal', async () => {
+  /*
+   * Worse than the sign-out case: the stale renewal belongs to the OLD
+   * account, so without the epoch the user ends up holding the previous
+   * account's token while the UI shows the new one — reading the wrong
+   * mailbox with no indication anything is wrong.
+   */
+  const h = await load({
+    storage: { clientId: CLIENT_ID, authorized: true, accessToken: 'old', expiresAt: Date.now() - 1000 },
+  });
+  h.setReply(slowGrant('STALE', 80));
+  const stale = h.mod.getToken().catch(() => {});
+
+  await new Promise((r) => setTimeout(r, 10));
+  h.setReply(slowGrant('NEWACCOUNT', 5));
+  await h.mod.signIn();
+
+  await stale;
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(h.store.accessToken, 'NEWACCOUNT',
+    'the superseded renewal overwrote the fresh sign-in');
+});
+
+test('a superseded renewal does not clear a freshly signed-in session', async () => {
+  // The inverse hazard: renew()'s failure path removes credentials. If a
+  // superseded renewal ran that path it would sign the user out immediately
+  // after they signed in.
+  const h = await load({
+    storage: { clientId: CLIENT_ID, authorized: true, accessToken: 'old', expiresAt: Date.now() - 1000 },
+  });
+  h.setReply(async () => { await new Promise((r) => setTimeout(r, 60)); throw new Error('silent failed'); });
+  const stale = h.mod.getToken().catch(() => {});
+
+  await new Promise((r) => setTimeout(r, 10));
+  h.setReply(slowGrant('GOOD', 5));
+  await h.mod.signIn();
+
+  await stale;
+  await new Promise((r) => setTimeout(r, 80));
+  assert.equal(h.store.accessToken, 'GOOD', 'a stale failure wiped the new session');
+  assert.equal(await h.mod.isSignedIn(), true);
+});
+
+test('normal renewal still works after the epoch guard', async () => {
+  // The guard must not break the path it protects.
+  const h = await load({
+    storage: { clientId: CLIENT_ID, authorized: true, accessToken: 'old', expiresAt: Date.now() - 1000 },
+  });
+  h.setReply(slowGrant('FRESH', 5));
+  assert.equal(await h.mod.getToken(), 'FRESH');
+  assert.equal(h.store.accessToken, 'FRESH');
+});
+
+test('concurrent getToken() calls still share ONE authorization flow', async () => {
+  const h = await load({
+    storage: { clientId: CLIENT_ID, authorized: true, accessToken: 'old', expiresAt: Date.now() - 1000 },
+  });
+  h.setReply(slowGrant('ONE', 30));
+  const results = await Promise.all(Array.from({ length: 6 }, () => h.mod.getToken()));
+  assert.equal(h.calls.authFlow.length, 1, `single-flight broken: ${h.calls.authFlow.length} flows`);
+  assert.deepEqual([...new Set(results)], ['ONE'], 'callers disagreed on the token');
+});
+
+test('a failed renewal clears authorized so the gate appears', async () => {
+  const h = await load({
+    storage: { clientId: CLIENT_ID, authorized: true, accessToken: 'old', expiresAt: Date.now() - 1000 },
+  });
+  h.setReply(() => new Error('silent failed'));
+  await assert.rejects(() => h.mod.getToken());
+  assert.ok(!h.store.authorized, 'a dead session must stop retrying silently');
+});

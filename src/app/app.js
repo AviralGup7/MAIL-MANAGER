@@ -333,14 +333,49 @@ wireStore('inbox');
  * Rendering synchronously here is correct rather than wasteful — the list is
  * empty, so it is one `replaceChildren` with nothing in it.
  */
-function resetView() {
-  store.clear();
+function resetView({ allMailboxes = false } = {}) {
+  /*
+   * `allMailboxes` distinguishes two genuinely different resets.
+   *
+   * A RESYNC only invalidates the inbox: the history cursor expired, so inbox
+   * deltas are untrustworthy, but Sent and Trash were never driven by that
+   * cursor and refetching them would be wasted work.
+   *
+   * A SIGN-OUT must erase everything. THIS WAS A BUG: `store` is a live
+   * binding onto the ACTIVE mailbox, so signing out while viewing the inbox
+   * cleared the inbox and left Sent, Trash, Spam and Drafts fully populated in
+   * memory. The gate appeared, but clicking Sent afterwards showed the
+   * previous account's mail — verified: 5 rows survived a sign-out.
+   *
+   * The per-mailbox store refactor introduced this: `resetView` was written
+   * when there was exactly one store, and "clear the store" silently stopped
+   * meaning "clear everything".
+   */
+  if (allMailboxes) {
+    for (const s of stores.values()) s.clear();
+    for (const st of mailboxState.values()) {
+      st.nextPageToken = '';
+      st.loaded = false;
+      st.loading = false;
+    }
+    state.mailbox = DEFAULT_MAILBOX;
+    store = wireStore(DEFAULT_MAILBOX);
+    state.category = 'all';
+    state.query = '';
+    if (el.search) el.search.value = '';
+    state.nextPageToken = '';
+    selection.clear();
+  } else {
+    store.clear();
+  }
+
   closeReader();
   el.list.replaceChildren();
   nodeById.clear();
   renderedIds = [];
   renderList();
   renderSidebar();
+  renderSelection();
 }
 
 /**
@@ -1499,6 +1534,7 @@ async function loadPage(pageToken = '') {
   // Inbox-only path. Uses the same per-mailbox flag as loadMailboxPage so the
   // two cannot deadlock each other; see the note there.
   const ms = mbState('inbox');
+  if (!state.signedIn) return;
   if (ms.loading) return;
   ms.loading = true;
   syncBusy();
@@ -1555,6 +1591,7 @@ async function refresh({ silent = false } = {}) {
   // refresh could block a mailbox load -- two unrelated operations
   // deadlocking each other through one boolean.
   const ims = mbState('inbox');
+  if (!state.signedIn) return;
   if (ims.loading) return;
   ims.loading = true;
   syncBusy();
@@ -1793,7 +1830,10 @@ async function selectMailbox(id) {
   renderSelection();
   syncContextActions(null);
 
-  if (!mbState(id).loaded) await loadMailboxPage(id, '');
+  // Signed-out means no fetching. `state.signedIn` was written in three
+  // places and READ NOWHERE, so clicking a mailbox behind the sign-in gate
+  // still issued a SYNC_PAGE and repainted the previous account's mail.
+  if (state.signedIn && !mbState(id).loaded) await loadMailboxPage(id, '');
 }
 
 /** Fetch one page of a non-inbox mailbox. */
@@ -1817,6 +1857,7 @@ async function loadMailboxPage(id, pageToken = '') {
    * concurrently while the same mailbox still cannot be double-fetched.
    */
   const ms = mbState(id);
+  if (!state.signedIn) return; // never fetch for a session that has ended
   if (ms.loading) return;
   ms.loading = true;
   syncBusy();
@@ -2011,11 +2052,12 @@ $('btn-more').addEventListener('click', () => {
 $('btn-gmail').addEventListener('click', release);
 $('btn-signout').addEventListener('click', async () => {
   await send('SIGN_OUT').catch(() => {});
-  // Signing out must leave nothing of this mailbox behind. Without this the
-  // next person to open the extension would see the previous account's inbox
-  // painted from cache before the sign-in gate appeared.
+  // Signing out must leave nothing of this ACCOUNT behind — not just the
+  // mailbox on screen. `allMailboxes` clears every store, because Sent, Trash
+  // and the rest stayed fully populated in memory and were one click away
+  // after the gate appeared.
   await clearCache();
-  resetView();
+  resetView({ allMailboxes: true });
   state.signedIn = false;
   showGate('Signed out.');
 });

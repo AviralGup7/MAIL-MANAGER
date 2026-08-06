@@ -1878,3 +1878,121 @@ test('LEAK: reopening the help overlay replaces its content', async (t) => {
     restore();
   }
 });
+
+/* ========================================================================== *
+ * SIGN-OUT MUST ERASE THE WHOLE ACCOUNT
+ *
+ * `resetView()` called `store.clear()`, but `store` is a live binding onto the
+ * ACTIVE mailbox. Signing out while viewing the inbox therefore cleared the
+ * inbox and left Sent, Trash, Spam and Drafts fully populated in memory: the
+ * gate appeared, and one click showed the previous account's mail.
+ *
+ * The per-mailbox store refactor introduced this. `resetView` was written when
+ * there was one store, and "clear the store" quietly stopped meaning "clear
+ * everything".
+ *
+ * A second defect compounded it: `state.signedIn` was assigned in three places
+ * and READ NOWHERE, so clicking a mailbox behind the gate issued a fresh
+ * SYNC_PAGE and repainted mail for a session that had ended.
+ * ========================================================================== */
+
+test('SIGNOUT: no mailbox retains the previous account', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, settle, restore } = await boot({ perLabel: true });
+  try {
+    // Populate several mailboxes before signing out.
+    for (const m of ['sent', 'trash']) {
+      doc.querySelector(`.cat[data-mailbox="${m}"]`).click();
+      await settle(4);
+    }
+    doc.querySelector('.cat[data-mailbox="inbox"]').click();
+    await settle(4);
+    assert.ok(rows(doc).length > 0, 'need populated mailboxes to test the reset');
+
+    doc.getElementById('btn-signout').click();
+    await settle(12);
+    assert.equal(doc.getElementById('gate').hidden, false, 'the gate must be shown');
+
+    for (const m of ['sent', 'trash', 'inbox', 'spam', 'drafts']) {
+      doc.querySelector(`.cat[data-mailbox="${m}"]`).click();
+      await settle(4);
+      assert.equal(
+        rows(doc).length, 0,
+        `${m} still shows the previous account's mail after signing out`
+      );
+    }
+  } finally {
+    restore();
+  }
+});
+
+test('SIGNOUT: no network request is issued for an ended session', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, calls, settle, restore } = await boot({ perLabel: true });
+  try {
+    doc.getElementById('btn-signout').click();
+    await settle(12);
+    const before = calls.filter((c) => c.type === 'SYNC_PAGE').length;
+
+    for (const m of ['sent', 'trash', 'spam']) {
+      doc.querySelector(`.cat[data-mailbox="${m}"]`).click();
+      await settle(4);
+    }
+    doc.getElementById('btn-refresh').click();
+    await settle(6);
+
+    assert.equal(
+      calls.filter((c) => c.type === 'SYNC_PAGE').length, before,
+      'a signed-out session must not fetch'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('SIGNOUT: state is reset to the inbox with no stale query', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Leaving the rail pointing at Trash, or a query applied, would greet the
+  // NEXT user with the previous session's view.
+  const { doc, win, settle, restore } = await boot({ perLabel: true });
+  try {
+    const search = doc.getElementById('search');
+    search.value = 'registration';
+    search.dispatchEvent(new win.Event('input'));
+    await settle(4);
+    doc.querySelector('.cat[data-mailbox="trash"]').click();
+    await settle(4);
+
+    doc.getElementById('btn-signout').click();
+    await settle(12);
+
+    assert.equal(search.value, '', 'a stale query survived sign-out');
+    assert.equal(
+      doc.querySelector('.cat[data-mailbox][aria-current="true"]')?.dataset.mailbox,
+      'inbox',
+      'the rail must return to the inbox'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('SIGNOUT: signing back in still works', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // The guards must not wedge the app shut: `state.signedIn` gates fetching,
+  // so a sign-in that failed to clear it would leave a permanently empty app.
+  const { doc, settle, restore } = await boot({ perLabel: true });
+  try {
+    doc.getElementById('btn-signout').click();
+    await settle(12);
+    assert.equal(rows(doc).length, 0);
+
+    doc.getElementById('btn-signin').click();
+    await settle(14);
+
+    assert.equal(doc.getElementById('gate').hidden, true, 'the gate should close');
+    assert.ok(rows(doc).length > 0, 'mail must load again after signing back in');
+  } finally {
+    restore();
+  }
+});
