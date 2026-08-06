@@ -92,11 +92,13 @@ Three things worth knowing:
   end. You reach them by typing, which is how anyone uses a palette anyway.
 - **Label names are cleared on sign-out.** They are the previous account's
   private data. There is a test for this and it fails when the clear is removed.
-- **`features.js` module state survives a test boot.** Only `app.js` is
-  re-imported with a cache-busting URL, so `knownLabels` and `paletteLayer`
-  leak between cases. `_setLabels` exists as the seam; a palette left open by
-  an earlier test makes `openPalette()` early-return and silently invalidates
-  whatever the next test asserts.
+- **`features.js` module state survived a test boot** — now fixed at the
+  harness level. Only `app.js` is re-imported with a cache-busting URL, so its
+  imports keep their state across cases. Two green-but-meaningless tests came
+  out of this: one read labels a previous test had seeded, and one asserted
+  against a stale DOM because a palette left open made `openPalette()`
+  early-return. `_resetFeatureState()` now clears all nine bindings from
+  teardown; disabling it fails three tests.
 
 `CREATE_LABEL` remains uncalled by any verb, but it is **not dead** —
 `ensureLabel()` uses it internally on every snooze. Leaving the verb is

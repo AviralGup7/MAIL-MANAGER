@@ -168,6 +168,9 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
   // Cache-bust so each boot gets a fresh module instance with its own Store.
   const url = pathToFileURL(join(ROOT, 'src/app/app.js')).href + `?t=${Math.random()}`;
   await import(url);
+  // Captured once the module graph exists, so teardown can scrub the state
+  // that outlives a single boot.
+  ({ _resetFeatureState: featureState } = await import('../src/app/features.js'));
 
   const settle = async (frames = 4) => {
     for (let i = 0; i < frames; i++) {
@@ -189,11 +192,25 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
     } catch {
       // Teardown is best-effort; a failure here must not mask the real result.
     }
+    /*
+     * app.js is re-imported per boot with a cache-busting URL, but its IMPORTS
+     * are cached -- so features.js keeps its module state across tests, still
+     * pointing at the document we are about to discard. Left alone it produces
+     * tests that pass on a previous test's data. See _resetFeatureState.
+     */
+    try {
+      featureState?.();
+    } catch {
+      // Same rule: never mask the real result.
+    }
     Object.assign(globalThis, prev);
   };
 
   return { win, doc: win.document, calls, storage, settle, restore };
 }
+
+/** features.js reset, captured at boot. See restore(). */
+let featureState = null;
 
 const rows = (doc) => [...doc.querySelectorAll('#list .row')];
 
@@ -1721,15 +1738,6 @@ const seedLabels = async (list) => {
 };
 
 const openPaletteWith = async (doc, win, settle, q) => {
-  /*
-   * Close first. `paletteLayer` is module state in features.js, and features
-   * .js is not re-imported per boot, so a palette left open by an earlier
-   * test makes openPalette() early-return here -- and the assertion then
-   * passes or fails on a stale, unrelated DOM. Cost me two red tests.
-   */
-  const { closePalette } = await import('../src/app/features.js');
-  closePalette();
-  await settle(2);
   press(doc, win, 'k', { ctrlKey: true });
   await settle(4);
   const input = doc.getElementById('palette-input');
@@ -1804,9 +1812,6 @@ test('LABELS: a failing LIST_LABELS degrades silently', async (t) => {
   const { doc, win, settle, restore } = await boot({ labels: null });
   try {
     await settle(8);
-    // Clear AFTER boot: the fetch is fire-and-forget, so clearing before it
-    // would simply be overwritten by whatever the previous test left behind.
-    await seedLabels([]);
     await openPaletteWith(doc, win, settle, 'label');
 
     assert.equal(paletteLabels(doc).length, 0);

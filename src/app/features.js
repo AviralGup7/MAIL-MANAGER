@@ -246,7 +246,7 @@ function buildCommands(ctx) {
  */
 let knownLabels = [];
 
-/** Test seam: reset the cache between cases. */
+/** Test seam: seed the label cache directly, bypassing the network. */
 export function _setLabels(list) {
   knownLabels = Array.isArray(list) ? list : [];
 }
@@ -787,4 +787,52 @@ function setStatus(text, kind) {
   if (!el) return;
   el.textContent = text;
   el.dataset.kind = kind || '';
+}
+
+/* ========================================================================== *
+ * TEST SEAM
+ * ========================================================================== */
+
+/**
+ * Drop every piece of module-level state this file holds.
+ *
+ * WHY THIS EXISTS
+ * ---------------
+ * The jsdom harness re-imports `app.js` with a cache-busting query string, so
+ * each boot gets a fresh app module -- but its IMPORTS are cached, and this
+ * file is one of them. So `knownLabels`, `paletteLayer`, `composeCtx` and the
+ * rest survive from one test to the next, pointing at a document that has
+ * since been torn down.
+ *
+ * That is not a theoretical hazard. It cost real time on the labels work:
+ *
+ *   - A test asserting "a failed LIST_LABELS shows no labels" PASSED while
+ *     actually reading the labels a previous test had seeded. It was green and
+ *     meaningless.
+ *   - A test left the palette open. `paletteLayer` stayed non-null, so the
+ *     next test's `openPalette()` hit its `if (paletteLayer) return` guard and
+ *     silently did nothing -- and that test then asserted against a stale DOM.
+ *
+ * Both are the same shape: state whose lifetime is the MODULE, used as though
+ * its lifetime were the PAGE. Rather than remember to clean each one up at
+ * every call site, reset them all in one place and call it from teardown.
+ *
+ * Only for tests. Nothing in the app calls this: in a browser the module dies
+ * with the page.
+ */
+export function _resetFeatureState() {
+  paletteCommands = [];
+  paletteFiltered = [];
+  paletteIndex = 0;
+  knownLabels = [];
+  // Close through the layer, not by nulling: the layer stack holds its own
+  // reference, and leaving an orphan there breaks the Escape chain.
+  if (paletteLayer) {
+    try { paletteLayer.close(); } catch { /* already gone */ }
+  }
+  paletteLayer = null;
+  composeCtx = null;
+  composeMeta = {};
+  draftSaver = null;
+  contactBook = [];
 }
