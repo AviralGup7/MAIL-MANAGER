@@ -216,3 +216,17 @@ test('the snoozed label is a real Gmail label, not just local state', () => {
   assert.equal(SNOOZE_LABEL, 'BMM/Snoozed');
   assert.ok(bg.includes('ensureLabel(SNOOZE_LABEL)'));
 });
+
+/*
+ * Boundary found by mutation testing: `ms <= 0` -> `ms < 0` survived.
+ *
+ * A wake time of EXACTLY now must read "now", not "in 0 min". The alarm fires
+ * on a whole-minute boundary, so exact equality is the common case, not a
+ * rarity.
+ */
+test('a wake time of exactly now reads "now"', () => {
+  const t = Date.UTC(2026, 2, 10, 9, 0);
+  assert.equal(wakeLabel(t, t), 'now', 'exact equality is the common case at an alarm boundary');
+  assert.equal(wakeLabel(t - 1, t), 'now');
+  assert.equal(wakeLabel(t + 1000, t), 'in 0 min', 'just after now is not "now"');
+});

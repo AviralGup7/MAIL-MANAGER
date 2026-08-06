@@ -12,7 +12,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-const { Selection } = await import('../src/app/selection.js');
+const { Selection, selectionLabel } = await import('../src/app/selection.js');
 
 const IDS = ['a', 'b', 'c', 'd', 'e', 'f'];
 const sel = (s) => [...s.ids].sort().join(',');
@@ -186,4 +186,57 @@ test('clearing an empty selection does not notify', () => {
   s.subscribe(() => calls++);
   s.clear();
   assert.equal(calls, 0, 'a no-op must not repaint the bulk bar');
+});
+
+/* ---------------------------------------------------- live() reconciliation --
+
+ * Found by mutation testing: changing `has(id) && store.get(id)` to `||`
+ * survived the whole suite, so the reconciliation this method exists for was
+ * never verified.
+ *
+ * It matters because Gmail's `batchModify` is all-or-nothing: one dead id
+ * fails the ENTIRE request. A delta sync can remove a message between the
+ * user ticking it and pressing Archive, so the set must be reconciled against
+ * the store rather than trusted.
+ */
+
+/** Minimal store stand-in: only `get` is used by `live()`. */
+const fakeStore = (ids) => ({ get: (id) => (ids.includes(id) ? { id } : undefined) });
+
+test('live() drops ids the store no longer has', () => {
+  const s = new Selection();
+  s.toggle('a');
+  s.toggle('b');
+  s.toggle('c');
+  // 'b' was removed by a delta sync while the user was choosing.
+  const out = s.live(fakeStore(['a', 'c']), IDS);
+  assert.deepEqual(out, ['a', 'c'], 'a dead id would fail the whole batch request');
+});
+
+test('live() drops ids that exist but are not selected', () => {
+  const s = new Selection();
+  s.toggle('b');
+  assert.deepEqual(s.live(fakeStore(IDS), IDS), ['b'], 'must not act on unselected mail');
+});
+
+test('live() returns rendered order, not selection order', () => {
+  // Ordering matters for the undo snapshot, which replays in list order.
+  const s = new Selection();
+  s.toggle('e');
+  s.toggle('a');
+  s.toggle('c');
+  assert.deepEqual(s.live(fakeStore(IDS), IDS), ['a', 'c', 'e']);
+});
+
+test('live() is empty when everything selected has vanished', () => {
+  const s = new Selection();
+  s.toggle('a');
+  s.toggle('b');
+  assert.deepEqual(s.live(fakeStore([]), IDS), [], 'must not send an empty-but-dead batch');
+});
+
+test('the selection label reads naturally at one and at many', () => {
+  assert.equal(selectionLabel(1), '1 selected');
+  assert.equal(selectionLabel(2), '2 selected');
+  assert.equal(selectionLabel(0), '0 selected');
 });

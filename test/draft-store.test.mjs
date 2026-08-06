@@ -245,3 +245,25 @@ test('restore is offered, never automatic', () => {
 test('the autosave delay is short enough to matter', () => {
   assert.ok(AUTOSAVE_MS <= 1000, 'losing a second of typing is acceptable; more is not');
 });
+
+/*
+ * Mutation-testing gap: `return timer !== null` -> `=== null` survived,
+ * because nothing asserted the `pending` getter both ways. It is the only
+ * way a caller can tell whether unsaved keystrokes are still buffered.
+ */
+test('pending reports whether a write is actually buffered', async () => {
+  const s = fakeStorage();
+  const t = fakeTimers();
+  const saver = createDraftSaver(() => ({ to: 'a@b.com', body: 'x' }), s, {
+    setTimeout: t.setTimeout, clearTimeout: t.clearTimeout,
+  });
+
+  assert.equal(saver.pending, false, 'nothing typed yet');
+  saver.schedule();
+  assert.equal(saver.pending, true, 'a write is buffered');
+  await saver.flush();
+  assert.equal(saver.pending, false, 'flush clears it');
+  saver.schedule();
+  await saver.discard();
+  assert.equal(saver.pending, false, 'discard clears it too');
+});

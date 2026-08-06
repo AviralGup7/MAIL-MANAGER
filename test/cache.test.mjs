@@ -275,3 +275,103 @@ test('no save fires after flush(), even if a throttle timer survives', async () 
     globalThis.cancelIdleCallback = realCIC;
   }
 });
+
+/* ------------------------------------------------- mutation-testing gaps ----
+ *
+ * `cancel()` had two lines nothing verified: the `h === null` early return and
+ * the `handleKind === 'idle'` branch. Both matter — the module's own comment
+ * warns that cancelling a timeout id with `cancelIdleCallback` is a SILENT
+ * no-op, so a throttled save could still fire after `flush()` claimed to have
+ * cancelled it, producing a second stale write over fresher data.
+ */
+
+test('flush() after a throttled schedule does not leave a second write armed', async () => {
+  /*
+   * Drives the throttled path specifically: a non-zero minInterval forces
+   * `schedTimeout`, so `handleKind` is 'timeout'. If cancel() took the idle
+   * branch the timer would survive and fire later.
+   */
+  const s = fakeStorage();
+  let writes = 0;
+  const wrapped = { ...s, async set(o) { writes++; return s.set(o); } };
+  const saver = createSaver(() => [msg(0)], wrapped, { minIntervalMs: 50 });
+
+  saver.schedule();
+  await saver.flush();
+  const afterFlush = writes;
+
+  // Wait past the throttle window: nothing more may land.
+  await new Promise((r) => setTimeout(r, 120));
+  assert.equal(writes, afterFlush, 'a cancelled throttled save fired anyway');
+});
+
+test('a stale throttled save cannot overwrite fresher data', async () => {
+  // The consequence the comment describes, asserted on content rather than
+  // on write count.
+  const s = fakeStorage();
+  let current = [msg(0)];
+  const saver = createSaver(() => current, s, { minIntervalMs: 40 });
+
+  saver.schedule();
+  await saver.flush();
+
+  // `flush()` is a no-op when nothing is pending, so the newer state must be
+  // SCHEDULED before it can be flushed. (The first version of this test
+  // flushed without scheduling and asserted against a write that never
+  // happened — the test was wrong, not the cache.)
+  current = [msg(0), msg(1), msg(2)];
+  saver.schedule();
+  await saver.flush();
+  await new Promise((r) => setTimeout(r, 120));
+
+  assert.equal(
+    (await loadCache(s)).messages.length, 3,
+    'a late timer resurrected the older snapshot'
+  );
+});
+
+test('flush() is safe to call repeatedly with nothing armed', async () => {
+  // Exercises the `h === null` early return; without it, cancel() would call
+  // clearTimeout(null) on every no-op flush.
+  const s = fakeStorage();
+  const saver = createSaver(() => [msg(0)], s, { minIntervalMs: 0 });
+  await saver.flush();
+  await saver.flush();
+  await saver.flush();
+  assert.equal(saver.isPending, false);
+});
+
+/*
+ * A NOTE ON WHAT THIS SUITE CANNOT COVER.
+ *
+ * `cancel()` has an idle-callback branch:
+ *
+ *     if (handleKind === 'idle' && hasIdle) cancelIdleCallback(h);
+ *
+ * `hasIdle` is `typeof requestIdleCallback === 'function'`, which is FALSE
+ * under Node — the API is browser-only. The branch therefore never executes
+ * here, and mutation testing confirms it: mutating that comparison cannot be
+ * killed by any test in this environment.
+ *
+ * This is an environmental limitation, not missing coverage, and it is
+ * recorded rather than papered over with a test that would assert nothing.
+ * The scheduling path IS covered (the throttled/timeout branch above); it is
+ * only the idle branch that is unreachable. Verifying it needs the
+ * headless-Chrome harness tracked as TODO 13.
+ *
+ * The test below at least pins the fallback, which is what Node actually runs
+ * and what any non-browser context would run.
+ */
+test('scheduling falls back to a timer when requestIdleCallback is absent', async () => {
+  assert.equal(
+    typeof globalThis.requestIdleCallback, 'undefined',
+    'if Node gains requestIdleCallback, the idle branch becomes testable here'
+  );
+  // The fallback must still coalesce and still write.
+  const s = fakeStorage();
+  const saver = createSaver(() => [msg(0), msg(1)], s, { minIntervalMs: 0 });
+  saver.schedule();
+  saver.schedule();
+  await saver.flush();
+  assert.equal((await loadCache(s)).messages.length, 2);
+});

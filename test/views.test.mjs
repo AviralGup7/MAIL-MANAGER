@@ -131,3 +131,32 @@ test('a storage failure on save reports rather than throwing', async () => {
   const res = await saveView('X', 'is:unread', broken);
   assert.equal(res.ok, false);
 });
+
+/*
+ * Mutation-testing gap: `blob && Array.isArray(blob.views)` -> `||` survived.
+ *
+ * With `||`, a null blob reaches `blob.views` and throws inside the try, so
+ * loadViews silently returns only the built-ins — the user's saved views
+ * vanish with no error. Storage is shared with older builds, so a blob of an
+ * unexpected shape is reachable in practice.
+ */
+test('a blob of the wrong shape degrades to built-ins without throwing', async () => {
+  for (const bad of [null, undefined, 0, 'text', 42, true, []]) {
+    const s = { async get() { return { savedViews: bad }; }, async set() {} };
+    const out = await loadViews(s);
+    assert.ok(Array.isArray(out), `not an array for ${JSON.stringify(bad)}`);
+    assert.ok(out.length > 0, 'built-ins must survive a corrupt blob');
+  }
+});
+
+test('a valid blob still yields the user\'s custom views', async () => {
+  // The negative test above passes if custom views are always dropped.
+  const s = {
+    async get() {
+      return { savedViews: { views: [{ id: 'sv-1', name: 'Mine', query: 'is:unread', icon: 'search' }] } };
+    },
+    async set() {},
+  };
+  const out = await loadViews(s);
+  assert.ok(out.some((v) => v.id === 'sv-1'), 'custom views must load');
+});

@@ -272,3 +272,38 @@ test('a bad address warns but does not block the send', () => {
   assert.ok(body.includes('invalidAddresses'));
   assert.ok(body.includes('Send anyway?'), 'must offer to proceed');
 });
+
+/*
+ * Mutation-testing gap: `name && name.length > hit.name.length` -> `||`
+ * survived, so nothing verified that a LATER header with an empty display
+ * name cannot wipe a real one.
+ *
+ * This is reachable constantly: the same person appears as
+ * "AUGSD <augsd@...>" on one message and bare "augsd@..." on the next, and
+ * whichever is seen last would win. The autocomplete would then show a raw
+ * address for someone whose name we already know.
+ */
+test('an empty display name never overwrites a real one', () => {
+  const withNameLast = buildContacts([
+    { from: 'a@x.com', date: 1 },
+    { from: 'A Gupta <a@x.com>', date: 2 },
+  ]);
+  assert.equal(withNameLast[0].name, 'A Gupta');
+
+  const withNameFirst = buildContacts([
+    { from: 'A Gupta <a@x.com>', date: 1 },
+    { from: 'a@x.com', date: 2 },
+  ]);
+  assert.equal(
+    withNameFirst[0].name, 'A Gupta',
+    'a later bare address must not erase the name we already had'
+  );
+});
+
+test('a longer display name wins over an abbreviation', () => {
+  const c = buildContacts([
+    { from: 'AG <a@x.com>', date: 1 },
+    { from: 'Aviral Gupta <a@x.com>', date: 2 },
+  ]);
+  assert.equal(c[0].name, 'Aviral Gupta');
+});

@@ -206,3 +206,39 @@ test('rules load before the first ingest', () => {
 test('muted categories are visibly marked in the rail', () => {
   assert.ok(app.includes("classList.toggle('is-muted'"));
 });
+
+/* ------------------------------------------------- mutation-testing gaps ----
+ *
+ * Found by tools/mutate.mjs: two behaviours nothing verified.
+ */
+
+test('a correction with a non-string value is discarded, not stored', () => {
+  /*
+   * `typeof k === 'string' && typeof v === 'string'` -> `||` survived the
+   * suite. It matters: a non-string category reaches `applyCorrection`, which
+   * assigns it to `msg.category`, and the sidebar then keys a lookup on an
+   * object. Storage is shared with older builds, so this is reachable.
+   */
+  const r = normaliseRules({
+    corrections: { 'a@x.com': 'academics', 'b@x.com': 42, 'c@x.com': null, 'd@x.com': {} },
+  });
+  assert.deepEqual(Object.keys(r.corrections), ['a@x.com'], 'only string values survive');
+  assert.equal(r.corrections['a@x.com'], 'academics');
+});
+
+test('a correction whose value is an object cannot reach a message', () => {
+  const r = normaliseRules({ corrections: { 'a@x.com': { evil: true } } });
+  const msg = { from: 'a@x.com', category: 'clubs' };
+  assert.equal(applyCorrection(r, msg).category, 'clubs', 'the bad correction must not apply');
+});
+
+test('saveRules reports success and failure distinguishably', () => {
+  // `return true` -> `return false` survived: nothing checked the result, so
+  // a caller could not tell a persisted rule from a lost one.
+  const ok = { async get() { return {}; }, async set() {} };
+  const bad = { async get() { return {}; }, async set() { throw new Error('quota'); } };
+  return Promise.all([
+    saveRules(emptyRules(), ok).then((r) => assert.equal(r, true, 'success must report true')),
+    saveRules(emptyRules(), bad).then((r) => assert.equal(r, false, 'failure must report false')),
+  ]);
+});

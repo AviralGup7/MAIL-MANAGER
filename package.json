@@ -12,7 +12,8 @@
     "icons": "python3 tools/make-icons.py",
     "test:ci": "node tools/ci-test.mjs",
     "contrast": "node tools/check-contrast.mjs",
-    "push": "bash tools/push.sh"
+    "push": "bash tools/push.sh",
+    "mutate": "node tools/mutate.mjs"
   },
   "devDependencies": {
     "jsdom": "^24.0.0"
