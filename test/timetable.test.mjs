@@ -752,3 +752,56 @@ test('TRACE: one message changing two fields is reported once', () => {
   assert.equal(hits.length, 1, 'one entry, not one per field');
   assert.deepEqual(hits[0].fields.sort(), ['instructors', 'room']);
 });
+
+/* ========================================================== catalogue shape == */
+
+test('CATALOGUE: the shipped data has the size and shape we documented', () => {
+  /*
+   * A REGRESSION FENCE AROUND THE PARSER.
+   *
+   * `data.json` is generated, so a change to parse-timetable.mjs can silently
+   * halve the catalogue or start dropping instructors and every other test
+   * would still pass -- they all use fixtures. These numbers are measured, not
+   * aspirational, and are quoted in docs/TIMETABLE.md.
+   *
+   * Ranges rather than exact counts for the unresolved figures: regenerating
+   * from a NEWER official document should not fail the suite, but losing a
+   * third of the catalogue should.
+   */
+  const data = JSON.parse(
+    readFileSync(join(ROOT, 'src/timetable/data.json'), 'utf8')
+  );
+
+  assert.equal(data.courses.length, 688, 'course count changed');
+  const sections = data.courses.flatMap((c) => c.sections || []);
+  assert.equal(sections.length, 1681, 'section count changed');
+  assert.equal(data.changes.length, 119, 'change-notice row count changed');
+
+  // Every section must have an instructor. This is the field most likely to be
+  // silently eaten by a column-splitting bug, and it was clean when measured.
+  const noInstructor = sections.filter((s) => !s.instructors?.length);
+  assert.equal(noInstructor.length, 0, 'sections appeared with no instructor');
+
+  // Unresolved is EXPECTED -- the document really is incomplete for project
+  // and thesis courses -- but a sharp rise means the parser started failing.
+  const unresolved = sections.filter((s) => s.unresolved?.length).length;
+  assert.ok(
+    unresolved / sections.length < 0.20,
+    `unresolved rose to ${((unresolved / sections.length) * 100).toFixed(1)}%`
+  );
+});
+
+test('CATALOGUE: a course with no schedule is unresolved, not invented', () => {
+  // BIO F366 LABORATORY PROJECT has credits and an instructor and no time or
+  // room anywhere in the document. The honest result is an empty field.
+  const data = JSON.parse(
+    readFileSync(join(ROOT, 'src/timetable/data.json'), 'utf8')
+  );
+  const lab = data.courses.find((c) => c.courseNo === 'BIO F366');
+  assert.ok(lab, 'BIO F366 should be in the catalogue');
+  const s = lab.sections[0];
+  assert.deepEqual(s.meetings, [], 'no schedule must stay empty');
+  assert.equal(s.room, '', 'no room must stay empty');
+  assert.ok(s.instructors.length, 'but the instructor IS stated and must survive');
+  assert.ok(s.unresolved.includes('time'), 'and the gap must be declared');
+});

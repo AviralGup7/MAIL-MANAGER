@@ -18,7 +18,7 @@ Legend — **S**evere · **M**oderate · **L**ow
 
 ### 1 · Run it in Chrome against a real inbox — **S**
 
-*Nothing below is trustworthy until this happens.* **633 tests pass and the
+*Nothing below is trustworthy until this happens.* **749 tests pass and the
 extension has never run in a browser.** Unverified: the OAuth consent screen,
 the takeover animation on live Gmail, how Gmail reacts to having its roots
 hidden, and whether `chrome.identity.getRedirectURL()` matches what you
@@ -33,9 +33,48 @@ The service worker logs to its OWN console: `chrome://extensions` → the blue
 **Done when:** you have opened, read, starred, archived, snoozed and composed,
 and written down every defect. Expect several.
 
+**Now also build your real timetable** (`T`, or the toolbar button) and check
+it against the printed one. The parse is verified against the source document
+for the courses that have tests, but 688 courses is a lot of rows and the
+cheapest way to find a bad cell is to look at your own six.
+
 ---
 
-### 2 · Conversation threading — **S**
+### 2 · Timetable parse — **MEASURED, mostly resolved**
+
+`tools/parse-timetable.mjs` turns the official text into **688 courses / 1681
+sections** and 119 change rows. The awkward cases have tests: `M W 3 Th 9` must
+not become Th3, `Th` is never `T`+`h`, a `M 6 7` lab is two meetings, and an
+unparseable cell yields nothing rather than a guess.
+
+The long tail has now been counted rather than guessed at:
+
+| Measure | Count | Verdict |
+|---|---|---|
+| Sections with any `unresolved` | 242 / 1681 (14.4%) | see below |
+| — missing room | 239 | **source is blank** |
+| — missing time | 161 | **source is blank** |
+| Sections with no instructor | 0 / 1681 | clean |
+
+**Both gaps were checked against the source and the parser is faithful.**
+
+- The 161 with no time are `LABORATORY PROJECT`, `INDEPENDENT STUDY`, thesis
+  and similar. The document lists them with credits and an instructor and *no
+  schedule at all*, because they genuinely have none.
+- The 84 rows where room and time disagree are mostly labs like `BITS U104 P1`,
+  which the document prints as `P1  V Manjuladevi  F 8 9` — a time and no room.
+
+So 14.4% unresolved is **the document being incomplete, not the parser losing
+data**, which is exactly the behaviour the no-guessing rule demands: the field
+stays empty and the user is asked.
+
+**Still worth doing:** open your own six courses in Chrome and compare against
+the printed timetable. Aggregate numbers cannot catch a value that parsed
+cleanly into the *wrong* field.
+
+---
+
+### 3 · Conversation threading — **S**
 
 The largest remaining feature gap. Messages are listed individually, so a
 five-part exchange is five rows that scatter as new mail arrives between them.
@@ -46,12 +85,12 @@ Harder than it was in v0.9 because the store is now per-mailbox: threading must
 work across six independent `Store` instances, and interact correctly with
 selection, category rules and the mark-read grace period.
 
-**Do the IndexedDB migration (item 3) first.** Specified in
+**Do the IndexedDB migration (item 4) first.** Specified in
 [`audits/08-GMAIL-COMPETITIVE-V2.md`](audits/08-GMAIL-COMPETITIVE-V2.md) §C-1.
 
 ---
 
-### 3 · Migrate the cache to IndexedDB — **M**
+### 4 · Migrate the cache to IndexedDB — **M**
 
 `chrome.storage.local` is a 10MB budget and `CACHE_MAX` is 500 messages, which
 is why only the inbox is cached. It blocks threading (item 2), attachment
@@ -59,7 +98,7 @@ preview and offline support simultaneously.
 
 ---
 
-### 4 · Background sync and notifications — **M**
+### 5 · Background sync and notifications — **M**
 
 `app.js` still says *"Never on a timer"*. The blocker is gone: `alarms` is
 permitted and already drives the snooze wake. Pair it with classifier-driven
@@ -69,7 +108,7 @@ annoying, and which Gmail structurally cannot offer.
 
 ---
 
-### 5 · Undo Send — **M**
+### 6 · Undo Send — **M**
 
 The undo stack covers archive, delete, star, snooze and bulk — everything
 except the one thing Gmail *can* undo. Client-side hold, then send. The timer
@@ -77,7 +116,7 @@ belongs in the service worker so closing the app still delivers.
 
 ---
 
-### 6 · Gmail's own labels — **DONE**
+### 7 · Gmail's own labels — **DONE**
 
 Decided: finish it minimally rather than delete. `LIST_LABELS` is now called
 once per session from `start()`, fire-and-forget, and populates a cache that
@@ -107,7 +146,7 @@ for the half that was genuinely unreachable.
 
 ---
 
-### 7 · Add a real rendering benchmark — **M**
+### 8 · Add a real rendering benchmark — **M**
 
 jsdom has no layout engine, so the 60fps claim remains an expectation. The
 data-layer bench measures classification and store cost only; it cannot see a
@@ -115,7 +154,7 @@ dropped frame. Needs headless Chrome.
 
 ---
 
-### 8 · Validate the classifier against real BITS mail — **M**
+### 9 · Validate the classifier against real BITS mail — **M**
 
 Fidelity to `docs/CLASSIFICATION_DATA_PACK.md` is proven; accuracy is not.
 The classifier-correction UI is both the fix for a wrong bucket and the
@@ -123,7 +162,7 @@ mechanism that would generate the corpus.
 
 ---
 
-### 9 · Screen-reader pass — **L**
+### 10 · Screen-reader pass — **L**
 
 ARIA is present and structurally tested; no NVDA or VoiceOver has ever run
 against it. Measured accessibility is not actual accessibility.

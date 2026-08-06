@@ -33,6 +33,14 @@ fixed. Everything else was rebuilt.
   actions all reverse with `Ctrl+Z` for five minutes.
 - **Category rules Gmail cannot offer:** mute a category, auto-archive it, or
   correct the classifier and have it remember.
+- **A deterministic timetable.** Built once from the official BITS timetable
+  (688 courses) and the change notice, then updated only by rules that can be
+  written down. Course → teacher → section, with linked tutorials and labs
+  attached automatically when the document says they belong together. **No
+  inference:** if the source does not say it, you are asked rather than
+  guessed at. Email can propose a change but cannot outrank the official
+  document, and every value explains where it came from.
+  See [`docs/TIMETABLE.md`](docs/TIMETABLE.md).
 - **Search that knows BITS:** 20 operators, including `category:ps` for the
   classifier's own buckets and `label:Thesis` for your real Gmail labels.
   Your labels are listed in the command palette so you need not remember them.
@@ -320,6 +328,10 @@ src/
   app/views.js              Saved searches. One guarded write path.
   app/query.js              20 search operators + reply construction.
   app/deadlines.js          Date extraction for the radar.
+  app/timetable.js          Timetable model: precedence, conflicts, provenance.
+  app/timetable-mail.js     Deterministic mail patterns. Proposes, never edits.
+  app/timetable-store.js    Timetable persistence + course search.
+  app/timetable-ui.js       The panel: build wizard, manager, proposals.
   app/undo.js               Universal undo. 20 entries, 5-minute TTL.
   app/themes.js             Six themes as DATA, so contrast can be audited.
   app/sanitize.js           DOMParser allow-list for untrusted mail bodies.
@@ -328,7 +340,10 @@ src/
     address-map.js          GENERATED. 152 exact addresses (stage 0).
     pattern-rules.js        GENERATED. 891 keys, original weights.
   options/options.js
-test/                       633 tests. `npm test` · `npm run test:ci` (fails on skips)
+timetable/data.json         GENERATED. 688 courses, 119 change rows.
+timetable/sources/          The two official documents, verbatim.
+tools/parse-timetable.mjs   Offline parser. Never runs in the extension.
+test/                       749 tests. `npm test` · `npm run test:ci` (fails on skips)
   app.integration.test.mjs  Boots the real app.html in jsdom and drives it.
   resilience.test.mjs       Failure injection across every persistence module.
   package.test.mjs          Lints the manifest, tokens, motion rules, hit targets.
@@ -388,7 +403,7 @@ mis-file something the preview mis-files it too.
 
 ## Status
 
-**633 tests pass, 0 skipped.** 84 of them boot the real `app.html` in a real
+**749 tests pass, 0 skipped.** 121 of them boot the real `app.html` in a real
 DOM and drive it as a user would — click a row, type in search, press `j`/`k`,
 archive, snooze, sign out. All six themes pass WCAG AA in CI.
 
