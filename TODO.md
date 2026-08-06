@@ -18,13 +18,17 @@ Legend — **S**evere · **M**oderate · **L**ow
 
 ### 1 · Load the extension in Chrome and drive it against a real inbox — **S**
 
-*Nothing below is trustworthy until this happens.* 121 tests pass and the
-extension has never run in a browser. Unverified: the OAuth consent screen, the
-takeover animation on live Gmail, how Gmail reacts to having its roots hidden,
-and whether `chrome.identity.getRedirectURL()` matches what you registered.
+*Nothing below is trustworthy until this happens.* **515 tests pass and the
+extension has never run in a browser.** Unverified: the OAuth consent screen,
+the takeover animation on live Gmail, how Gmail reacts to having its roots
+hidden, and whether `chrome.identity.getRedirectURL()` matches what you
+registered.
 
 `chrome://extensions` → Developer mode → Load unpacked → Options → *Use v1
-client ID* → open Gmail → `Ctrl+Shift+M`.
+client ID* → open Gmail → `Alt+Shift+M`.
+
+Once inside, press **`?`** — the shortcut overlay lists everything the app can
+do, and it is generated from the same table the key handler uses.
 
 **Done when:** you have opened, read, starred, archived and released, and have
 written down every defect. Expect several. Ref: `01`, all.
@@ -282,3 +286,88 @@ before being trusted:
   `alert(1)` cannot distinguish inert text from live markup.
 
 A test that has never been seen to fail is a hypothesis, not a test.
+
+---
+
+## Session log — audit execution
+
+Built from the gap analysis in `audits/07-GMAIL-COMPETITIVE.md`, in its
+priority order. **515 tests, 0 skipped. All six themes pass WCAG AA.**
+
+### Tier 0 — live defects
+
+- **Remote images were silently broken.** `sanitize.js` allowed `https:` on
+  `img[src]`; the frame CSP then refused it. The tag rendered, the fetch died,
+  the user got an empty box with no explanation. The decision now lives in ONE
+  place and the CSP is derived from it, plus a reader bar with a per-sender
+  allow-list. Blocking by default is stronger privacy than Gmail, which
+  proxies and still confirms the read.
+- **Inline `cid:` images had no handling at all.** Resolved from the message's
+  own MIME parts via the existing `GET_ATTACHMENT`, capped at 2MB / 20 parts.
+  Needed no CSP change: `img-src data:` was already permitted.
+- **Draft autosave.** Closing compose or crashing discarded everything typed.
+  Debounced local save + restore-on-launch, flushed on `pagehide` where the
+  debounce timer can never fire.
+- **`?` shortcut overlay.** 13 shortcuts existed with nothing naming them.
+  Rendered from `shortcuts.js`, and a test asserts every documented key is
+  really handled — which immediately proved `z` and `g` were documented but
+  unimplemented, so both were built.
+
+### Tier 1 — core mail client
+
+- **System mailboxes** (Sent, Drafts, Snoozed, Starred, Spam, Trash). The
+  audit's "biggest leak": there was no way to see what you had sent. One
+  `Store` per mailbox. Non-inbox syncs pass `anchorHistory:false` — otherwise
+  loading Sent advances the account-wide history cursor past unfetched inbox
+  changes, which is unrecoverable for about a week.
+- **Category rules** — mute, auto-archive, and classifier corrections. The
+  feature Gmail structurally cannot copy. Muting never hides from search or
+  from a category opened by name, and an all-muted list says so.
+- **Contact autocomplete**, built from addresses already in the store. No new
+  scope, no round trip. Warns on a malformed address rather than blocking.
+- **Snooze**, with a catch-up sweep on startup as well as on the alarm — a
+  missed alarm must be a late delivery, never a lost message.
+- **Search falls back to Gmail** for message bodies. The local index covers
+  subject and sender only, so it was silently missing; a confidently wrong
+  "no results" is worse than a slow one.
+
+### Measured UI findings
+
+Each was found by measurement, not by looking:
+
+- **The starred indicator failed WCAG 1.4.11 on 9 of 18 theme/surface
+  combinations** — 1.77:1 on the default theme, and failing in the theme named
+  "High Contrast". Cause: `#eab308` hardcoded in CSS, so it bypassed
+  `npm run contrast` entirely. Now a `--star` token; worst case is 4.52:1.
+- **`.primary svg` set `opacity: 0.85` then immediately overrode it to `1`** —
+  the optical softening was dead code, hidden by a duplicate selector.
+- **Two `@keyframes` were defined twice.** Keyframes do not cascade: the later
+  definition wholly replaces the earlier, so `toast-in`'s first definition
+  described an animation that never ran.
+- **`syncReaderActions()` sat after an early return**, so switching to Trash
+  never re-evaluated the action bar and "Archive" stayed on deleted mail.
+  Found by a behavioural test, invisible to source reading.
+- **The client-secret guard was unreachable.** It ran *after* the format check,
+  and a real `GOCSPX-` secret fails the format check first — so pasting an
+  actual secret produced "That does not look like a client ID" instead of the
+  security warning.
+- **The file header claimed "no animation runs forever"** while two ran
+  forever. Both are correctly gated on loading states; the rule was restated
+  accurately and is now enforced by a test that reads the gate.
+
+### New guardrails
+
+`npm test` now fails on: a colour literal that bypasses the theme tokens; a
+theme missing a role the CSS consumes; an ungated infinite animation; a
+duplicate or orphaned keyframe; a selector defined twice inside one layer; and
+any menu row under the 24px hit floor.
+
+### Still open
+
+- 🔴 The OAuth client secret is **not rotated**; both GitHub PATs are **not
+  revoked**.
+- **Never run in Chrome.** Item 1 above still gates everything.
+- No real BITS corpus. Classifier corrections are now the mechanism that would
+  produce one.
+- Threading, undo-send and background sync are specified in the audit and not
+  yet built. `alarms` is now permitted, so the latter two are unblocked.
