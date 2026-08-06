@@ -51,9 +51,9 @@ const GMAIL_HTML = `<!doctype html><html><body>
  * Load content.js into a fresh fake-Gmail window.
  * Returns helpers that mirror how the extension actually drives it.
  */
-function mount({ reducedMotion = false } = {}) {
+function mount({ reducedMotion = false, url = 'https://mail.google.com/mail/u/0/' } = {}) {
   const dom = new JSDOM(GMAIL_HTML, {
-    url: 'https://mail.google.com/mail/u/0/',
+    url,
     runScripts: 'outside-only',
     pretendToBeVisual: true,
   });
@@ -145,7 +145,11 @@ test('mounting the takeover injects a host and an app iframe', async (t) => {
 
   const frame = h.doc.getElementById('bmm-takeover-frame');
   assert.ok(frame, 'iframe must exist');
-  assert.equal(frame.src, 'chrome-extension://test/app.html');
+  // The account index rides along in the query string; see the dedicated test.
+  assert.ok(
+    frame.src.startsWith('chrome-extension://test/app.html?u='),
+    `unexpected frame src: ${frame.src}`
+  );
   // Least privilege: the frame is an extension origin and must not be granted
   // access to the Gmail document.
   assert.ok(!frame.getAttribute('sandbox')?.includes('allow-same-origin'));
@@ -301,4 +305,27 @@ test('no polling, no observers, no permanent animation loop', () => {
   // rAF is allowed only as the two nested calls that commit the enter class.
   const rafs = code.match(/requestAnimationFrame/g) || [];
   assert.ok(rafs.length <= 2, `expected at most 2 rAF calls, found ${rafs.length}`);
+});
+
+test('the app frame is told which Gmail account this tab is showing', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Gmail multiplexes accounts by path: /mail/u/0/, /mail/u/1/ ... The app
+  // runs on an extension origin and cannot read this page's URL, so the index
+  // is passed in the frame's query string. Without it, "Open in Gmail" always
+  // deep-linked to the FIRST account -- the same wrong-account family of bug
+  // as the toolbar button opening a fresh tab on the browser default.
+  for (const [path, expected] of [
+    ['/mail/u/0/', '0'],
+    ['/mail/u/1/', '1'],
+    ['/mail/u/3/', '3'],
+    ['/mail/', '0'],
+  ]) {
+    const h = mount({ url: `https://mail.google.com${path}#inbox` });
+    await enter(h);
+    const src = h.doc.getElementById('bmm-takeover-frame').src;
+    assert.ok(
+      src.includes(`?u=${expected}`),
+      `${path} should yield ?u=${expected}, got ${src}`
+    );
+  }
 });

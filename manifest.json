@@ -11,9 +11,11 @@
   },
   "permissions": [
     "identity",
+    "scripting",
     "storage"
   ],
   "host_permissions": [
+    "https://mail.google.com/*",
     "https://gmail.googleapis.com/*",
     "https://oauth2.googleapis.com/*"
   ],
@@ -57,8 +59,8 @@
   "commands": {
     "toggle-takeover": {
       "suggested_key": {
-        "default": "Ctrl+Shift+M",
-        "mac": "Command+Shift+M"
+        "default": "Alt+Shift+M",
+        "mac": "Alt+Shift+M"
       },
       "description": "Take over / release Gmail"
     }

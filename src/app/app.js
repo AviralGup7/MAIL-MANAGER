@@ -87,6 +87,28 @@ const $ = (id) => document.getElementById(id);
 
 /** DOM id for a message row. Namespaced so a Gmail id cannot collide. */
 const rowDomId = (id) => `bmm-row-${id}`;
+
+/**
+ * Which Gmail account this tab is showing, as the `u/N` path segment.
+ *
+ * Gmail multiplexes accounts by path: /mail/u/0/ is the first signed-in
+ * account, /mail/u/1/ the second, and so on. Hardcoding u/0 sent every
+ * "Open in Gmail" link to the wrong mailbox for anyone not using their first
+ * account -- the same class of bug as the toolbar button opening a fresh tab
+ * on the default account.
+ *
+ * The app runs in an iframe, so the account lives in the PARENT's URL. That is
+ * cross-origin and unreadable, so the content script passes it in via the
+ * frame's query string.
+ */
+const ACCOUNT_INDEX = (() => {
+  // Read via `window`, not the bare `location` global: this module is also
+  // imported by the test harness, where the document is a jsdom window rather
+  // than the realm's own global.
+  const search = globalThis.window?.location?.search || '';
+  const u = new URLSearchParams(search).get('u');
+  return u && /^\d+$/.test(u) ? u : '0';
+})();
 const el = {
   shell: $('shell'),
   cats: $('cats'),
@@ -434,7 +456,7 @@ async function openMessage(id) {
   el.rSubject.textContent = m.subject;
   el.rFrom.textContent = m.from;
   el.rDate.textContent = fullDate(m.date);
-  el.rOpen.href = `https://mail.google.com/mail/u/0/#inbox/${m.threadId}`;
+  el.rOpen.href = `https://mail.google.com/mail/u/${ACCOUNT_INDEX}/#inbox/${m.threadId}`;
 
   el.rTags.replaceChildren(
     tagNode(CATEGORY_LABELS[m.category] || m.category, CAT_COLOR[m.category]),

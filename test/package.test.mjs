@@ -10,7 +10,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
@@ -20,6 +20,16 @@ const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 const manifest = JSON.parse(read('manifest.json'));
 
 const has = (p) => existsSync(join(ROOT, p));
+
+/** Every .js file under src/, relative to the repo root. */
+function jsFiles(rel = 'src', out = []) {
+  for (const e of readdirSync(join(ROOT, rel), { withFileTypes: true })) {
+    const p = `${rel}/${e.name}`;
+    if (e.isDirectory()) jsFiles(p, out);
+    else if (e.name.endsWith('.js')) out.push(p);
+  }
+  return out;
+}
 
 test('every file the manifest names exists', () => {
   const missing = [];
@@ -113,16 +123,106 @@ test('no OAuth client secret anywhere in the source', async () => {
   }
 });
 
-test('permissions and scopes stayed minimal', () => {
-  // A regression guard: permissions creep back in one convenient line at a
-  // time. v1 ended up with 7 permissions and 6 scopes, one of which
-  // (generativelanguage) no code referenced at all.
-  // Two, down from v1's seven. `alarms` was declared and never used, which
-  // undermined the whole minimisation story; it can come back when something
-  // actually schedules work.
-  assert.deepEqual([...manifest.permissions].sort(), ['identity', 'storage']);
-  assert.ok(!manifest.permissions.includes('tabs'));
-  assert.ok(!manifest.permissions.includes('alarms'), 'unused permission came back');
+test('every chrome.* API the code uses is actually permitted', () => {
+  // THIS TEST EXISTS BECAUSE ITS PREDECESSOR CAUSED AN OUTAGE.
+  //
+  // The old version asserted `!permissions.includes('tabs')` as a
+  // minimisation guard, while src/background/index.js called chrome.tabs.*
+  // on every toolbar click. The test enforced the bug: it went green while
+  // the extension could not work at all. Minimisation is only a virtue when
+  // the removed permission is genuinely unused.
+  //
+  // So this checks the direction that matters -- used implies permitted --
+  // rather than asserting a hardcoded list.
+  // Only APIs that REQUIRE a permissions entry. Deliberately excludes
+  // chrome.tabs: its messaging and lifecycle methods need nothing, and the
+  // parts that read tab.url are satisfied by a host permission for the tab in
+  // question -- which is narrower than "tabs", since "tabs" would expose the
+  // URL of every tab the user has open. That distinction is asserted by the
+  // host-permissions test below.
+  //
+  // Also excludes action, runtime, commands and windows, which need no entry.
+  const NEEDS_PERMISSION = {
+    scripting: 'scripting',
+    storage: 'storage',
+    identity: 'identity',
+    alarms: 'alarms',
+    notifications: 'notifications',
+    bookmarks: 'bookmarks',
+    downloads: 'downloads',
+    history: 'history',
+    cookies: 'cookies',
+    webRequest: 'webRequest',
+    contextMenus: 'contextMenus',
+    idle: 'idle',
+    sidePanel: 'sidePanel',
+  };
+
+  const used = new Set();
+  for (const f of jsFiles()) {
+    for (const m of read(f).matchAll(/chrome\.([a-zA-Z]+)/g)) used.add(m[1]);
+  }
+
+  const granted = new Set(manifest.permissions);
+  const missing = [...used]
+    .filter((api) => NEEDS_PERMISSION[api] && !granted.has(NEEDS_PERMISSION[api]))
+    .sort();
+
+  assert.deepEqual(missing, [], `code calls chrome.${missing.join(', chrome.')} without permission`);
+});
+
+test('no permission is granted that the code never uses', () => {
+  // The other direction. Unused permissions are what the minimisation effort
+  // was actually for -- v1 shipped `notifications` and a generativelanguage
+  // host permission that no code referenced.
+  const src = jsFiles().map(read).join('\n');
+  for (const perm of manifest.permissions) {
+    // `scripting` is used via chrome.scripting, `identity` via chrome.identity, etc.
+    assert.ok(
+      src.includes(`chrome.${perm}`),
+      `"${perm}" is granted but chrome.${perm} appears nowhere in src/`
+    );
+  }
+});
+
+test('host permissions cover the pages the extension must read', () => {
+  // tab.url is only populated for a tab the extension has host access to.
+  // Without mail.google.com here, the toolbar button cannot tell whether it is
+  // on Gmail -- which is precisely how it ended up opening a new tab on every
+  // click, each one resolving to the browser default account.
+  const hosts = manifest.host_permissions.join(' ');
+  assert.ok(hosts.includes('https://mail.google.com/*'), 'need host access to read tab.url on Gmail');
+  for (const cs of manifest.content_scripts || []) {
+    for (const pattern of cs.matches) {
+      assert.ok(
+        manifest.host_permissions.includes(pattern),
+        `content script matches ${pattern} but it is not in host_permissions`
+      );
+    }
+  }
+});
+
+test('the keyboard shortcut does not collide with a browser shortcut', () => {
+  // Ctrl+Shift+M is the profile switcher in Chrome and Brave. A colliding
+  // suggested_key is never delivered to the extension, so the shortcut simply
+  // did nothing while opening the browser's own profile menu.
+  const RESERVED = [
+    'Ctrl+Shift+M', 'Ctrl+Shift+N', 'Ctrl+Shift+T', 'Ctrl+Shift+W',
+    'Ctrl+Shift+Q', 'Ctrl+Shift+J', 'Ctrl+Shift+I', 'Ctrl+Shift+B',
+    'Ctrl+Shift+O', 'Ctrl+Shift+P', 'Ctrl+Shift+Delete', 'Ctrl+N',
+    'Ctrl+T', 'Ctrl+W',
+  ];
+  for (const [name, cmd] of Object.entries(manifest.commands || {})) {
+    for (const key of Object.values(cmd.suggested_key || {})) {
+      assert.ok(
+        !RESERVED.includes(key),
+        `command "${name}" uses ${key}, which the browser reserves`
+      );
+    }
+  }
+});
+
+test('scopes stayed minimal', () => {
   const auth = read('src/background/auth.js');
   const scopes = auth.match(/const SCOPES = \[([\s\S]*?)\]/)[1];
   assert.ok(scopes.includes('gmail.modify'));

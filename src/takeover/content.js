@@ -73,6 +73,17 @@ const prefersReducedMotion = () =>
  * depend on them. We take the direct children of <body> instead, which is
  * stable regardless of what Google reships, and skip our own node.
  */
+/**
+ * The `u/N` segment of the current Gmail URL, or '0'.
+ *
+ * `/mail/u/1/#inbox` -> '1'. Gmail omits the segment entirely on the bare
+ * domain, which means the first account.
+ */
+function accountIndex() {
+  const m = location.pathname.match(/\/u\/(\d+)\//);
+  return m ? m[1] : '0';
+}
+
 function gmailRoots() {
   const out = [];
   for (const el of document.body.children) {
@@ -156,7 +167,11 @@ async function takeOver() {
 
   frame = document.createElement('iframe');
   frame.id = FRAME_ID;
-  frame.src = chrome.runtime.getURL('app.html');
+  // Pass the account index through. Gmail multiplexes accounts by path
+  // (/mail/u/0/, /mail/u/1/ ...), and the app runs on an extension origin so
+  // it cannot read this page's URL. Without it, "Open in Gmail" always
+  // deep-linked to the first account regardless of which one you were reading.
+  frame.src = `${chrome.runtime.getURL('app.html')}?u=${encodeURIComponent(accountIndex())}`;
   frame.setAttribute('title', 'BITS Mail Manager');
   // No allow-same-origin: the frame is an extension origin and does not need
   // access to the Gmail document. Least privilege.

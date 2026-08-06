@@ -12,39 +12,128 @@ import { signIn, signOut, isSignedIn } from './auth.js';
 import { getFull, modify, batchModify, trash, profile } from './gmail.js';
 import { syncPage, syncDelta } from './sync.js';
 
+/**
+ * Is this a Gmail tab?
+ *
+ * `tab.url` is only populated when the extension holds either the broad `tabs`
+ * permission or a host permission for that specific tab. We hold the host
+ * permission for mail.google.com, which is the narrower of the two -- `tabs`
+ * would expose the URL of EVERY tab the user has open.
+ *
+ * This being undefined is what broke the toolbar button: the check fell
+ * through to the "not on Gmail" branch and opened a new tab on every click.
+ */
+function isGmail(tab) {
+  return typeof tab?.url === 'string' && tab.url.startsWith('https://mail.google.com/');
+}
+
+/**
+ * Startup self-check.
+ *
+ * Every one of the three bugs that made the first real browser run fail was a
+ * manifest/code mismatch that produced SILENCE rather than an error: a missing
+ * host permission left tab.url undefined, a missing `scripting` permission
+ * made the injection path throw into an empty catch, and a shortcut that
+ * collided with the browser's own was simply never delivered. None of it
+ * appeared anywhere a user would look.
+ *
+ * This logs the actual granted state once at startup, so the next mismatch is
+ * one glance at the service worker console instead of a debugging session.
+ */
+chrome.runtime.onInstalled.addListener(async () => {
+  const manifest = chrome.runtime.getManifest();
+  const problems = [];
+
+  if (!chrome.scripting) problems.push('chrome.scripting unavailable — "scripting" permission missing');
+  if (!(manifest.host_permissions || []).some((h) => h.includes('mail.google.com'))) {
+    problems.push('no host permission for mail.google.com — tab.url will be undefined');
+  }
+
+  const commands = await chrome.commands.getAll().catch(() => []);
+  for (const c of commands) {
+    // An empty shortcut means the browser refused it, usually a collision.
+    if (c.name === 'toggle-takeover' && !c.shortcut) {
+      problems.push(
+        'the keyboard shortcut is unassigned — set one at chrome://extensions/shortcuts'
+      );
+    }
+  }
+
+  if (problems.length) {
+    console.warn('[BMM] startup problems:\n  - ' + problems.join('\n  - '));
+  } else {
+    console.info('[BMM] ready. Shortcut:', commands.find((c) => c.name === 'toggle-takeover')?.shortcut || '(none)');
+  }
+});
+
 /** Toolbar click: tell the content script in THIS tab to toggle. */
 chrome.action.onClicked.addListener(async (tab) => {
   if (!tab?.id) return;
-  if (!tab.url?.startsWith('https://mail.google.com/')) {
-    // The takeover only means anything on Gmail. Rather than fail silently,
-    // open Gmail — the user clearly wanted their mail.
-    await chrome.tabs.create({ url: 'https://mail.google.com/' });
+
+  if (isGmail(tab)) {
+    await toggleIn(tab.id);
     return;
   }
-  await toggleIn(tab.id);
+
+  // Not on Gmail. Prefer an existing Gmail tab over opening another one --
+  // repeatedly spawning tabs is what the old behaviour did, and each new tab
+  // resolved to the browser's default account rather than the one the user was
+  // already reading.
+  const [existing] = await chrome.tabs.query({ url: 'https://mail.google.com/*' });
+  if (existing?.id) {
+    await chrome.tabs.update(existing.id, { active: true });
+    if (existing.windowId != null) {
+      await chrome.windows.update(existing.windowId, { focused: true }).catch(() => {});
+    }
+    await toggleIn(existing.id);
+    return;
+  }
+
+  // Genuinely no Gmail tab open. Opening the bare URL sends the user to
+  // whichever account Chrome considers default, so this is a last resort.
+  await chrome.tabs.create({ url: 'https://mail.google.com/' });
 });
 
 chrome.commands.onCommand.addListener(async (command) => {
   if (command !== 'toggle-takeover') return;
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (tab?.id && tab.url?.startsWith('https://mail.google.com/')) {
-    await toggleIn(tab.id);
-  }
+  if (isGmail(tab) && tab.id) await toggleIn(tab.id);
 });
 
+/**
+ * Send the toggle, injecting the content script first if it is not there.
+ *
+ * The injection path matters more than it looks: a content script declared in
+ * the manifest is only present in tabs loaded AFTER the extension was
+ * installed or reloaded. Without this, the button does nothing at all on every
+ * Gmail tab that was already open -- which is the common case immediately
+ * after installing.
+ */
 async function toggleIn(tabId) {
   try {
     await chrome.tabs.sendMessage(tabId, { type: 'BMM_TOGGLE' });
+    return;
   } catch {
-    // Content script not injected yet — happens if the extension was just
-    // installed and Gmail has not been reloaded. Say so rather than no-op.
-    await chrome.scripting
-      .executeScript({
-        target: { tabId },
-        files: ['src/takeover/content.js'],
-      })
-      .then(() => chrome.tabs.sendMessage(tabId, { type: 'BMM_TOGGLE' }))
-      .catch(() => {});
+    // No receiver. Fall through and inject.
+  }
+
+  try {
+    await chrome.scripting.insertCSS({
+      target: { tabId },
+      files: ['src/takeover/takeover.css'],
+    });
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ['src/takeover/content.js'],
+    });
+    await chrome.tabs.sendMessage(tabId, { type: 'BMM_TOGGLE' });
+  } catch (err) {
+    // Previously this whole path was swallowed by `.catch(() => {})`, so a
+    // missing `scripting` permission looked exactly like success and the
+    // button silently did nothing. Surface it instead.
+    console.error('[BMM] could not start the takeover:', err);
+    await chrome.action.setBadgeText({ tabId, text: '!' }).catch(() => {});
+    await chrome.action.setBadgeBackgroundColor({ tabId, color: '#c0392b' }).catch(() => {});
   }
 }
 
