@@ -64,13 +64,13 @@ What changed:
 | Renders per sync of 200 | dozens | **1** |
 | Search index | full rebuild per mutation | incremental, never rebuilt |
 | Search | O(n) scan per keystroke | inverted index with prefix match |
-| Persistence | whole array rewritten per mutation | changed ids, after the batch settles |
+| Persistence | whole array rewritten per mutation | one idle-coalesced write per sync, after paint |
 | Background animation | permanent rAF loop | none; entrance runs once and stops |
 | MutationObservers | 1, undebounced, re-entrant | **0** |
 | Timers/polling | 300 ms `silentRefresh` | **0** |
 | Classification | async + concurrency semaphore, for pure string matching | synchronous |
 | Message cap | 200 | 2000 |
-| Permissions | 7 | **3** |
+| Permissions | 7 | **2** |
 | OAuth scopes | 6 | **1** (`gmail.modify`) |
 | Transition durations / easings | 11 / 12 | **3 / 2** |
 
@@ -216,11 +216,13 @@ src/
   app/app.js                Render loop, triage, keyboard.
   app/app.css               3 durations, 2 easings.
   app/store.js              Incremental indexes, batched notification.
+  app/cache.js              Persisted headers; the warm start.
+  app/sanitize.js           DOMParser allow-list for untrusted mail bodies.
   classify/                 Categories, sender rules, pattern rules, scoring.
     address-map.js          GENERATED. 152 exact addresses (stage 0).
     pattern-rules.js        GENERATED. 891 keys, original weights.
   options/options.js
-test/                       121 tests. `npm test`
+test/                       206 tests. `npm test` · `npm run test:ci` (CI, fails on skips)
   app.integration.test.mjs  Boots the real app.html in jsdom and drives it.
   package.test.mjs          Fails if the manifest names a file that is absent.
 audits/                     Six audits of this codebase. Start at audits/README.md.
@@ -238,7 +240,7 @@ No build step and no runtime dependencies. `npm test` runs `node --test test/`.
 
 `jsdom` is an optional devDependency used only by the integration tests. Without
 it they skip and the suite still passes; with it, `npm install && npm test`
-runs all 121.
+runs all 206.
 
 ### Seeing it without installing it
 
@@ -276,7 +278,7 @@ mis-file something the preview mis-files it too.
 
 ## Status
 
-Feature-complete. **121 tests pass**, including 12 that boot the real
+Feature-complete. **206 tests pass**, including 27 that boot the real
 `app.html` in a real DOM and drive it as a user would — click a row, type in
 search, press `j`/`k`, archive, star.
 
@@ -302,14 +304,21 @@ only thing that can establish that.
 Known gaps: no compose or reply by design; attachments list but do not download
 (open in Gmail); no thread view — messages are listed individually.
 
-### Audited
+### Audited, then fixed
 
-Six audits were run over this codebase before it had ever launched in a
-browser: correctness, security, performance, accessibility, architecture and
-testing. They found **23 issues**, six of them severe — the message list
-silently caps at 400 rows and hides the rest, nothing is ever persisted despite
-the code claiming otherwise, and the two things the product is named for (the
-takeover and PKCE sign-in) have no direct tests at all.
+Six audits ran over this codebase before it had ever launched in a browser:
+correctness, security, performance, accessibility, architecture and testing.
+They found **23 issues**, six severe. **12 of the 15 follow-up items are
+done** — see [`audits/README.md`](audits/README.md) and [`TODO.md`](TODO.md).
 
-Read [`audits/README.md`](audits/README.md); the prioritised plan is in
-[`TODO.md`](TODO.md).
+Closed since: the 400-row cap that made messages 401+ unreachable by scroll,
+click and keyboard; the missing persistence layer, so a second open now paints
+from disk and asks only for a delta; the invalid `listbox > ul > option` tree
+that made the message list announce as empty; retry with backoff, so a routine
+Gmail rate-limit is no longer a hard error; a real `DOMParser` sanitiser
+replacing a regex chain that `<svg/onload=>` walked straight through; and
+direct tests for the takeover and PKCE sign-in, the two things the product is
+named for, which previously had none.
+
+**Still open:** it has not run in Chrome (1), there is no rendering benchmark
+(13), and the classifier has never seen real BITS mail (15).

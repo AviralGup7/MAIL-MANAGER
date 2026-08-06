@@ -31,7 +31,7 @@ written down every defect. Expect several. Ref: `01`, all.
 
 ---
 
-### 2 · Fix the 400-row cap that silently hides mail — **S**
+### ~~2~~ · ✅ DONE — Fix the 400-row cap that silently hides mail — **S**
 
 `app.js:181` truncates to 400 and sets `renderedIds` to the truncated list, so
 messages 401+ are unreachable by scroll, click **and** keyboard. The sidebar
@@ -46,7 +46,7 @@ rows.
 
 ---
 
-### 3 · Test the takeover — **S**
+### ~~3~~ · ✅ DONE — Test the takeover — **S**
 
 266 lines implementing the entire product, with zero tests. If
 `restoreGmail()` is not a lossless round trip, the user's Gmail tab is
@@ -62,7 +62,7 @@ red. Ref: `06` T-1.
 
 ---
 
-### 4 · Test PKCE sign-in — **S**
+### ~~4~~ · ✅ DONE — Test PKCE sign-in — **S**
 
 244 lines of security-critical auth with no direct test. Stub `fetch` and
 `chrome.identity` — `gmail.test.mjs` already does this for history pagination.
@@ -77,7 +77,7 @@ throws `NOT_SIGNED_IN`.
 
 ---
 
-### 5 · Persist the message cache — **S**
+### ~~5~~ · ✅ DONE — Persist the message cache — **S**
 
 `store.js:30` advertises "DELTA PERSISTENCE" as a headline fix. **Nothing is
 persisted.** Every takeover cold-fetches ~100 messages, and the `historyId`
@@ -92,7 +92,7 @@ a full page. Ref: `01` C-2.
 
 ---
 
-### 6 · Fix the listbox ARIA tree — **S**
+### ~~6~~ · ✅ DONE — Fix the listbox ARIA tree — **S**
 
 `listbox > ul > option` is invalid: the `<ul>` breaks the ownership
 relationship, so screen readers announce the message list as empty. No row is
@@ -107,7 +107,7 @@ reads the selected row on `j`/`k`. Ref: `04` A-1.
 
 ---
 
-### 7 · Add retry with backoff for 429 / 5xx — **M**
+### ~~7~~ · ✅ DONE — Add retry with backoff for 429 / 5xx — **M**
 
 Every non-2xx is fatal and identical. Gmail returns `429` with `Retry-After`
 under normal load — a 100-message batch is a burst by definition — and the user
@@ -122,7 +122,7 @@ jitter. Distinguish retryable (`429`, `500`, `502`, `503`, `504`) from terminal.
 
 ---
 
-### 8 · Assert the render invariant — **M**
+### ~~8~~ · ✅ DONE — Assert the render invariant — **M**
 
 The most important property in the codebase — one render per settled state — is
 enforced by convention only. `bench.mjs` *prints* `renders triggered: 1`; it
@@ -134,7 +134,7 @@ the `batch()` wrapper fails. Ref: `06` T-3, `05` A-3.
 
 ---
 
-### 9 · Delete the dead `GMAIL` proxy and the unused `alarms` permission — **M**
+### ~~9~~ · ✅ DONE — Delete the dead `GMAIL` proxy and the unused `alarms` permission — **M**
 
 `background/index.js:74` routes `type:'GMAIL'` to a generic path builder that
 nothing calls. It is a strictly worse interface than the specific verbs — it
@@ -148,7 +148,7 @@ capability the worker/app split exists to deny.
 
 ---
 
-### 10 · Fix the reading-pane live region — **M**
+### ~~10~~ · ✅ DONE — Fix the reading-pane live region — **M**
 
 `aria-live="polite"` on the whole `#readpane` announces the subject, sender,
 date, all tag chips and the action buttons on every open.
@@ -162,7 +162,7 @@ focus being stranded in the list after a click.
 
 ---
 
-### 11 · Harden the app's `postMessage` listener — **M**
+### ~~11~~ · ✅ DONE — Harden the app's `postMessage` listener — **M**
 
 Two of three listeners validate `e.source`; `app.js:810` does not, so any frame
 with a handle can post `BMM_SHOWN` and steal focus. Both outbound calls target
@@ -175,7 +175,7 @@ Ref: `02` S-2.
 
 ---
 
-### 12 · Decide what the body sanitiser is, and label it honestly — **M**
+### ~~12~~ · ✅ DONE — Decide what the body sanitiser is, and label it honestly — **M**
 
 `<svg/onload=alert(1)>` **survives** the regex chain — the `on*` stripper
 requires leading whitespace and a solidus is a valid separator. Not exploitable
@@ -205,7 +205,7 @@ paint, scroll frame duration, full category-switch render time.
 
 ---
 
-### 14 · Add `npm run test:ci` that fails on skips — **M**
+### ~~14~~ · ✅ DONE — Add `npm run test:ci` that fails on skips — **M**
 
 Without `jsdom`, `npm test` reports `96 pass, 13 skipped` and exits **zero**. CI
 lacking an install step would report success while running no DOM tests —
@@ -235,14 +235,50 @@ Status.
 
 ---
 
-## Sequencing
+## Status
 
-**This week —** 1, 2, 3, 4. Item 1 gates everything; 2 is a live data-hiding
-bug; 3 and 4 cover the two untested things the product is named for.
+**12 of 15 done.** 206 tests, all passing, none skipped.
 
-**Next —** 5, 6, 7. Persistence is the biggest felt speed win; 6 is the largest
-accessibility defect; 7 is the most likely real-world failure.
+The three that remain cannot be closed from here:
 
-**Then —** 8–14, cleanup and guardrails that stop regression.
+| # | Item | Blocked on |
+|---|---|---|
+| 1 | Load it in Chrome | You. Nothing below the surface is trustworthy until this happens. |
+| 13 | Rendering benchmark | Needs headless Chrome; jsdom has no layout engine, so a scroll-frame budget cannot be measured in this sandbox. |
+| 15 | Validate on real mail | The ~12 sample emails. |
 
-**Ongoing —** 15, as soon as the sample arrives.
+### What the finished work actually found
+
+Fixing these turned up five defects that the audits had not:
+
+- **Sign-out left the previous account's rows on screen.** `store.clear()` only
+  *schedules* a render, so clearing `renderedIds`/`nodeById` immediately after
+  had them repopulated by the queued frame. The resync path had the same latent
+  bug. Both now use one `resetView()`.
+- **`release()` did not call `restoreGmail()`** — it repeated the un-hide
+  inline, so the restore existed in two places that had to agree and only the
+  `pagehide` copy was tested. Sabotaging `restoreGmail` failed one test while
+  both round-trip tests passed, proving the path taken by *every normal
+  release* was uncovered.
+- **The Refresh button passed its click `Event` as the options object**,
+  silently enabling silent mode.
+- **`content.js` claimed "exactly ONE MutationObserver"** in its header. There
+  are none; it was describing v1.
+- **The permission guard still asserted `alarms`** after it was removed — found
+  by the new CI gate on its first run.
+
+### On verifying tests can fail
+
+Four of these were only found because the test was deliberately sabotaged
+before being trusted:
+
+- The first render-invariant test counted DOM writes and **passed** with
+  `upsertMany` broken into a per-message loop, because the rAF coalescer
+  collapses the notifications anyway. It now asserts notifications *and* writes,
+  and the same sabotage fails it.
+- The first sanitiser test failed on `<scr<script>ipt>` and looked like a
+  sanitiser bug. It was a test bug — the output is escaped text with zero
+  script elements. Rewritten to assert on executability, because grepping for
+  `alert(1)` cannot distinguish inert text from live markup.
+
+A test that has never been seen to fail is a hypothesis, not a test.
