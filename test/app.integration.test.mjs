@@ -574,3 +574,132 @@ test('CACHE: signing out erases the cached mailbox', async (t) => {
     restore();
   }
 });
+
+// ------------------------------------------------------------ a11y --------
+
+test('A11Y: the listbox owns its options directly', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // This was `div role="listbox" > ul > li role="option"`. An intervening
+  // `list` breaks ARIA ownership, so screen readers announced the message
+  // list -- the central UI of the app -- as empty.
+  const { doc, restore } = await boot();
+  try {
+    const listbox = doc.querySelector('[role="listbox"]');
+    assert.ok(listbox, 'a listbox must exist');
+    assert.equal(listbox.id, 'list');
+
+    const options = [...doc.querySelectorAll('[role="option"]')];
+    assert.equal(options.length, 3);
+    for (const opt of options) {
+      assert.equal(
+        opt.parentElement,
+        listbox,
+        'every option must be a DIRECT child of the listbox'
+      );
+    }
+    // Nothing may sit between them.
+    assert.equal(doc.querySelector('#list ul'), null, 'no list wrapper');
+    assert.equal(doc.querySelector('#list li'), null, 'no list items');
+  } finally {
+    restore();
+  }
+});
+
+test('A11Y: the listbox is the tab stop and tracks the active option', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // aria-activedescendant is only meaningful on the focused element, so the
+  // tab stop must be the listbox itself, not the scroll container.
+  const { doc, settle, restore } = await boot();
+  try {
+    const listbox = doc.getElementById('list');
+    assert.equal(listbox.getAttribute('tabindex'), '0');
+    assert.equal(doc.getElementById('scroller').hasAttribute('tabindex'), false);
+    assert.equal(listbox.hasAttribute('aria-activedescendant'), false, 'nothing selected yet');
+
+    rows(doc)[1].click();
+    await settle();
+
+    const active = listbox.getAttribute('aria-activedescendant');
+    assert.ok(active, 'must point at the open row');
+    const target = doc.getElementById(active);
+    assert.ok(target, `aria-activedescendant must reference a real element, got "${active}"`);
+    assert.equal(target.getAttribute('aria-selected'), 'true');
+    assert.equal(target.dataset.id, 'm2');
+  } finally {
+    restore();
+  }
+});
+
+test('A11Y: activedescendant follows j/k and clears on close', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, win, settle, restore } = await boot();
+  try {
+    const listbox = doc.getElementById('list');
+    const key = (k) => {
+      doc.dispatchEvent(new win.KeyboardEvent('keydown', { key: k, bubbles: true }));
+      return settle();
+    };
+
+    await key('j');
+    assert.equal(doc.getElementById(listbox.getAttribute('aria-activedescendant')).dataset.id, 'm1');
+    await key('j');
+    assert.equal(doc.getElementById(listbox.getAttribute('aria-activedescendant')).dataset.id, 'm2');
+
+    await key('Escape');
+    assert.equal(
+      listbox.hasAttribute('aria-activedescendant'),
+      false,
+      'closing the reader must clear the active option'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('A11Y: exactly one option is aria-selected at a time', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, settle, restore } = await boot();
+  try {
+    const selected = () => [...doc.querySelectorAll('[role="option"][aria-selected="true"]')];
+    assert.equal(selected().length, 0);
+    rows(doc)[0].click();
+    await settle();
+    assert.equal(selected().length, 1);
+    rows(doc)[2].click();
+    await settle();
+    assert.equal(selected().length, 1, 'the previous row must be deselected');
+    assert.equal(selected()[0].dataset.id, 'm3');
+  } finally {
+    restore();
+  }
+});
+
+test('A11Y: the reading pane is not a live region', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // aria-live on the whole pane announced the subject, sender, date, every tag
+  // chip and the action buttons on each open.
+  const { doc, restore } = await boot();
+  try {
+    assert.equal(doc.getElementById('readpane').hasAttribute('aria-live'), false);
+    const reader = doc.getElementById('reader');
+    assert.equal(reader.getAttribute('role'), 'article');
+    assert.equal(reader.getAttribute('aria-labelledby'), 'r-subject');
+    // The toast IS a live region, and correctly scoped to transient text.
+    assert.equal(doc.getElementById('toast').getAttribute('aria-live'), 'polite');
+  } finally {
+    restore();
+  }
+});
+
+test('A11Y: every row id is unique and references resolve', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, restore } = await boot({ messages: bulk(50) });
+  try {
+    const ids = [...doc.querySelectorAll('[role="option"]')].map((n) => n.id);
+    assert.equal(ids.length, 50);
+    assert.equal(new Set(ids).size, 50, 'row DOM ids must be unique');
+    assert.ok(ids.every((i) => i.startsWith('bmm-')), 'namespaced so Gmail ids cannot collide');
+  } finally {
+    restore();
+  }
+});

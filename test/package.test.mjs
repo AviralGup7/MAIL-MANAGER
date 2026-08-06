@@ -171,3 +171,21 @@ test('generated classifier files are in sync with the data pack', () => {
   const missing = [...packAddrs].filter((a) => !mapSrc.includes(`'${a}'`));
   assert.deepEqual(missing, [], `addresses in the pack but not the map: ${missing.slice(0, 5).join(', ')}`);
 });
+
+test('the listbox has no wrapper between it and its options', () => {
+  // Static guard on the template. The integration test asserts the rendered
+  // tree; this catches someone reintroducing a <ul> in the HTML, which is how
+  // the invalid tree got there the first time.
+  const html = read('app.html');
+  const listbox = html.match(/<div id="list"[^>]*>([\s\S]*?)<\/div>/);
+  assert.ok(listbox, '#list must exist');
+  assert.ok(/role="listbox"/.test(listbox[0]), '#list must BE the listbox');
+  assert.equal(listbox[1].trim(), '', '#list must be empty in the template');
+  assert.ok(!/<ul[^>]*id="list"/.test(html), 'the list must not be a <ul>');
+});
+
+test('the reading pane is not a live region', () => {
+  const html = read('app.html');
+  const pane = html.match(/<div id="readpane"[^>]*>/)[0];
+  assert.ok(!pane.includes('aria-live'), 'aria-live on the pane announces everything in it');
+});

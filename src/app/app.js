@@ -81,6 +81,9 @@ const nodeById = new Map();
 // ------------------------------------------------------------------- lookup --
 
 const $ = (id) => document.getElementById(id);
+
+/** DOM id for a message row. Namespaced so a Gmail id cannot collide. */
+const rowDomId = (id) => `bmm-row-${id}`;
 const el = {
   shell: $('shell'),
   cats: $('cats'),
@@ -286,9 +289,13 @@ function updateCounts(total) {
 
 /** Build a row's skeleton once. Text is filled by fillRow. */
 function buildRow(id) {
-  const li = document.createElement('li');
+  // A div, not an li: the listbox owns its options directly and nothing may
+  // sit between them. The stable DOM id is what aria-activedescendant points
+  // at, which is how a screen reader learns which row is current.
+  const li = document.createElement('div');
   li.className = 'row';
   li.dataset.id = id;
+  li.id = rowDomId(id);
   li.setAttribute('role', 'option');
   li.innerHTML =
     '<span class="r-bar"></span>' +
@@ -405,6 +412,10 @@ async function openMessage(id) {
   state.selected = id;
   if (prev) patchRow(prev);
   patchRow(id);
+  // Tell assistive tech which option is current. aria-selected on the row is
+  // not enough on its own -- without this the listbox has no notion of a
+  // focused child, so selection was written to the DOM and never announced.
+  el.list.setAttribute('aria-activedescendant', rowDomId(id));
 
   el.readerEmpty.hidden = true;
   el.reader.hidden = false;
@@ -511,6 +522,7 @@ function closeReader() {
   state.selected = null;
   bodyToken++;
   if (prev) patchRow(prev);
+  el.list.removeAttribute('aria-activedescendant');
   el.reader.hidden = true;
   el.readerEmpty.hidden = false;
   el.rBody.srcdoc = '';
@@ -879,7 +891,7 @@ function move(delta) {
 // The content script pings us when the takeover is fully visible. Focus lands
 // here so keyboard shortcuts work without a click.
 window.addEventListener('message', (e) => {
-  if (e.data?.type === 'BMM_SHOWN') el.scroller.focus({ preventScroll: true });
+  if (e.data?.type === 'BMM_SHOWN') el.list.focus({ preventScroll: true });
 });
 
 /**

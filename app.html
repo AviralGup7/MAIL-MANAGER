@@ -70,21 +70,40 @@
               fixed in CSS so the browser never has to measure text to know
               where a row lands.
             -->
-            <div id="scroller" tabindex="0" role="listbox" aria-label="Messages">
-              <ul id="list"></ul>
+            <div id="scroller">
+              <!--
+                The listbox owns its options DIRECTLY.
+
+                This used to be `div role="listbox" > ul > li role="option"`,
+                which is an invalid ARIA tree: an intervening `list` breaks the
+                ownership relation, so screen readers announced the message
+                list as empty. Nothing may sit between the listbox and its
+                options.
+              -->
+              <div id="list" role="listbox" aria-label="Messages" tabindex="0"></div>
               <div id="empty" hidden>Nothing here.</div>
             </div>
           </div>
 
-          <div id="readpane" aria-live="polite">
+          <!--
+            No aria-live here.
+
+            It used to be `aria-live="polite"` on this whole container, which
+            announced the subject, sender, date, every tag chip AND the action
+            buttons on every open. The intent was to say "a message opened";
+            the effect was to read the entire pane. Focus movement is the
+            correct signal for that, and openMessage() moves focus to the
+            subject heading.
+          -->
+          <div id="readpane">
             <div id="reader-empty">
               <div id="reader-empty-mark" aria-hidden="true"></div>
               <p>Select a message.</p>
               <p class="hint"><kbd>j</kbd>/<kbd>k</kbd> move · <kbd>e</kbd> archive · <kbd>s</kbd> star · <kbd>u</kbd> unread · <kbd>Esc</kbd> Gmail</p>
             </div>
-            <article id="reader" hidden>
+            <article id="reader" role="article" aria-labelledby="r-subject" tabindex="-1" hidden>
               <div id="reader-head">
-                <h1 id="r-subject"></h1>
+                <h1 id="r-subject" tabindex="-1"></h1>
                 <div id="r-meta">
                   <span id="r-from"></span>
                   <span id="r-date"></span>

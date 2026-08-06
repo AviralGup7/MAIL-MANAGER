@@ -363,15 +363,25 @@ a.ghost {
   /* Tell the compositor this layer scrolls on its own. */
   contain: strict;
 }
-#scroller:focus {
-  outline: none;
-}
-
+/*
+ * The listbox is the tab stop, because it is the element carrying
+ * aria-activedescendant and that attribute is only meaningful on the focused
+ * element. The visible focus ring is drawn on the SELECTED ROW rather than
+ * around the whole list, which is what a listbox should look like -- a box
+ * outlining 600 rows tells the user nothing.
+ */
 #list {
   list-style: none;
   margin: 0;
   padding: 0;
   position: relative;
+}
+#list:focus {
+  outline: none;
+}
+#list:focus-visible .row[aria-selected='true'] {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 /*
