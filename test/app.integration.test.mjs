@@ -982,3 +982,21 @@ test('A11Y: the star is still operable by keyboard after leaving the tab order',
     restore();
   }
 });
+
+test('A11Y: truncated row text carries the full value in a title', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Institutional subjects are long and clip well before the useful part.
+  // Without a title a clipped subject is simply unreadable, and the row shows
+  // only a display name when the address is often what the user is checking.
+  const { doc, restore } = await boot();
+  try {
+    for (const row of rows(doc)) {
+      const subj = row.querySelector('.r-subj');
+      const from = row.querySelector('.r-from');
+      assert.equal(subj.getAttribute('title'), subj.textContent, 'subject title must be the full text');
+      assert.ok(from.getAttribute('title')?.includes('@'), 'sender title must carry the address');
+    }
+  } finally {
+    restore();
+  }
+});

@@ -600,3 +600,27 @@ test('spacing resolves to the 4px grid', () => {
   }
   assert.deepEqual([...new Set(offenders)], [], 'off-grid spacing');
 });
+
+test('reduced motion zeroes DELAY as well as duration', () => {
+  // The half everyone forgets. Zeroing duration alone leaves the staggered
+  // list delays intact, so a reduced-motion user still waits up to 450ms
+  // watching rows appear one at a time. The motion is gone but the WAITING is
+  // not, which reads as the app being slow rather than as an effect — and for
+  // someone who enabled the setting because motion makes them ill, a delayed
+  // pop-in is exactly what they asked to avoid.
+  const css = read('src/app/app.css');
+  const block = css.slice(css.lastIndexOf('@media (prefers-reduced-motion'));
+  for (const prop of [
+    'animation-duration',
+    'animation-iteration-count',
+    'transition-duration',
+    'animation-delay',
+    'transition-delay',
+  ]) {
+    assert.match(
+      block,
+      new RegExp(`${prop}:[^;]+!important`),
+      `reduced motion must override ${prop}`
+    );
+  }
+});

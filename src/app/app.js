@@ -475,8 +475,25 @@ function fillRow(li, m) {
   const color = CAT_COLOR[m.category] || CAT_COLOR.other;
   if (bar.style.getPropertyValue('--c') !== color) bar.style.setProperty('--c', color);
 
-  setText(q('.r-from'), displayName(m.from));
-  setText(q('.r-subj'), m.subject);
+  /*
+   * Truncated text needs a title, or a clipped subject is simply unreadable.
+   *
+   * Institutional subject lines are long -- "Notification regarding revised
+   * schedule for the comprehensive examination…" clips well before the useful
+   * part. The full sender goes on too, because the row shows only the display
+   * name and the address is often what the user is checking.
+   *
+   * Set through the same guarded helper as the text, so an unchanged row still
+   * costs zero DOM writes.
+   */
+  const fromEl = q('.r-from');
+  setText(fromEl, displayName(m.from));
+  setAttr(fromEl, 'title', m.from);
+
+  const subjEl = q('.r-subj');
+  setText(subjEl, m.subject);
+  setAttr(subjEl, 'title', m.subject);
+
   setText(q('.r-snip'), m.snippet);
   setText(q('.r-date'), shortDate(m.date));
 
@@ -497,6 +514,12 @@ function fillRow(li, m) {
     star.setAttribute('aria-label', starred ? 'Unstar' : 'Star');
   }
   li.setAttribute('aria-selected', String(state.selected === m.id));
+}
+
+/** Guarded attribute write, matching setText: no write if unchanged. */
+function setAttr(node, name, value) {
+  const v = value || '';
+  if (node.getAttribute(name) !== v) node.setAttribute(name, v);
 }
 
 function setText(node, value) {

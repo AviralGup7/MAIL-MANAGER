@@ -289,6 +289,7 @@ kbd {
 
 .cat-name {
   flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2028,5 +2029,15 @@ html[data-scheme='dark'] #thememenu {
     animation-iteration-count: 1 !important;
     transition-duration: 1ms !important;
     scroll-behavior: auto !important;
+    /*
+     * DELAY matters as much as duration, and is the half everyone forgets.
+     *
+     * Zeroing duration alone leaves the staggered list delays intact, so a
+     * reduced-motion user still waits up to 450ms watching rows appear one by
+     * one. The motion is gone but the WAITING is not, which is arguably worse
+     * -- it reads as the app being slow rather than as an effect.
+     */
+    animation-delay: 0ms !important;
+    transition-delay: 0ms !important;
   }
 }
