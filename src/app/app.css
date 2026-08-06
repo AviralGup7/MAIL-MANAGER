@@ -3285,6 +3285,62 @@ kbd {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/*
+ * The instructor-in-charge, marked with a leading dot. The document says it in
+ * BLOCK CAPITALS; shouting it here would be louder than the class itself, so
+ * it gets weight and a full-strength colour instead.
+ */
+.tt-lead {
+  color: var(--fg);
+  font-weight: var(--w-medium);
+}
+.tt-lead::before {
+  content: '\2022';
+  color: var(--accent);
+  margin-right: 3px;
+}
+/* Exams: a dated list, not a grid -- they are one-off events, not a week. */
+.tt-exams {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tt-exam {
+  display: grid;
+  grid-template-columns: 68px 1fr auto;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-1) var(--s-2);
+  border-radius: var(--r-sm);
+}
+.tt-exam:nth-child(odd) {
+  background: var(--bg-sunken);
+}
+.tt-exam-course {
+  font-size: var(--t-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tt-exam-when {
+  font-size: var(--t-xs);
+  color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* A compre is three hours and decides the grade; a midsem is ninety minutes. */
+.tt-kind.tt-exam-compre {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+.tt-kind.tt-exam-midsem {
+  background: var(--bg-sunken);
+  color: var(--fg-faint);
+}
+.tt-unresolved {
+  font-style: italic;
+}
+
 .tt-entry-acts {
   display: flex;
   gap: var(--s-1);

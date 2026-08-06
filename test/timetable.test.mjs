@@ -966,3 +966,116 @@ test('EXAMS: one course\'s own sections do not clash with each other', () => {
     detectConflicts(midAndCompre).filter((c) => c.kind === 'exam-clash'), []
   );
 });
+
+/* ================================================= credits and in-charge == */
+
+test('CREDITS: the L/P/T/S/U array is named, not left positional', () => {
+  /*
+   * The document stores credits as five bare columns and the legend says what
+   * they mean (section 4):
+   *
+   *   L = lecture hours per week      P = practical hours per week
+   *   T = tutorial hours per week     S = self-study hours per week
+   *   U = total units
+   *
+   * `["3","1","-","-","4"]` is unreadable and, worse, unusable -- nothing can
+   * ask "does this course have a lab?" without re-deriving the legend at the
+   * call site. Pass 2 asks for the credit structure to be part of the model.
+   *
+   * A dash means the component does not exist, and becomes 0, not null: the
+   * document is stating an absence, which is information.
+   */
+  const { state } = build();
+  const c = state.entries[0].credits;
+  assert.equal(c.lecture, 3);
+  assert.equal(c.practical, 1);
+  assert.equal(c.tutorial, 0, 'a dash is a stated absence, so zero');
+  assert.equal(c.selfStudy, 0);
+  assert.equal(c.units, 4);
+});
+
+test('CREDITS: a malformed credit column does not fabricate numbers', () => {
+  const odd = { ...CS, credits: ['x', '', undefined, '-', '4'] };
+  const { state } = addCourse(emptyState(), odd, {
+    lecture: odd.sections.find((s) => s.section === 'L1'),
+  });
+  const c = state.entries[0].credits;
+  assert.equal(c.lecture, null, 'an unparseable value is unknown, not zero');
+  assert.equal(c.tutorial, null, 'a missing column is unknown');
+  assert.equal(c.selfStudy, 0, 'but a dash really is zero');
+  assert.equal(c.units, 4);
+});
+
+test('IN-CHARGE: the instructor-in-charge is identified from the source', () => {
+  /*
+   * Legend section 6: "Name in BLOCK LETTERS indicates INSTRUCTOR-IN-CHARGE.
+   * Other Names are of Instructors."
+   *
+   * This matters practically -- the in-charge is who you email about a clash,
+   * a makeup or a grade, and the timetable was flattening them into an
+   * undifferentiated list.
+   *
+   * BIO F101 L1 reads: SHASHI PRAKASH SINGH (caps), then Rajdeep Chowdhury and
+   * Syamantak Majumder in mixed case.
+   */
+  const data = JSON.parse(
+    readFileSync(join(ROOT, 'src/timetable/data.json'), 'utf8')
+  );
+  const bio = data.courses.find((c) => c.courseNo === 'BIO F101');
+  const l1 = bio.sections.find((s) => s.section === 'L1');
+  assert.equal(l1.inCharge, 'SHASHI PRAKASH SINGH');
+
+  const { state } = addCourse(emptyState(), bio, { lecture: l1 });
+  assert.equal(state.entries[0].inCharge, 'SHASHI PRAKASH SINGH');
+  assert.ok(
+    state.entries[0].instructors.length > 1,
+    'the other instructors are still listed'
+  );
+});
+
+test('IN-CHARGE: a mixed-case-only section claims no in-charge', () => {
+  /*
+   * Continuation rows carry co-instructors in mixed case. If a section's own
+   * name is not in block capitals the document has not marked an in-charge on
+   * that row, and inventing one -- "probably the first" -- is exactly the
+   * guess this system refuses to make.
+   *
+   * READ FROM THE PARSED CATALOGUE, NOT FROM THE HAND-WRITTEN FIXTURE. My
+   * first version of this test used the fixture, which never runs the parser,
+   * so a parser that ignored capitalisation entirely still passed it. The
+   * real CS F111 rows are the point:
+   *
+   *   L1  VINTI AGARWAL   -> in charge
+   *   L2  Yash Sinha      -> not marked
+   */
+  const data = JSON.parse(
+    readFileSync(join(ROOT, 'src/timetable/data.json'), 'utf8')
+  );
+  const cs = data.courses.find((c) => c.courseNo === 'CS F111');
+  const l1 = cs.sections.find((s) => s.section === 'L1');
+  const l2 = cs.sections.find((s) => s.section === 'L2');
+
+  assert.equal(l1.inCharge, 'VINTI AGARWAL', 'block capitals means in-charge');
+  assert.deepEqual(l2.instructors, ['Yash Sinha'], 'precondition: mixed case only');
+  assert.equal(l2.inCharge, '', 'a mixed-case name must claim nothing');
+
+  // And it must survive into the built entry.
+  const { state } = addCourse(emptyState(), cs, { lecture: l2 });
+  assert.equal(state.entries[0].inCharge, '');
+});
+
+test('IN-CHARGE: only some sections are marked, and that is expected', () => {
+  // A blanket "every section has an in-charge" would mean the caps test is
+  // not discriminating; a blanket "none do" would mean it never fires. The
+  // real document marks the header row of each course, not every row.
+  const data = JSON.parse(
+    readFileSync(join(ROOT, 'src/timetable/data.json'), 'utf8')
+  );
+  const sections = data.courses.flatMap((c) => c.sections || []);
+  const marked = sections.filter((s) => s.inCharge).length;
+  assert.ok(marked > 400, `too few in-charges (${marked}); the caps test may be broken`);
+  assert.ok(
+    marked < sections.length * 0.75,
+    `too many in-charges (${marked}/${sections.length}); capitalisation is being ignored`
+  );
+});

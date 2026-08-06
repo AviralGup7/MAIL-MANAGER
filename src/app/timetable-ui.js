@@ -23,7 +23,7 @@ import {
   restoreFromSource, applyFieldChange, detectConflicts,
   linkedSections, instructorsFor, sectionsByKind,
   weekView, summariseMeetings, explainEntry, fmtTime,
-  SOURCE_LABEL, entryId, entriesForMessage,
+  SOURCE_LABEL, entryId, entriesForMessage, examEvents,
 } from './timetable.js';
 import {
   loadTimetable, saveTimetable, searchCourses, courseByComCode, loadSourceData,
@@ -516,6 +516,8 @@ function manageView() {
   if (state.conflicts.length) b.appendChild(conflictSection());
 
   b.appendChild(gridSection());
+  const exams = examSection();
+  if (exams) b.appendChild(exams);
   b.appendChild(listSection());
   b.appendChild(courseSearch());
   return b;
@@ -644,6 +646,67 @@ function conflictSection() {
 const DAYS = ['M', 'T', 'W', 'Th', 'F', 'S'];
 const DAY_LABEL = { M: 'Mon', T: 'Tue', W: 'Wed', Th: 'Thu', F: 'Fri', S: 'Sat' };
 
+/**
+ * Mid-semester and comprehensive exams, soonest first.
+ *
+ * These dates were parsed and stored from the very first version and never
+ * shown, so the one part of the timetable a student most needs to plan around
+ * was invisible. The clock times come from the document's legend, not from a
+ * guess -- a session the legend does not describe shows its date and no time.
+ *
+ * Returns null when there are none, so lab-and-project timetables do not get
+ * an empty heading.
+ */
+function examSection() {
+  const events = examEvents(state.entries);
+  if (!events.length) return null;
+
+  const s = el('section', 'tt-block');
+  s.appendChild(blockTitle('Exams'));
+
+  /*
+   * Sort by DD/MM without inventing a year.
+   *
+   * The document prints no year, and the academic year straddles December to
+   * May, so a naive numeric sort would put January before October. Comparing
+   * month-then-day and rotating so the semester's own start month leads keeps
+   * the order right without fabricating a date.
+   */
+  const key = (e) => {
+    const [dd, mm] = e.date.split('/').map(Number);
+    if (!Number.isFinite(dd) || !Number.isFinite(mm)) return Number.MAX_SAFE_INTEGER;
+    // Semester runs Aug -> Dec then Jan -> May: months before August wrap.
+    const ordered = mm >= 8 ? mm - 8 : mm + 4;
+    return ordered * 100 + dd;
+  };
+  const sorted = [...events].sort((a, b) => key(a) - key(b));
+
+  const list = el('div', 'tt-exams');
+  for (const e of sorted) {
+    const row = el('div', 'tt-exam');
+
+    const kind = el('span', `tt-kind tt-exam-${e.type}`);
+    kind.textContent = e.type === 'midsem' ? 'Mid-sem' : 'Compre';
+
+    const what = el('span', 'tt-exam-course');
+    what.textContent = `${e.courseNo} ${e.section}`;
+
+    const when = el('span', 'tt-exam-when');
+    // The session code is kept alongside the converted time, because the
+    // official notices refer to sessions by name and the two must be
+    // reconcilable by eye.
+    when.textContent = e.time
+      ? `${e.date} · ${e.session} · ${e.time}`
+      : `${e.date}${e.session ? ` · ${e.session}` : ''} · time not stated`;
+    if (!e.time) when.classList.add('tt-unresolved');
+
+    row.append(kind, what, when);
+    list.appendChild(row);
+  }
+  s.appendChild(list);
+  return s;
+}
+
 function gridSection() {
   const s = el('section', 'tt-block');
   s.appendChild(blockTitle('Your week'));
@@ -733,8 +796,25 @@ function entryRow(e) {
   const where = el('span', 'tt-where');
   where.textContent = e.room ? `Room ${e.room}` : 'no room';
 
+  /*
+   * The instructor-in-charge gets a mark, because they are who you email
+   * about a clash, a makeup or a grade. The document distinguishes them in
+   * BLOCK CAPITALS and we were flattening that away.
+   *
+   * A dot rather than a word: the row is already four columns, and the
+   * tooltip carries the meaning for anyone who wonders.
+   */
   const who = el('span', 'tt-who');
-  who.textContent = e.instructors.join(', ') || '—';
+  if (e.inCharge) {
+    const lead = el('span', 'tt-lead');
+    lead.textContent = e.inCharge;
+    lead.title = `${e.inCharge} is the instructor-in-charge`;
+    const rest = e.instructors.filter((n) => n !== e.inCharge);
+    who.append(lead);
+    if (rest.length) who.append(document.createTextNode(`, ${rest.join(', ')}`));
+  } else {
+    who.textContent = e.instructors.join(', ') || '—';
+  }
 
   const acts = el('span', 'tt-entry-acts');
 

@@ -182,6 +182,33 @@ export function linkedSections(course, lectureSection) {
  * `unresolved` is copied from the parse, so a section the document could not
  * fully describe arrives already flagged rather than looking complete.
  */
+/**
+ * Name the five credit columns, per legend section 4.
+ *
+ *   L = lecture hours/week   P = practical   T = tutorial
+ *   S = self-study           U = total units
+ *
+ * `["3","1","-","-","4"]` carries no meaning at a call site, so nothing could
+ * ask "does this course have a lab?" without re-deriving the legend locally.
+ *
+ * A DASH AND A MISSING VALUE ARE NOT THE SAME THING. The document writes '-'
+ * to state that a component does not exist, which is information, and it maps
+ * to 0. Anything unparseable maps to null -- unknown -- so a display can tell
+ * "this course has no tutorial" from "we could not read the tutorial column".
+ * Collapsing both to 0 would invent a fact.
+ */
+export function parseCredits(cols) {
+  const names = ['lecture', 'practical', 'tutorial', 'selfStudy', 'units'];
+  const out = {};
+  names.forEach((name, i) => {
+    const raw = cols?.[i];
+    if (raw === '-') { out[name] = 0; return; }
+    const n = Number(String(raw ?? '').trim());
+    out[name] = String(raw ?? '').trim() !== '' && Number.isFinite(n) ? n : null;
+  });
+  return out;
+}
+
 export function makeEntry(course, section, { source = 'document', ref, at = Date.now(), linkedTo = '' } = {}) {
   const prov = (field) => ({
     source: (section.unresolved || []).includes(field) ? 'unresolved' : source,
@@ -196,7 +223,17 @@ export function makeEntry(course, section, { source = 'document', ref, at = Date
     title: course.title,
     section: section.section,
     kind: section.kind,
+    /*
+     * Who to email. Legend section 6 marks the instructor-in-charge in BLOCK
+     * CAPITALS; the parser records it per section. '' where the document did
+     * not mark one -- see parseCredits' sibling reasoning: a stated absence
+     * and an unknown are different, and neither is a guess.
+     */
+    inCharge: section.inCharge || '',
     instructors: [...(section.instructors || [])],
+    // The credit columns, named per legend section 4 rather than left as a
+    // positional array nothing can read.
+    credits: parseCredits(course.credits),
     room: section.room || '',
     daysHours: section.daysHours || '',
     meetings: (section.meetings || []).map((m) => ({ ...m })),

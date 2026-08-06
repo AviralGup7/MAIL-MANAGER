@@ -393,6 +393,21 @@ export function parseTimetable(text) {
   return { courses: [...courses.values()], problems };
 }
 
+
+/**
+ * Is this name written in BLOCK CAPITALS, as the legend uses for the
+ * instructor-in-charge?
+ *
+ * Ignores anything that is not a letter, so "V MANJULADEVI(RS)" and
+ * "A. K. SHARMA" still count. Requires at least two letters overall, because
+ * a single initial tells us nothing about the writer's intent.
+ */
+function isBlockCaps(name) {
+  const letters = String(name).replace(/[^A-Za-z]/g, '');
+  if (letters.length < 2) return false;
+  return letters === letters.toUpperCase();
+}
+
 function addSection(course, sec, rest, problems, courseKey) {
   const tail = splitTail(rest);
   const meetings = parseDaysHours(tail.daysHours);
@@ -401,6 +416,20 @@ function addSection(course, sec, rest, problems, courseKey) {
   const entry = {
     section: sec,
     kind,
+    /*
+     * INSTRUCTOR-IN-CHARGE, per legend section 6: "Name in BLOCK LETTERS
+     * indicates INSTRUCTOR-IN-CHARGE. Other Names are of Instructors."
+     *
+     * Recorded from the FIRST row of a section only, because continuation
+     * rows carry co-instructors in mixed case. If the section's own name is
+     * not in block capitals the document has not marked one, and '' is the
+     * honest answer -- picking "probably the first" is exactly the guess this
+     * parser refuses to make.
+     *
+     * Requires two letters so an initial ("A K Sharma") is not mistaken for
+     * a capitalised full name.
+     */
+    inCharge: tail.instructor && isBlockCaps(tail.instructor) ? tail.instructor : '',
     instructors: tail.instructor ? [tail.instructor] : [],
     room: tail.room,
     daysHours: tail.daysHours,

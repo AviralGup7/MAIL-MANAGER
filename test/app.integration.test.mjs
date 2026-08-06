@@ -2973,8 +2973,11 @@ const TT_DATA = {
       comCode: '1008', courseNo: 'CS F111', title: 'COMPUTER PROGRAMMING',
       credits: ['3', '1', '-', '-', '4'],
       sections: [
+        // Exam dates mirror the real document: a numbered session is a midsem,
+        // a bare one is a compre (legend sections 10 and 11).
         { section: 'L1', kind: 'lecture', instructors: ['VINTI AGARWAL'], room: '5105',
-          daysHours: 'M W 3', unresolved: [],
+          daysHours: 'M W 3', unresolved: [], inCharge: 'VINTI AGARWAL',
+          midsem: '09/10 AN2', compre: '02/12 AN',
           meetings: [
             { day: 'M', dayName: 'Monday', hour: 3, startMin: 600, endMin: 650 },
             { day: 'W', dayName: 'Wednesday', hour: 3, startMin: 600, endMin: 650 }] },
@@ -3425,6 +3428,90 @@ test('TIMETABLE: Escape closes the panel without leaving Gmail', async (t) => {
     await settle(6);
     assert.equal(doc.getElementById('tt-panel'), null, 'the panel should close');
     assert.equal(released, false, 'and must not drop the user back into Gmail');
+  } finally {
+    restore();
+  }
+});
+
+test('TIMETABLE: exams are listed with times converted from the legend', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * The exam dates were parsed and stored from the first version and never
+   * rendered, so the part of the timetable a student most needs to plan
+   * around was invisible. The clock times come from the document's legend:
+   * AN2 is 16:00-17:30, a bare AN is the three-hour 14:00-17:00 compre.
+   */
+  const { doc, win, settle, restore } = await boot({ timetableData: TT_DATA });
+  try {
+    await openTT(doc, win, settle);
+    const r = await ttSearch(doc, win, settle, 'CS F111');
+    r[0].querySelector('button').click();
+    await settle(4);
+    [...doc.querySelectorAll('.tt-chooser .tt-section')]
+      .find((b) => b.textContent.startsWith('L1')).click();
+    await settle(8);
+
+    const rows = [...doc.querySelectorAll('#tt-panel .tt-exam')];
+    assert.ok(rows.length >= 2, `expected a midsem and a compre, got ${rows.length}`);
+
+    const text = rows.map((n) => n.textContent).join(' | ');
+    assert.match(text, /Mid-sem/, 'the mid-semester exam must be labelled');
+    assert.match(text, /Compre/, 'and the comprehensive separately');
+    assert.match(text, /4:00 PM-5:30 PM/, 'AN2 converts to 16:00-17:30');
+    assert.match(text, /2:00 PM-5:00 PM/, 'a bare AN is the three-hour compre');
+
+    // Soonest first: 09/10 before 02/12 in an Aug-start academic year.
+    assert.ok(
+      rows[0].textContent.includes('09/10'),
+      `exams out of order: ${text}`
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('TIMETABLE: a course with no exam dates shows no exam block', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Project and thesis courses have none, and an empty "Exams" heading would
+  // imply the data was missing rather than absent.
+  const { doc, win, settle, restore } = await boot({ timetableData: TT_DATA });
+  try {
+    await openTT(doc, win, settle);
+    const r = await ttSearch(doc, win, settle, 'CS F111');
+    r[0].querySelector('button').click();
+    await settle(4);
+    // L2 carries no exam dates in the fixture.
+    [...doc.querySelectorAll('.tt-chooser .tt-section')]
+      .find((b) => b.textContent.startsWith('L2')).click();
+    await settle(8);
+
+    assert.equal(
+      doc.querySelectorAll('#tt-panel .tt-exam').length, 0,
+      'no dates means no exam rows'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('TIMETABLE: the instructor-in-charge is marked in the entry list', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Legend section 6: BLOCK CAPITALS marks the instructor-in-charge, who is
+  // who you email about a clash or a makeup. It was being flattened away.
+  const { doc, win, settle, restore } = await boot({ timetableData: TT_DATA });
+  try {
+    await openTT(doc, win, settle);
+    const r = await ttSearch(doc, win, settle, 'CS F111');
+    r[0].querySelector('button').click();
+    await settle(4);
+    [...doc.querySelectorAll('.tt-chooser .tt-section')]
+      .find((b) => b.textContent.startsWith('L1')).click();
+    await settle(8);
+
+    const lead = doc.querySelector('#tt-panel .tt-lead');
+    assert.ok(lead, 'the in-charge should be marked');
+    assert.equal(lead.textContent, 'VINTI AGARWAL');
+    assert.match(lead.getAttribute('title') || '', /instructor-in-charge/);
   } finally {
     restore();
   }
