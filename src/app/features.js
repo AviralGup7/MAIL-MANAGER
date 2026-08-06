@@ -44,17 +44,29 @@ export const undoStack = new UndoStack();
  */
 export function recordUndo(ctx, label, undoFn) {
   undoStack.push(label, undoFn);
-  ctx.toast(`${label} · Ctrl+Z to undo`);
+  /*
+   * The single best reason to prefer this over Gmail used to be communicated
+   * as a text SUFFIX: "Archived · Ctrl+Z to undo". A real button is what
+   * people reach for in the half-second after a mistake, and the `undo` kind
+   * gives the toast a drain line so the window is visible rather than guessed.
+   *
+   * The keyboard path is unchanged and still works for five minutes — far
+   * longer than the toast. The `?` overlay says so.
+   */
+  ctx.toast(label, {
+    kind: 'undo',
+    action: { label: 'Undo', run: () => performUndo(ctx) },
+  });
 }
 
 export async function performUndo(ctx) {
   try {
     const label = await undoStack.undo();
     if (!label) {
-      ctx.toast('Nothing to undo');
+      ctx.toast('Nothing to undo', { kind: 'info' });
       return;
     }
-    ctx.toast(`Undid: ${label}`);
+    ctx.toast(`Undid: ${label}`, { kind: 'success' });
   } catch (err) {
     ctx.toast(err.message);
   }
@@ -564,7 +576,7 @@ async function doSend(ctx) {
     // first and then failing would destroy the message.
     await ensureDraftSaver().discard();
     closeCompose();
-    ctx.toast('Message sent');
+    ctx.toast(`Sent to ${draft.to.split(',')[0].trim()}`, { kind: 'success' });
   } catch (err) {
     setStatus(err.message, 'err');
   } finally {

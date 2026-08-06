@@ -320,18 +320,36 @@ ruins:
 
 ## 3 · Ranked recommendation
 
-| # | Change | Size | When | Felt benefit |
-|---|---|---|---|---|
-| D-1 | Row exit animation | major | immediate | Triage stops feeling abrupt |
-| D-3 | Undo button + drain line | major | immediate | The best feature becomes visible |
-| D-2 | Toast variants | moderate | immediate | Glance instead of read |
-| D-4 | `:active` press states | moderate | immediate | Everything feels tactile |
-| D-5 | Star pop | moderate | immediate | One moment of pleasure |
-| D-7 | Send completion + recipient | moderate | immediate | Answers the real anxiety |
-| D-8 | Rail count typography | subtle | immediate | Scannable, 22× per glance |
-| D-9 | "Updated N min ago" | subtle | immediate | Removes background doubt |
-| D-6 | Radar shows its working | moderate | optional | Smart becomes trustworthy |
-| D-10 | Achieved-empty state | subtle | optional | Notices the user finished |
+| # | Change | Size | When | Felt benefit | Status |
+|---|---|---|---|---|---|
+| D-1 | Row exit animation | major | immediate | Triage stops feeling abrupt | **done** |
+| D-3 | Undo button + drain line | major | immediate | The best feature becomes visible | **done** |
+| D-2 | Toast variants | moderate | immediate | Glance instead of read | **done** |
+| D-4 | `:active` press states | moderate | immediate | Everything feels tactile | **done** |
+| D-5 | Star pop | moderate | immediate | One moment of pleasure | **done** |
+| D-7 | Send names the recipient | moderate | immediate | Answers the real anxiety | **done** |
+| D-8 | Rail count typography | subtle | immediate | Scannable, 22× per glance | |
+| D-9 | "Updated N min ago" | subtle | immediate | Removes background doubt | |
+| D-6 | Radar shows its working | moderate | optional | Smart becomes trustworthy | |
+| D-10 | Achieved-empty state | subtle | optional | Notices the user finished | |
+
+### Implementation notes
+
+**D-1 was harder than it looked.** The first attempt animated rows that had
+already been detached by `replaceChildren`, so the motion was invisible.
+Departing rows now have to be claimed *before* the rebuild and re-appended to
+the fragment so they survive the swap.
+
+It also needed a distinction the original design did not have: a row
+disappears either because the **message left** (archive, delete, snooze —
+earns motion) or because the **view changed** (filter, search, mailbox switch —
+must be instant). Animating the second made filtering feel laggy and briefly
+showed stale rows beside new ones. The test for it caught three existing tests
+that were counting rows mid-flight.
+
+`dismissRow` uses a timeout as the real removal mechanism and `animationend`
+only as an optimisation, because animations do not fire in a background tab or
+under reduced motion. Stranding a row would be worse than never animating one.
 
 **Start with D-1, D-3 and D-4.** They are the three highest-frequency moments
 in the product — departing rows, reversible mistakes, and clicks — and together

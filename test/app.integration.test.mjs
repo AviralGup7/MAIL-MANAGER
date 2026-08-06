@@ -2393,3 +2393,96 @@ test('DELIGHT: bulk archive does not strand any of its rows', async (t) => {
     restore();
   }
 });
+
+/* ========================================================================== *
+ * DELIGHT — the toast becomes a real feedback channel
+ *
+ * One flat pill carried 21 messages in one style: success, failure and
+ * undoable actions were visually identical, so every toast had to be read
+ * rather than glanced at. And universal undo — the product's best idea — was
+ * communicated as a text suffix.
+ * ========================================================================== */
+
+test('DELIGHT: an undoable action offers a button, not just a keyboard hint', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, win, settle, restore } = await boot();
+  try {
+    const before = rows(doc).length;
+    rows(doc)[0].click();
+    await settle(4);
+    doc.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'e', bubbles: true }));
+    await settle(6);
+
+    const toastEl = doc.getElementById('toast');
+    assert.equal(toastEl.hidden, false);
+    assert.equal(toastEl.dataset.kind, 'undo', 'undoable actions get their own kind');
+
+    const action = doc.getElementById('toast-action');
+    assert.equal(action.hidden, false, 'an Undo button must be offered');
+    assert.equal(action.textContent, 'Undo');
+
+    // And it must actually work — clicking restores the message.
+    action.click();
+    await settle(8);
+    assert.equal(rows(doc).length, before, 'clicking Undo restores the row');
+  } finally {
+    restore();
+  }
+});
+
+test('DELIGHT: failures are visually distinct from successes', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * An error that looks exactly like a success is a small betrayal of trust.
+   * The kind drives a 2px edge, so the difference is peripheral rather than
+   * something the user has to read for.
+   */
+  const { doc, win, settle, restore } = await boot();
+  try {
+    // A saved-view success. jsdom has no `prompt`, so it is supplied.
+    globalThis.prompt = () => 'My view';
+    win.prompt = globalThis.prompt;
+    const search = doc.getElementById('search');
+    search.value = 'zzz-unique-query';
+    search.dispatchEvent(new win.Event('input'));
+    await settle(4);
+    doc.getElementById('btn-save-view').click();
+    await settle(8);
+
+    assert.equal(doc.getElementById('toast').dataset.kind, 'success');
+    assert.equal(doc.getElementById('toast-action').hidden, true, 'no action on a plain success');
+  } finally {
+    delete globalThis.prompt;
+    restore();
+  }
+});
+
+test('DELIGHT: sending names the recipient rather than confirming a mechanism', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // The fear after sending is "who did that go to", not "did the button work".
+  const { doc, settle, restore } = await boot();
+  try {
+    doc.getElementById('btn-compose').click();
+    await settle(4);
+    doc.getElementById('c-to').value = 'augsd@pilani.bits-pilani.ac.in';
+    doc.getElementById('c-subject').value = 'Test';
+    doc.getElementById('c-send').click();
+    await settle(12);
+
+    const text = doc.getElementById('toast-text').textContent;
+    assert.match(text, /augsd@pilani/, `expected the recipient in "${text}"`);
+    assert.equal(doc.getElementById('toast').dataset.kind, 'success');
+  } finally {
+    restore();
+  }
+});
+
+test('DELIGHT: the drain line restarts on every toast', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Re-assigning the same animation does not replay it; the reflow between is
+  // what does. Without that, a second toast shows a drain line already spent.
+  const src = readFileSync(join(ROOT, 'src/app/app.js'), 'utf8');
+  const fn = src.slice(src.indexOf('function toast('), src.indexOf('function hideToast('));
+  assert.ok(fn.includes("style.animation = 'none'"), 'must clear before re-applying');
+  assert.ok(fn.includes('offsetWidth'), 'must force a reflow between');
+});

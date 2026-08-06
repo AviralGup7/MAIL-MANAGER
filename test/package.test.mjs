@@ -630,7 +630,15 @@ test('every keyframe is defined exactly once and is actually used', () => {
   const duplicated = [...counts].filter(([, n]) => n > 1).map(([k]) => k);
   assert.deepEqual(duplicated, [], 'the later definition silently replaces the earlier');
 
+  /*
+   * `toast-drain` is applied from JS (`el.toastDrain.style.animation = ...`)
+   * because its duration varies with the toast kind, so it never appears in an
+   * `animation:` declaration here. Scanning the source for it keeps the
+   * orphan check honest instead of exempting it.
+   */
+  const js = read('src/app/app.js');
   const used = new Set([...css.matchAll(/animation:\s*([\w-]+)/g)].map((m) => m[1]));
+  for (const m of js.matchAll(/animation = `([\w-]+)/g)) used.add(m[1]);
   const orphans = [...counts.keys()].filter((k) => !used.has(k));
   assert.deepEqual(orphans, [], 'keyframes defined but never referenced');
 
@@ -1090,4 +1098,32 @@ test('ARCH: the Escape handler has no per-overlay branches', () => {
   for (const overlay of ['closeHelp(', 'closeSnoozeMenu(', 'closeCategoryMenu(', 'closeThemeMenu(']) {
     assert.ok(!block.includes(overlay), `${overlay}) is back in the Escape ladder`);
   }
+});
+
+/*
+ * DELIGHT: every clickable surface acknowledges the press.
+ *
+ * Hover says "this is clickable"; the press is what says "I got that".
+ * `.ghost` and `.primary` had it; six other interactive surfaces did not, so
+ * clicking a star, a menu row or a rail entry felt like typing into a form.
+ */
+test('every interactive surface has a press state', () => {
+  const css = read('src/app/app.css');
+  const surfaces = ['.ghost', '.primary', '.r-star', '.snooze-opt', '.cat',
+    '.view-item', '.ac-opt', '.theme-item', '.att-chip'];
+  const missing = surfaces.filter((sel) => {
+    const escaped = sel.replace(/[.]/g, '\\$&');
+    return !new RegExp(`${escaped}:active`).test(css);
+  });
+  assert.deepEqual(missing, [], 'these are clickable but do not respond to a press');
+});
+
+test('the star pop fires on starring, not unstarring', () => {
+  // Asymmetric feedback is what makes an interaction feel authored. Removing
+  // a star should be quiet; only the affirmative gesture gets a flourish.
+  const css = read('src/app/app.css');
+  assert.match(css, /\.r-star\[aria-pressed='true'\] svg \{\s*animation: star-pop/,
+    'the pop must be scoped to the pressed state');
+  assert.ok(!/\.r-star svg \{\s*animation: star-pop/.test(css),
+    'it must not fire on every star render');
 });

@@ -214,6 +214,9 @@ const el = {
   rLoading: $('r-loading'),
   rOpen: $('r-open'),
   toast: $('toast'),
+  toastText: $('toast-text'),
+  toastAction: $('toast-action'),
+  toastDrain: $('toast-drain'),
   themeMenu: $('thememenu'),
 };
 
@@ -232,13 +235,63 @@ function send(type, extra = {}) {
 }
 
 let toastTimer = 0;
-function toast(text) {
-  el.toast.textContent = text;
+/**
+ * Show a toast.
+ *
+ * WHY THIS TOOK ON STRUCTURE
+ * --------------------------
+ * One pill carried 21 different messages in one style. "Message sent",
+ * "Could not archive" and "Archived · Ctrl+Z to undo" looked identical, so the
+ * user had to READ every toast to learn which kind it was. Feedback that costs
+ * attention is not feedback.
+ *
+ *   - `kind` drives a 2px edge only. Not four background colours — the pill
+ *     stays calm, the meaning arrives peripherally.
+ *   - Errors linger longer, because reading a failure takes longer than
+ *     confirming a success.
+ *   - An `action` turns a keyboard hint into a button. Clicking is what people
+ *     reach for in the half-second after a mistake.
+ *   - The drain line makes the window VISIBLE rather than guessed at. It is
+ *     the detail that silently says "you have time".
+ *
+ * @param {string} text
+ * @param {{kind?:'info'|'success'|'error'|'undo', action?:{label:string, run:Function}, ms?:number}} [opts]
+ */
+function toast(text, opts = {}) {
+  const kind = opts.kind || 'info';
+  const ms = opts.ms || (kind === 'error' ? 4000 : kind === 'undo' ? 3600 : 2200);
+
+  setText(el.toastText, text);
+  el.toast.dataset.kind = kind;
+
+  const action = opts.action;
+  el.toastAction.hidden = !action;
+  if (action) {
+    setText(el.toastAction, action.label);
+    el.toastAction.onclick = () => {
+      hideToast();
+      action.run();
+    };
+  } else {
+    el.toastAction.onclick = null;
+  }
+
+  // Restart the drain from zero. Re-assigning the animation alone does not
+  // replay it; the reflow between is what does.
+  el.toastDrain.style.animation = 'none';
+  void el.toastDrain.offsetWidth;
+  el.toastDrain.style.animation = `toast-drain ${ms}ms linear forwards`;
+
   el.toast.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => {
-    el.toast.hidden = true;
-  }, 2200);
+  toastTimer = setTimeout(hideToast, ms);
+}
+
+function hideToast() {
+  clearTimeout(toastTimer);
+  el.toast.hidden = true;
+  el.toastAction.hidden = true;
+  el.toastAction.onclick = null;
 }
 
 // --------------------------------------------------------------- the render --
@@ -1159,9 +1212,9 @@ async function downloadAttachment(chip) {
     document.body.appendChild(a);
     a.click();
     a.remove();
-    toast(`Downloaded ${filename}`);
+    toast(`Downloaded ${filename}`, { kind: 'success' });
   } catch (err) {
-    toast(`Could not download: ${err.message}`);
+    toast(`Could not download: ${err.message}`, { kind: 'error' });
   } finally {
     chip.disabled = false;
     chip.classList.remove('loading');
@@ -1250,7 +1303,7 @@ function renderBodyInto(body, forceRemote = false) {
     el.rImagesAlways.onclick = async () => {
       await allowSenderImages(sender);
       renderBodyInto(body, true);
-      toast(`Images will load from ${sender}`);
+      toast(`Images will load from ${sender}`, { kind: 'success' });
     };
   }
 }
@@ -1397,7 +1450,7 @@ async function act(action, id) {
       if (id === state.selected) syncContextActions(store.get(id));
       send('STAR', { id, on }).catch(() => {
         store.patch(id, { starred: !on });
-        toast('Could not update star');
+        toast('Could not update star', { kind: 'error' });
       });
       break;
     }
@@ -1406,7 +1459,7 @@ async function act(action, id) {
       store.patch(id, { unread: on });
       send(on ? 'MARK_UNREAD' : 'MARK_READ', { id }).catch(() => {
         store.patch(id, { unread: !on });
-        toast('Could not update');
+        toast('Could not update', { kind: 'error' });
       });
       break;
     }
@@ -1416,7 +1469,7 @@ async function act(action, id) {
       store.remove(id);
       send('ARCHIVE', { id }).catch(() => {
         store.upsert(snapshot);
-        toast('Could not archive');
+        toast('Could not archive', { kind: 'error' });
       });
       // Gmail cannot undo an archive. We can, because the message is still in
       // memory and re-applying INBOX is one call.
@@ -1432,7 +1485,7 @@ async function act(action, id) {
       store.remove(id);
       send('TRASH', { id }).catch(() => {
         store.upsert(snapshot);
-        toast('Could not delete');
+        toast('Could not delete', { kind: 'error' });
       });
       recordUndo(ctx, 'Deleted', async () => {
         store.upsert(snapshot);
@@ -1464,7 +1517,7 @@ async function snoozeMessage(id, wakeAt, label) {
     await removeSnooze(id, chrome.storage.local);
     store.upsert(snapshot);
     renderList();
-    toast('Could not snooze');
+    toast('Could not snooze', { kind: 'error' });
   });
 
   toast(`Snoozed ${label ? label.toLowerCase() : ''}`.trim());
@@ -1599,7 +1652,7 @@ function autoArchive(records) {
 
   send('BULK', { ids, remove: ['INBOX'] }).catch(() => {
     for (const s of snapshots) store.upsert(s);
-    toast('Could not auto-archive');
+    toast('Could not auto-archive', { kind: 'error' });
   });
 
   toast(`Auto-archived ${ids.length} message${ids.length === 1 ? '' : 's'}`);
@@ -2971,7 +3024,7 @@ async function bulkAct(kind) {
     store.batch(() => {
       for (const m of snapshots) store.upsert(m);
     });
-    toast(`Could not ${kind}: ${err.message}`);
+    toast(`Could not ${kind}: ${err.message}`, { kind: 'error' });
     return;
   }
 
@@ -3261,7 +3314,7 @@ async function boot() {
     }
     await refreshViews();
     updateSaveAffordance();
-    toast(`Saved "${res.view.name}"`);
+    toast(`Saved "${res.view.name}"`, { kind: 'success' });
   });
 
   wirePalette(ctx);

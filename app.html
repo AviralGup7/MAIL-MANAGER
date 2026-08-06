@@ -389,7 +389,20 @@
         </div>
       </div>
 
-      <div id="toast" role="status" aria-live="polite" hidden></div>
+      <!--
+        TOAST.
+
+        One flat pill used to carry 21 different messages — success, failure
+        and undoable actions were visually identical, so every toast had to be
+        READ rather than glanced at. It now takes a `data-kind` and can carry
+        an action, which is how undo becomes visible rather than a keyboard
+        hint buried in a sentence.
+      -->
+      <div id="toast" role="status" aria-live="polite" hidden>
+        <span id="toast-text"></span>
+        <button id="toast-action" type="button" hidden></button>
+        <span id="toast-drain" aria-hidden="true"></span>
+      </div>
     </div>
 
     <script type="module" src="src/app/app.js"></script>

@@ -369,6 +369,28 @@ a.ghost {
 .primary:active {
   transform: translateY(1px);
 }
+
+/*
+ * PRESS FEEDBACK ON EVERYTHING CLICKABLE.
+ *
+ * `.ghost` and `.primary` had this; the six other interactive surfaces did
+ * not — the star, menu rows, rail entries, saved views, autocomplete options
+ * and theme items. Hover says "this is clickable"; the press is what says
+ * "I got that". Without it a click feels like it went into a form rather than
+ * onto a control, which is much of the difference between a web page and an
+ * application.
+ *
+ * Scale rather than translate for list rows: a row that shifts down nudges its
+ * neighbours in the eye, whereas a slight compression reads as the row itself
+ * yielding.
+ */
+.snooze-opt:active,
+.view-item:active,
+.ac-opt:active,
+.theme-item:active,
+.cat:active {
+  transform: scale(0.985);
+}
 .ghost.small {
   padding: var(--s-1) var(--s-2);
   font-size: var(--t-sm);
@@ -786,6 +808,28 @@ a.ghost {
   opacity: 1;
   transform: scale(1);
 }
+/*
+ * STARRING IS THE ONE ACTION WITH NO CONSEQUENCE.
+ *
+ * Nothing moves, nothing is lost — it is purely an expression of intent, and
+ * it should be the small pleasure of the interface. The pop fires only on the
+ * FILLED transition: removing a star should be quiet, because asymmetric
+ * feedback is what makes an interaction feel authored rather than mechanical.
+ */
+.r-star[aria-pressed='true'] svg {
+  animation: star-pop var(--dur-base) var(--ease-spring) both;
+}
+
+@keyframes star-pop {
+  0%   { transform: scale(1); }
+  45%  { transform: scale(1.28); }
+  100% { transform: scale(1); }
+}
+
+.r-star:active {
+  transform: scale(0.92);
+}
+
 .r-star:hover {
   transform: scale(1.12);
   background: var(--bg-sunken);
@@ -1386,6 +1430,8 @@ a.ghost {
 #toast {
   border-radius: var(--r-md);
   box-shadow: var(--shadow-lg);
+  /* Positioning context for the drain line. */
+  position: fixed;
 }
 
 /*
@@ -2430,6 +2476,77 @@ html[data-scheme='dark'] #thememenu {
   color: var(--fg-dim);
   font-size: var(--t-xs);
   white-space: nowrap;
+}
+
+/* -------------------------------------------------------------- toast ---- */
+
+/*
+ * The toast carries meaning through a 2px edge, not through colour-washing the
+ * whole pill. Four coloured backgrounds would shout; an edge is read
+ * peripherally and leaves the surface calm.
+ */
+#toast {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  overflow: hidden;
+  border-left: 2px solid transparent;
+}
+
+#toast[data-kind='success'] {
+  border-left-color: var(--success);
+}
+#toast[data-kind='error'] {
+  border-left-color: var(--danger);
+}
+#toast[data-kind='undo'] {
+  border-left-color: var(--accent);
+}
+
+/*
+ * The action button sits ON the toast surface, which is `--fg` — so it takes
+ * the inverted palette rather than the page one.
+ */
+#toast-action {
+  flex: none;
+  padding: var(--s-1) var(--s-3);
+  border: 1px solid color-mix(in srgb, var(--bg-raised) 40%, transparent);
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--bg-raised);
+  font: inherit;
+  font-size: var(--t-xs);
+  font-weight: var(--w-semi);
+  cursor: pointer;
+  transition: background-color var(--dur-instant) linear;
+}
+#toast-action:hover,
+#toast-action:focus-visible {
+  background: color-mix(in srgb, var(--bg-raised) 18%, transparent);
+}
+#toast-action:active {
+  transform: scale(0.96);
+}
+
+/*
+ * The drain line. Makes the undo window VISIBLE instead of guessed at — the
+ * detail that silently says "you have time". Animates transform only, and the
+ * global reduced-motion block zeroes it like everything else.
+ */
+#toast-drain {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 100%;
+  transform-origin: left;
+  background: color-mix(in srgb, var(--bg-raised) 45%, transparent);
+  transform: scaleX(0);
+}
+
+@keyframes toast-drain {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
 }
 
 /* --------------------------------------------------------------- rail ---- */
