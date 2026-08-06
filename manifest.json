@@ -11,8 +11,7 @@
   },
   "permissions": [
     "identity",
-    "storage",
-    "alarms"
+    "storage"
   ],
   "host_permissions": [
     "https://gmail.googleapis.com/*",

@@ -117,8 +117,12 @@ test('permissions and scopes stayed minimal', () => {
   // A regression guard: permissions creep back in one convenient line at a
   // time. v1 ended up with 7 permissions and 6 scopes, one of which
   // (generativelanguage) no code referenced at all.
-  assert.deepEqual([...manifest.permissions].sort(), ['alarms', 'identity', 'storage']);
+  // Two, down from v1's seven. `alarms` was declared and never used, which
+  // undermined the whole minimisation story; it can come back when something
+  // actually schedules work.
+  assert.deepEqual([...manifest.permissions].sort(), ['identity', 'storage']);
   assert.ok(!manifest.permissions.includes('tabs'));
+  assert.ok(!manifest.permissions.includes('alarms'), 'unused permission came back');
   const auth = read('src/background/auth.js');
   const scopes = auth.match(/const SCOPES = \[([\s\S]*?)\]/)[1];
   assert.ok(scopes.includes('gmail.modify'));

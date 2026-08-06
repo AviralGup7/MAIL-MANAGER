@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      # jsdom is required. test:ci fails if any test skips, so a missing
+      # install cannot quietly reduce the suite to the headless subset.
+      - run: npm ci
+
+      - name: Test (fails on skips)
+        run: npm run test:ci
+
+      - name: Benchmark
+        run: npm run bench
+
+      # The rule files are generated from docs/CLASSIFICATION_DATA_PACK.md.
+      # Regenerating must be a no-op; a diff means someone hand-edited the
+      # output, which is how the first port silently lost 802 of 891 keys.
+      - name: Generated files are in sync
+        run: |
+          node tools/gen-pattern-rules.mjs docs/CLASSIFICATION_DATA_PACK.md
+          node tools/gen-address-map.mjs docs/CLASSIFICATION_DATA_PACK.md
+          git diff --exit-code -- src/classify/pattern-rules.js src/classify/address-map.js

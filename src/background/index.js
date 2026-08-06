@@ -8,7 +8,7 @@
  *   - proxy Gmail API calls
  */
 
-import { signIn, signOut, getToken, isSignedIn } from './auth.js';
+import { signIn, signOut, isSignedIn } from './auth.js';
 import { getFull, modify, batchModify, trash, profile } from './gmail.js';
 import { syncPage, syncDelta } from './sync.js';
 
@@ -71,9 +71,6 @@ async function handle(msg) {
     case 'SIGN_OUT':
       await signOut();
       return { signedIn: false };
-    case 'GMAIL':
-      return gmail(msg.path, msg.init);
-
     case 'PROFILE':
       return profile();
 
@@ -110,21 +107,6 @@ async function handle(msg) {
   }
 }
 
-/** Thin authenticated fetch against the Gmail REST API. */
-async function gmail(path, init = {}) {
-  const token = await getToken();
-  const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me${path}`, {
-    ...init,
-    headers: {
-      ...(init.headers || {}),
-      Authorization: `Bearer ${token}`,
-    },
-  });
-  if (!res.ok) {
-    throw new Error(`Gmail API ${res.status} on ${path}`);
-  }
-  return res.json();
-}
 
 /**
  * Pull a displayable body out of Gmail's MIME tree.

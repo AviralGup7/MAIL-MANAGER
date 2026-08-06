@@ -26,6 +26,7 @@
 
 import { Store } from './store.js';
 import { loadCache, saveCache, clearCache, createSaver, CACHE_MAX } from './cache.js';
+import { sanitizeHtml, escapeHtml } from './sanitize.js';
 import { classify } from '../classify/index.js';
 import {
   CATEGORY_LABELS,
@@ -478,17 +479,12 @@ function tagNode(text, color) {
  * a mail does not confirm your address to a spammer.
  */
 function renderBody(body) {
-  const raw = body.html || '';
-  const html = raw
-    ? raw
-        .replace(/<\s*(script|iframe|object|embed|link|meta|base|form)\b[\s\S]*?<\s*\/\s*\1\s*>/gi, '')
-        .replace(/<\s*(script|iframe|object|embed|link|meta|base)\b[^>]*>/gi, '')
-        .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-        .replace(/javascript:/gi, 'blocked:')
+  const html = body.html
+    ? sanitizeHtml(body.html)
     : `<pre>${escapeHtml(body.text || '(no content)')}</pre>`;
 
   const attachments = (body.attachments || []).length
-    ? `<div class="att">📎 ${body.attachments
+    ? `<div class="att">&#128206; ${body.attachments
         .map((a) => escapeHtml(a.filename))
         .join(', ')} — open in Gmail to download</div>`
     : '';
@@ -508,9 +504,6 @@ function renderBody(body) {
 </style></head><body>${attachments}${html}</body></html>`;
 }
 
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-}
 function escapeDoc(text) {
   return `<!doctype html><meta charset="utf-8"><body style="font:13px system-ui;padding:20px;color:#5b6270"><pre style="white-space:pre-wrap">${escapeHtml(
     text
@@ -891,6 +884,12 @@ function move(delta) {
 // The content script pings us when the takeover is fully visible. Focus lands
 // here so keyboard shortcuts work without a click.
 window.addEventListener('message', (e) => {
+  // Source-checked, like the content script's two listeners. Without this any
+  // frame holding a handle to this window could post BMM_SHOWN and pull focus
+  // into the message list. Low impact on its own -- but two of the three
+  // listeners in this extension were hardened and this one was missed, which
+  // means the pattern was not actually enforced anywhere.
+  if (e.source !== parent) return;
   if (e.data?.type === 'BMM_SHOWN') el.list.focus({ preventScroll: true });
 });
 
