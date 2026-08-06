@@ -140,6 +140,38 @@
   --shadow-md: 0 2px 4px rgba(16, 24, 40, 0.06), 0 6px 16px rgba(16, 24, 40, 0.08);
   --shadow-lg: 0 4px 8px rgba(16, 24, 40, 0.07), 0 16px 40px rgba(16, 24, 40, 0.12);
   --shadow: var(--shadow-md);
+
+  /*
+   * ELEVATION SCALE.
+   *
+   * Z-index was eight magic numbers assigned per component, with nothing
+   * saying what sits above what -- and three unrelated overlays all landed on
+   * 60, so palette-vs-help-vs-timetable stacking was decided by DOM order.
+   *
+   * Read this as a story of what can cover what:
+   *   raised/sticky  in-pane furniture (the topbar, a sticky header)
+   *   gate           the signed-out wall: covers the app, not the chrome
+   *   menu           menus anchored to something beneath them
+   *   overlay        full dialogs: help, the timetable panel
+   *   compose        above dialogs -- you can open help while writing
+   *   palette        the command surface, reachable from anywhere
+   *   toast          ALWAYS last. It is the only channel for "that failed",
+   *                  so nothing may occlude it. It used to be 30, under every
+   *                  overlay, and nine toasts raised from inside the
+   *                  timetable panel were invisible.
+   *
+   * Gaps of 10 leave room to insert a surface without renumbering.
+   */
+  --z-base: 1;
+  --z-raised: 2;
+  --z-sticky: 3;
+  --z-gate: 20;
+  --z-menu: 40;
+  --z-overlay: 50;
+  --z-compose: 60;
+  --z-palette: 70;
+  --z-toast: 80;
+
 }
 
 /* Dark themes need deeper, softer shadows: the light ramp is invisible. */
@@ -473,10 +505,21 @@ a.ghost {
   box-shadow: 0 2px 10px var(--glow);
 }
 
+/*
+ * THE FOCUS RING MUST NOT RESHAPE WHAT IT LANDS ON.
+ *
+ * This rule used to end with `border-radius: var(--r-sm)`, which applies to
+ * the ELEMENT rather than to the outline. Keyboard-focusing a pill
+ * (--r-full) or a panel (--r-lg) therefore snapped its corners to 6px: the
+ * component visibly changed shape at the exact moment the user needed it to
+ * look stable. Mouse users never saw it, which is how it survived four audits.
+ *
+ * Browsers already trace the element's own radius when drawing an outline, so
+ * the right answer is to say nothing about shape here.
+ */
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: var(--r-sm);
 }
 
 /* ---------------------------------------------------------------- topbar -- */
@@ -1187,7 +1230,7 @@ a.ghost {
   display: grid;
   place-items: center;
   background: var(--bg);
-  z-index: 20;
+  z-index: var(--z-gate);
 }
 
 #gate-card {
@@ -1254,7 +1297,7 @@ a.ghost {
   border-radius: var(--r-full);
   font-size: var(--t-sm);
   box-shadow: var(--shadow);
-  z-index: 30;
+  z-index: var(--z-toast);
   animation: toast-in var(--dur-base) var(--ease-in) both;
 }
 
@@ -1299,7 +1342,7 @@ a.ghost {
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
-  z-index: 40;
+  z-index: var(--z-menu);
   min-width: 190px;
   padding: var(--s-1);
   background: var(--bg-raised);
@@ -1387,7 +1430,7 @@ a.ghost {
   /* A hairline of elevation so the list reads as beneath the toolbar. */
   box-shadow: var(--shadow-sm);
   position: relative;
-  z-index: 2;
+  z-index: var(--z-raised);
 }
 
 /* --------------------------------------------------------------- search -- */
@@ -1597,7 +1640,7 @@ html[data-theme='contrast'] .row[aria-selected='true'] {
 #palette {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: var(--z-palette);
   display: flex;
   justify-content: center;
   align-items: flex-start;
@@ -1686,7 +1729,7 @@ html[data-theme='contrast'] .row[aria-selected='true'] {
   position: fixed;
   right: 22px;
   bottom: 0;
-  z-index: 50;
+  z-index: var(--z-compose);
   width: min(580px, calc(100vw - 44px));
   display: flex;
   flex-direction: column;
@@ -2020,7 +2063,7 @@ svg {
   box-shadow:
     1px 0 0 var(--line),
     2px 0 8px rgba(0, 0, 0, 0.03);
-  z-index: 1;
+  z-index: var(--z-base);
 }
 
 html[data-scheme='dark'] #topbar {
@@ -2163,7 +2206,7 @@ html[data-scheme='dark'] #thememenu {
   height: var(--s-5);
   background: linear-gradient(to bottom, var(--bg), transparent);
   pointer-events: none;
-  z-index: 2;
+  z-index: var(--z-raised);
   opacity: 0;
   transition: opacity var(--dur-base) linear;
 }
@@ -2491,7 +2534,7 @@ html[data-scheme='dark'] #thememenu {
   top: calc(100% + var(--s-2));
   left: 0;
   right: 0;
-  z-index: 3;
+  z-index: var(--z-sticky);
   margin: 0;
   padding: var(--s-2) var(--s-3);
   border: 1px solid var(--line);
@@ -2698,7 +2741,7 @@ html[data-scheme='dark'] #thememenu {
  */
 .snooze-menu {
   position: absolute;
-  z-index: 40;
+  z-index: var(--z-menu);
   top: calc(100% + var(--s-2));
   left: 0;
   min-width: 248px;
@@ -2748,7 +2791,7 @@ html[data-scheme='dark'] #thememenu {
 #help {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: var(--z-overlay);
   display: grid;
   place-items: center;
   padding: var(--s-6);
@@ -2912,7 +2955,7 @@ kbd {
 .tt-panel {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: var(--z-overlay);
   margin: auto;
   width: min(1040px, 94vw);
   height: min(88vh, 900px);

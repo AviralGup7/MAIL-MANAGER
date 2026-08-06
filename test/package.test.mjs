@@ -1127,3 +1127,85 @@ test('the star pop fires on starring, not unstarring', () => {
   assert.ok(!/\.r-star svg \{\s*animation: star-pop/.test(css),
     'it must not fire on every star render');
 });
+
+/* ============================================================== elevation == */
+
+test('every stacking level comes from the elevation scale', () => {
+  /*
+   * Z-INDEX WAS EIGHT MAGIC NUMBERS.
+   *
+   * 1, 2, 3, 20, 30, 40, 50, 60 — assigned per component, with no scale
+   * saying what sits above what. Three unrelated overlays all landed on 60
+   * (palette, help, timetable panel), so their stacking order was decided by
+   * DOM order rather than by intent.
+   *
+   * Every literal must now come from a --z-* token, so adding a ninth surface
+   * forces a decision about where it belongs instead of picking a number that
+   * looks big enough.
+   */
+  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const defs = new Set(
+    [...css.matchAll(/--z-[\w-]+:\s*(\d+)/g)].map((m) => m[1])
+  );
+  assert.ok(defs.size >= 5, 'an elevation scale must exist');
+
+  const literals = [...css.matchAll(/z-index:\s*(-?\d+)\s*;/g)].map((m) => m[1]);
+  assert.deepEqual(
+    literals, [],
+    `z-index must use a --z-* token, found literals: ${literals.join(', ')}`
+  );
+});
+
+test('the toast sits above every overlay that can raise one', () => {
+  /*
+   * FOUND BY MEASURING, NOT BY READING. The toast was z30 while the timetable
+   * panel, palette and help were z40–60. Nine call sites inside the timetable
+   * panel raise toasts — "Could not save", "Added CS F111 L1" — and every one
+   * of them rendered UNDERNEATH the panel that raised it. Confirmed in jsdom
+   * with getComputedStyle before this test was written.
+   *
+   * A toast is the app's only channel for "that failed". It cannot be
+   * occludable by anything.
+   */
+  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const tok = (name) => {
+    const m = css.match(new RegExp(`--z-${name}:\\s*(\\d+)`));
+    assert.ok(m, `--z-${name} must be defined`);
+    return Number(m[1]);
+  };
+  const toast = tok('toast');
+  for (const surface of ['overlay', 'palette', 'compose', 'menu', 'gate']) {
+    assert.ok(
+      toast > tok(surface),
+      `the toast (${toast}) must outrank --z-${surface} (${tok(surface)})`
+    );
+  }
+});
+
+test('the focus ring does not reshape the element it lands on', () => {
+  /*
+   * MEASURED, NOT ASSUMED.
+   *
+   * The global rule was:
+   *
+   *   :focus-visible { outline: 2px solid; outline-offset: 2px;
+   *                    border-radius: var(--r-sm); }
+   *
+   * That last line applies to the ELEMENT, not to the outline. So keyboard-
+   * focusing a pill (--r-full, 999px) or a panel (--r-lg, 14px) snapped its
+   * corners to 6px -- the component visibly changed shape at the moment the
+   * user needed it to look stable. Mouse users never saw it, which is why it
+   * survived four audits.
+   *
+   * Browsers already follow the element's own radius when drawing an outline,
+   * so the correct fix is to state nothing and let it inherit.
+   */
+  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const block = css.match(/(^|\})\s*:focus-visible\s*\{([^}]*)\}/);
+  assert.ok(block, 'a global :focus-visible rule must exist');
+  assert.doesNotMatch(
+    block[2], /border-radius/,
+    'the focus rule must not override the radius of what it focuses'
+  );
+  assert.match(block[2], /outline/, 'but it must still draw a ring');
+});
