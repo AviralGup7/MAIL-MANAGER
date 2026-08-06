@@ -2980,9 +2980,11 @@ async function boot() {
     const rm = e.target.closest('[data-remove-view]');
     if (rm) {
       e.stopPropagation();
-      await removeView(rm.dataset.removeView);
+      // Report a failed write. This used to assume success, so a rejected
+      // storage call left the view on screen with no toast and no error.
+      const res = await removeView(rm.dataset.removeView);
       await refreshViews();
-      toast('View removed');
+      toast(res?.ok === false ? res.error : 'View removed');
       return;
     }
     const item = e.target.closest('.view-item');

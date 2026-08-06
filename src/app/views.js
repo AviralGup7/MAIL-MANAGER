@@ -102,12 +102,9 @@ export async function saveView(name, query, storage = chrome.storage.local) {
   }
 
   const view = { id: `sv-${Date.now().toString(36)}`, name: clean, query: q, icon: 'search' };
-  try {
-    await storage.set({ [KEY]: { ...raw, views: [...views, view] } });
-  } catch {
-    return { ok: false, error: 'Could not save.' };
-  }
-  return { ok: true, view };
+  // Same guarded write as every other mutator; see `write` below.
+  const res = await write({ ...raw, views: [...views, view] }, storage, 'Could not save.');
+  return res.ok ? { ok: true, view } : res;
 }
 
 /**
@@ -118,19 +115,40 @@ export async function saveView(name, query, storage = chrome.storage.local) {
  */
 export async function removeView(id, storage = chrome.storage.local) {
   const raw = await readRaw(storage);
-  if (BUILTIN_VIEWS.some((v) => v.id === id)) {
-    const hidden = new Set(raw.hidden || []);
-    hidden.add(id);
-    await storage.set({ [KEY]: { ...raw, hidden: [...hidden] } });
-    return;
-  }
-  await storage.set({
-    [KEY]: { ...raw, views: (raw.views || []).filter((v) => v.id !== id) },
-  });
+  const next = BUILTIN_VIEWS.some((v) => v.id === id)
+    ? { ...raw, hidden: [...new Set([...(raw.hidden || []), id])] }
+    : { ...raw, views: (raw.views || []).filter((v) => v.id !== id) };
+  return write(next, storage, 'Could not remove that view.');
 }
 
 /** Restore every hidden built-in. */
 export async function restoreBuiltins(storage = chrome.storage.local) {
   const raw = await readRaw(storage);
-  await storage.set({ [KEY]: { ...raw, hidden: [] } });
+  return write({ ...raw, hidden: [] }, storage, 'Could not restore the views.');
+}
+
+/**
+ * The single write path for this module.
+ *
+ * WHY THIS EXISTS
+ * ---------------
+ * `saveView` wrapped its write in try/catch and returned `{ok:false,error}`;
+ * `removeView` and `restoreBuiltins` did neither, so a failing
+ * `chrome.storage.local.set` (quota exhausted, storage disabled) REJECTED out
+ * of them. Both are called from `async` click handlers with no `.catch`, so
+ * the rejection vanished into an unhandled promise: the view stayed on screen,
+ * the success toast never fired, and the user was told nothing at all.
+ *
+ * The root cause was not the missing try/catch -- it was that two of the three
+ * mutators had no channel to report failure through, so there was nowhere for
+ * the error to go. Every mutator now returns the SAME `{ok, error}` shape and
+ * shares one guarded write, which is why a fourth mutator cannot repeat this.
+ */
+async function write(payload, storage, failure) {
+  try {
+    await storage.set({ [KEY]: payload });
+  } catch {
+    return { ok: false, error: failure };
+  }
+  return { ok: true };
 }
