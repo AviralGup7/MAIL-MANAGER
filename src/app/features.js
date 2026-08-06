@@ -21,6 +21,9 @@ import { buildReply } from './query.js';
 import { UndoStack } from './undo.js';
 import { icon } from './icons.js';
 import { createDraftSaver, loadDraft, isMeaningful } from './draft-store.js';
+import {
+  buildContacts, matchContacts, currentFragment, completeValue, invalidAddresses,
+} from './contacts.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -354,6 +357,9 @@ export function openCompose(ctx, prefill = {}) {
   $('c-cc-row').hidden = !prefill.cc;
   $('c-status').textContent = '';
 
+  // Rebuild the address book once per open, from mail already in the store.
+  refreshContacts(ctx);
+
   panel.hidden = false;
   panel.classList.remove('minimised');
   // Focus the first EMPTY field: a reply already has a recipient and a
@@ -459,6 +465,9 @@ export function wireCompose(ctx) {
    */
   panel.addEventListener('input', () => ensureDraftSaver().schedule());
 
+  wireAutocomplete('c-to', 'c-to-list');
+  wireAutocomplete('c-cc', 'c-cc-list');
+
   $('compose-min').addEventListener('click', () => panel.classList.toggle('minimised'));
   $('c-cc-toggle').addEventListener('click', () => {
     const row = $('c-cc-row');
@@ -487,6 +496,24 @@ async function doSend(ctx) {
     setStatus('Add a recipient.', 'err');
     $('c-to').focus();
     return;
+  }
+
+  /*
+   * WARN, DO NOT BLOCK.
+   *
+   * A typo'd address is the most common way mail silently fails, but address
+   * syntax is genuinely permissive and a client that refuses to send to
+   * something it does not recognise is worse than one that asks. So: name the
+   * suspect address and let the user decide.
+   */
+  const bad = [...invalidAddresses(draft.to), ...invalidAddresses(draft.cc)];
+  if (bad.length) {
+    const list = bad.join(', ');
+    if (!confirm(`This does not look like an email address:\n\n${list}\n\nSend anyway?`)) {
+      setStatus(`Check the address: ${list}`, 'err');
+      $('c-to').focus();
+      return;
+    }
   }
   const btn = $('c-send');
   btn.disabled = true;
@@ -519,6 +546,134 @@ async function doDraft(ctx) {
   } catch (err) {
     setStatus(err.message, 'err');
   }
+}
+
+/* ========================================================================== *
+ * CONTACT AUTOCOMPLETE
+ * ========================================================================== */
+
+/**
+ * Contacts are rebuilt when compose OPENS, not on every keystroke.
+ *
+ * The store can hold 2000 messages; walking it per keystroke would be the one
+ * genuinely expensive thing in the compose path. Building once per open is
+ * imperceptible and the address book cannot meaningfully change while a single
+ * message is being written.
+ */
+let contactBook = [];
+
+function refreshContacts(ctx) {
+  try {
+    const ids = ctx.store.idsFor('all');
+    const msgs = [];
+    for (const id of ids) {
+      const m = ctx.store.get(id);
+      if (m) msgs.push(m);
+    }
+    contactBook = buildContacts(msgs, { selfAddress: ctx.state?.email || '' });
+  } catch {
+    contactBook = [];
+  }
+  return contactBook;
+}
+
+/** Wire one recipient input to its suggestion list. */
+function wireAutocomplete(inputId, listId) {
+  const input = $(inputId);
+  const list = $(listId);
+  if (!input || !list) return;
+
+  let active = -1;
+
+  const close = () => {
+    list.hidden = true;
+    list.replaceChildren();
+    input.setAttribute('aria-expanded', 'false');
+    input.removeAttribute('aria-activedescendant');
+    active = -1;
+  };
+
+  const choose = (address) => {
+    const caret = input.selectionStart;
+    input.value = completeValue(input.value, address, caret);
+    close();
+    input.focus();
+    // Caret to the end so the next recipient can be typed straight away.
+    const end = input.value.length;
+    input.setSelectionRange(end, end);
+    // The value changed programmatically, which does not fire `input`; the
+    // draft autosave listens for that, so tell it explicitly.
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+
+  const render = (matches) => {
+    list.replaceChildren();
+    matches.forEach((c, i) => {
+      const li = document.createElement('li');
+      li.id = `${listId}-opt-${i}`;
+      li.className = 'ac-opt';
+      li.setAttribute('role', 'option');
+      li.setAttribute('aria-selected', 'false');
+      li.dataset.address = c.address;
+
+      const name = document.createElement('span');
+      name.className = 'ac-name';
+      name.textContent = c.name || c.address;
+      const addr = document.createElement('span');
+      addr.className = 'ac-addr';
+      addr.textContent = c.name ? c.address : '';
+
+      li.append(name, addr);
+      // mousedown, not click: click fires after blur, by which point the list
+      // has already been closed and the selection lost.
+      li.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        choose(c.address);
+      });
+      list.appendChild(li);
+    });
+    list.hidden = matches.length === 0;
+    input.setAttribute('aria-expanded', String(matches.length > 0));
+    active = -1;
+  };
+
+  const setActive = (i) => {
+    const opts = [...list.querySelectorAll('.ac-opt')];
+    if (!opts.length) return;
+    active = (i + opts.length) % opts.length;
+    opts.forEach((o, n) => o.setAttribute('aria-selected', String(n === active)));
+    input.setAttribute('aria-activedescendant', opts[active].id);
+    opts[active].scrollIntoView?.({ block: 'nearest' });
+  };
+
+  input.addEventListener('input', () => {
+    const frag = currentFragment(input.value, input.selectionStart);
+    if (frag.length < 2) return close();
+    render(matchContacts(contactBook, frag));
+  });
+
+  input.addEventListener('keydown', (e) => {
+    if (list.hidden) return;
+    const opts = [...list.querySelectorAll('.ac-opt')];
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive(active + 1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(active - 1); }
+    else if (e.key === 'Enter' || e.key === 'Tab') {
+      // Only intercept when something is actually highlighted, so Enter still
+      // submits and Tab still moves on when the user ignored the list.
+      if (active >= 0 && opts[active]) {
+        e.preventDefault();
+        e.stopPropagation();
+        choose(opts[active].dataset.address);
+      }
+    } else if (e.key === 'Escape') {
+      // Close the list without closing compose.
+      e.preventDefault();
+      e.stopPropagation();
+      close();
+    }
+  });
+
+  input.addEventListener('blur', () => setTimeout(close, 120));
 }
 
 /** Compose status line, colour-coded by outcome. */

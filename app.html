@@ -313,10 +313,23 @@
           </div>
         </header>
         <div id="compose-body">
+          <!--
+            RECIPIENT FIELDS.
+
+            `autocomplete="off"` stops the BROWSER's generic autofill, which
+            knows nothing about who you email. Our own combobox replaces it,
+            backed by the addresses already in the local store.
+          -->
           <label class="c-row"><span>To</span>
-            <input id="c-to" type="text" autocomplete="off" spellcheck="false" /></label>
+            <input id="c-to" type="text" autocomplete="off" spellcheck="false"
+                   role="combobox" aria-expanded="false" aria-autocomplete="list"
+                   aria-controls="c-to-list" /></label>
+          <ul id="c-to-list" class="ac-list" role="listbox" aria-label="Contact suggestions" hidden></ul>
           <label class="c-row" id="c-cc-row" hidden><span>Cc</span>
-            <input id="c-cc" type="text" autocomplete="off" spellcheck="false" /></label>
+            <input id="c-cc" type="text" autocomplete="off" spellcheck="false"
+                   role="combobox" aria-expanded="false" aria-autocomplete="list"
+                   aria-controls="c-cc-list" /></label>
+          <ul id="c-cc-list" class="ac-list" role="listbox" aria-label="Contact suggestions" hidden></ul>
           <label class="c-row"><span>Subject</span>
             <input id="c-subject" type="text" autocomplete="off" /></label>
           <textarea id="c-text" placeholder="Write your message…" spellcheck="true"></textarea>
