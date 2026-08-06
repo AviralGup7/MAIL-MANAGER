@@ -126,36 +126,76 @@ Gmail's obfuscated class names, which change without warning.
 
 ## Classification
 
-Two stages, carried over from v1 with its scoring constants unchanged:
+Three stages. The rules and every scoring constant come from
+`docs/CLASSIFICATION_DATA_PACK.md`, the authoritative export of v1's rule files.
 
-1. **Sender.** Exact-domain and contains matching against ~200 curated
-   patterns. A hit here short-circuits.
+0. **Exact address.** 152 hand-curated BITS addresses → category, O(1) `Map`
+   lookup, confidence `0.98`. An exact address is a fact rather than a
+   heuristic, so it outranks everything below it.
+1. **Sender substring.** ~200 curated patterns matched against the whole `From`
+   header. **First rule wins**, so array order is precedence and is not
+   negotiable. A hit short-circuits.
 2. **Weighted keywords.** `sender ×1.5`, `subject ×1.2`, `snippet ×1.0`, with
-   diminishing returns (`0.6`) on repeat hits and an overlap-ratio conflict
-   resolver. Confidence is mapped through the original ladder;
-   below `0.7` the category tag renders dashed, meaning "guessed".
+   diminishing returns (`0.6`) on repeat hits in the same field and an
+   overlap-ratio conflict resolver. Confidence maps through the original
+   ladder; below `0.7` the category tag renders dashed, meaning "guessed".
 
-A BITS-internal sender can never be classified as an external promotion — the
-"unsubscribe" in a club mail footer used to win otherwise.
+Stages 0 and 2 are generated from the data pack by `tools/gen-address-map.mjs`
+and `tools/gen-pattern-rules.mjs`. Both files carry a do-not-edit banner and a
+test asserts they stay in sync with the pack — because the first attempt at
+this was hand-written and silently drifted (below).
 
-### Four real bugs found while porting the rules
+An `isBits` filter runs on both stage 1 and stage 2, in both directions: a BITS
+sender can never land in an external category (the "unsubscribe" in a club
+mail's footer must not win), and an external sender can never land in an
+internal one.
 
-1. `'placement unit'` was in **both** the `clubs` and `internship` sender
-   lists, and `clubs` is evaluated first — **every Placement Unit mail was
-   filed under Clubs.**
-2. `external-promotions` was ordered **before** `external-services` and matched
-   the bare substring `'unsubscribe'` — **every GitHub, Substack and arXiv
-   notification landed in Promotions.**
-3. `'tedxPilani'` had a capital P, but matching runs against a lowercased
-   haystack — **dead rule, never fired.**
-4. `'augsd'` and `'academic section'` only existed with `@bits-pilani`
-   attached, so AUGSD mail from any other address was missed.
+### Stage 0 is new: 152 addresses that were never loaded
 
-Each has a regression test.
+v1 shipped `email-mappings/*.json` with 152 curated address→category pairs.
+The data pack records that they were **"not loaded by the classifier code at
+runtime"** — dead data. Loading them is the single largest accuracy win
+available: 70 administration, 32 admin, 15 internship, 10 library, 9 ps,
+8 augsd, 8 clubs.
 
-`detectBitsSource` does a real domain/subdomain check, so
-`bits-pilani.ac.in.evil.com` is correctly rejected — that is the shape of a
-phishing sender and v1 would have trusted it.
+### Two real bugs, found by diffing the port against the pack
+
+1. **`senderExact` was implemented as equality.** The spec says *"email
+   includes any exact"*, and the entries are display-name fragments
+   (`'placement unit'`, `'tpo'`) that could never equal a whole `From` header.
+   Equality made every `senderExact` list unreachable — including all 29
+   entries that drive the `technology` category, so technology mail scored
+   zero and fell through to whatever matched next.
+2. **The `isBits` filter had only one of its two halves.** External senders
+   could match internal BITS rules, so `Placement Office <careers@evil.example>`
+   was shown to the student as internal placement mail. That is a phishing
+   shape, in the category a student is most likely to act on.
+
+`detectBitsSource` also does a real domain/subdomain check, so
+`bits-pilani.ac.in.evil.com` is correctly rejected.
+
+### Retraction: four earlier "bug fixes" were wrong
+
+An earlier pass through this repo reported four bugs in v1's rules and
+"fixed" them. With the data pack in hand — specifically the sender rule
+**order** and the pipeline spec, neither of which I had — all four are wrong.
+They are retracted in full in `notes/CLASSIFIER_CORRECTION.md`. The short
+version:
+
+| Claim | Reality |
+|---|---|
+| `'placement unit'` in both `clubs` and `internship` misfiled placement mail | `internship` is rule 7, `clubs` is rule 11 — internship already won. Redundant, never wrong. |
+| `external-promotions` first meant `'unsubscribe'` stole GitHub mail | Stage 1 reads the **From header only**. GitHub matched `external-services` correctly all along. |
+| `'tedxPilani'` was dead code | The matcher lowercases both sides. |
+| `'augsd'` only existed with `@bits-pilani` | Bare `'augSD'` was already in the list. |
+
+Worse than the wrong diagnoses was the second one's "fix": it **reordered**
+`external-services` ahead of `external-promotions`, which really did change
+behaviour — `newsletter@substack.com` moved from Promotions to Services — with
+no evidence for it. The hand-written port had also dropped **802 of 891**
+pattern-rule keys and rewritten 70 weights onto an invented scale, while its
+header comment claimed a faithful carry-over. All of it is now restored and
+generated from the pack.
 
 ---
 
@@ -177,20 +217,26 @@ src/
   app/app.css               3 durations, 2 easings.
   app/store.js              Incremental indexes, batched notification.
   classify/                 Categories, sender rules, pattern rules, scoring.
+    address-map.js          GENERATED. 152 exact addresses (stage 0).
+    pattern-rules.js        GENERATED. 891 keys, original weights.
   options/options.js
-test/                       108 tests. `npm test`
+test/                       121 tests. `npm test`
   app.integration.test.mjs  Boots the real app.html in jsdom and drives it.
   package.test.mjs          Fails if the manifest names a file that is absent.
 notes/SYNC_BUGS.md          Seven sync/render bugs found before shipping.
+notes/CLASSIFIER_CORRECTION.md  Four retracted bug claims, and what was really wrong.
+docs/CLASSIFICATION_DATA_PACK.md  Source of truth for every rule and weight.
 tools/make-icons.py         Deterministic icon generation.
 tools/make-preview.mjs      Builds preview.html — the UI on synthetic mail.
+tools/gen-pattern-rules.mjs Regenerates pattern-rules.js from the data pack.
+tools/gen-address-map.mjs   Regenerates address-map.js from the data pack.
 ```
 
 No build step and no runtime dependencies. `npm test` runs `node --test test/`.
 
 `jsdom` is an optional devDependency used only by the integration tests. Without
 it they skip and the suite still passes; with it, `npm install && npm test`
-runs all 108.
+runs all 121.
 
 ### Seeing it without installing it
 
@@ -228,7 +274,7 @@ mis-file something the preview mis-files it too.
 
 ## Status
 
-Feature-complete. **108 tests pass**, including 12 that boot the real
+Feature-complete. **121 tests pass**, including 12 that boot the real
 `app.html` in a real DOM and drive it as a user would — click a row, type in
 search, press `j`/`k`, archive, star.
 
@@ -237,11 +283,19 @@ reach is unverified: the OAuth consent screen, the takeover animation on a live
 Gmail page, and how Gmail behaves when its roots are hidden. Load it unpacked
 and tell me what breaks.
 
-Seven bugs were found and fixed *after* the code was written but *before* it
-ever ran — five in the delta-sync reducer, two in the render loop. Four of them
-lost mail silently. They are written up in `notes/SYNC_BUGS.md` because that is
-the same failure class that made version 1 feel broken, and the write-up is
-what stops them coming back.
+Nine bugs were found and fixed *after* the code was written but *before* it
+ever ran: five in the delta-sync reducer, two in the render loop
+(`notes/SYNC_BUGS.md`), and two in the classifier (`notes/CLASSIFIER_CORRECTION.md`).
+Six of the nine lost or misfiled mail silently — the same failure class that
+made version 1 feel broken. The write-ups exist so they do not come back.
+
+**The classifier is validated against `docs/CLASSIFICATION_DATA_PACK.md`, not
+against real mail.** Every rule and weight now matches the pack exactly
+(891/891 keys, 0 weight differences, sender order identical), and 152 curated
+addresses are loaded that v1 never read. But the pack is v1's *rules*, not a
+corpus — so what is proven is fidelity to the old logic plus two genuine
+repairs, not accuracy on your inbox. A sample of real BITS mail is still the
+only thing that can establish that.
 
 Known gaps: no compose or reply by design; attachments list but do not download
 (open in Gmail); no thread view — messages are listed individually.
