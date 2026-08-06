@@ -2234,3 +2234,42 @@ test('ARCH: the test seam exposes the active store too', async (t) => {
     restore();
   }
 });
+
+test('ARCH: the theme is owned by the settings module, not written ad hoc', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * `theme` was declared in the settings schema while `setTheme` wrote
+   * `chrome.storage.local` directly and `boot()` read it directly — two
+   * writers for one concept, and a schema entry that was decorative.
+   *
+   * Routing it through the module exposed an ordering bug: `settings.get()`
+   * is synchronous, so `loadSettings()` has to run before the first read.
+   * It was running much later, which would have made every launch silently
+   * fall back to the default theme.
+   */
+  const { doc, restore } = await boot({ storageSeed: { theme: 'nord' } });
+  try {
+    assert.equal(
+      doc.documentElement.dataset.theme, 'nord',
+      'a persisted theme must survive a reload'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('ARCH: settings are loaded before anything reads one', async () => {
+  // The synchronous-read contract only holds if the cache is warm first.
+  // Comments blanked first, preserving offsets: the doc comment on boot()
+  // explains the contract and mentions `settings.get()`, which would other-
+  // wise match before the real call. Same trap as the header-parser lint.
+  const src = readFileSync(join(ROOT, 'src/app/app.js'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+    .replace(/\/\/[^\n]*/g, (m) => ' '.repeat(m.length));
+  const bootAt = src.indexOf('async function boot()');
+  assert.ok(bootAt > 0);
+  const loadAt = src.indexOf('await settings.loadSettings()', bootAt);
+  const firstGet = src.indexOf('settings.get(', bootAt);
+  assert.ok(loadAt > 0, 'boot() must load settings');
+  assert.ok(loadAt < firstGet, 'loadSettings() must precede the first settings.get()');
+});

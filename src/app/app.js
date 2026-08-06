@@ -2133,7 +2133,16 @@ function buildThemeMenu() {
 function setTheme(id) {
   const theme = applyTheme(id);
   state.theme = theme.id;
-  chrome.storage.local.set({ theme: theme.id });
+  /*
+   * Through the settings module, not straight to storage.
+   *
+   * `theme` is declared in the settings schema, but this wrote it directly
+   * and `start()` read it directly — so the schema entry was decorative and
+   * there were two writers for one concept. Coercion, defaults and the
+   * subscriber notification all lived in a module nothing was calling for
+   * this key.
+   */
+  settings.set('theme', theme.id);
   for (const item of el.themeMenu.children) {
     item.setAttribute('aria-checked', String(item.dataset.theme === theme.id));
   }
@@ -3025,10 +3034,21 @@ async function start() {
 }
 
 async function boot() {
-  // Theme first, before anything paints, so there is no flash of the wrong
+  /*
+   * Settings are loaded FIRST, before anything reads one.
+   *
+   * `settings.get()` is synchronous by design — the render path must not
+   * await a preference to decide how to draw — which means the cache has to
+   * be warm before the first read. This used to load much later, so routing
+   * the theme through the module would have silently returned the default on
+   * every launch.
+   */
+  await settings.loadSettings();
+
+  // Theme next, before anything paints, so there is no flash of the wrong
   // palette. `applyTheme` falls back to the default for an unknown id, which
   // covers the old binary 'light'/'dark' values from before the picker.
-  const { theme } = await chrome.storage.local.get('theme');
+  const theme = settings.get('theme');
   state.theme = applyTheme(theme || DEFAULT_THEME).id;
 
   buildSidebar();
@@ -3158,7 +3178,6 @@ async function boot() {
     // Settings and rules must both be loaded before the first ingest and the
     // first reader open: a preference read after the fact is a preference the
     // user watched not apply.
-    await settings.loadSettings();
     rules = await loadRules();
     await loadImageAllowList();
     await start();
