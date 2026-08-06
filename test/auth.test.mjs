@@ -349,3 +349,88 @@ test('isSignedIn reflects the presence of a refresh token', async () => {
   const b = await load({ storage: { clientId: CLIENT_ID, refreshToken: 'r' } });
   assert.equal(await b.mod.isSignedIn(), true);
 });
+
+// ------------------------------------------------- error diagnostics ------
+
+/**
+ * These exist because "Token exchange failed (400)." wasted a real debugging
+ * session. Google's OAuth errors are terse and their remedies are non-obvious,
+ * so the body must be read and translated into an action. A test that only
+ * checked "throws on 400" would have passed against the useless version.
+ */
+
+const errBody = (error, description) =>
+  ({
+    ok: false,
+    status: 400,
+    json: async () => ({ error, error_description: description }),
+    text: async () => JSON.stringify({ error }),
+  });
+
+test('invalid_client explains the Web-application client-type mistake', async () => {
+  // The actual cause of the first real sign-in failure, and the one the setup
+  // docs originally caused by saying "Web application".
+  const h = await load();
+  h.setAuthFlowReply((opts) => {
+    const state = new URL(opts.url).searchParams.get('state');
+    return `${REDIRECT}?code=c&state=${encodeURIComponent(state)}`;
+  });
+  h.queueFetch(errBody('invalid_client', 'client_secret is missing.'));
+
+  const err = await h.mod.signIn().then(() => null, (e) => e);
+  assert.ok(err, 'must throw');
+  assert.match(err.message, /invalid_client/);
+  assert.match(err.message, /Chrome Extension/, 'must name the correct client type');
+  assert.match(err.message, /FIX:/, 'must tell the user what to do');
+});
+
+test('redirect_uri_mismatch names the fix', async () => {
+  const h = await load();
+  h.queueFetch(errBody('redirect_uri_mismatch'));
+  const err = await h.mod.signIn().then(() => null, (e) => e);
+  assert.match(err.message, /redirect_uri_mismatch/);
+  assert.match(err.message, /FIX:/);
+});
+
+test('invalid_grant suggests retrying and checking the clock', async () => {
+  const h = await load();
+  h.queueFetch(errBody('invalid_grant', 'Bad Request'));
+  const err = await h.mod.signIn().then(() => null, (e) => e);
+  assert.match(err.message, /again/i);
+  assert.match(err.message, /clock/i, 'skew is the non-obvious cause');
+});
+
+test('an unrecognised error still surfaces what Google said', async () => {
+  const h = await load();
+  h.queueFetch(errBody('some_new_error', 'a description'));
+  const err = await h.mod.signIn().then(() => null, (e) => e);
+  assert.match(err.message, /some_new_error/);
+  assert.match(err.message, /a description/);
+});
+
+test('a non-JSON failure still reports the status', async () => {
+  const h = await load();
+  h.queueFetch({
+    ok: false,
+    status: 502,
+    json: async () => { throw new Error('not json'); },
+    text: async () => '<html>gateway</html>',
+  });
+  const err = await h.mod.signIn().then(() => null, (e) => e);
+  assert.match(err.message, /502/);
+});
+
+test('no failure message is a bare status code', async () => {
+  // The regression guard. The old message was exactly this shape, and it is
+  // what made the failure undiagnosable.
+  for (const code of ['invalid_client', 'redirect_uri_mismatch', 'invalid_grant']) {
+    const h = await load();
+    h.queueFetch(errBody(code));
+    const err = await h.mod.signIn().then(() => null, (e) => e);
+    assert.ok(
+      err.message.length > 60,
+      `"${code}" produced a uselessly short message: ${err.message}`
+    );
+    assert.ok(!/^Token exchange failed \(\d+\)\.$/.test(err.message));
+  }
+});

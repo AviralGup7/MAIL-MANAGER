@@ -148,6 +148,60 @@ Redirect URI : https://dgeanijfllibcphbblkhacjcbdehihcp.chromiumapp.org/
 Options page now shows both the URI and the live extension ID, and turns the ID
 red if it is not the expected one.
 
+## "Token exchange failed (400)" — the client is the wrong TYPE
+
+Your client ID is fine. The **application type** is wrong, and my setup
+instructions caused it: they said to create a **Web application** client.
+
+Google classes a Web application client as a **confidential** client, which
+means it demands a `client_secret` on the token exchange — even when PKCE is
+used. This build deliberately ships no secret (that is the entire point of the
+PKCE rewrite, after v1 leaked one). So Google answers:
+
+```
+400 {"error":"invalid_client","error_description":"client_secret is missing."}
+```
+
+### Fix — create a Chrome Extension client instead
+
+1. <https://console.cloud.google.com/apis/credentials>
+2. **Create credentials → OAuth client ID**
+3. Application type: **Chrome Extension** ← not Web application
+4. **Item ID**: paste your extension ID
+
+   ```
+   dgeanijfllibcphbblkhacjcbdehihcp
+   ```
+5. Copy the new client ID into the extension's Options and sign in again.
+
+A Chrome Extension client is a **public** client: no secret, PKCE accepted, and
+it is matched by extension ID so there is no redirect URI to register at all.
+The old Web application client can be deleted.
+
+Also make sure your BITS address is listed under **OAuth consent screen → Test
+users**, or consent is refused before the exchange even happens.
+
+### And the reason this was hard to diagnose
+
+The error you saw was the whole message. `Token exchange failed (400).` threw
+away Google's response body — the one field that says *which* of three
+unrelated setup mistakes occurred. That was my bug, not a Google limitation.
+
+Errors now read the body and translate it into an action, e.g.:
+
+> Google rejected the sign-in: invalid_client (client_secret is missing.)
+>
+> Your OAuth client is a "Web application" type, which Google treats as a
+> confidential client and requires a client secret for — even with PKCE. This
+> extension deliberately ships no secret.
+>
+> FIX: in Google Cloud Console create a NEW OAuth client ID of type
+> "Chrome Extension", paste your extension ID into it, and use that client ID
+> here instead.
+
+Six tests cover the translation, including one asserting that no failure
+message is ever again a bare status code.
+
 ## Still to check once it loads
 
 - Does the takeover animate in over Gmail?

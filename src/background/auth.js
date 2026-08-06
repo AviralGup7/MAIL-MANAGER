@@ -132,11 +132,67 @@ export async function signIn() {
   });
 
   if (!res.ok) {
-    throw new Error(`Token exchange failed (${res.status}).`);
+    throw await tokenError(res);
   }
   const tok = await res.json();
   await persist(tok);
   return tok;
+}
+
+/**
+ * Turn a failed token response into an error that says what to DO.
+ *
+ * This used to be `Token exchange failed (400).` and nothing else, which threw
+ * away the response body -- the one field that distinguishes three completely
+ * different setup mistakes. A user seeing that had no way forward.
+ *
+ * Google's OAuth errors are terse and their remedies are non-obvious, so each
+ * known code is translated into the actual fix.
+ */
+async function tokenError(res) {
+  let body = {};
+  try {
+    body = await res.json();
+  } catch {
+    /* not JSON; fall through to the generic message */
+  }
+  const code = body.error || '';
+  const detail = body.error_description || '';
+
+  const HELP = {
+    invalid_client:
+      'Your OAuth client is a "Web application" type, which Google treats as a ' +
+      'confidential client and requires a client secret for — even with PKCE. ' +
+      'This extension deliberately ships no secret.\n\n' +
+      'FIX: in Google Cloud Console create a NEW OAuth client ID of type ' +
+      '"Chrome Extension", paste your extension ID into it, and use that ' +
+      'client ID here instead.',
+    redirect_uri_mismatch:
+      'The redirect URI is not registered on this OAuth client.\n\n' +
+      'FIX: either register the exact URI shown on this options page, or ' +
+      '(better) switch to a "Chrome Extension" type client, which is matched ' +
+      'by extension ID and needs no redirect URI at all.',
+    invalid_grant:
+      'The authorization code was already used or has expired.\n\n' +
+      'FIX: just try signing in again. If it keeps happening, check that your ' +
+      'system clock is correct — a skewed clock invalidates codes immediately.',
+    invalid_request:
+      'Google rejected the shape of the request.\n\n' +
+      'FIX: confirm the client ID was pasted in full, with no trailing spaces.',
+    unauthorized_client:
+      'This client is not allowed to use the authorization-code flow.\n\n' +
+      'FIX: create a "Chrome Extension" type OAuth client and use its ID.',
+    access_denied:
+      'Consent was refused, or your account is not on the test-user list.\n\n' +
+      'FIX: add your BITS address under OAuth consent screen -> Test users.',
+  };
+
+  const help = HELP[code];
+  const lead = code
+    ? `Google rejected the sign-in: ${code}${detail ? ` (${detail})` : ''}`
+    : `Token exchange failed with HTTP ${res.status}.`;
+
+  return new Error(help ? `${lead}\n\n${help}` : lead);
 }
 
 async function persist(tok) {

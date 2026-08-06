@@ -77,17 +77,30 @@
         <li>Open <code>console.cloud.google.com</code> and create (or pick) a project.</li>
         <li>Enable the <strong>Gmail API</strong>.</li>
         <li>OAuth consent screen → External → add your BITS address as a test user.</li>
-        <li>Credentials → Create credentials → <strong>OAuth client ID</strong> → <strong>Web application</strong>.</li>
         <li>
-          Add this redirect URI exactly:<br />
-          <code id="redirect">loading…</code>
+          Credentials → Create credentials → <strong>OAuth client ID</strong> →
+          application type <strong>Chrome Extension</strong>.
+          <span class="hint" style="margin:0">
+            <strong>Not “Web application”.</strong> Google treats that type as a
+            confidential client and demands a client secret even when PKCE is
+            used, so the token exchange fails with
+            <code>invalid_client</code>. “Chrome Extension” is a public client:
+            no secret, PKCE accepted.
+          </span>
         </li>
         <li>
-          Extension ID: <code id="extid">loading…</code><br />
+          Paste your <strong>extension ID</strong> into the client's Item ID
+          field: <code id="extid">loading…</code>
           <span class="hint" style="margin:0">
-            Fixed by the <code>"key"</code> field in the manifest, so it never
-            changes between reloads and the redirect URI above stays valid.
+            A Chrome Extension client is matched by ID, so it needs no redirect
+            URI. Fixed by the <code>"key"</code> field in the manifest, so it
+            never changes between reloads.
           </span>
+        </li>
+        <li>
+          Only if you must use a <em>Web application</em> client (you will also
+          need its secret, which this build cannot send), the redirect URI is:<br />
+          <code id="redirect">loading…</code>
         </li>
         <li>Copy the client ID into the box above. Ignore the secret — you do not need it.</li>
       </ol>

@@ -68,10 +68,19 @@ Run `npm run contrast` before committing — CI runs it too.
 1. `console.cloud.google.com` → create or pick a project.
 2. Enable the **Gmail API**.
 3. OAuth consent screen → External → add your BITS address as a test user.
-4. Credentials → Create credentials → OAuth client ID → **Web application**.
-5. Add the redirect URI shown on the extension's options page
-   (`https://<extension-id>.chromiumapp.org/`).
-6. Paste the client ID into Options. **Ignore the client secret** — this build
+4. Credentials → Create credentials → OAuth client ID → application type
+   **Chrome Extension**.
+
+   > **Not "Web application".** Google classes that as a *confidential* client
+   > and requires a `client_secret` on the token exchange even when PKCE is
+   > used, so sign-in fails with `invalid_client`. "Chrome Extension" is a
+   > *public* client: no secret, PKCE accepted. An earlier version of these
+   > instructions said Web application, and it was wrong.
+
+5. Paste the **extension ID** into the client's Item ID field. The Options page
+   shows it, and it is stable because `manifest.json` pins the public `key`.
+   A Chrome Extension client is matched by ID and needs no redirect URI.
+6. Paste the client ID into Options. There is no secret to copy — this build
    does not use one and never will. See `SECURITY.md`.
 
 ---

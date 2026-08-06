@@ -683,7 +683,18 @@ a.ghost {
 .err {
   color: var(--danger) !important;
   font-size: 12px;
+  /* Auth errors are multi-line and carry a FIX: paragraph. Without pre-wrap
+     the remedy collapses into one unreadable run. */
   white-space: pre-wrap;
+  text-align: left;
+  line-height: 1.5;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  background: var(--bg-sunken);
+  max-height: 40vh;
+  overflow-y: auto;
 }
 
 /* ----------------------------------------------------------------- toast -- */
