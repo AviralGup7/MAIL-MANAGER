@@ -1387,3 +1387,38 @@ test('scrollable overlays do not scroll the page behind them', () => {
     `these scroll containers leak scroll to the page: ${chaining.join(', ')}`
   );
 });
+
+test('every form field has a name that survives typing', async () => {
+  /*
+   * A PLACEHOLDER IS NOT A LABEL. It vanishes on the first keystroke, so
+   * anyone who tabs back into a half-written message -- or who is using a
+   * screen reader, where the placeholder may never be announced at all -- has
+   * nothing telling them what the field is.
+   *
+   * Two fields relied on one: the compose body and the command palette input.
+   * Both now carry an aria-label as well, which survives.
+   *
+   * The other three compose fields are wrapped in <label> and were already
+   * fine; an earlier version of this probe reported them as broken because it
+   * only looked for label[for=...]. Recorded so the wrapping form is not
+   * "fixed" later by someone trusting a naive check.
+   */
+  let JSDOM;
+  try {
+    ({ JSDOM } = await import('jsdom'));
+  } catch {
+    return; // graceful skip, as elsewhere
+  }
+  const doc = new JSDOM(read('app.html')).window.document;
+
+  const unlabelled = [...doc.querySelectorAll('input:not([type=hidden]),textarea,select')]
+    .filter((el) => !(
+      el.getAttribute('aria-label')
+      || el.getAttribute('aria-labelledby')
+      || doc.querySelector(`label[for="${el.id}"]`)
+      || el.closest('label')
+    ))
+    .map((el) => el.id || el.type);
+
+  assert.deepEqual(unlabelled, [], `fields with no accessible name: ${unlabelled}`);
+});

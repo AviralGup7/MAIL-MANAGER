@@ -363,7 +363,13 @@
           <ul id="c-cc-list" class="ac-list" role="listbox" aria-label="Contact suggestions" hidden></ul>
           <label class="c-row"><span>Subject</span>
             <input id="c-subject" type="text" autocomplete="off" /></label>
-          <textarea id="c-text" placeholder="Write your message…" spellcheck="true"></textarea>
+          <!--
+            A placeholder is not a label: it disappears on the first keystroke,
+            so anyone who tabs back into a half-written message has nothing to
+            tell them what the field is. aria-label survives typing.
+          -->
+          <textarea id="c-text" aria-label="Message body"
+                    placeholder="Write your message…" spellcheck="true"></textarea>
         </div>
         <footer id="compose-foot">
           <button id="c-send" class="primary" type="button">Send</button>
@@ -380,7 +386,8 @@
       -->
       <div id="palette" role="dialog" aria-modal="true" aria-label="Commands" hidden>
         <div id="palette-box">
-          <input id="palette-input" type="text" placeholder="Type a command or search…"
+          <input id="palette-input" type="text" aria-label="Search commands"
+                 placeholder="Type a command or search…"
                  autocomplete="off" spellcheck="false"
                  role="combobox" aria-expanded="true" aria-controls="palette-list" />
           <ul id="palette-list" role="listbox" aria-label="Commands"></ul>
