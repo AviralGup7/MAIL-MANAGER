@@ -562,6 +562,54 @@ test('no component is defined in two places', () => {
  * an intentional override and is allowed. Two blocks in the SAME layer are
  * not: nobody reading either one can know the other exists.
  */
+/*
+ * NOTHING MAY ANIMATE WHILE THE APP IS IDLE.
+ *
+ * The file header states this as a standing rule and NO TEST ENFORCED IT.
+ * An infinite animation with no gate holds a compositor layer awake forever,
+ * which is the defect that made the previous version warm the machine while
+ * sitting untouched.
+ *
+ * Infinite animations are allowed only where they report live work and are
+ * switched off by a state that genuinely ends.
+ */
+test('every infinite animation is gated on a state that ends', () => {
+  const css = read('src/app/app.css');
+  const lines = css.split('\n');
+
+  // Selectors permitted to loop, each with the reason it terminates.
+  const GATED = [
+    { sel: '.sk-bar::after', why: 'skeleton, removed on first paint' },
+    { sel: "#shell[aria-busy='true']", why: 'progress sweep, cleared when loading ends' },
+  ];
+
+  const offenders = [];
+  lines.forEach((line, i) => {
+    if (!/animation:[^;]*\binfinite\b/.test(line)) return;
+
+    // Walk back to the selector that owns this declaration.
+    let owner = '';
+    for (let j = i; j >= 0 && j > i - 40; j--) {
+      const m = /^([^{}@\s][^{}]*?)\{\s*$/.exec(lines[j].trim());
+      if (m) { owner = m[1].trim(); break; }
+    }
+    if (!GATED.some((g) => owner.includes(g.sel))) {
+      offenders.push(`line ${i + 1}: "${owner}" loops forever with no terminating state`);
+    }
+  });
+
+  assert.deepEqual(offenders, [], 'ungated infinite animations keep a layer awake while idle');
+});
+
+test('the gated loading animations still exist', () => {
+  // The negative test above passes trivially if the animations are deleted.
+  // These are real features -- perceived-performance work -- so assert they
+  // are present, or the guarantee above is vacuous.
+  const css = read('src/app/app.css');
+  assert.match(css, /animation:\s*sk-shimmer[^;]*infinite/, 'skeleton shimmer missing');
+  assert.match(css, /animation:\s*sweep[^;]*infinite/, 'topbar progress sweep missing');
+});
+
 test('no selector is defined twice within one layer', () => {
   const css = read('src/app/app.css');
 
@@ -718,6 +766,57 @@ test('interactive targets meet WCAG 2.2 minimum size', () => {
   const h = block.match(/height:\s*(\d+)px/);
   assert.ok(w && Number(w[1]) >= 24, `star width is ${w?.[1]}px, needs >= 24`);
   assert.ok(h && Number(h[1]) >= 24, `star height is ${h?.[1]}px, needs >= 24`);
+});
+
+/*
+ * THE GENERAL FORM: every menu row and chip, not just the star.
+ *
+ * The test above pinned one control. Each new surface -- the snooze picker,
+ * the contact autocomplete, the category rule menu -- adds more clickable
+ * rows, and "we checked the star once" does not cover them.
+ *
+ * Heights are computed from the tokens rather than eyeballed: vertical
+ * padding x2 plus the line box, which is what the browser will lay out.
+ */
+test('every menu row and chip clears the 24px hit floor', () => {
+  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, ' ');
+
+  const SPACE = { '--s-1': 4, '--s-2': 8, '--s-3': 12, '--s-4': 16, '--s-5': 20, '--s-6': 24 };
+  const TYPE = { '--t-xs': 11, '--t-sm': 12, '--t-md': 13, '--t-lg': 15 };
+  const resolve = (v) => {
+    const tok = /var\((--[a-z0-9-]+)\)/.exec(v);
+    if (tok) return SPACE[tok[1]] ?? TYPE[tok[1]] ?? null;
+    const raw = /(\d+(?:\.\d+)?)px/.exec(v);
+    return raw ? Number(raw[1]) : null;
+  };
+
+  // Rows the user clicks in a list or menu.
+  const SELECTORS = ['.snooze-opt', '.ac-opt', '.att-chip', '.cat', '.radar-item'];
+
+  const small = [];
+  for (const sel of SELECTORS) {
+    const re = new RegExp(`(?:^|\\n)${sel.replace(/[.#[\]]/g, '\\$&')}\\s*\\{([^}]*)\\}`);
+    const m = re.exec(css);
+    assert.ok(m, `${sel} must exist to be audited`);
+
+    const body = m[1];
+    const explicit = /(?:^|\s)height:\s*([^;]+);/.exec(body);
+    let height;
+    if (explicit) {
+      height = resolve(explicit[1]);
+    } else {
+      const pad = /(?:^|\s)padding:\s*([^;]+);/.exec(body);
+      const font = /font-size:\s*([^;]+);/.exec(body);
+      if (!pad) continue; // no vertical box of its own; inherits
+      const vertical = resolve(pad[1].trim().split(/\s+/)[0]);
+      const size = font ? resolve(font[1]) : 13;
+      if (vertical == null || size == null) continue;
+      height = vertical * 2 + Math.round(size * 1.4);
+    }
+    if (height != null && height < 24) small.push(`${sel} is ~${height}px`);
+  }
+
+  assert.deepEqual(small, [], 'these targets are below WCAG 2.2 SC 2.5.8 (24x24)');
 });
 
 test('every design token is actually used', () => {

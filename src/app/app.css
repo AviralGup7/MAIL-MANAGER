@@ -9,7 +9,12 @@
  *   3. Animate ONLY transform and opacity. Never height, top, width, filter,
  *      box-shadow or background-position — those hit layout or paint on every
  *      frame and are exactly why the old build stuttered while scrolling.
- *   4. No animation runs forever. There is no infinite keyframe in this file.
+ *   4. NOTHING ANIMATES WHILE IDLE. An infinite animation is permitted only
+ *      while it is reporting live work, and must be gated on a state that
+ *      ends: the skeleton (`.sk-bar`, removed on first paint) and the topbar
+ *      progress sweep (`#shell[aria-busy='true']`). A looping animation with
+ *      no such gate burns a compositor frame forever and is what made v1 warm
+ *      the laptop while sitting untouched. Enforced by a test.
  *   5. prefers-reduced-motion kills all of it.
  */
 
