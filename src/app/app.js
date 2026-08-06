@@ -1231,7 +1231,17 @@ function move(delta) {
   const next = renderedIds[Math.max(0, Math.min(renderedIds.length - 1, i + delta))];
   if (!next || next === state.selected) return;
   openMessage(next);
-  nodeById.get(next)?.scrollIntoView({ block: 'nearest' });
+
+  // Feature-detected rather than assumed.
+  //
+  // scrollIntoView exists in every real browser, so this is not defending
+  // against a browser gap -- it is defending against the fact that an
+  // exception thrown HERE aborts the whole keydown handler. A missing scroll
+  // is cosmetic; a dead j/k key is not, and coupling the two is the bug.
+  const node = nodeById.get(next);
+  if (typeof node?.scrollIntoView === 'function') {
+    node.scrollIntoView({ block: 'nearest' });
+  }
 }
 
 // The content script pings us when the takeover is fully visible. Focus lands
