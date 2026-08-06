@@ -16,7 +16,7 @@ import {
   emptyState, entryId, addCourse, removeCourse, makeEntry,
   applyFieldChange, manualEdit, setLocked, restoreFromSource,
   detectConflicts, linkedSections, instructorsFor, sectionsByKind,
-  weekView, summariseMeetings, explainEntry, PRECEDENCE,
+  weekView, summariseMeetings, explainEntry, entriesForMessage, PRECEDENCE,
 } from '../src/app/timetable.js';
 
 import {
@@ -669,4 +669,86 @@ test('REMOVE: a course can be removed whole or by section', () => {
   assert.equal(oneGone.entries.length, 1);
   const allGone = removeCourse(oneGone, '1008');
   assert.equal(allGone.entries.length, 0);
+});
+
+/* ============================================================ traceability == */
+
+test('TRACE: a message links forward to the entries it changed', () => {
+  /*
+   * THE LINK MUST WORK IN BOTH DIRECTIONS.
+   *
+   * An entry already explains itself: `provenance[field].ref` names the
+   * message, and `explainEntry` reads it. The reverse -- "this mail is open in
+   * the reader, what did it do to my timetable?" -- had no way to be answered,
+   * even though the data was sitting in provenance and history all along.
+   *
+   * That is the direction a user actually asks in. You are reading a room
+   * change from AUGSD; the question is whether it has already been applied.
+   */
+  const { state } = build();
+  const entry = state.entries[0];
+  const changed = applyFieldChange(entry, 'room', '6104', {
+    // A NOTICE, not plain mail: mail cannot outrank the official document, so
+    // a mail-sourced room change is correctly refused. The notice is the real
+    // path a room change takes, and it carries the message id as its ref.
+    source: 'notice',
+    ref: 'msg-abc',
+    note: 'Room changed to 6104',
+  });
+  assert.ok(changed.applied, 'precondition: the change should apply');
+
+  const after = { ...state, entries: [changed.entry, ...state.entries.slice(1)] };
+
+  const hits = entriesForMessage(after, 'msg-abc');
+  assert.equal(hits.length, 1, 'the message should name the entry it changed');
+  assert.equal(hits[0].entry.id, entry.id);
+  assert.deepEqual(hits[0].fields, ['room']);
+  assert.equal(hits[0].current, '6104');
+  assert.equal(hits[0].previous, '5105', 'and what the value was before');
+});
+
+test('TRACE: a message that changed nothing links to nothing', () => {
+  // No false positives: an unrelated id must not match by accident.
+  const { state } = build();
+  assert.deepEqual(entriesForMessage(state, 'msg-never-seen'), []);
+});
+
+test('TRACE: an empty reference matches nothing, not everything', () => {
+  /*
+   * The guard this pins is easy to lose and expensive to lose.
+   *
+   * An entry built with no stated source carries `ref: ''` in provenance for
+   * every field. Without the empty check, `entriesForMessage(state, '')`
+   * matches ALL of them -- so a message with no id would appear to have
+   * rewritten the user's entire timetable. The fixture used by the other
+   * trace tests passes a real ref, so it cannot catch this; this one builds
+   * an entry the way `addCourse` does when the caller states no source.
+   */
+  const noSource = addCourse(emptyState(), CS, {
+    lecture: CS.sections.find((s) => s.section === 'L1'),
+  });
+  assert.equal(
+    noSource.state.entries[0].provenance.room.ref, '',
+    'precondition: this entry must have a blank ref'
+  );
+  assert.deepEqual(
+    entriesForMessage(noSource.state, ''), [],
+    'a blank reference must not link to every entry ever created'
+  );
+});
+
+test('TRACE: one message changing two fields is reported once', () => {
+  // A single mail can move a class AND change its room. That is one link with
+  // two fields, not two links -- otherwise the reader shows the same mail twice.
+  const { state } = build();
+  const e0 = state.entries[0];
+  const a = applyFieldChange(e0, 'room', '6104', { source: 'notice', ref: 'msg-two' });
+  const b = applyFieldChange(a.entry, 'instructors', ['A N Other'], {
+    source: 'notice', ref: 'msg-two',
+  });
+  const after = { ...state, entries: [b.entry, ...state.entries.slice(1)] };
+
+  const hits = entriesForMessage(after, 'msg-two');
+  assert.equal(hits.length, 1, 'one entry, not one per field');
+  assert.deepEqual(hits[0].fields.sort(), ['instructors', 'room']);
 });

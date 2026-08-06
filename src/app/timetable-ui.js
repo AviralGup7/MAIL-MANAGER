@@ -23,7 +23,7 @@ import {
   restoreFromSource, applyFieldChange, detectConflicts,
   linkedSections, instructorsFor, sectionsByKind,
   weekView, summariseMeetings, explainEntry, fmtTime,
-  SOURCE_LABEL, entryId,
+  SOURCE_LABEL, entryId, entriesForMessage,
 } from './timetable.js';
 import {
   loadTimetable, saveTimetable, searchCourses, courseByComCode, loadSourceData,
@@ -51,6 +51,19 @@ export function _resetTimetableUI() {
 
 /** Read-only access, for the app shell and tests. */
 export function getTimetableState() { return state; }
+
+/**
+ * What did this message do to the timetable?
+ *
+ * The reader asks this; the model answers it. Kept here rather than imported
+ * straight into app.js so the shell needs to know about one timetable module
+ * instead of three, and so `state` stays private to this file.
+ *
+ * @returns {{entry:object, fields:string[], current:string, previous:string}[]}
+ */
+export function timetableEffectsOf(messageId) {
+  return entriesForMessage(state, messageId);
+}
 
 /* ========================================================================== *
  * BOOT
@@ -574,7 +587,12 @@ function pendingSection() {
       mine.textContent = f.field === 'room' ? `Set room to ${f.value}` : 'Accept this change';
       mine.title = 'Records this as your own edit, which outranks every other source';
       mine.addEventListener('click', async () => {
-        const r = manualEdit(state, f.entryId, f.field, f.value);
+        // Pass the message id: the edit is the user's, but this mail is what
+        // prompted it, and the reader shows that link back.
+        const r = manualEdit(
+          state, f.entryId, f.field, f.value, Date.now(),
+          f.messageId || f.noticeRef || 'user'
+        );
         if (!r.applied) { ctxRef?.toast?.(r.reason, { kind: 'error' }); return; }
         state = r.state;
         await dismissFinding(f, 'accepted-as-manual');

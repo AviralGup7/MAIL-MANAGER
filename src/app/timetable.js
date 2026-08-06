@@ -383,10 +383,21 @@ export function setLocked(state, id, locked, at = Date.now()) {
 }
 
 /** A manual edit. Highest precedence, always wins, always recorded. */
-export function manualEdit(state, id, field, value, at = Date.now()) {
+/**
+ * A change the user made themselves. Outranks every other source.
+ *
+ * `ref` defaults to 'user' but is overridable, and that is not cosmetic. When
+ * someone accepts a proposal that came from an email, the edit IS theirs --
+ * mail cannot outrank the official timetable, so recording it as `manual` is
+ * the honest precedence -- but the message is still what prompted it. Pinning
+ * `ref` to 'user' threw that away, and the mail could no longer account for
+ * what it had caused. Passing the message id keeps the trail intact without
+ * weakening the precedence rule.
+ */
+export function manualEdit(state, id, field, value, at = Date.now(), ref = 'user') {
   let outcome = null;
   const next = mapEntry(state, id, (e) => {
-    const r = applyFieldChange(e, field, value, { source: 'manual', ref: 'user', at });
+    const r = applyFieldChange(e, field, value, { source: 'manual', ref, at });
     outcome = r;
     return r.entry;
   });
@@ -436,6 +447,56 @@ export function restoreFromSource(state, id, field, course, at = Date.now()) {
 function mapEntry(state, id, fn) {
   const entries = state.entries.map((e) => (e.id === id ? fn(e) : e));
   return { ...state, entries, updatedAt: Date.now() };
+}
+
+/**
+ * Which entries a given source document or message changed, and how.
+ *
+ * THE LINK HAD ONLY EVER WORKED ONE WAY. An entry explains itself --
+ * `provenance[field].ref` names the source and `explainEntry` reads it -- but
+ * nothing could answer the reverse. That is the direction users actually ask
+ * in: a room change is open in the reader and the question is "has this
+ * already been applied to my timetable, or am I about to walk to the wrong
+ * room?"
+ *
+ * The data was already there, in provenance and history. This only reads it.
+ *
+ * Grouped by ENTRY, not by field: one mail commonly moves a class and changes
+ * its room, and reporting that as two links would show the same message twice.
+ *
+ * `previous` comes from the history record rather than from provenance,
+ * because provenance holds only the current value -- the whole point is to be
+ * able to say "5105 → 6104".
+ *
+ * @param {object} state  the timetable state
+ * @param {string} ref    a message id, or a notice reference
+ * @returns {{entry:object, fields:string[], current:string, previous:string}[]}
+ */
+export function entriesForMessage(state, ref) {
+  // An empty ref must match nothing. Entries created before a source existed
+  // can carry ref:'' in provenance, and a loose equality here would link every
+  // one of them to "no message at all".
+  if (!ref) return [];
+
+  const out = [];
+  for (const entry of state?.entries || []) {
+    const fields = TRACKED_FIELDS.filter((f) => entry.provenance?.[f]?.ref === ref);
+    if (!fields.length) continue;
+
+    // Newest history record for this ref tells us what it replaced. Searching
+    // backwards because a field can be changed more than once by the same
+    // source, and the most recent transition is the one that still holds.
+    const hist = [...(entry.history || [])].reverse();
+    const last = hist.find((h) => h.ref === ref && fields.includes(h.field));
+
+    out.push({
+      entry,
+      fields,
+      current: last ? last.to : describeValue(fields[0], entry[fields[0]]),
+      previous: last ? last.from : '',
+    });
+  }
+  return out;
 }
 
 /* ========================================================================== *

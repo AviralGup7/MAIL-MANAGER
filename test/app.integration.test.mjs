@@ -3253,6 +3253,74 @@ test('TIMETABLE: a room-change email is proposed, quoting the sentence', async (
   }
 });
 
+test('TIMETABLE: the message that changed a class says so in the reader', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * THE LINK RUNS BOTH WAYS.
+   *
+   * The entry could always name the message that changed it. This is the
+   * other direction, and it is the one users ask in: the room change is open
+   * in front of them and the question is "has this already been applied, or
+   * am I about to walk to the wrong room?"
+   */
+  const mail = [{
+    id: 'tt1', threadId: 'tt1',
+    from: 'AUGSD <augsd@pilani.bits-pilani.ac.in>',
+    subject: 'CS F111 L1 venue change',
+    snippet: 'From next week CS F111 L1 will be held in room 6101.',
+    date: Date.now(), unread: true, starred: false, labels: ['INBOX', 'UNREAD'],
+  }];
+  const { doc, win, settle, restore } = await boot({
+    timetableData: TT_DATA, messages: mail,
+  });
+  try {
+    await openTT(doc, win, settle);
+    const r = await ttSearch(doc, win, settle, 'CS F111');
+    r[0].querySelector('button').click();
+    await settle(4);
+    [...doc.querySelectorAll('.tt-chooser .tt-section')]
+      .find((b) => b.textContent.startsWith('L1')).click();
+    await settle(8);
+
+    const { scanForUpdates, closeTimetable, openTimetable } =
+      await import('../src/app/timetable-ui.js');
+    scanForUpdates(mail);
+    closeTimetable();
+    await settle(4);
+    openTimetable();
+    await settle(6);
+
+    // Before accepting, the message has changed nothing and must claim nothing.
+    closeTimetable();
+    await settle(4);
+    doc.querySelector('#list .row')?.click();
+    await settle(8);
+    assert.equal(
+      doc.getElementById('r-timetable').hidden, true,
+      'a proposal that has not been accepted must not claim to have applied'
+    );
+
+    openTimetable();
+    await settle(6);
+    doc.querySelector('#tt-panel .tt-proposal .primary').click();
+    await settle(8);
+    closeTimetable();
+    await settle(4);
+
+    // Reopen the message: now it should account for itself.
+    doc.querySelector('#list .row').click();
+    await settle(8);
+
+    const box = doc.getElementById('r-timetable');
+    assert.equal(box.hidden, false, 'the applied change should be reported');
+    assert.match(box.textContent, /CS F111 L1/, 'it must name the class');
+    assert.match(box.textContent, /5105/, 'and what the room was');
+    assert.match(box.textContent, /6101/, 'and what it is now');
+  } finally {
+    restore();
+  }
+});
+
 test('TIMETABLE: every entry can show where each field came from', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');
   const { doc, win, settle, restore } = await boot({ timetableData: TT_DATA });

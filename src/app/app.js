@@ -57,6 +57,7 @@ import {
 } from './features.js';
 import {
   initTimetable, openTimetable, scanForUpdates, _resetTimetableUI,
+  timetableEffectsOf,
 } from './timetable-ui.js';
 import { classify } from '../classify/index.js';
 import {
@@ -210,6 +211,7 @@ const el = {
   gate: $('gate'),
   gateError: $('gate-error'),
   reader: $('reader'),
+  rTimetable: $('r-timetable'),
   readerEmpty: $('reader-empty'),
   rSubject: $('r-subject'),
   rFrom: $('r-from'),
@@ -1192,6 +1194,64 @@ let lastBody = null;
 /** Pending "mark read" for the open message. Cancelled if the user moves on. */
 let markReadTimer = 0;
 
+/**
+ * Say what this message did to the timetable, if anything.
+ *
+ * THE LINK RUNS BOTH WAYS NOW. An entry could always name the message that
+ * changed it; this is the direction a user actually asks in -- a room change
+ * is open in front of them and the question is "has this already been applied,
+ * or am I about to walk to the wrong room?"
+ *
+ * Hidden unless there is something to say. Almost no message changes the
+ * timetable, and a permanently-present "no timetable changes" line would be
+ * noise on every single mail to save a glance on one.
+ */
+function renderTimetableEffects(id) {
+  const box = el.rTimetable;
+  if (!box) return;
+
+  let effects = [];
+  try {
+    effects = timetableEffectsOf(id);
+  } catch {
+    // The timetable is optional; the reader is not. A failure here must cost
+    // the banner and nothing else.
+    effects = [];
+  }
+
+  if (!effects.length) {
+    box.hidden = true;
+    box.replaceChildren();
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  for (const { entry, fields, current, previous } of effects) {
+    const line = document.createElement('div');
+    line.className = 'r-tt-line';
+
+    const what = document.createElement('strong');
+    what.textContent = `${entry.courseNo} ${entry.section}`;
+
+    const detail = document.createElement('span');
+    // "room 5105 → 6104" reads as a change; "room 6104" alone does not say
+    // that anything moved, which is the only reason the banner exists.
+    detail.textContent = previous
+      ? ` · ${fields.join(' and ')} ${previous} → ${current}`
+      : ` · ${fields.join(' and ')} set to ${current}`;
+
+    line.append(what, detail);
+    frag.appendChild(line);
+  }
+
+  const head = document.createElement('div');
+  head.className = 'r-tt-head';
+  head.textContent = 'Applied to your timetable';
+
+  box.replaceChildren(head, frag);
+  box.hidden = false;
+}
+
 async function openMessage(id) {
   const m = store.get(id);
   if (!m) return;
@@ -1234,6 +1294,8 @@ async function openMessage(id) {
       : [tagNode(`${Math.round((m.confidence ?? 1) * 100)}% · ${m.source || 'rule'}`)]),
     ...(m.reason && !confident ? [tagNode(m.reason)] : [])
   );
+
+  renderTimetableEffects(id);
 
   /*
    * MARK READ, ON A DELAY.

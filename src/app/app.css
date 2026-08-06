@@ -1101,6 +1101,35 @@ a.ghost {
   flex-wrap: wrap;
 }
 
+/*
+ * "This message changed your timetable."
+ *
+ * Quiet by construction: a left border in the accent rather than a filled
+ * panel, matching the toast variants. It appears on the rare mail that
+ * actually moved a class, so it can afford to be noticed without shouting.
+ */
+#r-timetable {
+  margin-top: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border-left: 2px solid var(--accent);
+  background: var(--bg-sunken);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  font-size: var(--t-sm);
+}
+#r-timetable .r-tt-head {
+  color: var(--fg-faint);
+  font-size: var(--t-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: var(--s-1);
+}
+#r-timetable .r-tt-line {
+  color: var(--fg);
+}
+#r-timetable .r-tt-line + .r-tt-line {
+  margin-top: 2px;
+}
+
 #r-actions {
   display: flex;
   gap: var(--s-1);
