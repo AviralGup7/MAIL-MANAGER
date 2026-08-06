@@ -123,6 +123,10 @@ const el = {
   list: $('list'),
   scroller: $('scroller'),
   empty: $('empty'),
+  emptyTitle: $('empty-title'),
+  emptySub: $('empty-sub'),
+  emptyAction: $('empty-action'),
+  skeleton: $('skeleton'),
   search: $('search'),
   listTitle: $('listtitle'),
   listCount: $('listcount'),
@@ -289,7 +293,7 @@ function renderList() {
   // path returned early and "Nothing here." was never revealed — a new user
   // with no mail, or any category with no messages, saw a blank pane and no
   // explanation.
-  el.empty.hidden = next.length > 0;
+  updateEmptyState(next.length);
 
   // Fast path: identical id list, only content changed.
   if (sameOrder(next, renderedIds)) {
@@ -322,6 +326,77 @@ function renderList() {
 
   renderedIds = next;
   updateCounts(next.length);
+}
+
+/**
+ * The empty state has to say WHICH kind of empty this is.
+ *
+ * "Nothing here." is the same message whether the user filtered too hard,
+ * has an empty category, or has genuinely read everything — three different
+ * situations needing three different next actions. A generic string makes the
+ * user work out which one they are in.
+ */
+function updateEmptyState(count) {
+  const showing = count === 0 && !state.loading;
+  el.empty.hidden = !showing;
+  if (!showing) return;
+
+  const clear = (label, fn) => {
+    el.emptyAction.hidden = false;
+    el.emptyAction.textContent = label;
+    el.emptyAction.onclick = fn;
+  };
+
+  if (state.query) {
+    el.emptyTitle.textContent = 'No matches';
+    el.emptySub.textContent = `Nothing matches "${state.query}". Try fewer words, or a different filter.`;
+    clear('Clear search', () => {
+      el.search.value = '';
+      state.query = '';
+      renderList();
+      el.search.focus();
+    });
+  } else if (state.category !== 'all') {
+    const label = CATEGORY_LABELS[state.category] || state.category;
+    el.emptyTitle.textContent = `No ${label} mail`;
+    el.emptySub.textContent = 'Nothing has been filed here yet.';
+    clear('Show all mail', () => ctx.selectCategory('all'));
+  } else if (store.size === 0) {
+    el.emptyTitle.textContent = 'Inbox empty';
+    el.emptySub.textContent = 'Nothing to show. Refresh to check for new mail.';
+    clear('Refresh', () => refresh());
+  } else {
+    el.emptyTitle.textContent = "You're all caught up";
+    el.emptySub.textContent = 'Nothing left in this view.';
+    el.emptyAction.hidden = true;
+  }
+}
+
+/**
+ * Skeleton rows during a COLD start only.
+ *
+ * With a warm cache there is real content to paint, and showing a skeleton
+ * over it would be a step backwards — the user would watch real mail be
+ * replaced by grey bars.
+ */
+function setSkeleton(on) {
+  if (!el.skeleton) return;
+  if (on && !el.skeleton.childElementCount) {
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < 7; i++) {
+      const row = document.createElement('div');
+      row.className = 'sk-row';
+      row.innerHTML =
+        '<span></span><span class="sk-mid">' +
+        '<span class="sk-bar" style="width:38%"></span>' +
+        '<span class="sk-bar" style="width:76%"></span>' +
+        '</span><span class="sk-bar" style="width:34px"></span>';
+      frag.appendChild(row);
+    }
+    el.skeleton.replaceChildren(frag);
+  }
+  el.skeleton.hidden = !on;
+  el.list.hidden = on;
 }
 
 function sameOrder(a, b) {
@@ -841,11 +916,27 @@ el.list.addEventListener('click', (e) => {
 el.cats.addEventListener('click', (e) => {
   const b = e.target.closest('.cat');
   if (!b) return;
-  state.category = b.dataset.cat;
+  selectCategory(b.dataset.cat);
+});
+
+/**
+ * Switch category, clearing any active search.
+ *
+ * Leaving the search box populated while switching category silently
+ * double-filters: the user clicks "Library", sees nothing, and has no
+ * indication that a stale query from two minutes ago is still applied. The
+ * visible control must match the applied state.
+ */
+function selectCategory(key) {
+  state.category = key;
+  if (state.query) {
+    state.query = '';
+    el.search.value = '';
+  }
   el.scroller.scrollTop = 0;
   renderList();
   renderSidebar();
-});
+}
 
 $('r-actions').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-act]');
@@ -1154,12 +1245,7 @@ const ctx = {
   setTheme: (id) => setTheme(id),
   themes: () => THEMES,
   categoryList: () => [['all', 'All mail'], ...SIDEBAR_ORDER.map((c) => [c, CATEGORY_LABELS[c] || c])],
-  selectCategory: (key) => {
-    state.category = key;
-    el.scroller.scrollTop = 0;
-    renderList();
-    renderSidebar();
-  },
+  selectCategory,
   runQuery: (q) => {
     el.search.value = q;
     state.query = q;
@@ -1191,6 +1277,7 @@ async function start() {
   // The cache is populated inside a single store.batch(), so hydrating 500
   // messages is one notification and one render.
   const cached = await loadCache();
+  if (!cached?.messages.length) setSkeleton(true);
   if (cached?.messages.length) {
     store.batch(() => {
       for (const m of cached.messages) store.upsert(m);
@@ -1206,6 +1293,7 @@ async function start() {
   }
 
   await loadPage('');
+  setSkeleton(false);
   // Only after the inbox is on screen do we spend a request on a delta check.
   if (store.size) refresh({ silent: true });
 }

@@ -445,3 +445,45 @@ test('new UI surfaces exist and start hidden', () => {
   }
   assert.ok(html.includes('id="btn-compose"'), 'compose button must exist');
 });
+
+test('the stylesheet uses design tokens, not ad-hoc values', () => {
+  // Before tokens the file had ELEVEN font sizes (10, 10.5, 11, 11.5, 12,
+  // 12.5, 13, 13.5, 15, 17, 18) and TWELVE corner radii. Each was individually
+  // defensible; collectively they are why an interface reads as assembled
+  // rather than designed. This keeps the set closed.
+  const css = read('src/app/app.css');
+  const body = css.slice(css.indexOf('/*\n * THEME VALUES LIVE IN'));
+
+  const sizes = [...body.matchAll(/font-size:\s*([0-9.]+px)/g)].map((m) => m[1]);
+  assert.deepEqual(sizes, [], `raw font sizes outside the scale: ${[...new Set(sizes)].join(', ')}`);
+
+  // Multi-value corners (`12px 12px 0 0`) are matched separately below.
+  const radii = [...body.matchAll(/border-radius:\s*([0-9]+px);/g)].map((m) => m[1]);
+  assert.deepEqual(radii, [], `raw radii outside the scale: ${[...new Set(radii)].join(', ')}`);
+});
+
+test('no component is defined in two places', () => {
+  // `.row` was previously declared in two blocks 470 lines apart: one set the
+  // background, another added the selection rail, and neither could be
+  // understood without the other. That is how a component drifts.
+  const css = read('src/app/app.css');
+  for (const sel of ['.row', '.tag', '.r-bar', '#reader-head', '#empty']) {
+    const escaped = sel.replace(/[.#]/g, '\\$&');
+    const hits = [...css.matchAll(new RegExp(`^${escaped}\\s*\\{`, 'gm'))].length;
+    assert.equal(hits, 1, `${sel} is defined ${hits} times; it must be defined once`);
+  }
+});
+
+test('the empty state explains WHICH kind of empty it is', () => {
+  // "Nothing here." was the same message whether the user over-filtered, hit
+  // an empty category, or had genuinely read everything -- three situations
+  // needing three different next actions.
+  const html = read('app.html');
+  assert.ok(html.includes('id="empty-title"'), 'empty state needs a title');
+  assert.ok(html.includes('id="empty-sub"'), 'empty state needs an explanation');
+  assert.ok(html.includes('id="empty-action"'), 'empty state needs a way out');
+
+  const js = read('src/app/app.js');
+  assert.match(js, /No matches/, 'must handle the over-filtered case');
+  assert.match(js, /Clear search/, 'must offer an escape from a bad search');
+});

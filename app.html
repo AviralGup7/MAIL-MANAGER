@@ -118,7 +118,32 @@
                 options.
               -->
               <div id="list" role="listbox" aria-label="Messages" tabindex="0"></div>
-              <div id="empty" hidden>Nothing here.</div>
+              <!--
+                A real empty state, not the word "Nothing".
+
+                An empty list has to answer three questions: is it broken, is
+                it loading, or is there genuinely no mail? The icon and the
+                explanatory line answer all three, and the action gives a way
+                out instead of a dead end.
+              -->
+              <div id="empty" hidden>
+                <svg viewBox="0 0 48 48" aria-hidden="true" width="44" height="44">
+                  <rect x="7" y="13" width="34" height="24" rx="4"
+                        fill="none" stroke="currentColor" stroke-width="2" opacity=".55"/>
+                  <path d="M8 16.5 24 27l16-10.5" fill="none" stroke="currentColor"
+                        stroke-width="2" stroke-linecap="round" opacity=".55"/>
+                </svg>
+                <p id="empty-title">You're all caught up</p>
+                <p id="empty-sub">Nothing in this view.</p>
+                <button id="empty-action" class="ghost" type="button" hidden></button>
+              </div>
+
+              <!--
+                SKELETON. Shown only on a cold start, where there is nothing
+                cached to paint. A spinner says "wait"; a skeleton says "this
+                is what is coming", and measurably shortens perceived wait.
+              -->
+              <div id="skeleton" aria-hidden="true" hidden></div>
             </div>
           </div>
 
