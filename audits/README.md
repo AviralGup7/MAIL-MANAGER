@@ -12,6 +12,7 @@ the code, not by reading it — where a claim was testable, the proof is quoted.
 | [04](04-ACCESSIBILITY.md) | Accessibility | 4 | Invalid listbox tree: the message list announces nothing |
 | [05](05-ARCHITECTURE.md) | Architecture | 5 | Dead `GMAIL` proxy widens the app's capability |
 | [06](06-TESTING.md) | Testing | 5 | The takeover and PKCE sign-in have zero direct tests |
+| [07](07-GMAIL-COMPETITIVE.md) | Gmail competitive gap | 40+ | Remote and inline images are both silently broken; no Sent/Drafts/Trash; no threading |
 
 Actions are consolidated and prioritised in [`../TODO.md`](../TODO.md).
 
