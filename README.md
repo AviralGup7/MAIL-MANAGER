@@ -223,6 +223,8 @@ src/
 test/                       121 tests. `npm test`
   app.integration.test.mjs  Boots the real app.html in jsdom and drives it.
   package.test.mjs          Fails if the manifest names a file that is absent.
+audits/                     Six audits of this codebase. Start at audits/README.md.
+TODO.md                     The next 15 steps, prioritised by risk.
 notes/SYNC_BUGS.md          Seven sync/render bugs found before shipping.
 notes/CLASSIFIER_CORRECTION.md  Four retracted bug claims, and what was really wrong.
 docs/CLASSIFICATION_DATA_PACK.md  Source of truth for every rule and weight.
@@ -299,3 +301,15 @@ only thing that can establish that.
 
 Known gaps: no compose or reply by design; attachments list but do not download
 (open in Gmail); no thread view — messages are listed individually.
+
+### Audited
+
+Six audits were run over this codebase before it had ever launched in a
+browser: correctness, security, performance, accessibility, architecture and
+testing. They found **23 issues**, six of them severe — the message list
+silently caps at 400 rows and hides the rest, nothing is ever persisted despite
+the code claiming otherwise, and the two things the product is named for (the
+takeover and PKCE sign-in) have no direct tests at all.
+
+Read [`audits/README.md`](audits/README.md); the prioritised plan is in
+[`TODO.md`](TODO.md).
