@@ -325,3 +325,192 @@ test('escapeHtml covers every dangerous character', () => {
   assert.equal(escapeHtml(`<>&"'`), '&lt;&gt;&amp;&quot;&#39;');
   assert.equal(escapeHtml('plain'), 'plain');
 });
+
+/* ========================================================================== *
+ * XSS VECTOR SWEEP
+ *
+ * The sandbox (no allow-scripts, no allow-same-origin) is the primary control
+ * and these vectors cannot execute even if the sanitiser missed one. This is
+ * defence in depth, and it is tested by EXECUTABILITY rather than by grepping
+ * the output string.
+ *
+ * That distinction matters: an early version of this sweep flagged the
+ * `noscript` vector as a leak because `onerror=` appeared in the output. It
+ * appeared inside a `title` ATTRIBUTE VALUE — inert text. Re-parsing the
+ * output and asking the DOM what is actually there is the only reliable
+ * check, because a regex cannot tell markup from text.
+ * ========================================================================== */
+
+const XSS_VECTORS = [
+  ['nested script tags', '<scr<script>ipt>alert(1)</script>'],
+  ['svg onload', '<svg onload=alert(1)>'],
+  ['img onerror', '<img src=x onerror=alert(1)>'],
+  ['case-mixed handler', '<div OnClIcK=alert(1)>x</div>'],
+  ['javascript: href', '<a href="javascript:alert(1)">x</a>'],
+  ['javascript: with tab', '<a href="java\tscript:alert(1)">x</a>'],
+  ['javascript: with newline', '<a href="java\nscript:alert(1)">x</a>'],
+  ['entity-encoded javascript:', '<a href="&#106;avascript:alert(1)">x</a>'],
+  ['data:text/html', '<a href="data:text/html,<script>alert(1)</script>">x</a>'],
+  ['vbscript:', '<a href="vbscript:msgbox(1)">x</a>'],
+  ['form with js action', '<form action="javascript:alert(1)"><input></form>'],
+  ['iframe', '<iframe src="javascript:alert(1)"></iframe>'],
+  ['object data', '<object data="javascript:alert(1)">'],
+  ['meta refresh', '<meta http-equiv="refresh" content="0;url=javascript:alert(1)">'],
+  ['base href hijack', '<base href="javascript:alert(1)//">'],
+  ['css expression()', '<div style="width:expression(alert(1))">x</div>'],
+  ['css url() tracker', '<div style="background:url(http://evil/pixel)">x</div>'],
+  ['position:fixed overlay', '<div style="position:fixed;top:0;left:0">overlay</div>'],
+  ['style @import', '<style>@import "http://evil"</style>'],
+  ['img srcset', '<img srcset="http://evil/x 1x">'],
+  ['button formaction', '<button formaction="javascript:alert(1)">x</button>'],
+  ['svg xlink:href', '<svg><a xlink:href="javascript:alert(1)">x</a></svg>'],
+  ['null byte in scheme', '<a href="java\u0000script:alert(1)">x</a>'],
+  ['comment break-out', '<!--><script>alert(1)</script>-->'],
+  ['noscript attribute break', '<noscript><p title="</noscript><img src=x onerror=alert(1)>">'],
+  ['template smuggling', '<template><script>alert(1)</script></template>'],
+  ['mathml smuggling', '<math><mtext><script>alert(1)</script></mtext></math>'],
+];
+
+test('no XSS vector survives as an executable element', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+
+  for (const [name, payload] of XSS_VECTORS) {
+    let out;
+    assert.doesNotThrow(() => { out = clean(payload); }, `${name} threw`);
+
+    // Re-parse and ask the DOM, rather than pattern-matching the string.
+    const body = parse(out);
+
+    assert.equal(body.querySelectorAll('script').length, 0, `${name}: script survived`);
+    assert.equal(body.querySelectorAll('iframe, object, embed, form, base, meta, style')
+      .length, 0, `${name}: dangerous element survived`);
+
+    for (const el of body.querySelectorAll('*')) {
+      for (const attr of el.attributes) {
+        assert.ok(
+          !attr.name.toLowerCase().startsWith('on'),
+          `${name}: event handler ${attr.name} survived`
+        );
+        if (attr.name === 'href' || attr.name === 'src') {
+          assert.ok(
+            !/^\s*(javascript|vbscript|data:text\/html)/i.test(attr.value),
+            `${name}: executable URL survived in ${attr.name}`
+          );
+        }
+      }
+      const style = el.getAttribute('style');
+      if (style) {
+        assert.ok(!/expression\s*\(/i.test(style), `${name}: css expression survived`);
+        assert.ok(!/url\s*\(/i.test(style), `${name}: css url() survived (tracking pixel)`);
+        assert.ok(!/position\s*:\s*fixed/i.test(style), `${name}: fixed overlay survived`);
+      }
+    }
+  }
+});
+
+test('the vector sweep would notice if the sanitiser stopped working', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Guards against the sweep passing because `clean()` returns ''. Benign
+  // markup must survive intact, or the tests above prove nothing.
+  const out = clean('<p><b>Bold</b> and <a href="https://x.example">a link</a></p>');
+  const body = parse(out);
+  assert.equal(body.querySelectorAll('b').length, 1);
+  assert.equal(body.querySelector('a').getAttribute('href'), 'https://x.example');
+  assert.match(body.textContent, /Bold/);
+});
+
+/*
+ * THE ATTRIBUTE ALLOW-LIST, TESTED INDEPENDENTLY.
+ *
+ * Found by mutation testing: disabling `if (!GLOBAL_ATTRS.has(name) &&
+ * !allowed?.has(name)) continue;` broke ZERO tests. The `on*` guard silently
+ * compensated for event handlers, so the two controls were covering for each
+ * other and neither was independently verified.
+ *
+ * What actually leaks without the allow-list is not script execution — it is
+ * `ping` (a fire-and-forget tracking beacon the CSP does not cover),
+ * `contenteditable`, `tabindex` (focus hijacking) and `aria-live="assertive"`
+ * (hijacking the screen-reader announcement queue). None of those are caught
+ * by looking for `<script>`.
+ */
+test('only allow-listed attributes survive, beyond event handlers', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+
+  const cases = [
+    ['<div data-evil="1" contenteditable="true" tabindex="5">x</div>',
+      ['data-evil', 'contenteditable', 'tabindex']],
+    ['<a href="https://ok.example" download="x" ping="http://evil/track">l</a>',
+      ['download', 'ping']],
+    ['<img src="data:image/png;base64,AAAA" loading="eager" usemap="#m">',
+      ['loading', 'usemap']],
+    ['<p id="steal" class="x" role="button" aria-live="assertive">y</p>',
+      ['id', 'class', 'role', 'aria-live']],
+  ];
+
+  for (const [payload, forbidden] of cases) {
+    const body = parse(clean(payload));
+    for (const el of body.querySelectorAll('*')) {
+      for (const name of forbidden) {
+        assert.ok(
+          !el.hasAttribute(name),
+          `"${name}" survived sanitisation in ${payload}`
+        );
+      }
+    }
+  }
+});
+
+test('the attributes mail genuinely needs still survive', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // The negative test above passes if everything is stripped. Mail is mostly
+  // tables and inline colour; removing those would make it unreadable.
+  const body = parse(clean(
+    '<table width="100" bgcolor="#eee"><tr><td colspan="2" align="center">' +
+    '<img src="data:image/png;base64,AAAA" alt="Logo" width="80">' +
+    '<span style="color:#333" title="hint" dir="ltr">text</span></td></tr></table>'
+  ));
+  assert.equal(body.querySelector('table').getAttribute('width'), '100');
+  assert.equal(body.querySelector('td').getAttribute('colspan'), '2');
+  assert.equal(body.querySelector('img').getAttribute('alt'), 'Logo');
+  assert.equal(body.querySelector('span').getAttribute('title'), 'hint');
+  assert.match(body.querySelector('span').getAttribute('style'), /color/);
+});
+
+/*
+ * DROP_ENTIRELY vs unwrapping.
+ *
+ * Unknown elements are UNWRAPPED (their text is kept) so that mail inside a
+ * custom element is still readable. A specific set is dropped WITH its
+ * contents instead, because the contents are not prose.
+ *
+ * Mutation testing showed the distinction was untested: removing the
+ * DROP_ENTIRELY check broke nothing, because `<script>` and `<style>` bodies
+ * happen to be discarded by the parser anyway. The case that actually
+ * regresses is `<textarea>`, whose contents leak into the message as visible
+ * text — a form value the sender never intended to display.
+ */
+test('dropped elements take their contents with them', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+
+  for (const [payload, mustNotAppear] of [
+    ['<textarea>secret value</textarea>', 'secret value'],
+    ['<title>page title</title>', 'page title'],
+    ['<select><option>choice</option></select>', 'choice'],
+    ['<button>press</button>', 'press'],
+    ['<style>body{color:red}</style>', 'color'],
+  ]) {
+    const out = clean(payload);
+    assert.ok(
+      !out.includes(mustNotAppear),
+      `"${mustNotAppear}" leaked out of ${payload}: ${out}`
+    );
+  }
+});
+
+test('unknown elements are unwrapped, not dropped', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // The counterpart: a custom wrapper must not cost the reader the message.
+  const out = clean('<mj-section><mj-column><p>Real content</p></mj-column></mj-section>');
+  assert.match(out, /Real content/);
+  assert.ok(!out.includes('mj-section'));
+});
