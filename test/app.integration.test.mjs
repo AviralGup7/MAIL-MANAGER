@@ -3516,3 +3516,72 @@ test('TIMETABLE: the instructor-in-charge is marked in the entry list', async (t
     restore();
   }
 });
+
+test('TIMETABLE: an official room-change notice applies without asking', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * PRECEDENCE, END TO END, FOR THE SOURCE THAT OUTRANKS THE DOCUMENT.
+   *
+   * A change notice sits ABOVE the official timetable, so unlike mail it does
+   * not need the user to accept it as their own edit -- the button applies it
+   * directly and the provenance records 'notice'.
+   *
+   * The notice prints From and To as two columns ("1008 L1 5105 6101"), and
+   * until now the value was never read out of them, so the highest automatic
+   * authority in the system could report a change but never make one.
+   */
+  const withNotice = {
+    ...TT_DATA,
+    changes: [{
+      type: 'room', comCode: '1008', courseNo: 'CS F111', section: 'L1',
+      raw: '1008   COMPUTER PROGRAMMING   L1   5105   6101 CS F111',
+      effective: '05-Aug-2026',
+    }],
+  };
+  const { doc, win, settle, restore } = await boot({ timetableData: withNotice });
+  try {
+    await openTT(doc, win, settle);
+    const r = await ttSearch(doc, win, settle, 'CS F111');
+    r[0].querySelector('button').click();
+    await settle(4);
+    [...doc.querySelectorAll('.tt-chooser .tt-section')]
+      .find((b) => b.textContent.startsWith('L1')).click();
+    await settle(8);
+
+    const { getTimetableState, scanForUpdates, closeTimetable, openTimetable } =
+      await import('../src/app/timetable-ui.js');
+    assert.equal(
+      getTimetableState().entries.find((e) => e.section === 'L1').room, '5105',
+      'precondition: the official room'
+    );
+
+    scanForUpdates([]);
+    closeTimetable();
+    await settle(4);
+    openTimetable();
+    await settle(6);
+
+    const proposal = doc.querySelector('#tt-panel .tt-proposal');
+    assert.ok(proposal, 'the notice should raise a proposal');
+    assert.match(proposal.textContent, /6101/, 'and name the NEW room');
+
+    const apply = proposal.querySelector('.primary');
+    assert.ok(apply, 'a notice outranks the document, so it must be applyable');
+    assert.match(apply.textContent, /Change room to 6101/);
+    apply.click();
+    await settle(8);
+
+    const after = getTimetableState().entries.find((e) => e.section === 'L1');
+    assert.equal(after.room, '6101', 'the new room must be applied');
+    assert.equal(
+      after.provenance.room.source, 'notice',
+      'and recorded as the notice\'s doing, not the user\'s'
+    );
+    assert.match(
+      after.history[after.history.length - 1].from, /5105/,
+      'the previous room must survive in history'
+    );
+  } finally {
+    restore();
+  }
+});

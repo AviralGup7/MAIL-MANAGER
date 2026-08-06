@@ -1,3 +1,4 @@
+import { parseDaysHours } from './timetable.js';
 /**
  * Deterministic extraction of timetable changes from academic mail.
  *
@@ -311,6 +312,7 @@ export function matchNotice(changes, state) {
       (e) => e.comCode === c.comCode && (!c.section || e.section === c.section)
     );
     for (const entry of targets) {
+      const { value, from } = noticeValue(c);
       out.push({
         kind: `notice-${c.type}`,
         label: NOTICE_LABEL[c.type] || 'Timetable change',
@@ -318,8 +320,12 @@ export function matchNotice(changes, state) {
         courseNo: entry.courseNo,
         section: entry.section,
         field: NOTICE_FIELD[c.type] || null,
-        value: null,
-        actionable: false,
+        value,
+        from,
+        // A notice outranks the official timetable, so an actionable one can
+        // be applied without asking. Actionable requires BOTH a target field
+        // and a value we could read unambiguously.
+        actionable: Boolean(NOTICE_FIELD[c.type] && value !== null),
         noticeRef: `${c.comCode}/${c.section || '-'}`,
         effective: c.effective,
         evidence: c.raw,
@@ -327,6 +333,76 @@ export function matchNotice(changes, state) {
     }
   }
   return out;
+}
+
+
+/**
+ * Read the NEW value out of a change-notice row.
+ *
+ * The notice is the second-highest authority in the system, above the official
+ * timetable. It was being matched to the right entry and then reported with no
+ * value at all, so the highest automatic authority could never change anything.
+ *
+ * The document prints From and To as two columns:
+ *
+ *   B. Change of Room
+ *   ... From   To
+ *   151   L1   6156   6160 BIO G542      -> 6156 becomes 6160
+ *
+ * Reading the second is not inference; it is the column the source labelled
+ * "To". But that only holds when BOTH columns survived on the row. Some rows
+ * wrap ("145  L1   6108(T) PHA G617" has one room) and a single value is
+ * genuinely ambiguous -- it could be the old or the new. Those return null and
+ * stay non-actionable: reported to the user, never applied.
+ *
+ * Instructor changes are deliberately never actionable. Names wrap across
+ * lines in this document and a half-read name written into the timetable is
+ * worse than a prompt. Same restraint the mail path already uses.
+ *
+ * @returns {{value: string|object[]|null, from: string|null}}
+ */
+function noticeValue(c) {
+  const raw = String(c.raw || '');
+
+  if (c.type === 'room') {
+    // Four-digit room numbers, optionally suffixed with a day hint: 6108(T).
+    const rooms = [...raw.matchAll(/\b(\d{4})(?:\([A-Za-z ]+\))?/g)].map((m) => m[1]);
+    // The computer code is also numeric but is not four digits here; guard
+    // anyway by dropping anything equal to it.
+    const rest = rooms.filter((r) => r !== c.comCode);
+    if (rest.length < 2) return { value: null, from: rest[0] ?? null };
+    return { value: rest[rest.length - 1], from: rest[0] };
+  }
+
+  if (c.type === 'time') {
+    // Same notation as the main timetable, so the same parser -- not a second
+    // implementation that can drift from it.
+    /*
+     * Capture the WHOLE cell, not the first group.
+     *
+     * "M W 2 T 9" is two groups and an earlier version of this pattern stopped
+     * after the first hour, silently dropping the Tuesday class. So the match
+     * repeats day-runs-then-hours as a unit.
+     *
+     * This document also writes days unspaced ("MW 2", "TThF 4"), so the days
+     * are re-split before parsing -- Th first, or every Thursday becomes a
+     * Tuesday followed by a stray h.
+     */
+    /*
+     * Strip exam dates FIRST. A row can read "TThF 4 01/12", and the leading
+     * "01" of the date looks exactly like an hour -- it parsed as a second
+     * class at slot 1 on all three days, inventing three meetings that do not
+     * exist. DD/MM is unambiguous and goes before anything else is read.
+     */
+    const noDates = raw.replace(/\b\d{1,2}\/\d{1,2}\b/g, ' ');
+    const cell = noDates.match(/((?:(?:Th|[MTWFS])\s*)+\d{1,2}(?:\s+\d{1,2})*(?:\s*(?:Th|[MTWFS])\s*)*(?:\d{1,2}\s*)*)/);
+    if (!cell) return { value: null, from: null };
+    const spaced = cell[1].replace(/(Th|[MTWFS])/g, ' $1 ').replace(/\s+/g, ' ').trim();
+    const meetings = parseDaysHours(spaced);
+    return { value: meetings.length ? meetings : null, from: null };
+  }
+
+  return { value: null, from: null };
 }
 
 const NOTICE_LABEL = {

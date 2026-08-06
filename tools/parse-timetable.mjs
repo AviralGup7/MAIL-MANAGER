@@ -26,6 +26,35 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+/*
+ * The slot table and the day/hour grammar are DOMAIN rules, not build rules:
+ * the running app needs them too, to read a class time out of a change notice.
+ * They live in src/app/timetable.js and this tool imports them, so there is
+ * exactly one implementation. src/ must never import from tools/ -- tools/ is
+ * build tooling and is not shipped -- so the dependency points this way.
+ */
+import {
+  HOUR_START, SLOT_MINUTES, BEYOND_LEGEND, DAY_NAME, parseDaysHours,
+} from '../src/app/timetable.js';
+
+/**
+ * Verify the legend in the document still matches the slot table.
+ *
+ * Stays in the TOOL, not in the domain: it reads the raw PDF text, which only
+ * exists at build time. The app never sees a document, only parsed data.
+ */
+function verifyHourLegend(text) {
+  // The legend prints the two rows of slot numbers followed by their times.
+  // If AUGSD ever renumbers the slots this check fails and the tool stops,
+  // rather than emitting a timetable that is silently an hour out.
+  const norm = text.replace(/\s+/g, ' ');
+  const checks = [
+    /1 2 3 4 5 8 - 8:50A ?M 9 - 9:50AM 10 - 10:50AM 11 - 11:50AM 12 - 12:50 ?PM/,
+    /6 7 8 9 10 1 - 1:50PM 2 - 2:50PM 3 - 3:5 ?0PM 4 - 4:50PM 5 - 5:50PM/,
+  ];
+  return checks.every((re) => re.test(norm));
+}
+
 
 /* ========================================================================== *
  * HOUR MAP — read from the document's own legend, not hardcoded belief.
@@ -40,110 +69,6 @@ import { fileURLToPath } from 'node:url';
  * Encoded as minutes from midnight so overlap detection is integer maths.
  * Every BITS slot is 50 minutes starting on the hour.
  */
-const HOUR_START = {
-  1: 8 * 60, 2: 9 * 60, 3: 10 * 60, 4: 11 * 60, 5: 12 * 60,
-  6: 13 * 60, 7: 14 * 60, 8: 15 * 60, 9: 16 * 60, 10: 17 * 60,
-  /*
-   * SLOTS 11 AND 12 ARE USED BUT NOT DOCUMENTED.
-   *
-   * The legend stops at 10 (5-5:50PM). Yet EEE F111 meets at "T Th F 11",
-   * BITS F332 at "W 11 12" and BITS F468 at "Th 11 12" — five courses in all.
-   * Dropping them would silently lose real classes from real timetables;
-   * inventing a time for them would be exactly the guessing this feature
-   * forbids.
-   *
-   * So they continue the arithmetic the legend establishes — every slot is
-   * the next hour — giving 6-6:50PM and 7-7:50PM, and they are tagged
-   * `beyondLegend` so the UI can mark the time as needing confirmation. The
-   * user sees a real class with a flagged time, not a missing class.
-   */
-  11: 18 * 60, 12: 19 * 60,
-};
-/** Slots the printed legend does not cover. Real, but worth flagging. */
-const BEYOND_LEGEND = new Set([11, 12]);
-const SLOT_MINUTES = 50;
-
-/** Verify the legend in the document still matches the table above. */
-function verifyHourLegend(text) {
-  // The legend prints the two rows of slot numbers followed by their times.
-  // If AUGSD ever renumbers the slots this check fails and the tool stops,
-  // rather than emitting a timetable that is silently an hour out.
-  const norm = text.replace(/\s+/g, ' ');
-  const checks = [
-    /1 2 3 4 5 8 - 8:50A ?M 9 - 9:50AM 10 - 10:50AM 11 - 11:50AM 12 - 12:50 ?PM/,
-    /6 7 8 9 10 1 - 1:50PM 2 - 2:50PM 3 - 3:5 ?0PM 4 - 4:50PM 5 - 5:50PM/,
-  ];
-  return checks.every((re) => re.test(norm));
-}
-
-const DAYS = ['M', 'T', 'W', 'Th', 'F', 'S'];
-const DAY_NAME = {
-  M: 'Monday', T: 'Tuesday', W: 'Wednesday',
-  Th: 'Thursday', F: 'Friday', S: 'Saturday',
-};
-
-/* ========================================================================== *
- * DAYS & HOURS
- * ========================================================================== */
-
-/**
- * Parse a "DAYS & HOURS" cell into concrete meetings.
- *
- * The notation is a run of day tokens followed by an hour, repeated:
- *
- *   "M W F 9"        -> Mon/Wed/Fri at slot 9
- *   "M W 2 T 9"      -> Mon/Wed at slot 2, AND Tue at slot 9
- *   "M 6 7"          -> Mon at slots 6 AND 7 (a two-hour lab block)
- *   "T Th F 4"       -> Tue/Thu/Fri at slot 4
- *
- * So: accumulate days until a number appears; every number that follows binds
- * to the accumulated day set until the next day token resets it. "Th" must be
- * tested before "T" or every Thursday silently becomes a Tuesday.
- *
- * Returns [] for an unparseable cell rather than a guess. The caller marks the
- * record unresolved, which surfaces to the user.
- */
-export function parseDaysHours(cell) {
-  if (!cell) return [];
-  const tokens = String(cell).trim().split(/\s+/).filter(Boolean);
-  const meetings = [];
-  let days = [];
-  let pendingDays = [];
-
-  for (const tok of tokens) {
-    if (/^(Th|M|T|W|F|S)$/.test(tok)) {
-      // A day token after an hour begins a NEW group: "M W 2 T 9" is two
-      // groups, not one group of three days.
-      if (pendingDays.length === 0 && days.length > 0) days = [];
-      days.push(tok);
-      pendingDays.push(tok);
-      continue;
-    }
-    if (/^\d{1,2}$/.test(tok)) {
-      const hour = Number(tok);
-      if (!HOUR_START[hour]) return []; // out of the 1..10 range: not a slot
-      pendingDays = [];
-      for (const d of days) {
-        const meeting = {
-          day: d,
-          dayName: DAY_NAME[d],
-          hour,
-          startMin: HOUR_START[hour],
-          endMin: HOUR_START[hour] + SLOT_MINUTES,
-        };
-        // Flagged, not dropped: the class is real, the printed legend just
-        // does not name this slot. The UI asks the user to confirm.
-        if (BEYOND_LEGEND.has(hour)) meeting.beyondLegend = true;
-        meetings.push(meeting);
-      }
-      continue;
-    }
-    return []; // an unexpected token: refuse the whole cell
-  }
-  // Day tokens with no hour after them describe nothing usable.
-  return pendingDays.length > 0 && meetings.length === 0 ? [] : meetings;
-}
-
 /** "M W 2 T 9" -> "Mon, Wed 09:00-09:50 · Tue 16:00-16:50" */
 export function describeMeetings(meetings) {
   const fmt = (m) => {

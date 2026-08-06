@@ -16,7 +16,8 @@ import {
   emptyState, entryId, addCourse, removeCourse, makeEntry,
   applyFieldChange, manualEdit, setLocked, restoreFromSource,
   detectConflicts, linkedSections, instructorsFor, sectionsByKind,
-  weekView, summariseMeetings, explainEntry, entriesForMessage, examEvents, PRECEDENCE,
+  weekView, summariseMeetings, explainEntry, entriesForMessage, examEvents,
+  parseDaysHours, PRECEDENCE,
 } from '../src/app/timetable.js';
 
 import {
@@ -29,7 +30,9 @@ import {
   searchCourses, courseByComCode, loadSourceData, _resetSourceData,
 } from '../src/app/timetable-store.js';
 
-import { parseDaysHours, parseNotice, parseTimetable } from '../tools/parse-timetable.mjs';
+// parseDaysHours is DOMAIN (the app reads class times out of change notices);
+// parseNotice/parseTimetable are build-time only.
+import { parseNotice, parseTimetable } from '../tools/parse-timetable.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -546,7 +549,15 @@ test('NOTICE: rows match on computer code and section', () => {
   assert.equal(found.length, 1);
   assert.equal(found[0].entryId, entryId('1008', 'L1'));
   assert.equal(found[0].effective, '05-Aug-2026');
-  assert.equal(found[0].actionable, false, 'the wrapped cells are not parsed into values');
+  /*
+   * This row has BOTH columns -- "5105  6101" is From then To -- so it is now
+   * actionable. It previously asserted `false`, back when no notice could
+   * carry a value at all and the highest automatic authority in the system
+   * could therefore never change anything.
+   */
+  assert.equal(found[0].actionable, true, 'both columns are present');
+  assert.equal(found[0].from, '5105');
+  assert.equal(found[0].value, '6101');
   assert.match(found[0].evidence, /1008/);
 });
 
@@ -1078,4 +1089,140 @@ test('IN-CHARGE: only some sections are marked, and that is expected', () => {
     marked < sections.length * 0.75,
     `too many in-charges (${marked}/${sections.length}); capitalisation is being ignored`
   );
+});
+
+/* ====================================================== notice from -> to == */
+
+test('NOTICE: a room change carries the new room, not just a warning', () => {
+  /*
+   * The change notice is the SECOND-HIGHEST authority in the whole system --
+   * above the official timetable, below only the user. It was being parsed,
+   * matched to the right entry, and then reported with `value: null` and
+   * `actionable: false`, so it could never actually change anything.
+   *
+   * The notice prints a From and a To column:
+   *
+   *   B. Change of Room
+   *   ... From  To
+   *   151   L1   6156   6160 BIO G542
+   *
+   * Two room numbers in order. Reading the second is not a guess; it is the
+   * column the document labelled "To".
+   */
+  const change = {
+    type: 'room', comCode: '151', courseNo: 'BIO G542', section: 'L1',
+    raw: '151   L1   6156   6160 BIO G542', effective: '05-Aug-2026',
+  };
+  const entry = { ...build().state.entries[0], comCode: '151', section: 'L1' };
+  const [f] = matchNotice([change], { entries: [entry] });
+
+  assert.equal(f.field, 'room');
+  assert.equal(f.from, '6156', 'the old room, for the history record');
+  assert.equal(f.value, '6160', 'the NEW room is what gets applied');
+  assert.equal(f.actionable, true, 'a notice with a stated value must be usable');
+});
+
+test('NOTICE: a room change with only one room stated is not actionable', () => {
+  /*
+   * PHA G617 reads "145   L1    6108(T) PHA G617" -- the From column wrapped
+   * onto other lines and only one room survives on the row. One room is
+   * ambiguous: it could be the old or the new. The notice is still shown, but
+   * it cannot be applied, which is the no-guessing rule.
+   */
+  const change = {
+    type: 'room', comCode: '145', courseNo: 'PHA G617', section: 'L1',
+    raw: '145   L1    6108(T) PHA G617', effective: '05-Aug-2026',
+  };
+  const entry = { ...build().state.entries[0], comCode: '145', section: 'L1' };
+  const [f] = matchNotice([change], { entries: [entry] });
+
+  assert.equal(f.actionable, false, 'one room cannot be told from the other');
+  assert.equal(f.value, null);
+  assert.match(f.label, /room/i, 'but the user is still told about it');
+});
+
+test('NOTICE: an instructor change is reported and never auto-applied', () => {
+  // Same restraint as the mail path. Names wrap across lines in this document
+  // and a half-read name written into the timetable is worse than a prompt.
+  const change = {
+    type: 'instructor', comCode: '151', courseNo: 'BIO G542', section: 'L1',
+    raw: '151   L1   SOMEONE   SOMEONE ELSE BIO G542', effective: '05-Aug-2026',
+  };
+  const entry = { ...build().state.entries[0], comCode: '151', section: 'L1' };
+  const [f] = matchNotice([change], { entries: [entry] });
+  assert.equal(f.actionable, false, 'instructor names are not machine-safe here');
+});
+
+test('NOTICE: a class-time change carries parsed meetings when stated', () => {
+  // "MW 2 T 9" is the same notation as the main timetable, so it converts
+  // with the same parser rather than a second implementation.
+  const change = {
+    type: 'time', comCode: '3118', courseNo: 'MATH F201', section: 'L1',
+    raw: '3118   DIFFERENTIAL EQUATIO   L1   -  M W 2 T 9 MATH F201',
+    effective: '05-Aug-2026',
+  };
+  const entry = { ...build().state.entries[0], comCode: '3118', section: 'L1' };
+  const [f] = matchNotice([change], { entries: [entry] });
+
+  assert.equal(f.field, 'meetings');
+  assert.equal(f.actionable, true);
+  assert.deepEqual(
+    f.value.map((m) => `${m.day}${m.hour}`), ['M2', 'W2', 'T9'],
+    'the same day/hour rules as the main document'
+  );
+});
+
+test('NOTICE: applying one uses notice authority, above the document', () => {
+  /*
+   * Precedence in practice. The room came from the official timetable; the
+   * notice outranks it, so this applies WITHOUT asking -- unlike mail, which
+   * ranks below the document and must be accepted by the user.
+   */
+  const entry = { ...build().state.entries[0], comCode: '151', section: 'L1' };
+  const r = applyFieldChange(entry, 'room', '6160', {
+    source: 'notice', ref: '151/L1',
+  });
+  assert.equal(r.applied, true);
+  assert.equal(r.entry.room, '6160');
+  assert.equal(r.entry.provenance.room.source, 'notice');
+});
+
+test('NOTICE: an exam date in a time row is not read as a class hour', () => {
+  /*
+   * FOUND BY HAND, THEN LEFT UNCOVERED -- sabotage caught that.
+   *
+   * A real row reads "3118  DIFFERENTIAL EQUATIO  L10  -  TThF 4 01/12 MATH
+   * F201". The "01" of the date 01/12 looks exactly like an hour, so it
+   * parsed as a SECOND class at slot 1 on Tue, Thu and Fri -- three meetings
+   * that do not exist, written into the timetable by the highest automatic
+   * authority in the system.
+   *
+   * DD/MM is unambiguous, so dates are stripped before any hour is read.
+   */
+  const change = {
+    type: 'time', comCode: '3118', courseNo: 'MATH F201', section: 'L10',
+    raw: '3118   DIFFERENTIAL EQUATIO   L10   -  TThF 4 01/12 MATH F201',
+    effective: '05-Aug-2026',
+  };
+  const entry = { ...build().state.entries[0], comCode: '3118', section: 'L10' };
+  const [f] = matchNotice([change], { entries: [entry] });
+
+  assert.deepEqual(
+    f.value.map((m) => `${m.day}${m.hour}`), ['T4', 'Th4', 'F4'],
+    'the exam date must not become a class at slot 1'
+  );
+});
+
+test('NOTICE: unspaced day runs parse, and Th is never T followed by h', () => {
+  // This document writes "MW 2" and "TThF 4" without spaces, unlike the main
+  // timetable. Re-splitting must try Th first or every Thursday becomes a
+  // Tuesday plus a stray letter -- the same trap the main parser has.
+  const change = {
+    type: 'time', comCode: '3118', courseNo: 'MATH F201', section: 'L12',
+    raw: '3118   DIFFERENTIAL EQUATIO   L12   -  Santra   TThF 5 MATH F201',
+    effective: '05-Aug-2026',
+  };
+  const entry = { ...build().state.entries[0], comCode: '3118', section: 'L12' };
+  const [f] = matchNotice([change], { entries: [entry] });
+  assert.deepEqual(f.value.map((m) => `${m.day}${m.hour}`), ['T5', 'Th5', 'F5']);
 });
