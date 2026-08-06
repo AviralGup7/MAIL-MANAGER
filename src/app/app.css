@@ -2286,6 +2286,49 @@ html[data-scheme='dark'] #thememenu {
   margin-left: auto;
 }
 
+/* --------------------------------------------------------------- rail ---- */
+
+/*
+ * The rail carries two different kinds of navigation: system mailboxes and
+ * BITS categories. Without a visible boundary "Sent" reads as though it were
+ * another category of inbox mail, which is a category error the user then has
+ * to hold in their head.
+ */
+.rail-group + .rail-group {
+  margin-top: var(--s-4);
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--line);
+}
+
+.rail-heading {
+  margin: 0 0 var(--s-2);
+  padding: 0 var(--s-3);
+  font-size: var(--t-xs);
+  font-weight: var(--w-semi);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--fg-dim);
+}
+
+/*
+ * Mailboxes get an icon where categories get a colour dot. The dot encodes a
+ * classifier bucket; a mailbox is a place, and an icon reads as a place.
+ * Sizing matches the dot's column so both lists share one left edge.
+ */
+.mb-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  color: var(--fg-dim);
+}
+
+.cat.mailbox[aria-current='true'] .mb-icon {
+  color: var(--accent);
+}
+
 /* -------------------------------------------------------------- snooze --- */
 
 /*

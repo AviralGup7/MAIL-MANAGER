@@ -36,6 +36,9 @@ import { parseQuery, buildReply } from './query.js';
 import * as settings from './settings.js';
 import { renderShortcuts } from './shortcuts.js';
 import {
+  MAILBOXES, DEFAULT_MAILBOX, getMailbox, isMailbox, showsCategories, actionsFor,
+} from './mailboxes.js';
+import {
   presets as snoozePresets, addSnooze, removeSnooze,
   loadSnoozed, pending as pendingSnoozes, wakeLabel,
 } from './snooze.js';
@@ -82,9 +85,34 @@ const LOW_CONFIDENCE = 0.7;
 
 // -------------------------------------------------------------------- state --
 
-const store = new Store();
+/**
+ * One Store per mailbox.
+ *
+ * Sent, Trash and Spam each have their own pagination cursor, sort order and
+ * search index. Folding them into the inbox's store would pollute inbox search
+ * with 2000 sent messages and make the category counts meaningless.
+ *
+ * `store` is a live binding onto the ACTIVE mailbox's store, so the ~59
+ * existing `store.` call sites keep working unchanged.
+ */
+const stores = new Map([['inbox', new Store()]]);
+/** Per-mailbox pagination + load state, so switching back does not refetch. */
+const mailboxState = new Map([['inbox', { nextPageToken: '', loaded: false }]]);
+
+let store = stores.get('inbox');
+
+function storeFor(id) {
+  if (!stores.has(id)) stores.set(id, new Store());
+  return stores.get(id);
+}
+
+function mbState(id) {
+  if (!mailboxState.has(id)) mailboxState.set(id, { nextPageToken: '', loaded: false });
+  return mailboxState.get(id);
+}
 
 const state = {
+  mailbox: DEFAULT_MAILBOX,
   category: 'all',
   query: '',
   selected: null,
@@ -241,7 +269,24 @@ function scheduleRender({ changed, structural } = { changed: new Set(), structur
   });
 }
 
-store.subscribe(scheduleRender);
+/**
+ * Subscribe a mailbox's store to rendering.
+ *
+ * Renders are gated on the store being the ACTIVE one: a background page load
+ * in Sent must not repaint the inbox the user is looking at.
+ */
+function wireStore(id) {
+  const s = storeFor(id);
+  if (s._bmmWired) return s;
+  s._bmmWired = true;
+  s.subscribe(() => {
+    if (stores.get(state.mailbox) === s) scheduleRender();
+  });
+  // Only the inbox is cached for warm start. Caching Sent as well would
+  // multiply the 10MB budget across mailboxes the user rarely opens cold.
+  if (id === 'inbox') s.subscribe(() => saver.schedule());
+  return s;
+}
 
 /**
  * Persist the newest headers so the next takeover paints from disk.
@@ -250,10 +295,12 @@ store.subscribe(scheduleRender);
  * can never delay a frame. The saver defers to idle and coalesces, so a sync
  * touching 200 messages still produces exactly one write.
  */
-const saver = createSaver(() =>
-  store.idsFor('all').slice(0, CACHE_MAX).map((id) => store.get(id)).filter(Boolean)
-);
-store.subscribe(() => saver.schedule());
+const saver = createSaver(() => {
+  const inbox = stores.get('inbox');
+  return inbox.idsFor('all').slice(0, CACHE_MAX).map((id) => inbox.get(id)).filter(Boolean);
+});
+
+wireStore('inbox');
 
 /**
  * Drop every message and every rendered node, synchronously.
@@ -414,8 +461,11 @@ function updateEmptyState(count) {
     el.emptySub.textContent = 'Nothing has been filed here yet.';
     clear('Show all mail', () => ctx.selectCategory('all'));
   } else if (store.size === 0) {
-    el.emptyTitle.textContent = 'Inbox empty';
-    el.emptySub.textContent = 'Nothing to show. Refresh to check for new mail.';
+    // Each mailbox says something true about itself. "Inbox empty" while
+    // looking at Trash is the kind of small wrongness that reads as a bug.
+    const mb = getMailbox(state.mailbox);
+    el.emptyTitle.textContent = state.mailbox === 'inbox' ? 'Inbox empty' : `${mb.label} is empty`;
+    el.emptySub.textContent = mb.empty || 'Nothing to show.';
     clear('Refresh', () => refresh());
   } else {
     el.emptyTitle.textContent = "You're all caught up";
@@ -576,12 +626,70 @@ function patchRow(id) {
 /** Built once; afterwards only the count text is touched. */
 function buildSidebar() {
   const frag = document.createDocumentFragment();
-  frag.appendChild(catButton('all', 'All mail', null));
-  for (const cat of SIDEBAR_ORDER) {
-    frag.appendChild(catButton(cat, CATEGORY_LABELS[cat] || cat, CAT_COLOR[cat]));
+
+  /*
+   * MAILBOXES FIRST, then the BITS categories.
+   *
+   * Two distinct kinds of navigation in one rail needs a visible boundary, or
+   * "Sent" reads as though it were another category of inbox mail. The
+   * mailbox group is where every mail user looks first, so it goes on top.
+   */
+  const mbGroup = document.createElement('div');
+  mbGroup.className = 'rail-group';
+  for (const mb of MAILBOXES) {
+    mbGroup.appendChild(mailboxButton(mb));
   }
+  frag.appendChild(mbGroup);
+
+  const catGroup = document.createElement('div');
+  catGroup.className = 'rail-group';
+  catGroup.id = 'cat-group';
+  const heading = document.createElement('h2');
+  heading.className = 'rail-heading';
+  heading.textContent = 'Categories';
+  catGroup.appendChild(heading);
+  catGroup.appendChild(catButton('all', 'All mail', null));
+  for (const cat of SIDEBAR_ORDER) {
+    catGroup.appendChild(catButton(cat, CATEGORY_LABELS[cat] || cat, CAT_COLOR[cat]));
+  }
+  frag.appendChild(catGroup);
+
   el.cats.replaceChildren(frag);
 }
+
+function mailboxButton(mb) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'cat mailbox';
+  b.dataset.mailbox = mb.id;
+  b.setAttribute('aria-current', String(state.mailbox === mb.id));
+  b.tabIndex = state.mailbox === mb.id ? 0 : -1;
+
+  const ic = document.createElement('span');
+  ic.className = 'mb-icon';
+  ic.appendChild(icon(MAILBOX_ICON[mb.id] || 'mail'));
+
+  const name = document.createElement('span');
+  name.className = 'cat-name';
+  name.textContent = mb.label;
+
+  const count = document.createElement('span');
+  count.className = 'cat-count';
+
+  b.append(ic, name, count);
+  return b;
+}
+
+/** Icon per mailbox, from the existing 14-icon set. */
+const MAILBOX_ICON = {
+  inbox: 'mail',
+  snoozed: 'clock',
+  sent: 'reply',
+  drafts: 'compose',
+  starred: 'star',
+  spam: 'warning',
+  trash: 'trash',
+};
 
 function catButton(key, label, color) {
   const b = document.createElement('button');
@@ -611,17 +719,60 @@ function renderSidebar() {
   let totalUnread = 0;
   for (const n of Object.values(unread)) totalUnread += n;
 
-  for (const b of el.cats.children) {
-    const key = b.dataset.cat;
+  // querySelectorAll, not `children`: the rail is grouped now, so the buttons
+  // are grandchildren and `children` would iterate two wrapper divs.
+  for (const b of el.cats.querySelectorAll('.cat')) {
     const countEl = b.lastElementChild;
+
+    if (b.dataset.mailbox) {
+      // A mailbox shows the count of what IT holds, from its own store, and
+      // only once loaded -- showing "0" for a mailbox never opened would
+      // assert something we have not checked.
+      const id = b.dataset.mailbox;
+      const s = stores.get(id);
+      const loaded = mailboxState.get(id)?.loaded;
+      let text = '';
+      if (id === state.mailbox || loaded) {
+        const un = s ? sumUnread(s) : 0;
+        text = un ? String(un) : s && s.size ? String(s.size) : '';
+      }
+      setText(countEl, text);
+      countEl.classList.toggle('unread', text !== '' && !!sumUnread(stores.get(id)));
+      b.setAttribute('aria-current', String(state.mailbox === id));
+      continue;
+    }
+
+    const key = b.dataset.cat;
     const u = key === 'all' ? totalUnread : unread[key] || 0;
     const t = key === 'all' ? store.size : counts[key] || 0;
     setText(countEl, u ? String(u) : t ? String(t) : '');
     countEl.classList.toggle('unread', u > 0);
-    const current = state.category === key;
-    b.setAttribute('aria-current', String(current));
-    b.tabIndex = current ? 0 : -1;
+    b.setAttribute('aria-current', String(state.category === key));
   }
+
+  /*
+   * ONE tab stop for the WHOLE rail.
+   *
+   * Setting tabIndex per group gave two stops -- the current mailbox and the
+   * current category -- which is the exact bug the roving tabindex was
+   * introduced to remove, reintroduced by splitting the rail in two. The
+   * single stop is the ACTIVE mailbox, or the active category when the
+   * category rail is the meaningful one.
+   */
+  const buttons = [...el.cats.querySelectorAll('.cat')];
+  const preferred =
+    (showsCategories(state.mailbox) &&
+      buttons.find((b) => b.dataset.cat === state.category)) ||
+    buttons.find((b) => b.dataset.mailbox === state.mailbox) ||
+    buttons[0];
+  for (const b of buttons) b.tabIndex = b === preferred ? 0 : -1;
+}
+
+function sumUnread(s) {
+  if (!s) return 0;
+  let n = 0;
+  for (const v of Object.values(s.unreadCounts())) n += v;
+  return n;
 }
 
 // ----------------------------------------------------------------- reader --
@@ -1114,6 +1265,50 @@ function selectNeighbourThen(id) {
  * run inline. Doing it before the batch means the store is mutated exactly
  * once per page and the UI renders exactly once per page.
  */
+/**
+ * Ingest into a specific mailbox's store.
+ *
+ * `classified: false` mailboxes skip the BITS classifier entirely. Bucketing
+ * your own Sent mail by whichever rule matched the recipient is noise, and
+ * running the classifier over Trash wastes work on messages that are leaving.
+ * Those views get a flat, date-ordered list, which is what they are for.
+ */
+function ingestInto(mailboxId, messages, classified) {
+  const target = storeFor(mailboxId);
+  const records = new Array(messages.length);
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
+    const base = {
+      id: m.id,
+      threadId: m.threadId,
+      from: m.from,
+      to: m.to,
+      subject: m.subject,
+      snippet: m.snippet,
+      date: m.date,
+      unread: m.unread,
+      starred: m.starred,
+      hasAttachment: !!m.hasAttachment,
+    };
+    if (classified) {
+      const c = classify(m);
+      const d = extractDeadline(m);
+      records[i] = {
+        ...base,
+        dueAt: d ? d.at : undefined,
+        dueKind: d ? d.kind : undefined,
+        category: c.category,
+        confidence: c.confidence,
+        source: c.source,
+        reason: c.reason,
+      };
+    } else {
+      records[i] = { ...base, category: 'other', confidence: 1, source: 'mailbox' };
+    }
+  }
+  target.upsertMany(records);
+}
+
 function ingest(messages) {
   if (!messages.length) return;
   const records = new Array(messages.length);
@@ -1180,6 +1375,22 @@ async function loadPage(pageToken = '') {
  * @returns {Promise<'delta'|'resync'|'none'|'error'|undefined>}
  */
 async function refresh({ silent = false } = {}) {
+  /*
+   * Delta sync is INBOX-ONLY. The History API cursor tracks the account, but
+   * our delta handler reconciles against the inbox's store; running it while
+   * Sent is showing would apply inbox changes to the wrong collection. Other
+   * mailboxes refresh by refetching their first page, which is cheap because
+   * they are small and rarely open.
+   */
+  if (state.mailbox !== 'inbox') {
+    const id = state.mailbox;
+    storeFor(id).clear();
+    mbState(id).nextPageToken = '';
+    mbState(id).loaded = false;
+    await loadMailboxPage(id, '');
+    if (!silent) toast('Refreshed');
+    return 'delta';
+  }
   if (state.loading) return;
   state.loading = true;
   setBusy(true);
@@ -1314,7 +1525,11 @@ el.list.addEventListener('click', (e) => {
  * it replaced.
  */
 el.cats.addEventListener('keydown', (e) => {
-  const items = [...el.cats.children];
+  // Query for the buttons rather than reading `children`: the rail is now
+  // grouped into mailboxes and categories, so the buttons are grandchildren.
+  // Reading `children` here silently returned two wrapper divs and killed
+  // arrow navigation entirely.
+  const items = [...el.cats.querySelectorAll('.cat')];
   const i = items.indexOf(document.activeElement);
   if (i === -1) return;
   let next = -1;
@@ -1334,7 +1549,8 @@ el.cats.addEventListener('keydown', (e) => {
 el.cats.addEventListener('click', (e) => {
   const b = e.target.closest('.cat');
   if (!b) return;
-  selectCategory(b.dataset.cat);
+  if (b.dataset.mailbox) selectMailbox(b.dataset.mailbox);
+  else selectCategory(b.dataset.cat);
 });
 
 /**
@@ -1358,6 +1574,77 @@ function selectCategory(key) {
   // highlighted would claim a filter is applied when it is not.
   renderViews();
   updateSaveAffordance();
+}
+
+/**
+ * Switch mailbox.
+ *
+ * Each mailbox keeps its own store, so coming back to the inbox is instant and
+ * does not refetch. A mailbox is loaded lazily the first time it is opened;
+ * after that it is refreshed only on demand, because Sent and Trash do not
+ * change behind your back the way an inbox does.
+ */
+async function selectMailbox(id) {
+  if (!isMailbox(id) || id === state.mailbox) return;
+
+  const mb = getMailbox(id);
+  state.mailbox = id;
+  store = wireStore(id);
+  // Category is an inbox-only concept; entering Sent with `category:library`
+  // still applied would show an empty list for no visible reason.
+  state.category = 'all';
+  state.query = '';
+  el.search.value = '';
+  state.selected = null;
+  selection.clear();
+
+  closeReader();
+  nodeById.clear();
+  renderedIds = [];
+  el.list.replaceChildren();
+
+  // The category rail only makes sense where messages are classified.
+  const catGroup = $('cat-group');
+  if (catGroup) catGroup.hidden = !showsCategories(id);
+
+  el.scroller.scrollTop = 0;
+  state.nextPageToken = mbState(id).nextPageToken;
+  renderList();
+  renderSidebar();
+  renderSelection();
+  syncContextActions(null);
+
+  if (!mbState(id).loaded) await loadMailboxPage(id, '');
+}
+
+/** Fetch one page of a non-inbox mailbox. */
+async function loadMailboxPage(id, pageToken = '') {
+  const mb = getMailbox(id);
+  if (state.loading) return;
+  state.loading = true;
+  setBusy(true);
+  try {
+    const opts = { pageToken, max: PAGE, anchorHistory: id === 'inbox' };
+    // Our snoozed label is addressed by name; Gmail's own labels by id.
+    if (mb.byLabelName) opts.labelName = mb.labelIds[0];
+    else opts.labelIds = mb.labelIds;
+
+    const { messages, nextPageToken } = await send('SYNC_PAGE', { opts });
+    ingestInto(id, messages, mb.classified);
+    mbState(id).nextPageToken = nextPageToken || '';
+    mbState(id).loaded = true;
+    if (state.mailbox === id) {
+      state.nextPageToken = mbState(id).nextPageToken;
+      $('btn-more').disabled = !mbState(id).nextPageToken;
+      renderList();
+      renderSidebar();
+    }
+  } catch (err) {
+    reportError(err);
+  } finally {
+    state.loading = false;
+    setBusy(false);
+  }
 }
 
 el.rAttachments.addEventListener('click', (e) => {
@@ -1432,7 +1719,11 @@ el.helpClose?.addEventListener('click', closeHelp);
 el.help?.addEventListener('mousedown', (e) => {
   if (e.target === el.help) closeHelp();
 });
-$('btn-more').addEventListener('click', () => loadPage(state.nextPageToken));
+$('btn-more').addEventListener('click', () => {
+  // Route to whichever mailbox is showing; loadPage() is inbox-specific.
+  if (state.mailbox === 'inbox') loadPage(state.nextPageToken);
+  else loadMailboxPage(state.mailbox, mbState(state.mailbox).nextPageToken);
+});
 $('btn-gmail').addEventListener('click', release);
 $('btn-signout').addEventListener('click', async () => {
   await send('SIGN_OUT').catch(() => {});
@@ -1916,6 +2207,25 @@ function syncContextActions(m) {
   setIcon(star, 'star', { size: 15, filled: !!m.starred });
   star.setAttribute('aria-label', m.starred ? 'Unstar' : 'Star');
   star.setAttribute('aria-pressed', String(!!m.starred));
+  syncReaderActions();
+}
+
+/**
+ * Show only the actions that mean something in this mailbox.
+ *
+ * "Archive" in Trash does nothing useful, and "Delete" on an already-deleted
+ * message is a control that lies about what it will do. Dead controls are how
+ * a UI teaches people not to trust it.
+ */
+function syncReaderActions() {
+  const allowed = actionsFor(state.mailbox);
+  const bar = $('r-actions');
+  if (!bar) return;
+  for (const btn of bar.querySelectorAll('button[data-act]')) {
+    const act = btn.dataset.act;
+    // `unread` is always available; the rest are mailbox-dependent.
+    btn.hidden = act in allowed ? !allowed[act] : false;
+  }
 }
 
 /* ======================================================================== *

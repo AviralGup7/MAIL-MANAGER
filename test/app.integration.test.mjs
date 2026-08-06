@@ -941,7 +941,13 @@ test('A11Y: the sidebar is one tab stop with arrow-key movement', async (t) => {
   // is a worse bug than the stops it replaced.
   const { doc, win, settle, restore } = await boot();
   try {
-    const cats = [...doc.getElementById('cats').children];
+    // Query the buttons, not `children`. The rail is now grouped into system
+    // mailboxes and BITS categories, so the buttons are grandchildren; reading
+    // `children` here returned the two wrapper divs and asserted nothing.
+    const cats = [...doc.getElementById('cats').querySelectorAll('.cat')];
+    assert.ok(cats.length > 8, 'both mailboxes and categories should be present');
+    // ONE stop for the whole rail, across both groups. Two groups must not
+    // mean two tab stops.
     assert.equal(cats.filter((c) => c.tabIndex === 0).length, 1, 'exactly one tabbable category');
 
     cats[0].focus();

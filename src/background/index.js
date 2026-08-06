@@ -180,8 +180,22 @@ async function handle(msg) {
       return profile();
 
     // ---- sync ----------------------------------------------------------
-    case 'SYNC_PAGE':
-      return syncPage(msg.opts || {});
+    case 'SYNC_PAGE': {
+      const opts = { ...(msg.opts || {}) };
+      // A mailbox identified by label NAME (our snoozed label) has to be
+      // resolved to an id before listing; Gmail's list API takes ids only.
+      if (opts.labelName) {
+        try {
+          opts.labelIds = [await ensureLabel(opts.labelName)];
+        } catch {
+          // The label does not exist yet, which simply means nothing has ever
+          // been put in it. An empty page is the honest answer.
+          return { messages: [], nextPageToken: '' };
+        }
+        delete opts.labelName;
+      }
+      return syncPage(opts);
+    }
     case 'SYNC_DELTA':
       return syncDelta();
 

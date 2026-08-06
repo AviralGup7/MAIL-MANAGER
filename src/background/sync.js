@@ -35,7 +35,7 @@ export async function setHistoryId(id) {
  * @param {{pageToken?:string, max?:number, q?:string, labelIds?:string[]}} opts
  * @returns {Promise<{messages:object[], nextPageToken:string}>}
  */
-export async function syncPage({ pageToken = '', max = BATCH_SIZE, q = '', labelIds } = {}) {
+export async function syncPage({ pageToken = '', max = BATCH_SIZE, q = '', labelIds, anchorHistory = true } = {}) {
   // Read the cursor BEFORE listing, on the first page of a fresh sync.
   //
   // This used to be read AFTER the messages were fetched, which loses mail:
@@ -52,8 +52,17 @@ export async function syncPage({ pageToken = '', max = BATCH_SIZE, q = '', label
   // STALE, so the next delta replays a handful of changes we already have.
   // `upsert` is idempotent, so a replay costs nothing. Stale loses nothing;
   // too-new loses mail irrecoverably.
+  /*
+   * ONLY THE INBOX MOVES THE CURSOR.
+   *
+   * The historyId is a single account-wide cursor that the inbox's delta sync
+   * depends on. Loading a page of Sent or Trash would otherwise advance it
+   * past inbox changes that were never fetched, and those changes are then
+   * unrecoverable -- exactly the bug fixed above, reintroduced through a
+   * different door. Non-inbox mailboxes pass `anchorHistory: false`.
+   */
   let anchor = null;
-  if (!pageToken) {
+  if (anchorHistory && !pageToken) {
     try {
       anchor = (await profile()).historyId;
     } catch {
