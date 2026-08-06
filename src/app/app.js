@@ -840,6 +840,8 @@ function sumUnread(s) {
 let bodyToken = 0;
 /** The last body fetched, kept so a theme change can re-render it. */
 let lastBody = null;
+/** Pending "mark read" for the open message. Cancelled if the user moves on. */
+let markReadTimer = 0;
 
 async function openMessage(id) {
   const m = store.get(id);
@@ -868,16 +870,44 @@ async function openMessage(id) {
   el.rDate.textContent = fullDate(m.date);
   el.rOpen.href = `https://mail.google.com/mail/u/${ACCOUNT_INDEX}/#inbox/${m.threadId}`;
 
+  /*
+   * The classifier's own confidence is DIAGNOSTIC, not something a reader
+   * needs on every message. It is shown only when the classifier is unsure,
+   * or when a human overrode it -- the two cases where "why is this here?" is
+   * a real question. On a confident rule match it is noise competing with the
+   * subject line.
+   */
+  const confident = (m.confidence ?? 1) >= LOW_CONFIDENCE && m.source !== 'you';
   el.rTags.replaceChildren(
     tagNode(CATEGORY_LABELS[m.category] || m.category, CAT_COLOR[m.category]),
-    tagNode(`${Math.round((m.confidence ?? 1) * 100)}% · ${m.source || 'rule'}`),
-    ...(m.reason ? [tagNode(m.reason)] : [])
+    ...(confident
+      ? []
+      : [tagNode(`${Math.round((m.confidence ?? 1) * 100)}% · ${m.source || 'rule'}`)]),
+    ...(m.reason && !confident ? [tagNode(m.reason)] : [])
   );
 
-  // Optimistic read. Gmail is told after, and the UI never waits for it.
-  if (m.unread) {
-    store.patch(id, { unread: false });
-    send('MARK_READ', { id }).catch(() => store.patch(id, { unread: true }));
+  /*
+   * MARK READ, ON A DELAY.
+   *
+   * Unread is the one piece of triage state the user cannot reconstruct, and
+   * a mis-click previously consumed it instantly. Waiting about a second means
+   * arrowing past a message, or opening the wrong one and immediately leaving,
+   * costs nothing. Gmail marks read almost immediately and is worse for it.
+   *
+   * The timer is cancelled by the same token that cancels the body fetch, so
+   * moving on before it fires leaves the message unread.
+   */
+  clearTimeout(markReadTimer);
+  if (m.unread && settings.get('markReadOnOpen')) {
+    const delay = settings.get('markReadDelayMs');
+    const markRead = () => {
+      // Still looking at it?
+      if (state.selected !== id) return;
+      store.patch(id, { unread: false });
+      send('MARK_READ', { id }).catch(() => store.patch(id, { unread: true }));
+    };
+    if (delay > 0) markReadTimer = setTimeout(markRead, delay);
+    else markRead();
   }
 
   const token = ++bodyToken;
@@ -1197,6 +1227,10 @@ function closeReader() {
   state.selected = null;
   bodyToken++;
   lastBody = null;
+  // Closing before the delay elapses leaves the message unread, which is the
+  // whole point of the delay.
+  clearTimeout(markReadTimer);
+  markReadTimer = 0;
   if (prev) patchRow(prev);
   el.list.removeAttribute('aria-activedescendant');
   syncContextActions(null);
@@ -2749,6 +2783,8 @@ function cancelPendingWork() {
   clearTimeout(serverSearchTimer);
   serverSearchTimer = 0;
   serverSearchToken++;
+  clearTimeout(markReadTimer);
+  markReadTimer = 0;
   if (searchFrame) {
     cancelAnimationFrame(searchFrame);
     searchFrame = 0;
@@ -2979,7 +3015,12 @@ async function boot() {
     // Rules must be loaded BEFORE the first ingest, or the first page is
     // classified without the user's corrections and auto-archive silently
     // does not run on it.
+    // Settings and rules must both be loaded before the first ingest and the
+    // first reader open: a preference read after the fact is a preference the
+    // user watched not apply.
+    await settings.loadSettings();
     rules = await loadRules();
+    await loadImageAllowList();
     await start();
     // Only after the inbox is up: an unsent message from a previous session
     // is offered back rather than silently lost.

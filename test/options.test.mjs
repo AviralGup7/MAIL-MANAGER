@@ -1,0 +1,210 @@
+/**
+ * Options page tests.
+ *
+ * The options page had NO tests and one setting. It now writes preferences
+ * that change how mail is read -- whether unread state survives a mis-click,
+ * and whether remote images are allowed to report you to a sender. Both are
+ * consequential enough to verify by driving the real page.
+ */
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
+
+let JSDOM;
+try {
+  ({ JSDOM } = await import('jsdom'));
+} catch {
+  test('options (skipped: jsdom not installed)', { skip: true }, () => {});
+}
+
+const ROOT = new URL('..', import.meta.url).pathname;
+
+async function bootOptions(seed = {}) {
+  const html = readFileSync(`${ROOT}/options.html`, 'utf8');
+  const dom = new JSDOM(html, {
+    url: 'chrome-extension://test/options.html',
+    runScripts: 'outside-only',
+  });
+  const win = dom.window;
+  const store = { ...seed };
+
+  win.chrome = {
+    runtime: { id: 't', getURL: () => 'chrome-extension://test/' },
+    identity: {
+      getRedirectURL: () => 'https://dgeanijfllibcphbblkhacjcbdehihcp.chromiumapp.org/',
+    },
+    storage: {
+      local: {
+        async get(k) {
+          if (Array.isArray(k)) {
+            const o = {};
+            for (const x of k) if (x in store) o[x] = store[x];
+            return o;
+          }
+          if (typeof k === 'string') return k in store ? { [k]: store[k] } : {};
+          return { ...store };
+        },
+        async set(o) { Object.assign(store, o); },
+        async remove(k) { for (const x of [].concat(k)) delete store[x]; },
+      },
+    },
+  };
+
+  const prev = {};
+  for (const k of ['window', 'document', 'chrome']) prev[k] = globalThis[k];
+  globalThis.window = win;
+  globalThis.document = win.document;
+  globalThis.chrome = win.chrome;
+
+  await import(pathToFileURL(`${ROOT}/src/options/options.js`).href + `?t=${Math.random()}`);
+  await new Promise((r) => setTimeout(r, 60));
+
+  return {
+    win, doc: win.document, store,
+    restore: () => Object.assign(globalThis, prev),
+  };
+}
+
+test('preferences load with their schema defaults', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, restore } = await bootOptions();
+  try {
+    assert.equal(doc.getElementById('markReadOnOpen').checked, true);
+    assert.equal(doc.getElementById('markReadDelayMs').value, '1200');
+    assert.equal(doc.getElementById('markReadDelayLabel').textContent, '1.2s');
+    assert.equal(doc.getElementById('remoteImages').value, 'ask');
+  } finally {
+    restore();
+  }
+});
+
+test('a stored preference is reflected, not overwritten by the default', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, restore } = await bootOptions({ remoteImages: 'never', markReadDelayMs: 3000 });
+  try {
+    assert.equal(doc.getElementById('remoteImages').value, 'never');
+    assert.equal(doc.getElementById('markReadDelayMs').value, '3000');
+    assert.equal(doc.getElementById('markReadDelayLabel').textContent, '3.0s');
+  } finally {
+    restore();
+  }
+});
+
+/*
+ * Dragging a slider fires `input` continuously. Writing on each one is a
+ * storage round trip per pixel, so the label updates live and the WRITE waits
+ * for `change`.
+ */
+test('dragging the delay slider updates the label without writing', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, win, store, restore } = await bootOptions();
+  try {
+    const slider = doc.getElementById('markReadDelayMs');
+    slider.value = '2400';
+    slider.dispatchEvent(new win.Event('input'));
+    assert.equal(doc.getElementById('markReadDelayLabel').textContent, '2.4s');
+    assert.equal(store.markReadDelayMs, undefined, 'must not write on every input event');
+
+    slider.dispatchEvent(new win.Event('change'));
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(store.markReadDelayMs, 2400, 'commits on change');
+  } finally {
+    restore();
+  }
+});
+
+test('zero delay reads as "off" rather than "0.0s"', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, win, restore } = await bootOptions();
+  try {
+    const slider = doc.getElementById('markReadDelayMs');
+    slider.value = '0';
+    slider.dispatchEvent(new win.Event('input'));
+    assert.equal(doc.getElementById('markReadDelayLabel').textContent, 'off');
+  } finally {
+    restore();
+  }
+});
+
+test('the delay control is disabled when marking-read is off', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // A live control that does nothing is worse than an absent one.
+  const { doc, win, store, restore } = await bootOptions();
+  try {
+    const cb = doc.getElementById('markReadOnOpen');
+    const slider = doc.getElementById('markReadDelayMs');
+    assert.equal(slider.disabled, false);
+
+    cb.checked = false;
+    cb.dispatchEvent(new win.Event('change'));
+    await new Promise((r) => setTimeout(r, 20));
+
+    assert.equal(store.markReadOnOpen, false);
+    assert.equal(slider.disabled, true, 'the dependent control must disable');
+  } finally {
+    restore();
+  }
+});
+
+test('the image policy persists', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, win, store, restore } = await bootOptions();
+  try {
+    const sel = doc.getElementById('remoteImages');
+    sel.value = 'never';
+    sel.dispatchEvent(new win.Event('change'));
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(store.remoteImages, 'never');
+  } finally {
+    restore();
+  }
+});
+
+test('an out-of-range stored value is coerced, not trusted', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Storage is shared with older builds; a value from a previous schema must
+  // never reach the UI unchecked.
+  const { doc, restore } = await bootOptions({ markReadDelayMs: 999999, remoteImages: 'bogus' });
+  try {
+    // The schema max is 5000ms; the slider max matches it.
+    assert.equal(doc.getElementById('markReadDelayMs').value, '5000', 'clamped to the max');
+    assert.equal(doc.getElementById('remoteImages').value, 'ask', 'unknown enum falls back');
+  } finally {
+    restore();
+  }
+});
+
+test('the page no longer claims PKCE', async () => {
+  // PKCE was tried and abandoned -- Google demands a client_secret from a Web
+  // application client even with a verifier. Docs that describe a flow the
+  // code does not use send people to the wrong Google Cloud settings.
+  const html = readFileSync(`${ROOT}/options.html`, 'utf8');
+  // Strip comments: the source explains WHY PKCE was abandoned, which is
+  // worth keeping. What matters is that no user-visible text claims it.
+  const visible = html.replace(/<!--[\s\S]*?-->/g, '');
+  assert.ok(!/PKCE/i.test(visible), 'user-visible copy still mentions PKCE');
+  assert.match(visible, /implicit/i, 'it should name the flow actually used');
+});
+
+test('the client-ID guard still refuses a pasted secret', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Guards against the exact mistake v1 institutionalised.
+  const { doc, store, restore } = await bootOptions();
+  try {
+    /*
+     * Deliberately SHORT. The repo-wide secret scanner in package.test.mjs
+     * flags `GOCSPX-` followed by 10+ characters, and it is right to: a
+     * realistic-looking fixture is indistinguishable from a real leak to
+     * anyone grepping the repo, including that scanner. The guard under test
+     * keys on the prefix, so a short value exercises it exactly the same.
+     */
+    doc.getElementById('clientId').value = 'GOCSPX-x1';
+    doc.getElementById('save').click();
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(store.clientId, undefined, 'a secret must never be stored');
+    assert.match(doc.getElementById('status').textContent, /secret/i);
+  } finally {
+    restore();
+  }
+});

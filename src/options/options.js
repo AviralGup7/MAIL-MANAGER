@@ -1,10 +1,18 @@
 /**
  * Options page.
  *
- * One setting: the OAuth client ID. Deliberately not hardcoded in the source,
- * so every install can point at its own Google Cloud project and there is no
- * shared credential whose revocation breaks everybody.
+ * The OAuth client ID is deliberately not hardcoded in the source, so every
+ * install can point at its own Google Cloud project and there is no shared
+ * credential whose revocation breaks everybody.
+ *
+ * Everything else on this page is a PREFERENCE, and preferences are read and
+ * written through `src/app/settings.js` rather than touching storage here.
+ * One schema, one default per key, one place that coerces a bad stored value
+ * -- otherwise the page that writes a setting and the app that reads it drift
+ * apart, and the user is the one who finds out.
  */
+
+import * as settings from '../app/settings.js';
 
 /**
  * The client ID version 1 shipped with. Offered as a convenience because the
@@ -64,15 +72,27 @@ async function save() {
     status.textContent = 'Cleared.';
     return;
   }
+  /*
+   * THE SECRET CHECK MUST COME FIRST.
+   *
+   * It used to sit AFTER the format check, and a real secret
+   * (`GOCSPX-...`) does not end in `.apps.googleusercontent.com` -- so it
+   * failed the format test and returned with "That does not look like a
+   * client ID." The specific, security-relevant warning was UNREACHABLE for
+   * every value that could actually trigger it.
+   *
+   * The generic message is not wrong, but it teaches the user to fix the
+   * format rather than to go and rotate a leaked credential, which is the
+   * exact mistake v1 institutionalised.
+   */
+  if (/^GOCSPX-/.test(raw)) {
+    status.style.color = '#c0392b';
+    status.textContent = 'That is a client SECRET. Never paste it here — rotate it instead.';
+    return;
+  }
   if (!/\.apps\.googleusercontent\.com$/.test(raw)) {
     status.style.color = '#c0392b';
     status.textContent = 'That does not look like a client ID.';
-    return;
-  }
-  if (/^GOCSPX-/.test(raw)) {
-    // Guard against the exact mistake v1 institutionalised.
-    status.style.color = '#c0392b';
-    status.textContent = 'That is a client SECRET. Never paste it here — rotate it instead.';
     return;
   }
 
@@ -81,3 +101,62 @@ async function save() {
   status.textContent = 'Saved.';
   setTimeout(() => (status.textContent = ''), 2500);
 }
+
+/* ========================================================================== *
+ * PREFERENCES
+ *
+ * Backed by src/app/settings.js so the schema, the defaults and the coercion
+ * live in ONE place. Reading these keys ad-hoc here is what the settings
+ * module exists to prevent -- it is how a default drifts between the page
+ * that writes it and the app that reads it.
+ * ========================================================================== */
+
+
+const fmtDelay = (ms) => (ms === 0 ? 'off' : `${(ms / 1000).toFixed(1)}s`);
+
+(async function wirePreferences() {
+  await settings.loadSettings();
+
+  const markRead = $('markReadOnOpen');
+  const delay = $('markReadDelayMs');
+  const delayLabel = $('markReadDelayLabel');
+  const images = $('remoteImages');
+  if (!markRead || !delay || !images) return;
+
+  // Reflect stored state.
+  markRead.checked = settings.get('markReadOnOpen');
+  delay.value = String(settings.get('markReadDelayMs'));
+  delayLabel.textContent = fmtDelay(settings.get('markReadDelayMs'));
+  images.value = settings.get('remoteImages');
+
+  /*
+   * The delay control is meaningless when marking-read is off, so it is
+   * disabled rather than left live and ignored. A control that does nothing
+   * is worse than one that is absent.
+   */
+  const syncEnabled = () => {
+    const on = markRead.checked;
+    delay.disabled = !on;
+    delay.closest('fieldset').querySelector('label[for="markReadDelayMs"]').style.opacity =
+      on ? '1' : '0.5';
+  };
+  syncEnabled();
+
+  markRead.addEventListener('change', async () => {
+    await settings.set('markReadOnOpen', markRead.checked);
+    syncEnabled();
+  });
+
+  // `input` for the live label, `change` for the write: dragging a slider
+  // fires input continuously and each one would be a storage round trip.
+  delay.addEventListener('input', () => {
+    delayLabel.textContent = fmtDelay(Number(delay.value));
+  });
+  delay.addEventListener('change', async () => {
+    await settings.set('markReadDelayMs', Number(delay.value));
+  });
+
+  images.addEventListener('change', async () => {
+    await settings.set('remoteImages', images.value);
+  });
+})();

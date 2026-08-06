@@ -280,10 +280,77 @@ test('opening a message shows it and optimistically marks it read', async (t) =>
 
     assert.equal(doc.getElementById('reader').hidden, false);
     assert.equal(doc.getElementById('r-subject').textContent, 'Registration for Semester II');
-    // Optimistic: the row is already read, before the worker replied.
-    assert.ok(!rows(doc)[0].classList.contains('unread'), 'row should be read immediately');
-    assert.ok(calls.some((c) => c.type === 'MARK_READ' && c.id === 'm1'));
+    // The BODY is fetched immediately -- reading must never wait.
     assert.ok(calls.some((c) => c.type === 'GET_BODY' && c.id === 'm1'));
+
+    /*
+     * Marking read is DELIBERATELY DELAYED (settings.markReadDelayMs).
+     *
+     * Unread is the one piece of triage state a user cannot reconstruct, so a
+     * mis-click must not consume it. This test previously asserted the
+     * instant behaviour; it now pins the delay, and the two tests below pin
+     * both outcomes of it.
+     */
+    assert.ok(
+      !calls.some((c) => c.type === 'MARK_READ'),
+      'must not mark read on the same tick as the click'
+    );
+    assert.ok(rows(doc)[0].classList.contains('unread'), 'still unread during the grace period');
+
+    // Wait past the default delay and it lands, optimistically.
+    await new Promise((r) => setTimeout(r, 1400));
+    await settle();
+    assert.ok(!rows(doc)[0].classList.contains('unread'), 'read once the delay elapses');
+    assert.ok(calls.some((c) => c.type === 'MARK_READ' && c.id === 'm1'));
+  } finally {
+    restore();
+  }
+});
+
+test('a message skimmed past within the grace period stays unread', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * The reason the delay exists. Arrowing through the list, or opening the
+   * wrong message and leaving immediately, must not silently destroy unread
+   * state across every message you touched.
+   */
+  const { doc, win, calls, settle, restore } = await boot();
+  try {
+    rows(doc)[0].click();
+    await settle();
+    // Move on well before the delay elapses.
+    doc.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'j', bubbles: true }));
+    await settle();
+
+    await new Promise((r) => setTimeout(r, 1400));
+    await settle();
+
+    assert.ok(
+      !calls.some((c) => c.type === 'MARK_READ' && c.id === 'm1'),
+      'the message that was skimmed past must not be marked read'
+    );
+    assert.ok(rows(doc)[0].classList.contains('unread'));
+  } finally {
+    restore();
+  }
+});
+
+test('closing the reader cancels a pending mark-read', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, win, calls, settle, restore } = await boot();
+  try {
+    rows(doc)[0].click();
+    await settle();
+    doc.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await settle();
+
+    await new Promise((r) => setTimeout(r, 1400));
+    await settle();
+
+    assert.ok(
+      !calls.some((c) => c.type === 'MARK_READ' && c.id === 'm1'),
+      'a message opened and immediately closed stays unread'
+    );
   } finally {
     restore();
   }

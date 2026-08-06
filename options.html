@@ -35,19 +35,39 @@
       .warn b { display: block; margin-bottom: 4px; }
       ol { padding-left: 20px; font-size: 12.5px; color: #5b6270; }
       li { margin-bottom: 5px; }
+      select {
+        width: 100%; padding: 9px 11px; border: 1px solid #dfe3ea; border-radius: 9px;
+        font: inherit; font-size: 13px; box-sizing: border-box; background: #fff;
+        color: #16181d;
+      }
+      /* A checkbox label is a row, not a stacked block like the text labels. */
+      label.check {
+        display: flex; align-items: center; gap: 8px;
+        color: #16181d; font-size: 13px; margin-bottom: 14px;
+      }
+      label.check input { margin: 0; }
+      input[type='range'] { width: 100%; margin: 2px 0 0; accent-color: #1a4fd6; }
+      fieldset label:not(:first-of-type) { margin-top: 16px; }
     </style>
   </head>
   <body>
     <h1>BITS Mail Manager</h1>
-    <p class="sub">Version 2 — PKCE auth, no client secret.</p>
+    <!--
+      Was "PKCE auth". PKCE was tried and ABANDONED: Google's token endpoint
+      demands a client_secret from a Web application client even with a code
+      verifier, and the Chrome Extension client type refuses chromiumapp.org
+      redirects. The shipping flow is implicit (response_type=token), which
+      cannot be asked for a secret because there is no exchange step.
+    -->
+    <p class="sub">Version 2 — implicit-flow auth, no client secret.</p>
 
     <div class="warn">
       <b>Security notice, carried over from version 1</b>
       Version 1 hard-coded a Google OAuth <em>client secret</em> in <code>lib/auth.js</code> in a
       public repository. That secret is in git history and must be treated as compromised.
       <strong>Rotate it at console.cloud.google.com/apis/credentials.</strong> This version never
-      uses a secret at all — it uses PKCE (RFC 7636), which is the correct flow for a public client
-      like a browser extension.
+      uses a secret at all — it uses the OAuth implicit flow, which has no token-exchange step and
+      therefore no place a secret could be required.
     </div>
 
     <fieldset>
@@ -69,6 +89,37 @@
         <button id="useDefault" class="ghost" type="button">Use v1 client ID</button>
         <span id="status"></span>
       </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Reading</legend>
+
+      <label class="check">
+        <input id="markReadOnOpen" type="checkbox" />
+        Mark a message read when I open it
+      </label>
+
+      <label for="markReadDelayMs">
+        Wait before marking read — <b id="markReadDelayLabel">1.2s</b>
+      </label>
+      <input id="markReadDelayMs" type="range" min="0" max="5000" step="200" />
+      <p class="hint">
+        Unread is the one bit of triage you cannot reconstruct, so a mis-click
+        should not consume it. Arrowing past a message inside this window leaves
+        it unread. Set to 0 for Gmail's behaviour.
+      </p>
+
+      <label for="remoteImages">Images from the internet</label>
+      <select id="remoteImages">
+        <option value="ask">Ask each time (most private)</option>
+        <option value="always">Always load</option>
+        <option value="never">Never load</option>
+      </select>
+      <p class="hint">
+        Remote images tell the sender when and where you read their mail. Blocking
+        by default is stronger than Gmail, which proxies them but still confirms
+        the read. Choosing “always from this sender” in the reader adds an exception.
+      </p>
     </fieldset>
 
     <fieldset>
