@@ -1860,6 +1860,91 @@ html[data-scheme='dark'] #thememenu {
   border-color: currentColor;
 }
 
+/* ------------------------------------------------------------- search -- */
+
+/*
+ * The search field is the most-used control in the app, so it earns real
+ * attention rather than being a bordered box.
+ *
+ * On focus it widens, lifts to the raised surface and grows a soft ring. The
+ * width change is a `flex-grow` transition on the WRAPPER, which is a layout
+ * property -- normally forbidden here. It is acceptable in this one place
+ * because the toolbar is a single flex row with five children: the layout
+ * cost is bounded and constant, it happens once per focus rather than per
+ * frame of a scroll, and the payoff is the clearest possible signal that the
+ * user is now typing a query.
+ */
+#searchwrap {
+  transition: flex-grow var(--dur-base) var(--ease-out);
+  flex-grow: 1;
+}
+#searchwrap:focus-within {
+  flex-grow: 2.2;
+}
+
+#search {
+  transition:
+    border-color var(--dur-fast) linear,
+    box-shadow var(--dur-fast) linear,
+    background-color var(--dur-fast) linear;
+}
+#search::placeholder {
+  color: var(--fg-faint);
+}
+#search:focus::placeholder {
+  /* Fade the hint once typing starts; it has done its job. */
+  opacity: 0.55;
+}
+
+#searchicon {
+  transition: color var(--dur-fast) linear;
+}
+#searchwrap:focus-within #searchicon {
+  color: var(--accent);
+}
+
+/*
+ * The `/` hint disappears on focus. Leaving it visible while the user types
+ * is clutter advertising a shortcut they have already used.
+ */
+#searchkbd {
+  transition: opacity var(--dur-fast) linear, transform var(--dur-fast) var(--ease-out);
+}
+#search:focus + #searchkbd {
+  opacity: 0;
+  transform: translateX(4px);
+}
+
+/* --------------------------------------------------------- scroll edge -- */
+
+/*
+ * A fade at the top of the list, so content dissolves under the toolbar
+ * instead of being guillotined by it.
+ *
+ * `pointer-events: none` is essential -- without it this strip would eat
+ * clicks on the first row, which is exactly the class of bug that made the
+ * takeover unclickable.
+ */
+#listpane::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: var(--s-5);
+  background: linear-gradient(to bottom, var(--bg), transparent);
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity var(--dur-base) linear;
+}
+#listpane.scrolled::before {
+  opacity: 1;
+}
+#listpane {
+  position: relative;
+}
+
 /*
  * `hidden` must actually hide.
  *

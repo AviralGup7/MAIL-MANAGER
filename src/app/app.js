@@ -125,6 +125,7 @@ const el = {
   cats: $('cats'),
   list: $('list'),
   scroller: $('scroller'),
+  listpane: $('listpane'),
   empty: $('empty'),
   emptyTitle: $('empty-title'),
   emptySub: $('empty-sub'),
@@ -1422,6 +1423,29 @@ async function boot() {
     if (!b || !state.selected) return;
     act({ 'ctx-archive': 'archive', 'ctx-star': 'star', 'ctx-trash': 'trash' }[b.id], state.selected);
   });
+
+  /*
+   * Scroll-edge fade.
+   *
+   * `passive: true` matters: a non-passive scroll listener forces the browser
+   * to wait and see whether the handler calls preventDefault before it can
+   * scroll, which is a classic source of scroll jank. We only read a number.
+   *
+   * The class is toggled only when it actually changes, so a fast scroll does
+   * not write to the DOM on every one of its hundred events.
+   */
+  let scrolledOn = false;
+  el.scroller.addEventListener(
+    'scroll',
+    () => {
+      const on = el.scroller.scrollTop > 4;
+      if (on !== scrolledOn) {
+        scrolledOn = on;
+        el.listpane.classList.toggle('scrolled', on);
+      }
+    },
+    { passive: true }
+  );
 
   wirePalette(ctx);
   wireCompose(ctx);

@@ -518,3 +518,39 @@ test('every icon shares one geometry', () => {
     'icons must use currentColor so they theme for free'
   );
 });
+
+test('decorative overlays cannot swallow clicks', () => {
+  // THE CLASS OF BUG THAT MADE THE WHOLE APP UNCLICKABLE, arriving by a
+  // different route. Any full-width absolutely-positioned pseudo-element
+  // layered over content MUST be pointer-events:none, or it eats every click
+  // in the strip it covers -- and that failure is invisible in a screenshot.
+  //
+  // Checked statically because jsdom does not compute pseudo-element styles,
+  // so an integration test cannot see it.
+  const css = read('src/app/app.css');
+  const overlays = ['#listpane::before', '#topbar::after'];
+  for (const sel of overlays) {
+    const i = css.indexOf(sel + ' {');
+    if (i === -1) continue;
+    const block = css.slice(i, css.indexOf('}', i));
+    assert.match(
+      block,
+      /pointer-events:\s*none/,
+      `${sel} overlays content but is not click-through`
+    );
+  }
+});
+
+test('scroll listeners are passive', () => {
+  // A non-passive scroll listener forces the browser to wait and see whether
+  // the handler calls preventDefault before it can scroll. That is a classic
+  // source of scroll jank, and this list is the one surface where jank would
+  // be most visible.
+  const js = read('src/app/app.js');
+  const scrollHandlers = [...js.matchAll(/addEventListener\(\s*\n?\s*'scroll'/g)];
+  assert.ok(scrollHandlers.length > 0, 'expected at least one scroll listener');
+  for (const m of scrollHandlers) {
+    const after = js.slice(m.index, m.index + 400);
+    assert.match(after, /passive:\s*true/, 'every scroll listener must be passive');
+  }
+});
