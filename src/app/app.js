@@ -86,6 +86,8 @@ const state = {
 
 /** Ids currently rendered, in order. The diff baseline. */
 let renderedIds = [];
+/** Whether the list has ever been painted with content. */
+let firstPaint = false;
 /** id -> <li>. Lets a delta patch one row without re-rendering the list. */
 const nodeById = new Map();
 
@@ -322,6 +324,18 @@ function renderList() {
       node.remove();
       nodeById.delete(id);
     }
+  }
+
+  // Stagger the FIRST populated render only.
+  //
+  // Replaying it whenever a message is starred would be nausea rather than
+  // delight, so the class is added once and removed as soon as the animation
+  // has had time to run. Guarded on `firstPaint` rather than on list length,
+  // because a cache hydrate followed by a delta must not re-trigger it.
+  if (!firstPaint && next.length) {
+    firstPaint = true;
+    el.list.classList.add('list-enter');
+    setTimeout(() => el.list.classList.remove('list-enter'), 600);
   }
 
   renderedIds = next;
@@ -637,15 +651,42 @@ function renderBody(body) {
       content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:;">
 <style>
   html{color-scheme:${t.scheme}}
-  body{font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
-       color:${ink};background:${surface};margin:0;padding:22px 24px;word-wrap:break-word}
-  img{max-width:100%;height:auto}
+  /*
+   * READING TYPOGRAPHY.
+   *
+   * 15px/1.65 with a 68ch measure. The list is scanned, so it is dense; the
+   * body is READ, so it gets the line-height and measure that long-form text
+   * needs. Beyond ~70 characters the eye loses its place returning to the
+   * next line, which is the single most common failure in mail rendering.
+   */
+  body{
+    font:15px/1.65 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+    color:${ink};background:${surface};
+    margin:0;padding:26px 28px 44px;
+    word-wrap:break-word;
+    -webkit-font-smoothing:antialiased;
+  }
+  /* Only unstyled top-level text is constrained; a sender's own table layout
+     is left exactly as they designed it. */
+  body > p, body > div:not([style]), body > span, body > pre, body > ul, body > ol {
+    max-width:68ch;
+  }
+  img{max-width:100%;height:auto;border-radius:6px}
   pre{white-space:pre-wrap;font:inherit;margin:0}
   table{max-width:100%!important}
-  a{color:${t.accent}}
-  blockquote{margin:0 0 0 12px;padding-left:12px;border-left:2px solid ${t.line};color:${t.fgDim}}
-  .att{margin-bottom:14px;padding:9px 12px;background:${t.accentSoft};color:${t.fgDim};
-       border-radius:8px;font-size:12.5px}
+  a{color:${t.accent};text-underline-offset:2px}
+  a:hover{text-decoration-thickness:2px}
+  p{margin:0 0 1em}
+  h1,h2,h3{line-height:1.3;margin:1.4em 0 .5em;font-weight:600}
+  blockquote{
+    margin:1em 0 1em 2px;padding:2px 0 2px 14px;
+    border-left:2px solid ${t.line};color:${t.fgDim};
+  }
+  hr{border:0;border-top:1px solid ${t.line};margin:1.6em 0}
+  .att{
+    margin-bottom:18px;padding:10px 13px;background:${t.accentSoft};
+    color:${t.fgDim};border-radius:10px;font-size:13px;
+  }
 </style></head><body>${attachments}${html}</body></html>`;
 }
 
