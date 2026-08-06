@@ -23,6 +23,9 @@ jobs:
       - name: Test (fails on skips)
         run: npm run test:ci
 
+      - name: Theme contrast (WCAG AA)
+        run: npm run contrast
+
       - name: Benchmark
         run: npm run bench
 

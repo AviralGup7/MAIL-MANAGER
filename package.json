@@ -10,7 +10,8 @@
     "bench": "node test/bench.mjs",
     "preview": "node tools/make-preview.mjs",
     "icons": "python3 tools/make-icons.py",
-    "test:ci": "node tools/ci-test.mjs"
+    "test:ci": "node tools/ci-test.mjs",
+    "contrast": "node tools/check-contrast.mjs"
   },
   "devDependencies": {
     "jsdom": "^24.0.0"

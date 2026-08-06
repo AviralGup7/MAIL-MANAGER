@@ -122,7 +122,21 @@ function safeStyle(value) {
 export function sanitizeHtml(html, doc = globalThis.document) {
   if (!html) return '';
 
-  const parser = new (globalThis.DOMParser)();
+  // Resolve DOMParser from the document's OWN window, not from globalThis.
+  //
+  // Reading globalThis.DOMParser threw "not a constructor" in any context
+  // where the global was not the browsing context that owns `doc` -- which is
+  // every test harness, and would also be any future worker or off-thread use.
+  // The parser must in any case come from the same realm as the document it
+  // parses into, or the nodes belong to a different realm than the ones we
+  // create with `doc.createElement`.
+  const Parser =
+    doc?.defaultView?.DOMParser || globalThis.DOMParser;
+  if (typeof Parser !== 'function') {
+    // No parser available: return nothing rather than unsanitised HTML.
+    return '';
+  }
+  const parser = new Parser();
   // text/html gives an inert document: no scripts run, no resources load.
   const parsed = parser.parseFromString(String(html), 'text/html');
   const out = doc.implementation.createHTMLDocument('').body;

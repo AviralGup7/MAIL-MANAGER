@@ -55,7 +55,31 @@
           <div id="toolbar" role="toolbar" aria-label="Message actions">
             <button id="btn-refresh" class="ghost" type="button" title="Refresh (r)">Refresh</button>
             <button id="btn-more" class="ghost" type="button" title="Load 100 more">Load more</button>
-            <button id="btn-theme" class="ghost icon" type="button" title="Toggle theme" aria-label="Toggle theme">◐</button>
+            <div id="themewrap">
+              <button
+                id="btn-theme"
+                class="ghost icon"
+                type="button"
+                title="Change theme"
+                aria-label="Change theme"
+                aria-haspopup="menu"
+                aria-expanded="false"
+              >
+                <svg viewBox="0 0 20 20" aria-hidden="true" width="15" height="15">
+                  <path d="M10 2a8 8 0 1 0 0 16c.9 0 1.6-.7 1.6-1.6 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.7-1.6 1.6-1.6H14a4 4 0 0 0 4-4c0-3.5-3.6-6.6-8-6.6Z"
+                        fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+                  <circle cx="6.8" cy="8.4" r="1.05" fill="currentColor"/>
+                  <circle cx="10" cy="6.2" r="1.05" fill="currentColor"/>
+                  <circle cx="13.4" cy="8.4" r="1.05" fill="currentColor"/>
+                </svg>
+              </button>
+              <!--
+                A real menu, not a select. The swatch has to be visible next to
+                the name for the choice to mean anything, and a <select> cannot
+                render one.
+              -->
+              <div id="thememenu" role="menu" aria-label="Theme" hidden></div>
+            </div>
           </div>
         </header>
 

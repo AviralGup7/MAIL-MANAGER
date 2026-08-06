@@ -27,14 +27,13 @@ const { sanitizeHtml, escapeHtml } = await import('../src/app/sanitize.js');
 
 /** Run the sanitiser inside a jsdom document. */
 function clean(html) {
+  // Deliberately does NOT set globalThis.DOMParser. The first version of this
+  // helper did, which masked a real bug: sanitizeHtml read the parser off
+  // globalThis and threw "DOMParser is not a constructor" in the actual
+  // extension. It now resolves the parser from the document's own window, and
+  // this helper proves it.
   const dom = new JSDOM('<!doctype html><body></body>');
-  const prevParser = globalThis.DOMParser;
-  globalThis.DOMParser = dom.window.DOMParser;
-  try {
-    return sanitizeHtml(html, dom.window.document);
-  } finally {
-    globalThis.DOMParser = prevParser;
-  }
+  return sanitizeHtml(html, dom.window.document);
 }
 
 /** Parse the output and ask real DOM questions about it. */

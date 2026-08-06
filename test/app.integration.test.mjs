@@ -703,3 +703,119 @@ test('A11Y: every row id is unique and references resolve', async (t) => {
     restore();
   }
 });
+
+// ------------------------------------------------------------- themes -----
+
+test('THEME: the picker lists every theme and marks the current one', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, settle, restore } = await boot();
+  try {
+    const { THEMES } = await import('../src/app/themes.js');
+    doc.getElementById('btn-theme').click();
+    await settle();
+
+    const items = [...doc.querySelectorAll('.theme-item')];
+    assert.equal(items.length, THEMES.length, 'every theme must be offered');
+    assert.equal(
+      items.filter((i) => i.getAttribute('aria-checked') === 'true').length,
+      1,
+      'exactly one theme is current'
+    );
+    assert.equal(doc.getElementById('btn-theme').getAttribute('aria-expanded'), 'true');
+  } finally {
+    restore();
+  }
+});
+
+test('THEME: choosing one applies it and persists the choice', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, storage, settle, restore } = await boot();
+  try {
+    doc.getElementById('btn-theme').click();
+    await settle();
+    doc.querySelector('.theme-item[data-theme="pilani"]').click();
+    await settle();
+
+    const root = doc.documentElement;
+    assert.equal(root.dataset.theme, 'pilani');
+    assert.equal(root.dataset.scheme, 'dark', 'scheme drives native controls');
+    assert.equal(storage.theme, 'pilani', 'the choice must survive a reload');
+    assert.ok(root.style.getPropertyValue('--bg'), 'custom properties are written');
+    assert.equal(doc.getElementById('thememenu').hidden, true, 'menu closes after choosing');
+  } finally {
+    restore();
+  }
+});
+
+test('THEME: a saved theme is applied at boot', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, restore } = await boot({ storageSeed: { theme: 'nord' } });
+  try {
+    assert.equal(doc.documentElement.dataset.theme, 'nord');
+    assert.equal(doc.documentElement.dataset.scheme, 'dark');
+  } finally {
+    restore();
+  }
+});
+
+test('THEME: a stored value from the old binary toggle falls back cleanly', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Before the picker existed, this key held 'light' or 'dark'. Those are not
+  // theme ids, and an unknown id must not leave the app unstyled.
+  const { doc, restore } = await boot({ storageSeed: { theme: 'dark' } });
+  try {
+    assert.equal(doc.documentElement.dataset.theme, 'daylight');
+    assert.ok(doc.documentElement.style.getPropertyValue('--bg'));
+  } finally {
+    restore();
+  }
+});
+
+test('THEME: the menu is keyboard operable and Escape closes it', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, win, settle, restore } = await boot();
+  try {
+    const btn = doc.getElementById('btn-theme');
+    const menu = doc.getElementById('thememenu');
+    btn.click();
+    await settle();
+
+    // Focus lands on the current theme, not the top of the list.
+    assert.equal(doc.activeElement.getAttribute('aria-checked'), 'true');
+
+    menu.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    await settle();
+    assert.ok(doc.activeElement.classList.contains('theme-item'));
+
+    menu.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await settle();
+    assert.equal(menu.hidden, true);
+    assert.equal(doc.activeElement.id, 'btn-theme', 'focus returns to the trigger');
+  } finally {
+    restore();
+  }
+});
+
+test('THEME: switching theme re-renders the open message body', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // The body iframe is a separate document with its colours baked into
+  // srcdoc, so it cannot follow a custom-property change.
+  const { doc, settle, restore } = await boot();
+  try {
+    rows(doc)[0].click();
+    await settle();
+    const before = doc.getElementById('r-body').getAttribute('srcdoc');
+    assert.ok(before, 'a body must be rendered');
+
+    doc.getElementById('btn-theme').click();
+    await settle();
+    doc.querySelector('.theme-item[data-theme="midnight"]').click();
+    await settle();
+
+    const after = doc.getElementById('r-body').getAttribute('srcdoc');
+    assert.notEqual(after, before, 'the body must be re-rendered for the new palette');
+    assert.ok(after.includes('color-scheme:dark'), 'and pick up the dark scheme');
+  } finally {
+    restore();
+  }
+});

@@ -27,6 +27,7 @@
 import { Store } from './store.js';
 import { loadCache, saveCache, clearCache, createSaver, CACHE_MAX } from './cache.js';
 import { sanitizeHtml, escapeHtml } from './sanitize.js';
+import { THEMES, applyTheme, getTheme, DEFAULT_THEME } from './themes.js';
 import { classify } from '../classify/index.js';
 import {
   CATEGORY_LABELS,
@@ -69,6 +70,7 @@ const state = {
   category: 'all',
   query: '',
   selected: null,
+  theme: DEFAULT_THEME,
   nextPageToken: '',
   loading: false,
   signedIn: false,
@@ -107,6 +109,7 @@ const el = {
   rLoading: $('r-loading'),
   rOpen: $('r-open'),
   toast: $('toast'),
+  themeMenu: $('thememenu'),
 };
 
 // ------------------------------------------------------------------ plumbing --
@@ -404,6 +407,8 @@ function renderSidebar() {
 // ----------------------------------------------------------------- reader --
 
 let bodyToken = 0;
+/** The last body fetched, kept so a theme change can re-render it. */
+let lastBody = null;
 
 async function openMessage(id) {
   const m = store.get(id);
@@ -449,6 +454,7 @@ async function openMessage(id) {
   try {
     const body = await send('GET_BODY', { id });
     if (token !== bodyToken) return; // user moved on; drop the stale response
+    lastBody = body;
     el.rBody.srcdoc = renderBody(body);
   } catch (err) {
     if (token !== bodyToken) return;
@@ -489,18 +495,34 @@ function renderBody(body) {
         .join(', ')} — open in Gmail to download</div>`
     : '';
 
+  // The body iframe is a separate document and inherits nothing from us, so
+  // the palette is interpolated in.
+  //
+  // Mail authors hard-code black-on-white constantly, and a dark chrome with a
+  // blinding white body is worse than no dark theme at all. So on a dark theme
+  // the body gets a dark surface and only UNSTYLED text follows our foreground
+  // colour -- anything the sender coloured deliberately is left alone, because
+  // overriding it would wreck legitimate design and can itself destroy
+  // contrast.
+  const t = getTheme(state.theme);
+  const dark = t.scheme === 'dark';
+  const surface = dark ? t.bgRaised : '#ffffff';
+  const ink = dark ? t.fg : '#16181d';
+
   return `<!doctype html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy"
       content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:;">
 <style>
-  html{color-scheme:light}
-  body{font:14px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
-       color:#16181d;margin:0;padding:20px 22px;word-wrap:break-word}
+  html{color-scheme:${t.scheme}}
+  body{font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+       color:${ink};background:${surface};margin:0;padding:22px 24px;word-wrap:break-word}
   img{max-width:100%;height:auto}
   pre{white-space:pre-wrap;font:inherit;margin:0}
   table{max-width:100%!important}
-  a{color:#1a4fd6}
-  .att{margin-bottom:14px;padding:8px 10px;background:#f2f4f8;border-radius:8px;font-size:12.5px}
+  a{color:${t.accent}}
+  blockquote{margin:0 0 0 12px;padding-left:12px;border-left:2px solid ${t.line};color:${t.fgDim}}
+  .att{margin-bottom:14px;padding:9px 12px;background:${t.accentSoft};color:${t.fgDim};
+       border-radius:8px;font-size:12.5px}
 </style></head><body>${attachments}${html}</body></html>`;
 }
 
@@ -514,6 +536,7 @@ function closeReader() {
   const prev = state.selected;
   state.selected = null;
   bodyToken++;
+  lastBody = null;
   if (prev) patchRow(prev);
   el.list.removeAttribute('aria-activedescendant');
   el.reader.hidden = true;
@@ -794,11 +817,108 @@ $('btn-signout').addEventListener('click', async () => {
 });
 $('btn-signin').addEventListener('click', doSignIn);
 $('btn-options').addEventListener('click', () => chrome.runtime.openOptionsPage());
-$('btn-theme').addEventListener('click', () => {
-  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-  document.documentElement.dataset.theme = next;
-  chrome.storage.local.set({ theme: next });
+// ------------------------------------------------------------------ theme --
+
+/**
+ * Theme picker.
+ *
+ * Was a binary light/dark toggle. Six themes need a menu, and a menu needs to
+ * show the swatch beside the name -- which is why this is a real menu and not
+ * a <select>, which cannot render one.
+ *
+ * Built once, on first open, rather than at boot: most sessions never touch it.
+ */
+let themeMenuBuilt = false;
+
+function buildThemeMenu() {
+  if (themeMenuBuilt) return;
+  themeMenuBuilt = true;
+  const frag = document.createDocumentFragment();
+  for (const t of THEMES) {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'theme-item';
+    item.dataset.theme = t.id;
+    item.setAttribute('role', 'menuitemradio');
+    item.setAttribute('aria-checked', String(state.theme === t.id));
+
+    const dot = document.createElement('span');
+    dot.className = 'theme-dot';
+    dot.style.background = t.swatch;
+
+    const name = document.createElement('span');
+    name.className = 'theme-name';
+    name.textContent = t.name;
+
+    const tick = document.createElement('span');
+    tick.className = 'theme-tick';
+    tick.setAttribute('aria-hidden', 'true');
+    tick.textContent = '✓';
+
+    item.append(dot, name, tick);
+    frag.appendChild(item);
+  }
+  el.themeMenu.replaceChildren(frag);
+}
+
+function setTheme(id) {
+  const theme = applyTheme(id);
+  state.theme = theme.id;
+  chrome.storage.local.set({ theme: theme.id });
+  for (const item of el.themeMenu.children) {
+    item.setAttribute('aria-checked', String(item.dataset.theme === theme.id));
+  }
+  // Re-render the open message. The body iframe is a separate document with
+  // its own colours baked into srcdoc, so it cannot follow a variable change.
+  // Cheap: the body is already in memory, no refetch.
+  if (state.selected && lastBody) el.rBody.srcdoc = renderBody(lastBody);
+}
+
+function openThemeMenu() {
+  buildThemeMenu();
+  el.themeMenu.hidden = false;
+  $('btn-theme').setAttribute('aria-expanded', 'true');
+  const current = el.themeMenu.querySelector('[aria-checked="true"]') || el.themeMenu.firstElementChild;
+  current?.focus();
+}
+
+function closeThemeMenu({ restoreFocus = false } = {}) {
+  if (el.themeMenu.hidden) return;
+  el.themeMenu.hidden = true;
+  $('btn-theme').setAttribute('aria-expanded', 'false');
+  if (restoreFocus) $('btn-theme').focus();
+}
+
+$('btn-theme').addEventListener('click', (e) => {
+  e.stopPropagation();
+  el.themeMenu.hidden ? openThemeMenu() : closeThemeMenu({ restoreFocus: true });
 });
+
+el.themeMenu.addEventListener('click', (e) => {
+  const item = e.target.closest('.theme-item');
+  if (!item) return;
+  setTheme(item.dataset.theme);
+  closeThemeMenu({ restoreFocus: true });
+});
+
+// Arrow keys inside the menu, as a menu is expected to behave.
+el.themeMenu.addEventListener('keydown', (e) => {
+  const items = [...el.themeMenu.children];
+  const i = items.indexOf(document.activeElement);
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    const next = (i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+    items[next].focus();
+  } else if (e.key === 'Home' || e.key === 'End') {
+    e.preventDefault();
+    items[e.key === 'Home' ? 0 : items.length - 1].focus();
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    closeThemeMenu({ restoreFocus: true });
+  }
+});
+
+document.addEventListener('click', () => closeThemeMenu());
 
 async function doSignIn() {
   const btn = $('btn-signin');
@@ -957,8 +1077,11 @@ async function start() {
 }
 
 async function boot() {
+  // Theme first, before anything paints, so there is no flash of the wrong
+  // palette. `applyTheme` falls back to the default for an unknown id, which
+  // covers the old binary 'light'/'dark' values from before the picker.
   const { theme } = await chrome.storage.local.get('theme');
-  if (theme) document.documentElement.dataset.theme = theme;
+  state.theme = applyTheme(theme || DEFAULT_THEME).id;
 
   buildSidebar();
   renderSidebar();
