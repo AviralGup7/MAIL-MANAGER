@@ -462,6 +462,80 @@ test('the stylesheet uses design tokens, not ad-hoc values', () => {
   assert.deepEqual(radii, [], `raw radii outside the scale: ${[...new Set(radii)].join(', ')}`);
 });
 
+/*
+ * NO SEMANTIC COLOUR MAY BYPASS THE THEME SYSTEM.
+ *
+ * `#eab308` was hardcoded three times for the starred indicator. Because it
+ * was not a token, `npm run contrast` never saw it, and it failed WCAG 1.4.11
+ * on NINE of eighteen theme/surface combinations -- including the default
+ * theme at 1.77:1 and the theme literally named "High Contrast".
+ *
+ * Themes are data so that every colour can be checked mechanically. A literal
+ * in the stylesheet opts out of that guarantee, so the set of permitted
+ * literals is closed here.
+ */
+test('no hardcoded colour bypasses the theme tokens', () => {
+  const css = read('src/app/app.css');
+  const body = css.slice(css.indexOf('/*\n * THEME VALUES LIVE IN'));
+
+  /*
+   * Scope: DECLARATIONS ONLY, and not the `:root` fallback block.
+   *
+   * `:root` is where the token defaults legitimately live as literals -- it is
+   * the definition site, and themes.js overwrites it at runtime. And `#account`
+   * is a selector, not a colour, so matching anywhere would produce nonsense
+   * findings and train people to ignore this test.
+   */
+  const declarations = body
+    .split('\n')
+    .filter((l) => /^\s*[a-z-]+\s*:/.test(l) && !/^\s*--/.test(l))
+    .join('\n');
+
+  // Neutral overlays and shadow scrims are legitimately not themed: a modal
+  // backdrop is the absence of a surface, not a surface. Shadows are neutral
+  // ink by design and are checked by eye, not for contrast.
+  const ALLOWED =
+    /^(#fff|#ffffff|#000|#000000|rgba\(0,\s*0,\s*0,[^)]*\)|rgba\(255,\s*255,\s*255,[^)]*\)|rgba\(16,\s*24,\s*40,[^)]*\)|rgba\(128,\s*128,\s*128,[^)]*\)|transparent)$/i;
+
+  const found = [...declarations.matchAll(/(?:^|[\s:,(])(#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\))/g)]
+    .map((m) => m[1].trim())
+    .filter((c) => !ALLOWED.test(c));
+
+  assert.deepEqual(
+    [...new Set(found)], [],
+    'these colours must become theme tokens so the contrast checker can see them'
+  );
+});
+
+test('every theme defines every colour role the CSS consumes', () => {
+  // A theme missing a role renders that element with an EMPTY custom property,
+  // which inherits or falls back to black -- invisible in a dark theme and
+  // impossible to spot in review.
+  const themes = read('src/app/themes.js');
+  const css = read('src/app/app.css');
+
+  // Roles the stylesheet actually reads.
+  const used = new Set(
+    [...css.matchAll(/var\(--(bg|bg-raised|bg-sunken|fg|fg-dim|fg-faint|line|line-strong|accent|accent-fg|accent-soft|danger|warning|success|star|glow)\b/g)]
+      .map((m) => m[1])
+  );
+  assert.ok(used.has('star'), 'the star token should be in use');
+
+  const camel = (s) => s.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+  const blocks = themes.split(/\n  \{\n/).slice(1);
+  assert.equal(blocks.length, 6, 'expected six themes');
+
+  for (const block of blocks) {
+    const name = /name: '([^']+)'/.exec(block)?.[1] || '?';
+    for (const role of used) {
+      assert.ok(
+        new RegExp(`\\n\\s{4}${camel(role)}:`).test(block),
+        `theme "${name}" is missing the "${camel(role)}" colour`
+      );
+    }
+  }
+});
+
 test('no component is defined in two places', () => {
   // `.row` was previously declared in two blocks 470 lines apart: one set the
   // background, another added the selection rail, and neither could be
@@ -472,6 +546,80 @@ test('no component is defined in two places', () => {
     const hits = [...css.matchAll(new RegExp(`^${escaped}\\s*\\{`, 'gm'))].length;
     assert.equal(hits, 1, `${sel} is defined ${hits} times; it must be defined once`);
   }
+});
+
+/*
+ * THE GENERAL FORM OF THE ABOVE.
+ *
+ * The hand-written list only covered five selectors, so drift anywhere else
+ * went unnoticed. Measuring every selector found seven same-layer duplicates,
+ * two of them real bugs: `.primary svg` set `opacity: 0.85` and then
+ * immediately overrode it to `1` (the softening was dead code), and
+ * `.r-star[aria-pressed='true']` set the same colour twice.
+ *
+ * This file is deliberately LAYERED -- STRUCTURE, then APPEARANCE, then
+ * MOTION, then DEPTH -- so the same selector reappearing in a LATER layer is
+ * an intentional override and is allowed. Two blocks in the SAME layer are
+ * not: nobody reading either one can know the other exists.
+ */
+test('no selector is defined twice within one layer', () => {
+  const css = read('src/app/app.css');
+
+  // Blank out comments while preserving line numbers, so a selector mentioned
+  // in prose is not mistaken for a rule.
+  const blanked = css.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '));
+  const lines = blanked.split('\n');
+
+  // Layer boundaries, identified by their banner comments in the real file.
+  const starts = [0];
+  css.split('\n').forEach((l, i) => {
+    if (/^\/\* (APPEARANCE|FEATURES|MOTION REFINEMENTS|ICONOGRAPHY|DEPTH)\b/.test(l)) {
+      starts.push(i + 1);
+    }
+  });
+  assert.ok(starts.length >= 5, 'expected the layered section banners to be present');
+  const layerOf = (n) => starts.reduce((acc, s, i) => (n >= s ? i : acc), 0);
+
+  /** @type {Map<string, Map<number, number[]>>} */
+  const seen = new Map();
+  lines.forEach((line, i) => {
+    const m = /^([^{}@\s][^{}]*?)\{/.exec(line);
+    if (!m) return;
+    const sel = m[1].trim().replace(/\s+/g, ' ');
+    // Keyframe stops are not selectors.
+    if (!sel || sel === 'to' || sel === 'from' || /%/.test(sel)) return;
+    const layer = layerOf(i + 1);
+    if (!seen.has(sel)) seen.set(sel, new Map());
+    const byLayer = seen.get(sel);
+    byLayer.set(layer, [...(byLayer.get(layer) || []), i + 1]);
+  });
+
+  /*
+   * Three legitimate repeats, each verified by reading them:
+   *
+   *   :root     the token scale and the theme-fallback block are separate
+   *             concerns and are commented as such.
+   *   body      `html, body { height }` is a reset; `body { … }` is styling.
+   *   #listpane one block is the depth treatment, one is a positioning
+   *             context for the multi-select layer, in different sections.
+   *
+   * Listed explicitly rather than loosening the rule, so anything NEW still
+   * fails and each exemption had to be justified once.
+   */
+  const EXEMPT = new Set([':root', 'body', '#listpane']);
+
+  const problems = [];
+  for (const [sel, byLayer] of seen) {
+    if (EXEMPT.has(sel)) continue;
+    for (const [, atLines] of byLayer) {
+      if (atLines.length > 1) problems.push(`${sel} at lines ${atLines.join(', ')}`);
+    }
+  }
+
+  assert.deepEqual(
+    problems, [],
+    'these selectors are defined more than once inside a single layer'
+  );
 });
 
 test('the empty state explains WHICH kind of empty it is', () => {

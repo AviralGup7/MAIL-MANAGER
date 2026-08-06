@@ -204,7 +204,19 @@ kbd {
   height: 26px;
   border-radius: var(--r-md);
   flex: none;
-  background: linear-gradient(135deg, var(--accent), #8b5cf6);
+  /*
+   * Derived from the accent rather than blended into a fixed violet.
+   *
+   * The hardcoded `#8b5cf6` looked right on Daylight's blue and fought every
+   * other palette -- a warm sand accent (Pilani) or Nord's cyan running into
+   * purple reads as a rendering fault rather than a brand. `color-mix` keeps
+   * the same two-tone depth while staying inside whatever palette is active.
+   */
+  background: linear-gradient(
+    135deg,
+    var(--accent),
+    color-mix(in oklab, var(--accent) 62%, var(--fg))
+  );
 }
 
 #brand-text {
@@ -759,11 +771,14 @@ a.ghost {
   background: var(--bg-sunken);
   color: var(--fg-dim);
 }
+/*
+ * A starred row keeps the star colour on hover too -- hover must not read as
+ * "unstarred". Stated once: this was previously two blocks setting the same
+ * property to the same value, which is how a component starts to drift.
+ */
+.r-star[aria-pressed='true'],
 .r-star[aria-pressed='true']:hover {
-  color: #eab308;
-}
-.r-star[aria-pressed='true'] {
-  color: #eab308;
+  color: var(--star);
 }
 
 /*
@@ -1761,16 +1776,25 @@ svg {
   flex: none;
 }
 
+/*
+ * Optical, not mathematical. A stroked glyph reads slightly heavy at the same
+ * nominal size as text, so it is nudged down a hair to sit on the same visual
+ * baseline as the label.
+ *
+ * `.primary svg` used to appear in BOTH of these blocks: the first set
+ * `opacity: 0.85`, the second immediately overrode it to `1`. The softening
+ * was dead code, and the duplicate hid the fact. That is deliberate here --
+ * an icon on a filled accent button is already high-contrast and does not
+ * want dimming, whereas a ghost button's icon does.
+ */
 .ghost svg,
 .primary svg {
-  /* Optical, not mathematical. A stroked glyph reads slightly heavy at the
-     same nominal size as text, so it is nudged down a hair to sit on the same
-     visual baseline as the label. */
   margin-top: -1px;
+}
+.ghost svg {
   opacity: 0.85;
 }
-.ghost:hover svg,
-.primary svg {
+.ghost:hover svg {
   opacity: 1;
 }
 
@@ -1893,7 +1917,7 @@ html[data-scheme='dark'] #thememenu {
   background: var(--bg-raised);
 }
 #ctx-star[aria-pressed='true'] {
-  color: #eab308;
+  color: var(--star);
   border-color: currentColor;
 }
 

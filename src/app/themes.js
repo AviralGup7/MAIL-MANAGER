@@ -53,6 +53,7 @@ export const THEMES = [
     danger: '#b3261e',
     warning: '#8a5a00',
     success: '#0f6b45',
+    star: '#8a6100',
     glow: 'rgba(26, 79, 214, 0.16)',
   },
   {
@@ -74,6 +75,7 @@ export const THEMES = [
     danger: '#ff8578',
     warning: '#e0a83a',
     success: '#4cc38a',
+    star: '#eab308',
     glow: 'rgba(122, 162, 255, 0.20)',
   },
   {
@@ -97,6 +99,7 @@ export const THEMES = [
     danger: '#f0776a',
     warning: '#dcae4e',
     success: '#67bb8a',
+    star: '#eab308',
     glow: 'rgba(232, 148, 74, 0.22)',
   },
   {
@@ -120,6 +123,7 @@ export const THEMES = [
     danger: '#b1382c',
     warning: '#7d5a00',
     success: '#5a7000',
+    star: '#8a6100',
     glow: 'rgba(31, 111, 158, 0.16)',
   },
   {
@@ -141,6 +145,7 @@ export const THEMES = [
     danger: '#f0a49d',
     warning: '#ebcb8b',
     success: '#a3be8c',
+    star: '#ebcb8b',
     glow: 'rgba(136, 192, 208, 0.18)',
   },
   {
@@ -164,6 +169,7 @@ export const THEMES = [
     danger: '#a1000f',
     warning: '#6b4400',
     success: '#00522f',
+    star: '#6b4400',
     glow: 'rgba(0, 52, 196, 0.22)',
   },
 ];
@@ -186,6 +192,7 @@ const CSS_VAR = {
   danger: '--danger',
   warning: '--warning',
   success: '--success',
+  star: '--star',
   glow: '--glow',
 };
 

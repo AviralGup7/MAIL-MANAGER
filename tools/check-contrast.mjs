@@ -47,10 +47,33 @@ const TEXT = [
   ['warning', AA_NORMAL],
 ];
 
+/**
+ * Non-text roles: icons and indicators, which WCAG 1.4.11 holds to 3:1.
+ *
+ * `star` was hardcoded as `#eab308` directly in app.css, so it bypassed this
+ * checker entirely and failed on NINE of eighteen theme/surface combinations
+ * -- including Daylight, the default, at 1.77:1, and "High Contrast", which
+ * advertises AAA. A semantic colour that is not a token is a colour nobody is
+ * checking.
+ */
+const UI_ROLES = [['star', AA_UI]];
+
 export function auditTheme(theme) {
   const problems = [];
   for (const surf of SURFACES) {
     for (const [role, min] of TEXT) {
+      const r = contrast(theme[role], theme[surf]);
+      if (r < min) {
+        problems.push({ theme: theme.name, role, surf, ratio: r, min });
+      }
+    }
+  }
+  for (const surf of SURFACES) {
+    for (const [role, min] of UI_ROLES) {
+      if (!theme[role]) {
+        problems.push({ theme: theme.name, role, surf, ratio: 0, min });
+        continue;
+      }
       const r = contrast(theme[role], theme[surf]);
       if (r < min) {
         problems.push({ theme: theme.name, role, surf, ratio: r, min });
