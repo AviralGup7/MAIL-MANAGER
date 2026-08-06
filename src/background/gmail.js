@@ -219,17 +219,38 @@ export function parseBatch(text) {
  */
 export function normalise(g) {
   if (!g?.id) return null;
+
+  /*
+   * THIS IS THE TRUST BOUNDARY for everything that comes off the network.
+   *
+   * It used to copy header values through verbatim, which broke two ways:
+   *
+   *   1. A header with no `name`, or a null entry in the array, threw here
+   *      and killed the whole page of messages -- one malformed header meant
+   *      an empty inbox.
+   *   2. A non-string `value` was passed straight through, so `subject` could
+   *      be a number and `from` an object. Downstream, `classify()` calls
+   *      `.toLowerCase()` and `buildReply()` calls `.replace()`, both of which
+   *      throw on a non-string. Fuzzing found both.
+   *
+   * Coercing HERE rather than defending in every consumer is the correct
+   * layer: there is one place data enters, and dozens that read it. Every
+   * field below is guaranteed to be the type its JSDoc claims.
+   */
   const h = Object.create(null);
-  for (const { name, value } of g.payload?.headers || []) {
-    h[name.toLowerCase()] = value;
+  const headers = Array.isArray(g.payload?.headers) ? g.payload.headers : [];
+  for (const entry of headers) {
+    const name = entry?.name;
+    if (typeof name !== 'string') continue;
+    h[name.toLowerCase()] = str(entry.value);
   }
-  const labels = g.labelIds || [];
+  const labels = Array.isArray(g.labelIds) ? g.labelIds : [];
   return {
-    id: g.id,
-    threadId: g.threadId || g.id,
+    id: str(g.id),
+    threadId: str(g.threadId) || str(g.id),
     from: h.from || '',
     subject: h.subject || '(no subject)',
-    snippet: decodeEntities(g.snippet || ''),
+    snippet: decodeEntities(str(g.snippet)),
     // internalDate is ms-since-epoch as a STRING, and it is authoritative.
     // The Date: header is attacker-controlled and is routinely wrong.
     date: Number(g.internalDate) || Date.parse(h.date) || 0,
@@ -238,6 +259,21 @@ export function normalise(g) {
     important: labels.includes('IMPORTANT'),
     labels,
   };
+}
+
+/**
+ * Coerce any header/field value to a string.
+ *
+ * Gmail's API is well behaved, but "well behaved" is not a guarantee we can
+ * enforce, and a single unexpected type used to crash the classifier for an
+ * entire page of mail. Objects and arrays become '' rather than
+ * "[object Object]", which would otherwise become searchable text.
+ */
+function str(v) {
+  if (typeof v === 'string') return v;
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  return '';
 }
 
 function decodeEntities(s) {

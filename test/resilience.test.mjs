@@ -231,3 +231,114 @@ test('corrupt stored values never crash a loader', async () => {
     );
   }
 });
+
+/* ========================================================================== *
+ * THE NETWORK TRUST BOUNDARY
+ *
+ * `normalise()` is the single place remote data enters the app. It used to
+ * copy header values verbatim, which broke two ways: a header with no `name`
+ * (or a null entry) threw and killed an entire page of messages, and a
+ * non-string `value` passed straight through so `subject` could be a number.
+ * Downstream, `classify()` calls `.toLowerCase()` and `buildReply()` calls
+ * `.replace()` — both throw on a non-string. Fuzzing found all three.
+ * ========================================================================== */
+
+test('normalise survives every malformed header shape', async () => {
+  const { normalise } = await import('../src/background/gmail.js');
+
+  const cases = [
+    ['header with no name', { id: '1', payload: { headers: [{ value: 'x' }] } }],
+    ['null header entry', { id: '1', payload: { headers: [null] } }],
+    ['undefined header entry', { id: '1', payload: { headers: [undefined] } }],
+    ['numeric header value', { id: '1', payload: { headers: [{ name: 'Subject', value: 7 }] } }],
+    ['object header value', { id: '1', payload: { headers: [{ name: 'From', value: { a: 1 } }] } }],
+    ['array header value', { id: '1', payload: { headers: [{ name: 'Subject', value: ['a'] }] } }],
+    ['headers not an array', { id: '1', payload: { headers: 'nope' } }],
+    ['labelIds not an array', { id: '1', labelIds: 'INBOX' }],
+    ['numeric snippet', { id: '1', snippet: 42 }],
+    ['numeric id', { id: 7 }],
+    ['no payload at all', { id: '1' }],
+  ];
+
+  for (const [name, raw] of cases) {
+    let out;
+    assert.doesNotThrow(() => { out = normalise(raw); }, `${name} threw`);
+    assert.ok(out, `${name} returned nothing`);
+    for (const field of ['id', 'threadId', 'from', 'subject', 'snippet']) {
+      assert.equal(typeof out[field], 'string', `${name}: ${field} is ${typeof out[field]}`);
+    }
+    assert.equal(typeof out.date, 'number');
+    assert.ok(Array.isArray(out.labels), `${name}: labels must be an array`);
+  }
+});
+
+test('an object header value does not become the text "[object Object]"', async () => {
+  // Coercing with String() would make that string searchable and displayable.
+  const { normalise } = await import('../src/background/gmail.js');
+  const out = normalise({ id: '1', payload: { headers: [{ name: 'Subject', value: { a: 1 } }] } });
+  assert.ok(!/object Object/.test(out.subject), `leaked: ${out.subject}`);
+});
+
+test('normalised output never crashes the consumers downstream of it', async () => {
+  /*
+   * The end-to-end property: whatever the network returns, the pipeline that
+   * consumes it must not throw. This is the test that would have caught the
+   * original bug, because it exercises the real chain rather than one link.
+   */
+  const { normalise } = await import('../src/background/gmail.js');
+  const { classify } = await import('../src/classify/index.js');
+  const { extractDeadline } = await import('../src/app/deadlines.js');
+  const { buildReply } = await import('../src/app/query.js');
+
+  const hostile = [
+    { id: '1', payload: { headers: [{ name: 'Subject', value: 123 }] } },
+    { id: '2', payload: { headers: [{ name: 'From', value: {} }] } },
+    { id: '3', payload: { headers: [{ value: 'nameless' }] } },
+    { id: '4', snippet: 999, labelIds: 'INBOX' },
+    { id: '5', payload: { headers: [{ name: 'Subject', value: 'due 32/13/2026' }] } },
+    { id: '6', payload: { headers: [{ name: 'Subject', value: 'x'.repeat(20000) }] } },
+    { id: '7', payload: { headers: [{ name: 'From', value: '\u0000\uD800' }] } },
+  ];
+
+  for (const raw of hostile) {
+    const m = normalise(raw);
+    assert.doesNotThrow(() => classify(m), `classify threw on ${raw.id}`);
+    assert.doesNotThrow(() => extractDeadline(m), `extractDeadline threw on ${raw.id}`);
+    assert.doesNotThrow(() => buildReply(m, 'me@x.com', 'reply'), `buildReply threw on ${raw.id}`);
+  }
+});
+
+test('pure modules survive adversarial query and address input', async () => {
+  const { parseQuery } = await import('../src/app/query.js');
+  const contacts = await import('../src/app/contacts.js');
+
+  const NASTY = [
+    '', ' ', '\n', 'a'.repeat(10000), '"unterminated', 'from:', ':', '::',
+    'is:::x', '((()))', 'a OR b', '\u0000', '\uD800', '👍'.repeat(100),
+    '<script>alert(1)</script>', "'; DROP TABLE--", 'before:notadate',
+    'after:9999-99-99', '-'.repeat(500),
+  ];
+  const probe = { subject: 'x', from: 'a@b.c', snippet: 'z', date: Date.now() };
+
+  for (const q of NASTY) {
+    assert.doesNotThrow(() => {
+      const parsed = parseQuery(q);
+      if (parsed.predicate) parsed.predicate(probe);
+    }, `parseQuery threw on ${JSON.stringify(q.slice(0, 40))}`);
+  }
+
+  for (const a of ['', '<>', 'a@', '@b', 'a@b@c', '"'.repeat(50), 'x'.repeat(5000)]) {
+    assert.doesNotThrow(() => {
+      contacts.parseAddress(a);
+      contacts.parseAddressList(a);
+      contacts.currentFragment(a);
+      contacts.completeValue(a, 'x@y.z');
+    }, `contacts threw on ${JSON.stringify(a)}`);
+  }
+
+  // A regex metacharacter in the query must not blow up the matcher.
+  const book = contacts.buildContacts([null, undefined, {}, { from: 1 }, { to: {} }]);
+  for (const q of ['(', '\\', '[', '*', '+?']) {
+    assert.doesNotThrow(() => contacts.matchContacts(book, q), `matchContacts threw on ${q}`);
+  }
+});
