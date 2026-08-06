@@ -907,7 +907,34 @@ export function detectConflicts(entries) {
     });
   }
 
-  // 5. The same section added twice.
+  /*
+   * 5. A section whose linked lecture is no longer held.
+   *
+   * `linkedTo` records which lecture a tutorial or practical was attached to.
+   * Removing just the lecture left the lab behind, still pointing at an entry
+   * that no longer exists -- so the user saw a lab on Monday for a course they
+   * believed they had dropped, with nothing to explain it.
+   *
+   * The lab is NOT auto-deleted. It is a real class on a real schedule, and
+   * quietly removing one is worse than showing a broken link: the whole point
+   * of this system is that nothing disappears without a reason the user can
+   * read. Surfaced as needs-input so they decide.
+   */
+  const heldSections = new Set(entries.map((e) => `${e.comCode}|${e.section}`));
+  for (const e of entries) {
+    if (!e.linkedTo) continue;
+    if (heldSections.has(`${e.comCode}|${e.linkedTo}`)) continue;
+    conflicts.push({
+      kind: 'orphan-link',
+      severity: 'needs-input',
+      entryIds: [e.id],
+      message:
+        `${e.courseNo} ${e.section} was attached to ${e.linkedTo}, which is no ` +
+        'longer in your timetable. Keep it, or remove it.',
+    });
+  }
+
+  // 6. The same section added twice.
   const seen = new Set();
   for (const e of entries) {
     if (seen.has(e.id)) {

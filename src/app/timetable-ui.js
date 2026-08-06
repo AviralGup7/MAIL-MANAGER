@@ -81,6 +81,24 @@ export async function initTimetable(ctx) {
   ctxRef = ctx;
   state = await loadTimetable();
   source = await loadSourceData();
+
+  /*
+   * If the loader had to discard corrupt records, SAY SO.
+   *
+   * Dropping them silently trades one failure (an unopenable panel) for a
+   * quieter one (a timetable missing classes the user still believes are
+   * there). The count is all we can honestly report -- the records were
+   * unreadable, so we cannot name what they were -- but "three could not be
+   * read" tells them to check, which is the whole point.
+   */
+  if (state.dropped) {
+    ctx?.toast?.(
+      `${state.dropped} timetable ${state.dropped === 1 ? 'entry was' : 'entries were'} ` +
+      'unreadable and had to be removed. Please check your classes.',
+      { kind: 'error' }
+    );
+  }
+
   updateBadge();
   return state;
 }

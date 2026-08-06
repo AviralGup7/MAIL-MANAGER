@@ -33,6 +33,26 @@ const SCHEMA = 1;
  * that will not open. A corrupt blob is left on disk rather than deleted, so
  * it can be recovered by hand if it ever matters.
  */
+
+/**
+ * Is this stored record safe for every consumer to touch?
+ *
+ * The bar is deliberately "will not throw downstream", not "is complete".
+ * A section with no room is a legitimate partial state the document itself
+ * produces, and rejecting it would discard real data. A record with no id, or
+ * with `meetings` that is not an array, is not a timetable entry at all.
+ */
+function usableEntry(e) {
+  if (!e || typeof e !== 'object') return false;
+  if (typeof e.id !== 'string' || !e.id) return false;
+  if (typeof e.comCode !== 'string' || !e.comCode) return false;
+  if (typeof e.section !== 'string' || !e.section) return false;
+  // Every render path iterates these two without guarding them.
+  if (!Array.isArray(e.meetings)) return false;
+  if (!Array.isArray(e.history)) return false;
+  return true;
+}
+
 export async function loadTimetable(storage = chrome.storage.local) {
   try {
     const got = await storage.get(KEY);
@@ -40,11 +60,33 @@ export async function loadTimetable(storage = chrome.storage.local) {
     if (!blob || typeof blob !== 'object') return emptyState();
     if (blob.schemaVersion !== SCHEMA) return emptyState();
     if (!Array.isArray(blob.entries)) return emptyState();
+    /*
+     * VALIDATE THE ENTRIES, NOT JUST THE ARRAY.
+     *
+     * Checking `Array.isArray(entries)` and stopping there let a blob holding
+     * junk load "successfully" and then throw on the first render -- weekView
+     * and detectConflicts both do `e.meetings`, examEvents does `e.midsem`.
+     * One bad record made the panel unopenable, which is a total loss where a
+     * partial timetable the user can see and repair would do.
+     *
+     * Unusable records are DROPPED and COUNTED rather than patched up. A
+     * repaired-with-defaults entry is a fabricated one: it would claim a class
+     * exists with no time and no source, which is exactly the invented data
+     * this system refuses to produce. `dropped` gives the UI something honest
+     * to say.
+     */
+    const kept = [];
+    let dropped = 0;
+    for (const e of blob.entries) {
+      if (usableEntry(e)) kept.push(e);
+      else dropped += 1;
+    }
+
     return {
       ...emptyState(),
       ...blob,
-      // These three are the ones later code indexes into without checking.
-      entries: blob.entries,
+      entries: kept,
+      dropped,
       conflicts: Array.isArray(blob.conflicts) ? blob.conflicts : [],
       appliedMail: Array.isArray(blob.appliedMail) ? blob.appliedMail : [],
     };

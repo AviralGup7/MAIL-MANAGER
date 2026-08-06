@@ -1340,3 +1340,111 @@ test('RESET: appliedMail is cleared so past updates can be seen again', () => {
   const seeded = { ...build().state, appliedMail: ['m1', 'm2'] };
   assert.deepEqual(resetTimetable(seeded).appliedMail, []);
 });
+
+/* ===================================================== integrity / recovery == */
+
+test('RECOVER: one corrupt entry does not take the whole timetable down', async () => {
+  /*
+   * FOUND BY PROBING, NOT BY REVIEW.
+   *
+   * loadTimetable checked that `entries` was an array and stopped there. A
+   * blob whose array holds junk -- a null, an object with no meetings, a
+   * meetings field that is a string -- loaded "successfully" and then threw
+   * on the first render:
+   *
+   *   weekView       -> Cannot read properties of null (reading 'meetings')
+   *   detectConflicts-> same
+   *   examEvents     -> Cannot read properties of null (reading 'midsem')
+   *
+   * So a single bad record made the panel unopenable, which is precisely the
+   * "silently corrupted / unusable" failure Pass 3 exists to prevent. A
+   * partial timetable the user can see and repair beats a total loss.
+   */
+  const blob = {
+    schemaVersion: 1,
+    entries: [
+      null,
+      { id: 'no-fields' },
+      { id: 'bad-meetings', comCode: '1', courseNo: 'X', section: 'L1', meetings: 'nope' },
+      // One genuinely good entry, which MUST survive.
+      { ...build().state.entries[0] },
+    ],
+  };
+  const st = await loadTimetable({ get: async () => ({ timetable: blob }) });
+
+  assert.equal(st.entries.length, 1, 'only the usable entry is kept');
+  assert.equal(st.entries[0].courseNo, 'CS F111');
+  assert.equal(st.dropped, 3, 'and the loss is reported, not hidden');
+
+  // The three functions that crashed must now all cope.
+  assert.doesNotThrow(() => weekView(st.entries));
+  assert.doesNotThrow(() => detectConflicts(st.entries));
+  assert.doesNotThrow(() => examEvents(st.entries));
+});
+
+test('RECOVER: a repaired entry keeps every field it legitimately had', async () => {
+  // Repair must not be a quiet downgrade: a good entry has to survive the
+  // load byte-for-byte, or "recovery" becomes its own kind of data loss.
+  const good = build().state.entries[0];
+  const st = await loadTimetable({
+    get: async () => ({ timetable: { schemaVersion: 1, entries: [good] } }),
+  });
+  assert.equal(st.dropped, 0);
+  assert.deepEqual(st.entries[0], good);
+});
+
+test('INTEGRITY: a practical left behind by its lecture is surfaced', () => {
+  /*
+   * FOUND BY PROBING. Pass 3 names this exactly: "a lecture exists without
+   * its linked practical where one was required" -- and the inverse, which is
+   * what actually happens.
+   *
+   * Removing just the lecture left P1 in the timetable with
+   * `linkedTo: 'L1'` pointing at an entry that no longer exists, and
+   * detectConflicts said nothing. The user sees a lab on Monday for a course
+   * they believe they dropped, and nothing explains it.
+   *
+   * The lab is NOT auto-deleted. It is real, it is on the user's schedule,
+   * and silently removing a class is worse than showing a broken link. This
+   * surfaces it and lets them decide.
+   */
+  const withBoth = addCourse(emptyState(), CS, {
+    lecture: CS.sections.find((s) => s.section === 'L1'),
+    extraSections: [CS.sections.find((s) => s.section === 'P1')],
+  }).state;
+  assert.equal(withBoth.entries.length, 2, 'precondition: lecture and lab');
+
+  const orphaned = removeCourse(withBoth, '1008', 'L1');
+  assert.equal(orphaned.entries.length, 1, 'the lab is kept, not silently dropped');
+
+  const broken = orphaned.conflicts.filter((c) => c.kind === 'orphan-link');
+  assert.equal(broken.length, 1, 'the dangling link must be reported');
+  assert.match(broken[0].message, /P1/);
+  assert.match(broken[0].message, /L1/, 'and name the section that went missing');
+  assert.equal(broken[0].severity, 'needs-input');
+});
+
+test('INTEGRITY: a linked pair that is intact reports nothing', () => {
+  // The control. A lab whose lecture is present is the normal case and must
+  // stay silent, or the warning becomes noise people learn to ignore.
+  const withBoth = addCourse(emptyState(), CS, {
+    lecture: CS.sections.find((s) => s.section === 'L1'),
+    extraSections: [CS.sections.find((s) => s.section === 'P1')],
+  }).state;
+  assert.deepEqual(
+    withBoth.conflicts.filter((c) => c.kind === 'orphan-link'), [],
+    'an intact pair is not a conflict'
+  );
+});
+
+test('INTEGRITY: removing the whole course removes the link too', () => {
+  // Dropping the course entirely is deliberate and complete -- there is no
+  // orphan, so there must be no warning.
+  const withBoth = addCourse(emptyState(), CS, {
+    lecture: CS.sections.find((s) => s.section === 'L1'),
+    extraSections: [CS.sections.find((s) => s.section === 'P1')],
+  }).state;
+  const gone = removeCourse(withBoth, '1008');
+  assert.deepEqual(gone.entries, []);
+  assert.deepEqual(gone.conflicts, []);
+});
