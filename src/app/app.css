@@ -1053,11 +1053,6 @@ a.ghost {
   z-index: 20;
 }
 
-@keyframes gate-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-
 #gate-card {
   width: min(420px, 88vw);
   background: var(--bg-raised);
@@ -1124,16 +1119,6 @@ a.ghost {
   box-shadow: var(--shadow);
   z-index: 30;
   animation: toast-in var(--dur-base) var(--ease-in) both;
-}
-@keyframes toast-in {
-  from {
-    opacity: 0;
-    transform: translate3d(-50%, 10px, 0);
-  }
-  to {
-    opacity: 1;
-    transform: translate3d(-50%, 0, 0);
-  }
 }
 
 /* ------------------------------------------------------------- responsive -- */

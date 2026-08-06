@@ -610,6 +610,34 @@ test('the gated loading animations still exist', () => {
   assert.match(css, /animation:\s*sweep[^;]*infinite/, 'topbar progress sweep missing');
 });
 
+/*
+ * KEYFRAMES DO NOT CASCADE.
+ *
+ * Two rules with the same selector merge; two `@keyframes` with the same name
+ * do NOT -- the later one wholly REPLACES the earlier, which becomes
+ * unreachable code that still reads as if it were in effect. `toast-in` and
+ * `gate-in` were each defined twice, and the first definition of `toast-in`
+ * described a different animation from the one that actually ran.
+ */
+test('every keyframe is defined exactly once and is actually used', () => {
+  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, ' ');
+
+  const counts = new Map();
+  for (const m of css.matchAll(/@keyframes\s+([\w-]+)/g)) {
+    counts.set(m[1], (counts.get(m[1]) || 0) + 1);
+  }
+
+  const duplicated = [...counts].filter(([, n]) => n > 1).map(([k]) => k);
+  assert.deepEqual(duplicated, [], 'the later definition silently replaces the earlier');
+
+  const used = new Set([...css.matchAll(/animation:\s*([\w-]+)/g)].map((m) => m[1]));
+  const orphans = [...counts.keys()].filter((k) => !used.has(k));
+  assert.deepEqual(orphans, [], 'keyframes defined but never referenced');
+
+  const missing = [...used].filter((u) => !counts.has(u));
+  assert.deepEqual(missing, [], 'animations referencing a keyframe that does not exist');
+});
+
 test('no selector is defined twice within one layer', () => {
   const css = read('src/app/app.css');
 
