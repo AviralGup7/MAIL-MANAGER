@@ -345,6 +345,112 @@ test('the sidebar count carries an explanatory title', async (t) => {
   }
 });
 
+/*
+ * Mail with real deadline prose, for the radar. `tomorrow` and `today` are
+ * relative, so these stay in the right urgency band whenever the suite runs --
+ * a fixed date would silently drift into "overdue" and the test would start
+ * asserting something different from what it was written to check.
+ */
+const DUE_MESSAGES = [
+  {
+    id: 'd1', threadId: 'td1',
+    from: 'AUGSD <augsd@pilani.bits-pilani.ac.in>',
+    subject: 'Fee payment',
+    snippet: 'The last date for fee payment is tomorrow.',
+    date: Date.now() - 3600_000, unread: true, starred: false, labels: ['INBOX', 'UNREAD'],
+  },
+  {
+    id: 'd2', threadId: 'td2',
+    from: 'Practice School Division <psd@pilani.bits-pilani.ac.in>',
+    subject: 'PS report',
+    snippet: 'Please submit the PS report by today.',
+    date: Date.now() - 7200_000, unread: true, starred: false, labels: ['INBOX', 'UNREAD'],
+  },
+];
+
+test('RADAR: the heading reports how many and how urgent', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * D-6. The radar is the product's most differentiated feature and was
+   * presented as a box titled "Due soon" -- the same weight as any other
+   * list, so the intelligence read as a filter.
+   */
+  const { doc, settle, restore } = await boot({ messages: DUE_MESSAGES });
+  try {
+    await settle(6);
+    assert.equal(doc.getElementById('radar').hidden, false, 'the radar should be showing');
+    const title = doc.getElementById('radar-title').textContent;
+    assert.match(title, /^Due soon · /, `heading did not carry a summary: ${title}`);
+    // Something is due today, and nothing is overdue, so "today" is the worst
+    // band present and the one worth naming.
+    assert.match(title, /today/, `expected the worst band named: ${title}`);
+  } finally {
+    restore();
+  }
+});
+
+test('RADAR: an item shows which phrase the date was read from', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * Converts "how did it know that?" into "of course, it read the line".
+   * In the title rather than on the surface: the item is already two columns
+   * in a narrow rail, and this is the one delight change the audit flagged as
+   * at risk of reading as noise.
+   */
+  const { doc, settle, restore } = await boot({ messages: DUE_MESSAGES });
+  try {
+    await settle(6);
+    const titles = [...doc.querySelectorAll('#radar-list .radar-what')]
+      .map((n) => n.getAttribute('title') || '');
+    assert.ok(titles.length > 0, 'the radar should have items');
+    assert.ok(
+      titles.some((t) => /Deadline read from: ".+"/.test(t)),
+      `no item explained its deadline: ${JSON.stringify(titles)}`
+    );
+    // And the phrase quoted must be one that actually appears in the mail,
+    // not a restatement of the parsed date.
+    const withSource = titles.find((t) => t.includes('Deadline read from'));
+    const quoted = withSource.match(/Deadline read from: "(.+)"/)[1];
+    const bodies = DUE_MESSAGES.map((m) => m.snippet.toLowerCase()).join(' ');
+    assert.ok(
+      bodies.includes(quoted.toLowerCase()),
+      `quoted "${quoted}" does not appear in the mail it came from`
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('RADAR: a warm cache start still finds the deadlines', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * The cache stores eleven positional fields and `dueAt` is not one of them,
+   * so cached messages go into the store via `store.upsert` WITHOUT passing
+   * through `ingest` -- which is the only place `extractDeadline` runs.
+   *
+   * The radar therefore reads whatever the cache path left behind. This test
+   * pins the behaviour that matters to the user: open the app with a warm
+   * cache, and the deadlines you could see yesterday are still there.
+   */
+  const { doc, settle, restore } = await boot({
+    messages: DUE_MESSAGES,
+    storageSeed: { msgCache: cacheBlob(DUE_MESSAGES), historyId: '12345' },
+  });
+  try {
+    await settle(10);
+    assert.equal(
+      doc.getElementById('radar').hidden, false,
+      'a warm start lost every deadline'
+    );
+    assert.ok(
+      doc.querySelectorAll('#radar-list .radar-item').length > 0,
+      'the radar is visible but empty'
+    );
+  } finally {
+    restore();
+  }
+});
+
 test('EMPTY: clearing the last message reads differently from arriving empty', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');
   /*

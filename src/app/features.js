@@ -108,6 +108,27 @@ export function renderRadar(ctx) {
 
   items.sort((a, b) => a.m.dueAt - b.m.dueAt);
 
+  /*
+   * THE HEADING CARRIES THE COUNT AND THE WORST BAND.
+   *
+   * "Due soon" is the same visual weight as any other list, so the product's
+   * cleverest feature reads as a filter. "Due soon · 1 overdue" says, in three
+   * words, that something was read, understood and ranked.
+   *
+   * Only the worst band is named, and only when it is worse than "soon" --
+   * naming every band turns a glance into a report.
+   */
+  const title = $('radar-title');
+  if (title) {
+    const overdue = items.filter((i) => i.u === 'overdue').length;
+    const today = items.filter((i) => i.u === 'today').length;
+    let suffix = '';
+    if (overdue) suffix = ` · ${overdue} overdue`;
+    else if (today) suffix = ` · ${today} today`;
+    else suffix = ` · ${items.length}`;
+    title.textContent = `Due soon${suffix}`;
+  }
+
   const frag = document.createDocumentFragment();
   for (const { m, u } of items.slice(0, RADAR_MAX)) {
     const li = document.createElement('li');
@@ -123,7 +144,20 @@ export function renderRadar(ctx) {
     const what = document.createElement('span');
     what.className = 'radar-what';
     what.textContent = m.subject;
-    what.title = m.subject;
+    /*
+     * SHOW THE WORKING, in the tooltip rather than on the surface.
+     *
+     * `dueText` is the phrase the date was actually read from -- "last date
+     * for submission", "submit by 14 Mar". Surfacing it converts "how did it
+     * know that?" (uncanny) into "of course, it read the line" (trustworthy).
+     *
+     * It goes in the title, not in visible text, because this item is already
+     * two columns in a narrow rail and the audit was explicit that this is the
+     * one change at risk of reading as noise. A hover is opt-in.
+     */
+    what.title = m.dueText
+      ? `${m.subject}\n\nDeadline read from: "${m.dueText}"`
+      : m.subject;
 
     li.append(when, what);
     frag.appendChild(li);

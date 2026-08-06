@@ -1732,6 +1732,10 @@ function ingestInto(mailboxId, messages, classified) {
         ...base,
         dueAt: d ? d.at : undefined,
         dueKind: d ? d.kind : undefined,
+        // The phrase the date was read FROM. Kept so the reader can show its
+        // working -- see the deadline tag -- rather than asserting a date the
+        // user has to take on faith.
+        dueText: d ? d.text : undefined,
         category: c.category,
         confidence: c.confidence,
         source: c.source,
@@ -1758,6 +1762,7 @@ function ingest(messages) {
     records[i] = applyCorrection(rules, {
       dueAt: d ? d.at : undefined,
       dueKind: d ? d.kind : undefined,
+      dueText: d ? d.text : undefined,
       hasAttachment: !!m.hasAttachment,
       id: m.id,
       threadId: m.threadId,
@@ -1807,6 +1812,38 @@ function autoArchive(records) {
     for (const s of snapshots) store.upsert(s);
     await send('BULK', { ids, add: ['INBOX'] });
   });
+}
+
+/**
+ * Re-derive a message's deadline fields.
+ *
+ * THE CACHE DOES NOT STORE THE DEADLINE. `pack()` writes eleven positional
+ * fields and `dueAt` is not among them, so a cached message goes into the
+ * store through `store.upsert` directly, never through `ingest` -- and
+ * `ingest` is the only place `extractDeadline` runs.
+ *
+ * The visible effect was that opening the app on a warm cache showed NO
+ * deadline radar at all, for as long as the delta took to come back. The
+ * product's most differentiated feature was missing from precisely the start
+ * that is supposed to be the fast one.
+ *
+ * Re-deriving is the right fix rather than widening the cache format: the
+ * deadline is a pure function of the snippet and subject, both of which ARE
+ * cached, and urgency is relative to now, so a stored `dueAt` would be
+ * correct while the band computed from it drifted. Parsing ~500 cached
+ * snippets is a few milliseconds, and it happens inside the existing batch.
+ */
+function withDeadline(m) {
+  if (m.dueAt) return m;
+  let d;
+  try {
+    d = extractDeadline(m);
+  } catch {
+    // A malformed cached record must degrade to "no deadline", never to a
+    // failed hydrate -- this runs before first paint.
+    return m;
+  }
+  return d ? { ...m, dueAt: d.at, dueKind: d.kind, dueText: d.text } : m;
 }
 
 /** Fetch and ingest one page. Throws; callers own the error reporting. */
@@ -3335,7 +3372,7 @@ async function start() {
   if (!cached?.messages.length) setSkeleton(true);
   if (cached?.messages.length) {
     store.batch(() => {
-      for (const m of cached.messages) store.upsert(m);
+      for (const m of cached.messages) store.upsert(withDeadline(m));
     });
     // Paint the cached list before touching the network.
     renderList();
