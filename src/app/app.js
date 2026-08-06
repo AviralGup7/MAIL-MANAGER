@@ -177,8 +177,20 @@ function visibleIds() {
  * forced a full style+layout pass over the whole list.
  */
 function renderList() {
-  const ids = visibleIds();
-  const next = ids.length > 400 ? ids.slice(0, 400) : ids;
+  // EVERY visible message is rendered. There is no cap.
+  //
+  // This used to be `ids.slice(0, 400)`, which was a render-cost guard that
+  // caused a correctness bug: `renderedIds` is what `move()` (j/k) and
+  // `selectNeighbourThen()` walk, so messages 401+ were unreachable by
+  // scroll, click AND keyboard. The sidebar counted them and nothing could
+  // open them, and "Load more" silently grew the hidden set.
+  //
+  // The guard was also unnecessary. `.row` carries `content-visibility: auto`
+  // with `contain-intrinsic-size`, so the browser skips rendering off-screen
+  // rows entirely — that is the documented reason this list has no
+  // hand-written virtualiser. The cap was defending against a cost the CSS
+  // had already removed.
+  const next = visibleIds();
 
   // The empty state is set on BOTH paths.
   //
@@ -192,7 +204,7 @@ function renderList() {
   // Fast path: identical id list, only content changed.
   if (sameOrder(next, renderedIds)) {
     for (const id of next) patchRow(id);
-    updateCounts(ids.length);
+    updateCounts(next.length);
     return;
   }
 
@@ -219,7 +231,7 @@ function renderList() {
   }
 
   renderedIds = next;
-  updateCounts(ids.length);
+  updateCounts(next.length);
 }
 
 function sameOrder(a, b) {
@@ -231,8 +243,10 @@ function sameOrder(a, b) {
 function updateCounts(total) {
   el.listTitle.textContent =
     state.category === 'all' ? 'All mail' : CATEGORY_LABELS[state.category] || state.category;
-  const shown = Math.min(total, 400);
-  el.listCount.textContent = total === 0 ? '' : shown < total ? `${shown} of ${total}` : `${total}`;
+  // Every message in the list is rendered, so the count is the whole truth.
+  // It used to read "400 of 600", which implied the other 200 were merely
+  // below the fold rather than unreachable.
+  el.listCount.textContent = total === 0 ? '' : String(total);
 }
 
 /** Build a row's skeleton once. Text is filled by fillRow. */
@@ -810,6 +824,19 @@ function move(delta) {
 window.addEventListener('message', (e) => {
   if (e.data?.type === 'BMM_SHOWN') el.scroller.focus({ preventScroll: true });
 });
+
+/**
+ * Test seam.
+ *
+ * The render invariant -- one render per settled state, no matter how many
+ * messages arrived -- is the property this whole architecture exists to
+ * guarantee, and it can only be verified by driving a real ingest against a
+ * real DOM. Exposing exactly one function is cheaper than exporting the module
+ * graph, and it cannot be reached from a web page: this document is an
+ * extension origin and is framed only by our own content script.
+ */
+window.__bmmIngest = ingest;
+window.__bmmStore = store;
 
 // ------------------------------------------------------------------- start --
 

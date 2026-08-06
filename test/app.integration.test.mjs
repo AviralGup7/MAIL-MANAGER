@@ -366,3 +366,110 @@ test('the app tells the content script it has painted', async (t) => {
   );
   assert.ok(html.includes('app.js'));
 });
+
+// -------------------------------------------- no cap on rendered rows ------
+
+/** Build N synthetic messages, newest first. */
+function bulk(n, over = {}) {
+  return Array.from({ length: n }, (_, i) => ({
+    id: `b${i}`,
+    threadId: `bt${i}`,
+    from: 'AUGSD <augsd@pilani.bits-pilani.ac.in>',
+    subject: `Bulk message ${i}`,
+    snippet: 'x',
+    date: Date.now() - i * 60_000,
+    unread: false,
+    starred: false,
+    labels: ['INBOX'],
+    ...over,
+  }));
+}
+
+test('REGRESSION: every message renders — there is no 400-row cap', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // renderedIds is what j/k and archive-neighbour walk, so a truncated render
+  // made rows 401+ unreachable by scroll, click AND keyboard, while the
+  // sidebar still counted them.
+  const { doc, restore } = await boot({ messages: bulk(600) });
+  try {
+    assert.equal(rows(doc).length, 600, 'all 600 rows must be in the DOM');
+    // The last row is real and openable, not a placeholder.
+    const last = rows(doc)[599];
+    assert.equal(last.dataset.id, 'b599');
+    assert.equal(last.querySelector('.r-subj').textContent, 'Bulk message 599');
+  } finally {
+    restore();
+  }
+});
+
+test('REGRESSION: the count reads the whole truth, not "400 of 600"', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, restore } = await boot({ messages: bulk(600) });
+  try {
+    assert.equal(doc.getElementById('listcount').textContent, '600');
+  } finally {
+    restore();
+  }
+});
+
+test('REGRESSION: a message past row 400 is reachable by keyboard', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, win, settle, restore } = await boot({ messages: bulk(450) });
+  try {
+    // Select the row that the old cap made unreachable, then confirm j/k can
+    // actually move onto and off it.
+    rows(doc)[430].click();
+    await settle();
+    assert.equal(doc.getElementById('r-subject').textContent, 'Bulk message 430');
+
+    doc.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'j', bubbles: true }));
+    await settle();
+    assert.equal(doc.getElementById('r-subject').textContent, 'Bulk message 431');
+
+    doc.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'k', bubbles: true }));
+    await settle();
+    assert.equal(doc.getElementById('r-subject').textContent, 'Bulk message 430');
+  } finally {
+    restore();
+  }
+});
+
+// ------------------------------------------- the core render invariant -----
+
+test('INVARIANT: one store notification and one render per sync', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // The single most important property in the codebase, previously enforced by
+  // convention only. bench.mjs PRINTED "renders triggered: 1" but did not
+  // assert it, so a regression to per-mutation rendering -- the exact defect
+  // that made v1 unusable -- would have passed green.
+  //
+  // BOTH halves are asserted, because each hides the other:
+  //   - DOM writes alone pass even when the store is mutated unbatched,
+  //     because the rAF coalescer collapses the notifications anyway. Verified
+  //     by sabotaging upsertMany into a per-message loop: the DOM assertion
+  //     still passed.
+  //   - Notifications alone would not catch a render loop that writes twice
+  //     for one notification.
+  const { win, doc, restore } = await boot({ messages: [] });
+  try {
+    const list = doc.getElementById('list');
+    let domWrites = 0;
+    const obs = new win.MutationObserver(() => domWrites++);
+    obs.observe(list, { childList: true });
+
+    let notifications = 0;
+    const unsub = win.__bmmStore.subscribe(() => notifications++);
+
+    win.__bmmIngest(bulk(200));
+    await new Promise((r) => win.requestAnimationFrame(() => r()));
+    await new Promise((r) => setTimeout(r, 0));
+    obs.disconnect();
+    unsub();
+
+    assert.equal(rows(doc).length, 200, 'all 200 must be rendered');
+    assert.equal(notifications, 1, `store must notify once, got ${notifications}`);
+    assert.equal(domWrites, 1, `list must be written once, got ${domWrites}`);
+  } finally {
+    restore();
+  }
+});
