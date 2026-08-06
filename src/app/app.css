@@ -55,6 +55,12 @@
   --lh-tight: 1.25;
   --lh-snug: 1.4;
   --lh-body: 1.55;
+  /*
+   * Looser than --lh-body, for text the user is COMPOSING rather than
+   * reading. A writing surface wants more room between lines than a reading
+   * one; it was previously a bare 1.6 on the compose textarea.
+   */
+  --lh-compose: 1.6;
 
   /* Tracking. Small text needs air; large text needs tightening. */
   --track-wide: 0.4px;
@@ -1274,7 +1280,7 @@ a.ghost {
      the remedy collapses into one unreadable run. */
   white-space: pre-wrap;
   text-align: left;
-  line-height: 1.5;
+  line-height: var(--lh-body);
   margin-top: var(--s-3);
   padding: var(--s-3) var(--s-3);
   border: 1px solid var(--danger);
@@ -1813,7 +1819,7 @@ html[data-theme='contrast'] .row[aria-selected='true'] {
   color: var(--fg);
   font: inherit;
   font-size: var(--t-md);
-  line-height: 1.6;
+  line-height: var(--lh-compose);
   padding: var(--s-3) 0;
   resize: none;
 }
@@ -2232,10 +2238,23 @@ html[data-scheme='dark'] #thememenu {
   height: 100%;
 }
 
+/*
+ * THE TARGET IS BIGGER THAN THE CONTROL.
+ *
+ * This was 15x15 -- well under the 24px minimum, sitting beside other
+ * controls, and it does something consequential. But drawing a 24px checkbox
+ * in a mail row would put a heavy dot in competition with the subject line.
+ *
+ * So the box stays 15px and the TARGET grows to 24px around it: min-width
+ * and min-height enlarge the hit area while the native control keeps its
+ * painted size. What it looks like and what it catches are different things.
+ */
 .r-check {
   position: absolute;
   width: 15px;
   height: 15px;
+  min-width: 24px;
+  min-height: 24px;
   margin: 0;
   cursor: pointer;
   accent-color: var(--accent);
@@ -2459,10 +2478,22 @@ html[data-scheme='dark'] #thememenu {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/*
+ * The count and the remove button share one slot -- the count is swapped out
+ * on hover. Enlarging the remove button's target to 24px therefore widened
+ * that slot only while hovering, so the row twitched under the cursor.
+ *
+ * Both now reserve the same 24px, so the swap is invisible and the row holds
+ * still. A fix that introduces a jitter is not a fix.
+ */
 .view-count {
   font-size: var(--t-xs);
   color: var(--fg-faint);
   font-variant-numeric: tabular-nums;
+  min-width: 24px;
+  min-height: 24px;
+  display: grid;
+  place-items: center;
 }
 
 /*
@@ -2472,12 +2503,18 @@ html[data-scheme='dark'] #thememenu {
  * use constantly; swapping it in where the count sits means no layout shift
  * and no extra column of chrome.
  */
+/*
+ * Same rule as .r-check: 1px of padding around a small glyph is a target you
+ * have to aim at. The icon keeps its size; the button grows under it.
+ */
 .view-remove {
   display: none;
   place-items: center;
   color: var(--fg-faint);
   border-radius: var(--r-full);
   padding: 1px;
+  min-width: 24px;
+  min-height: 24px;
 }
 .view-item:hover .view-count {
   display: none;
@@ -3001,7 +3038,7 @@ kbd {
 .tt-note {
   color: var(--fg-dim);
   font-size: var(--t-sm);
-  line-height: 1.55;
+  line-height: var(--lh-body);
   max-width: 68ch;
   margin: 0;
 }
@@ -3193,7 +3230,7 @@ kbd {
   border-left: 2px solid var(--line);
   color: var(--fg-dim);
   font-size: var(--t-sm);
-  line-height: 1.5;
+  line-height: var(--lh-body);
 }
 .tt-proposal-actions {
   display: flex;

@@ -1209,3 +1209,101 @@ test('the focus ring does not reshape the element it lands on', () => {
   );
   assert.match(block[2], /outline/, 'but it must still draw a ring');
 });
+
+test('every pointer target is large enough to hit reliably', () => {
+  /*
+   * MEASURED, using the tokens rather than by eye.
+   *
+   * Two real targets were far under any usability guideline:
+   *
+   *   .r-check      15x15   the per-row selection checkbox
+   *   .view-remove  1px pad the delete button on a saved view
+   *
+   * Both are small, both sit next to other controls, and both do something
+   * consequential -- select a message, delete a saved search. WCAG 2.5.8 asks
+   * for 24x24 as a minimum and Apple/Material ask for more.
+   *
+   * The visual size is deliberately NOT increased: a 24px checkbox in a mail
+   * row would be a heavy dot competing with the subject line. The TARGET is
+   * enlarged instead, which is the distinction between what a control looks
+   * like and what it catches.
+   */
+  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const block = (sel) => {
+    const m = css.match(
+      new RegExp(`(^|\\})\\s*${sel.replace(/[.#[\\]='-]/g, '\\$&')}\\s*\\{([^}]*)\\}`, 'm')
+    );
+    assert.ok(m, `${sel} must have a rule`);
+    return m[2];
+  };
+
+  for (const sel of ['.r-check', '.view-remove']) {
+    const b = block(sel);
+    assert.match(
+      b, /min-width:\s*24px/,
+      `${sel} needs a 24px minimum pointer target`
+    );
+    assert.match(b, /min-height:\s*24px/, `${sel} needs a 24px minimum height`);
+  }
+});
+
+test('the saved-view row does not twitch when the remove button appears', () => {
+  /*
+   * A FLAW MY OWN FIX INTRODUCED, caught by measuring afterwards.
+   *
+   * The count and the remove button share one trailing slot -- the count is
+   * swapped out on hover. Giving the remove button a 24px minimum target
+   * therefore widened that slot only while hovering, so the row twitched
+   * under the cursor.
+   *
+   * Both reserve the same 24px now. A fix that introduces a jitter is not a
+   * fix, and "it is only a few pixels" is exactly the reasoning this audit
+   * exists to reject.
+   */
+  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const grab = (sel) => {
+    const m = css.match(new RegExp(`(^|\\})\\s*\\${sel}\\s*\\{([^}]*)\\}`, 'm'));
+    assert.ok(m, `${sel} must have a rule`);
+    return m[2];
+  };
+  const w = (b) => (b.match(/min-width:\s*([^;]+)/) || [, ''])[1].trim();
+  assert.equal(
+    w(grab('.view-count')), w(grab('.view-remove')),
+    'the two states of one slot must reserve the same width'
+  );
+});
+
+test('typography, spacing and motion all come from tokens', () => {
+  /*
+   * ONE GATE FOR THE WHOLE DESIGN LANGUAGE.
+   *
+   * Individual rules already forbid colour literals and stray radii. This
+   * closes the remaining dimensions in one place, so a new component cannot
+   * quietly introduce a fifth line-height or a sixth type size.
+   *
+   * Measured before it was written: font-size and font-weight were already
+   * perfectly tokenised (0 violations), but FOUR line-heights were bare
+   * numbers -- including 1.55, which is exactly --lh-body. The compose
+   * textarea's 1.6 was genuinely a different intent (text you write wants a
+   * looser measure than text you read) so it became --lh-compose rather than
+   * being flattened into the nearest existing step.
+   */
+  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+
+  const stray = (prop, prefix) =>
+    [...css.matchAll(new RegExp(`${prop}:\\s*([^;]+);`, 'g'))]
+      .map((m) => m[1].trim())
+      .filter((v) => !v.startsWith(`var(${prefix}`) && v !== 'inherit');
+
+  assert.deepEqual(stray('font-size', '--t-'), [], 'type scale bypassed');
+  assert.deepEqual(stray('font-weight', '--w-'), [], 'weight scale bypassed');
+  assert.deepEqual(stray('line-height', '--lh-'), [], 'leading scale bypassed');
+
+  // Easing must never be a raw curve outside the token definitions.
+  const curves = [...css.matchAll(/cubic-bezier\([^)]*\)/g)].length;
+  const defined = [...css.matchAll(/--ease[\w-]*:\s*cubic-bezier\([^)]*\)/g)].length;
+  assert.equal(
+    curves, defined,
+    'every cubic-bezier must be a token definition, not an inline curve'
+  );
+});
