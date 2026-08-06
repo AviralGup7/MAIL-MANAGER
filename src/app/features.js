@@ -20,6 +20,7 @@ import { relativeLabel, urgency } from './deadlines.js';
 import { buildReply } from './query.js';
 import { UndoStack } from './undo.js';
 import { icon } from './icons.js';
+import { createDraftSaver, loadDraft, isMeaningful } from './draft-store.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -321,12 +322,26 @@ export function wirePalette(ctx) {
 let composeCtx = null;
 let composeMeta = {};
 
+/**
+ * Debounced local autosave. Created lazily on first compose so that a session
+ * which never writes a message never touches storage.
+ */
+let draftSaver = null;
+
+function ensureDraftSaver() {
+  if (!draftSaver) draftSaver = createDraftSaver(collectDraft);
+  return draftSaver;
+}
+
 export function openCompose(ctx, prefill = {}) {
   composeCtx = ctx;
   composeMeta = {
     threadId: prefill.threadId || '',
     inReplyTo: prefill.inReplyTo || '',
     references: prefill.references || '',
+    // What the panel STARTED with. Used to tell "typed something" from "a
+    // reply pre-filled a quoted original".
+    baseBody: prefill.quoted ? `\n\n${prefill.quoted}` : '',
   };
   const panel = $('compose');
   if (!panel) return;
@@ -378,20 +393,71 @@ function collectDraft() {
     threadId: composeMeta.threadId,
     inReplyTo: composeMeta.inReplyTo,
     references: composeMeta.references,
+    baseBody: composeMeta.baseBody || '',
+    title: $('compose-title')?.textContent || 'New message',
   };
+}
+
+/**
+ * Offer to restore a draft left over from a previous session.
+ *
+ * Deliberately NOT automatic. Silently reopening a compose panel on load is
+ * startling, and if the user already sent that message from their phone the
+ * restored copy is worse than useless. So: ask, once, and take a "no" as
+ * permission to forget it.
+ */
+export async function restoreDraftIfAny(ctx) {
+  const d = await loadDraft();
+  if (!d || !isMeaningful(d)) return false;
+
+  const who = d.to ? ` to ${d.to}` : '';
+  const what = d.subject ? ` "${d.subject}"` : '';
+  if (!confirm(`Restore your unsent message${what}${who}?`)) {
+    await ensureDraftSaver().discard();
+    return false;
+  }
+
+  openCompose(ctx, {
+    to: d.to,
+    cc: d.cc,
+    subject: d.subject,
+    title: d.title || 'Restored draft',
+    threadId: d.threadId,
+    inReplyTo: d.inReplyTo,
+    references: d.references,
+  });
+  // Body is set directly: openCompose's `quoted` path would re-wrap it.
+  $('c-text').value = d.body || '';
+  composeMeta.baseBody = d.baseBody || '';
+  setStatus('Restored from your last session', 'ok');
+  return true;
+}
+
+/** Flush any pending draft write. Called on pagehide, where timers never run. */
+export function flushDraft() {
+  return draftSaver ? draftSaver.flush() : Promise.resolve(false);
 }
 
 export function wireCompose(ctx) {
   const panel = $('compose');
   if (!panel) return;
 
-  $('compose-close').addEventListener('click', () => {
+  $('compose-close').addEventListener('click', async () => {
     const d = collectDraft();
     // Only warn if something was actually typed. A confirm() on an untouched
     // panel is the kind of friction that makes people avoid the feature.
-    if ((d.to || d.subject || d.body.trim()) && !confirm('Discard this message?')) return;
+    if (isMeaningful(d) && !confirm('Discard this message?')) return;
+    // An explicit discard means the crash-recovery copy must go too, or the
+    // user is offered back the message they just chose to throw away.
+    await ensureDraftSaver().discard();
     closeCompose();
   });
+
+  /*
+   * AUTOSAVE. One listener on the panel catches every field by delegation,
+   * so adding a field later cannot forget to be saved.
+   */
+  panel.addEventListener('input', () => ensureDraftSaver().schedule());
 
   $('compose-min').addEventListener('click', () => panel.classList.toggle('minimised'));
   $('c-cc-toggle').addEventListener('click', () => {
@@ -427,6 +493,9 @@ async function doSend(ctx) {
   setStatus('Sending…', '');
   try {
     await ctx.send('SEND', { draft });
+    // Clear the recovery copy only AFTER the send is confirmed. Clearing
+    // first and then failing would destroy the message.
+    await ensureDraftSaver().discard();
     closeCompose();
     ctx.toast('Message sent');
   } catch (err) {
@@ -441,9 +510,12 @@ async function doDraft(ctx) {
   setStatus('Saving…', '');
   try {
     await ctx.send('SAVE_DRAFT', { draft });
+    // Saved to Gmail: the durable tier now has it, so the local crash copy is
+    // redundant.
+    await ensureDraftSaver().discard();
     // Success reads as success. A confirmation in the same grey as a hint is
     // indistinguishable from nothing having happened.
-    setStatus('Draft saved', 'ok');
+    setStatus('Draft saved to Gmail', 'ok');
   } catch (err) {
     setStatus(err.message, 'err');
   }

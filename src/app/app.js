@@ -44,6 +44,7 @@ import {
   renderRadar, wireRadar,
   openPalette, closePalette, wirePalette,
   openCompose, closeCompose, wireCompose, startReply,
+  restoreDraftIfAny, flushDraft,
 } from './features.js';
 import { classify } from '../classify/index.js';
 import {
@@ -2105,6 +2106,9 @@ function decorate(id, name) {
  */
 window.addEventListener('pagehide', () => {
   saver.flush();
+  // A half-written message must survive the tab closing. The debounce timer
+  // will never fire here, so it is flushed explicitly.
+  flushDraft();
 });
 
 /**
@@ -2320,6 +2324,9 @@ async function boot() {
     if (!signedIn) return showGate('');
     hideGate();
     await start();
+    // Only after the inbox is up: an unsent message from a previous session
+    // is offered back rather than silently lost.
+    restoreDraftIfAny(ctx).catch(() => {});
   } catch (err) {
     showGate(String(err.message || err));
   }
