@@ -42,7 +42,6 @@
   --t-2xl: 23px;   /* empty states, gate heading */
 
   /* Weights: four, not "whatever looked right". 650 was a real value in here. */
-  --w-normal: 400;
   --w-medium: 500;
   --w-semi: 600;
   --w-bold: 700;
@@ -100,7 +99,6 @@
   /* --- LAYOUT ------------------------------------------------------------- */
   --row-h: 68px;
   --sidebar-w: 244px;
-  --radius: var(--r-md);
 }
 
 /*
@@ -168,7 +166,7 @@ body {
 kbd {
   font: inherit;
   font-size: var(--t-xs);
-  padding: 1px 5px;
+  padding: 1px var(--s-1);
   border: 1px solid var(--line);
   border-bottom-width: 2px;
   border-radius: var(--r-sm);
@@ -196,9 +194,9 @@ kbd {
 
 #brand {
   display: flex;
-  gap: 10px;
+  gap: var(--s-3);
   align-items: center;
-  padding: 14px 16px 12px;
+  padding: var(--s-4) var(--s-4) var(--s-3);
 }
 
 #brand-mark {
@@ -230,7 +228,7 @@ kbd {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 4px 8px 8px;
+  padding: var(--s-1) var(--s-2) var(--s-2);
 }
 
 .cat {
@@ -307,11 +305,11 @@ kbd {
 }
 
 #side-foot {
-  padding: 8px;
+  padding: var(--s-2);
   border-top: 1px solid var(--line);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--s-2);
 }
 
 /* --------------------------------------------------------------- controls -- */
@@ -354,11 +352,11 @@ a.ghost {
   transform: translateY(1px);
 }
 .ghost.small {
-  padding: 4px 9px;
+  padding: var(--s-1) var(--s-2);
   font-size: var(--t-sm);
 }
 .ghost.icon {
-  padding: 6px 9px;
+  padding: var(--s-2) var(--s-2);
 }
 .ghost.danger:hover {
   color: var(--danger);
@@ -404,8 +402,8 @@ a.ghost {
 #topbar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
   border-bottom: 1px solid var(--line);
   background: var(--bg-raised);
 }
@@ -429,7 +427,7 @@ a.ghost {
 
 #search {
   width: 100%;
-  padding: 8px 34px 8px 32px;
+  padding: var(--s-2) var(--s-8) var(--s-2) var(--s-8);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   background: var(--bg);
@@ -456,7 +454,7 @@ a.ghost {
 
 #toolbar {
   display: flex;
-  gap: 6px;
+  gap: var(--s-2);
   margin-left: auto;
 }
 
@@ -479,8 +477,8 @@ a.ghost {
 #listhead {
   display: flex;
   align-items: baseline;
-  gap: 8px;
-  padding: 9px 14px;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-4);
   font-size: var(--t-sm);
   color: var(--fg-faint);
   border-bottom: 1px solid var(--line);
@@ -717,17 +715,34 @@ a.ghost {
  * opacity, not display, so it cannot cause a reflow mid-scroll.
  */
 .r-star {
+  /*
+   * HIT TARGET, not visual size.
+   *
+   * Measured at 18px before this: below the 24px minimum in WCAG 2.2 SC 2.5.8
+   * (Target Size, Minimum), and genuinely hard to hit with a trackpad on a
+   * moving list. The ICON stays 15px -- a bigger star would shout -- but the
+   * pressable area is expanded to 28px with padding, so the target grows
+   * without the graphic changing at all.
+   *
+   * This is the difference between designing what a control looks like and
+   * designing what it is.
+   */
   border: 0;
   background: none;
-  padding: 0 2px;
-  font-size: var(--t-md);
-  line-height: 1;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin: -6px;
+  padding: 0;
+  border-radius: var(--r-full);
   color: var(--fg-faint);
   opacity: 0;
   transform: scale(0.86);
   transition:
     opacity var(--dur-fast) linear,
     transform var(--dur-fast) var(--ease-spring),
+    background-color var(--dur-instant) linear,
     color var(--dur-instant) linear;
 }
 .row:hover .r-star,
@@ -737,7 +752,12 @@ a.ghost {
   transform: scale(1);
 }
 .r-star:hover {
-  transform: scale(1.18);
+  transform: scale(1.12);
+  background: var(--bg-sunken);
+  color: var(--fg-dim);
+}
+.r-star[aria-pressed='true']:hover {
+  color: #eab308;
 }
 .r-star[aria-pressed='true'] {
   color: #eab308;
@@ -802,8 +822,8 @@ a.ghost {
 #empty-sub {
   margin: 0;
   font-size: var(--t-sm);
-  max-width: 30ch;
-  line-height: var(--lh-snug);
+  max-width: 32ch;
+  line-height: var(--lh-body);
 }
 #empty-action {
   margin-top: var(--s-3);
@@ -887,7 +907,7 @@ a.ghost {
 }
 #reader-empty .hint {
   font-size: var(--t-sm);
-  margin-top: 18px;
+  margin-top: var(--s-5);
 }
 
 #reader {
@@ -1001,6 +1021,7 @@ a.ghost {
 /* ------------------------------------------------------------------ gate -- */
 
 #gate {
+  animation: gate-in var(--dur-slow) var(--ease-out) both;
   position: fixed;
   inset: 0;
   display: grid;
@@ -1009,18 +1030,26 @@ a.ghost {
   z-index: 20;
 }
 
+@keyframes gate-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
 #gate-card {
   width: min(420px, 88vw);
   background: var(--bg-raised);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow);
-  padding: 26px;
+  padding: var(--s-6);
   text-align: center;
 }
 #gate-card h2 {
-  margin: 0 0 8px;
-  font-size: var(--t-xl);
+  margin: 0 0 var(--s-3);
+  font-size: var(--t-2xl);
+  font-weight: var(--w-semi);
+  letter-spacing: var(--track-tight);
+  line-height: var(--lh-tight);
 }
 #gate-card p {
   color: var(--fg-dim);
@@ -1034,7 +1063,7 @@ a.ghost {
 #gate-card code {
   font-size: var(--t-xs);
   background: var(--bg-sunken);
-  padding: 1px 5px;
+  padding: 1px var(--s-1);
   border-radius: var(--r-sm);
 }
 #gate-card .primary {
@@ -1048,8 +1077,8 @@ a.ghost {
   white-space: pre-wrap;
   text-align: left;
   line-height: 1.5;
-  margin-top: 12px;
-  padding: 10px 12px;
+  margin-top: var(--s-3);
+  padding: var(--s-3) var(--s-3);
   border: 1px solid var(--danger);
   border-radius: var(--r-md);
   background: var(--bg-sunken);
@@ -1066,7 +1095,7 @@ a.ghost {
   transform: translate3d(-50%, 0, 0);
   background: var(--fg);
   color: var(--bg-raised);
-  padding: 9px 16px;
+  padding: var(--s-2) var(--s-4);
   border-radius: var(--r-full);
   font-size: var(--t-sm);
   box-shadow: var(--shadow);
@@ -1127,7 +1156,7 @@ a.ghost {
   right: 0;
   z-index: 40;
   min-width: 190px;
-  padding: 5px;
+  padding: var(--s-1);
   background: var(--bg-raised);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
@@ -1149,9 +1178,9 @@ a.ghost {
 .theme-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--s-3);
   width: 100%;
-  padding: 7px 9px;
+  padding: var(--s-2) var(--s-2);
   border: 0;
   border-radius: var(--r-md);
   background: transparent;
@@ -1312,6 +1341,11 @@ a.ghost {
   box-shadow: 0 1px 2px var(--glow);
 }
 
+@keyframes gate-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
 #gate-card {
   border-radius: var(--r-xl);
   box-shadow: var(--shadow-lg);
@@ -1356,9 +1390,9 @@ html[data-theme='contrast'] .row[aria-selected='true'] {
 /* --------------------------------------------------------- deadline radar -- */
 
 #radar {
-  padding: 4px 8px 10px;
+  padding: var(--s-1) var(--s-2) var(--s-3);
   border-bottom: 1px solid var(--line);
-  margin-bottom: 4px;
+  margin-bottom: var(--s-1);
 }
 
 #radar-title {
@@ -1380,7 +1414,7 @@ html[data-theme='contrast'] .row[aria-selected='true'] {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  padding: 6px 9px;
+  padding: var(--s-2) var(--s-2);
   border-radius: var(--r-md);
   cursor: pointer;
   border-left: 2px solid transparent;
@@ -1454,7 +1488,7 @@ html[data-theme='contrast'] .row[aria-selected='true'] {
   color: var(--fg);
   font: inherit;
   font-size: var(--t-lg);
-  padding: 15px 18px;
+  padding: var(--s-4) var(--s-5);
 }
 #palette-input:focus {
   outline: none;
@@ -1463,7 +1497,7 @@ html[data-theme='contrast'] .row[aria-selected='true'] {
 #palette-list {
   list-style: none;
   margin: 0;
-  padding: 6px;
+  padding: var(--s-2);
   max-height: 46vh;
   overflow-y: auto;
 }
@@ -1471,8 +1505,8 @@ html[data-theme='contrast'] .row[aria-selected='true'] {
 .palette-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 11px;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
   border-radius: var(--r-md);
   cursor: pointer;
   font-size: var(--t-md);
@@ -1491,11 +1525,11 @@ html[data-theme='contrast'] .row[aria-selected='true'] {
   color: var(--fg-faint);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
-  padding: 1px 5px;
+  padding: 1px var(--s-1);
 }
 
 #palette-hint {
-  padding: 8px 18px;
+  padding: var(--s-2) var(--s-5);
   border-top: 1px solid var(--line);
   font-size: var(--t-xs);
   color: var(--fg-faint);
@@ -1538,8 +1572,8 @@ html[data-theme='contrast'] .row[aria-selected='true'] {
 #compose-head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
   background: var(--bg-sunken);
   border-radius: var(--r-lg) var(--r-lg) 0 0;
   border-bottom: 1px solid var(--line);
@@ -1552,21 +1586,21 @@ html[data-theme='contrast'] .row[aria-selected='true'] {
 }
 #compose-head-actions {
   display: flex;
-  gap: 4px;
+  gap: var(--s-1);
 }
 
 #compose-body {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: 4px 14px 0;
+  padding: var(--s-1) var(--s-4) 0;
   overflow-y: auto;
 }
 
 .c-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--s-3);
   border-bottom: 1px solid var(--line);
 }
 .c-row span {
@@ -1582,7 +1616,7 @@ html[data-theme='contrast'] .row[aria-selected='true'] {
   color: var(--fg);
   font: inherit;
   font-size: var(--t-md);
-  padding: 10px 0;
+  padding: var(--s-3) 0;
 }
 .c-row input:focus {
   outline: none;
@@ -1597,7 +1631,7 @@ html[data-theme='contrast'] .row[aria-selected='true'] {
   font: inherit;
   font-size: var(--t-md);
   line-height: 1.6;
-  padding: 12px 0;
+  padding: var(--s-3) 0;
   resize: none;
 }
 #c-text:focus {
@@ -1607,17 +1641,24 @@ html[data-theme='contrast'] .row[aria-selected='true'] {
 #compose-foot {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 11px 14px;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
   border-top: 1px solid var(--line);
 }
 #c-status {
   font-size: var(--t-sm);
-  color: var(--fg-faint);
-  margin-left: auto;
-  max-width: 55%;
-  text-align: right;
+  transition: color var(--dur-fast) linear;
 }
+/* Outcome is carried by colour AND by the wording, never colour alone. */
+#c-status[data-kind='ok'] {
+  color: var(--success);
+  font-weight: var(--w-medium);
+}
+#c-status[data-kind='err'] {
+  color: var(--danger);
+  font-weight: var(--w-medium);
+}
+
 
 .primary.full {
   width: 100%;

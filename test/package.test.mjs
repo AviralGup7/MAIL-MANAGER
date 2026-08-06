@@ -554,3 +554,49 @@ test('scroll listeners are passive', () => {
     assert.match(after, /passive:\s*true/, 'every scroll listener must be passive');
   }
 });
+
+test('interactive targets meet WCAG 2.2 minimum size', () => {
+  // SC 2.5.8 (Target Size, Minimum) requires 24x24 CSS px. The star was
+  // measured at 18px: below the floor and genuinely hard to hit with a
+  // trackpad on a list that scrolls. The ICON stays 15px -- a bigger star
+  // would shout -- and the pressable area is expanded instead, which is the
+  // difference between designing what a control looks like and what it is.
+  const css = read('src/app/app.css');
+  const i = css.indexOf('.r-star {');
+  assert.ok(i !== -1, '.r-star must be defined');
+  const block = css.slice(i, css.indexOf('}', i));
+
+  const w = block.match(/width:\s*(\d+)px/);
+  const h = block.match(/height:\s*(\d+)px/);
+  assert.ok(w && Number(w[1]) >= 24, `star width is ${w?.[1]}px, needs >= 24`);
+  assert.ok(h && Number(h[1]) >= 24, `star height is ${h?.[1]}px, needs >= 24`);
+});
+
+test('every design token is actually used', () => {
+  // A token defined and never referenced is not a design system, it is
+  // aspiration. Six were dead: --dur-slow, --lh-body, --radius, --success,
+  // --t-2xl, --w-normal. Each was either applied where it belonged or removed.
+  const css = read('src/app/app.css');
+  const defined = [...css.matchAll(/^ {2}(--[a-z0-9-]+):/gm)].map((m) => m[1]);
+  assert.ok(defined.length > 20, 'expected a real token set');
+
+  const dead = defined.filter((t) => !css.includes(`var(${t})`));
+  assert.deepEqual(dead, [], `tokens defined but never used: ${dead.join(', ')}`);
+});
+
+test('spacing resolves to the 4px grid', () => {
+  // Twenty-odd raw padding values survived the first tokenisation pass because
+  // I only converted font-size and radius. Rhythm is what makes a layout feel
+  // deliberate, and it is invisible until it is wrong everywhere at once.
+  const css = read('src/app/app.css');
+  const body = css.slice(css.indexOf('/*\n * THEME VALUES LIVE IN'));
+  const offenders = [];
+  for (const m of body.matchAll(/\b(padding|gap):\s*([^;]+);/g)) {
+    for (const tok of m[2].split(/\s+/)) {
+      const px = tok.match(/^(\d+)px$/);
+      // 1px and 2px are hairlines, deliberately below the grid.
+      if (px && Number(px[1]) > 2) offenders.push(m[0].trim());
+    }
+  }
+  assert.deepEqual([...new Set(offenders)], [], 'off-grid spacing');
+});

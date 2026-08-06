@@ -118,7 +118,7 @@ export const THEMES = [
     accentFg: '#ffffff',
     accentSoft: '#e4ecef',
     danger: '#b1382c',
-    warning: '#8a6400',
+    warning: '#7d5a00',
     success: '#5a7000',
     glow: 'rgba(31, 111, 158, 0.16)',
   },

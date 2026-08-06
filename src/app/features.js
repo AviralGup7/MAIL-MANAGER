@@ -418,19 +418,19 @@ export function wireCompose(ctx) {
 async function doSend(ctx) {
   const draft = collectDraft();
   if (!draft.to) {
-    $('c-status').textContent = 'Add a recipient.';
+    setStatus('Add a recipient.', 'err');
     $('c-to').focus();
     return;
   }
   const btn = $('c-send');
   btn.disabled = true;
-  $('c-status').textContent = 'Sending…';
+  setStatus('Sending…', '');
   try {
     await ctx.send('SEND', { draft });
     closeCompose();
     ctx.toast('Message sent');
   } catch (err) {
-    $('c-status').textContent = err.message;
+    setStatus(err.message, 'err');
   } finally {
     btn.disabled = false;
   }
@@ -438,11 +438,21 @@ async function doSend(ctx) {
 
 async function doDraft(ctx) {
   const draft = collectDraft();
-  $('c-status').textContent = 'Saving…';
+  setStatus('Saving…', '');
   try {
     await ctx.send('SAVE_DRAFT', { draft });
-    $('c-status').textContent = 'Draft saved';
+    // Success reads as success. A confirmation in the same grey as a hint is
+    // indistinguishable from nothing having happened.
+    setStatus('Draft saved', 'ok');
   } catch (err) {
-    $('c-status').textContent = err.message;
+    setStatus(err.message, 'err');
   }
+}
+
+/** Compose status line, colour-coded by outcome. */
+function setStatus(text, kind) {
+  const el = $('c-status');
+  if (!el) return;
+  el.textContent = text;
+  el.dataset.kind = kind || '';
 }

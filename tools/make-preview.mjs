@@ -215,6 +215,14 @@ function respond(msg) {
               '<p style="color:#8a91a0;font-size:12.5px">— ' + esc(m.from) + '</p>',
         text: '' } };
     }
+    // Compose. Without these the preview leaves the status stuck on
+    // "Saving…" forever, and a reviewer cannot exercise compose at all --
+    // which is exactly what happened the first time I tried.
+    case 'SEND':       return { ok: true, data: { id: 'sent-1' } };
+    case 'SAVE_DRAFT': return { ok: true, data: { id: 'draft-1' } };
+    case 'LIST_LABELS':return { ok: true, data: [] };
+    case 'UNARCHIVE':
+    case 'UNTRASH':    return { ok: true, data: {} };
     default: return { ok: true, data: {} };  // triage actions all "succeed"
   }
 }

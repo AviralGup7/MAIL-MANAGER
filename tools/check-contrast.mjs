@@ -40,6 +40,11 @@ const TEXT = [
   ['fgFaint', AA_NORMAL], // dates and snippets are normal-size body text
   ['accent', AA_NORMAL],
   ['danger', AA_NORMAL],
+  // Added after --success went from a defined-but-unused token to a real
+  // status colour in compose. A semantic colour that is never checked is a
+  // contrast failure waiting to ship.
+  ['success', AA_NORMAL],
+  ['warning', AA_NORMAL],
 ];
 
 export function auditTheme(theme) {
