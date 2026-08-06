@@ -193,3 +193,42 @@ test('the reading pane is not a live region', () => {
   const pane = html.match(/<div id="readpane"[^>]*>/)[0];
   assert.ok(!pane.includes('aria-live'), 'aria-live on the pane announces everything in it');
 });
+
+test('every stylesheet parses', async () => {
+  // A stray brace makes a browser silently drop the REST of the file. This
+  // shipped once: relocating the prefers-reduced-motion block left an orphan
+  // "}" behind, and everything after it -- the entire appearance layer --
+  // stopped applying. Nothing caught it, because the tests assert on DOM
+  // structure and jsdom does not apply stylesheets to them.
+  let JSDOM, VirtualConsole;
+  try {
+    ({ JSDOM, VirtualConsole } = await import('jsdom'));
+  } catch {
+    return; // graceful skip, as elsewhere
+  }
+  for (const file of ['src/app/app.css', 'src/takeover/takeover.css']) {
+    const css = read(file);
+    // Cheap structural check first: it localises the fault far better than a
+    // parser error does.
+    const open = (css.match(/{/g) || []).length;
+    const close = (css.match(/}/g) || []).length;
+    assert.equal(open, close, `${file}: ${open} "{" vs ${close} "}"`);
+
+    const errors = [];
+    const vc = new VirtualConsole();
+    vc.on('jsdomError', (e) => errors.push(e.message));
+    new JSDOM(`<style>${css}</style>`, { virtualConsole: vc });
+    assert.deepEqual(errors, [], `${file} failed to parse`);
+  }
+});
+
+test('prefers-reduced-motion is the LAST rule in app.css', () => {
+  // Same specificity means source order decides. An override that is not last
+  // does not override -- an infinite animation appended after it escapes
+  // entirely, which is exactly what happened.
+  const css = read('src/app/app.css');
+  const i = css.lastIndexOf('@media (prefers-reduced-motion');
+  assert.ok(i !== -1, 'the reduced-motion block must exist');
+  const after = css.slice(i).split('}').slice(4).join('}');
+  assert.equal(after.trim(), '', 'no rules may follow the reduced-motion block');
+});
