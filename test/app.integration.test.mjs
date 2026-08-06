@@ -3585,3 +3585,150 @@ test('TIMETABLE: an official room-change notice applies without asking', async (
     restore();
   }
 });
+
+test('TIMETABLE: a section can be switched without losing the course', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * Routine in the first fortnight of a semester, and the only route used to
+   * be Remove-then-Add, which discarded the history of everything else on
+   * the course.
+   */
+  const { doc, win, settle, restore } = await boot({ timetableData: TT_DATA });
+  try {
+    await openTT(doc, win, settle);
+    const r = await ttSearch(doc, win, settle, 'CS F111');
+    r[0].querySelector('button').click();
+    await settle(4);
+    [...doc.querySelectorAll('.tt-chooser .tt-section')]
+      .find((b) => b.textContent.startsWith('L1')).click();
+    await settle(8);
+
+    const { getTimetableState } = await import('../src/app/timetable-ui.js');
+    assert.ok(
+      getTimetableState().entries.some((e) => e.section === 'L1'),
+      'precondition: L1 is held'
+    );
+
+    const swap = [...doc.querySelectorAll('#tt-panel .tt-entry button')]
+      .find((b) => b.textContent === 'Switch');
+    assert.ok(swap, 'a course with another lecture section must offer a switch');
+    swap.click();
+    await settle(4);
+
+    const opts = [...doc.querySelectorAll('#tt-panel .tt-switch .tt-section')];
+    assert.ok(opts.length, 'the alternatives must be listed');
+    const toL2 = opts.find((b) => b.textContent.startsWith('L2'));
+    assert.ok(toL2, 'L2 should be offered');
+    toL2.click();
+    await settle(8);
+
+    const after = getTimetableState().entries;
+    assert.ok(!after.some((e) => e.section === 'L1'), 'L1 is gone');
+    const l2 = after.find((e) => e.section === 'L2');
+    assert.ok(l2, 'L2 is held');
+    assert.match(l2.history[0].detail, /Switched from L1/, 'and the switch is recorded');
+  } finally {
+    restore();
+  }
+});
+
+test('TIMETABLE: marking complete refuses while a clash remains', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * "Mark complete" that happily accepts two classes in the same slot would
+   * mean nothing.
+   *
+   * The clash is CONSTRUCTED here rather than assumed. My first version relied
+   * on the shared fixture happening to overlap -- it does not, BIO F101 L1 is
+   * Th2 and CS F111 L1 is M/W3 -- so the precondition failed and the test was
+   * never exercising the refusal at all.
+   */
+  const clashing = {
+    ...TT_DATA,
+    courses: TT_DATA.courses.map((c) => (c.courseNo !== 'BIO F101' ? c : {
+      ...c,
+      sections: c.sections.map((sec) => (sec.section !== 'L1' ? sec : {
+        ...sec,
+        daysHours: 'M 3',
+        meetings: [{ day: 'M', dayName: 'Monday', hour: 3, startMin: 600, endMin: 650 }],
+      })),
+    })),
+  };
+  const { doc, win, settle, restore } = await boot({ timetableData: clashing });
+  try {
+    await openTT(doc, win, settle);
+    for (const q of ['CS F111', 'BIO F101']) {
+      const r = await ttSearch(doc, win, settle, q);
+      r[0].querySelector('button').click();
+      await settle(4);
+      [...doc.querySelectorAll('.tt-chooser .tt-section')]
+        .find((b) => b.textContent.startsWith('L1')).click();
+      await settle(8);
+    }
+
+    const { getTimetableState } = await import('../src/app/timetable-ui.js');
+    const blocking = getTimetableState().conflicts.filter((c) => c.severity === 'blocking');
+    assert.ok(blocking.length, 'precondition: the two courses must clash');
+
+    const done = [...doc.querySelectorAll('#tt-panel button')]
+      .find((b) => b.textContent === 'Mark complete');
+    assert.ok(done, 'the control must be offered');
+    done.click();
+    await settle(6);
+
+    assert.equal(
+      getTimetableState().finalisedAt, undefined,
+      'a clashing timetable must not be marked complete'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('TIMETABLE: reset asks first, then clears everything', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Destructive and not covered by undo, so it confirms. Declining must be
+  // a genuine no-op, not a delayed yes.
+  const { doc, win, settle, restore } = await boot({ timetableData: TT_DATA });
+  // Restored in `finally`: leaving a stubbed confirm on globalThis would make
+  // any later test that reaches one behave differently depending on order.
+  const realConfirm = globalThis.confirm;
+  try {
+    await openTT(doc, win, settle);
+    const r = await ttSearch(doc, win, settle, 'CS F111');
+    r[0].querySelector('button').click();
+    await settle(4);
+    [...doc.querySelectorAll('.tt-chooser .tt-section')]
+      .find((b) => b.textContent.startsWith('L1')).click();
+    await settle(8);
+
+    const { getTimetableState } = await import('../src/app/timetable-ui.js');
+    const before = getTimetableState().entries.length;
+    assert.ok(before > 0, 'precondition: something to reset');
+
+    const wipe = () => [...doc.querySelectorAll('#tt-panel button')]
+      .find((b) => b.textContent === 'Reset');
+
+    // The module calls a bare `confirm(...)`, which resolves against the
+    // global the app module was evaluated with, not against `win`.
+    globalThis.confirm = () => false;
+    wipe().click();
+    await settle(6);
+    assert.equal(
+      getTimetableState().entries.length, before,
+      'declining the confirm must change nothing'
+    );
+
+    globalThis.confirm = () => true;
+    wipe().click();
+    await settle(8);
+    assert.equal(getTimetableState().entries.length, 0, 'accepting clears it');
+    assert.ok(
+      doc.querySelector('#tt-q'),
+      'and the build screen comes back so it can be rebuilt'
+    );
+  } finally {
+    globalThis.confirm = realConfirm;
+    restore();
+  }
+});

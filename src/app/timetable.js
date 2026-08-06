@@ -298,6 +298,110 @@ export function removeCourse(state, comCode, section = null) {
   };
 }
 
+/**
+ * Swap one held section of a course for another.
+ *
+ * Without this the only route was remove-then-add, which threw away the
+ * history of everything else on that course -- and a section swap is a
+ * routine event in the first fortnight of a semester.
+ *
+ * The new section is a genuinely DIFFERENT class: its own room, hours and
+ * instructors, all from the source. So this builds a fresh entry rather than
+ * mutating fields on the old one, which would leave provenance claiming the
+ * document said things about L2 that it said about L1.
+ *
+ * What carries over is the `locked` flag and the FACT of the switch, recorded
+ * in the new entry's history so the change is explainable later.
+ *
+ * A section the user does not hold is left alone -- no silent insert.
+ */
+export function switchSection(state, comCode, fromSection, course, toSection, at = Date.now()) {
+  const old = state.entries.find(
+    (e) => e.comCode === comCode && e.section === fromSection
+  );
+  if (!old || !toSection) return state;
+
+  const fresh = makeEntry(course, toSection, {
+    semester: old.semester,
+    source: 'document',
+    ref: 'official timetable',
+    at,
+  });
+
+  const replacement = {
+    ...fresh,
+    // The lock is a user preference about automation, not a property of the
+    // class, so it survives the swap.
+    locked: old.locked,
+    history: [
+      {
+        at,
+        action: 'switched',
+        field: 'section',
+        source: 'manual',
+        ref: 'user',
+        from: fromSection,
+        to: toSection.section,
+        detail: `Switched from ${fromSection} to ${toSection.section}`,
+      },
+      ...fresh.history.slice(1),
+    ],
+  };
+
+  const entries = state.entries.map((e) => (e === old ? replacement : e));
+  return { ...state, entries, conflicts: detectConflicts(entries), updatedAt: at };
+}
+
+/**
+ * Mark the course set complete.
+ *
+ * A milestone, NOT a freeze. Official notices must still land afterwards,
+ * because AUGSD does not care that you pressed a button -- freezing would
+ * turn a finalised timetable into a stale one, which is worse than no
+ * milestone at all.
+ *
+ * It refuses while blocking conflicts remain. "Finalise" that happily accepts
+ * two classes in one slot means nothing. Needs-input conflicts (a room the
+ * document never printed) are advisory and do not block, because they may
+ * never be resolvable from the source.
+ */
+export function finalize(state, at = Date.now()) {
+  const blocking = (state.conflicts || []).filter((c) => c.severity === 'blocking');
+  if (blocking.length) {
+    return {
+      ok: false,
+      state,
+      reason:
+        `Resolve ${blocking.length} blocking conflict` +
+        `${blocking.length === 1 ? '' : 's'} first: ${blocking[0].message}`,
+    };
+  }
+  return { ok: true, state: { ...state, finalisedAt: at, updatedAt: at }, reason: '' };
+}
+
+/**
+ * Throw the timetable away and start again.
+ *
+ * The only sanctioned route back to a full rebuild -- everything else in this
+ * system updates incrementally, so a reset is destructive and must be asked
+ * for explicitly.
+ *
+ * NOT simply `emptyState()`: `appliedMail` must be cleared too. That list
+ * remembers which messages have already been dealt with so they are not
+ * re-proposed. After a reset the timetable is empty, so every one of those
+ * messages is unhandled again -- keeping the list would leave the rebuilt
+ * timetable permanently deaf to mail it had already seen.
+ */
+export function resetTimetable(state, at = Date.now()) {
+  return {
+    ...emptyState(),
+    // Keep the semester so the panel header does not blank out mid-rebuild.
+    semester: state?.semester || '',
+    resetAt: at,
+    updatedAt: at,
+  };
+}
+
 /* ========================================================================== *
  * UPDATING — deterministic, precedence-driven
  * ========================================================================== */

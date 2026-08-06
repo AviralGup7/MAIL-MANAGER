@@ -17,7 +17,7 @@ import {
   applyFieldChange, manualEdit, setLocked, restoreFromSource,
   detectConflicts, linkedSections, instructorsFor, sectionsByKind,
   weekView, summariseMeetings, explainEntry, entriesForMessage, examEvents,
-  parseDaysHours, PRECEDENCE,
+  parseDaysHours, switchSection, finalize, resetTimetable, PRECEDENCE,
 } from '../src/app/timetable.js';
 
 import {
@@ -1225,4 +1225,118 @@ test('NOTICE: unspaced day runs parse, and Th is never T followed by h', () => {
   const entry = { ...build().state.entries[0], comCode: '3118', section: 'L12' };
   const [f] = matchNotice([change], { entries: [entry] });
   assert.deepEqual(f.value.map((m) => `${m.day}${m.hour}`), ['T5', 'Th5', 'F5']);
+});
+
+/* ================================================== switch / finalize / reset == */
+
+test('SWITCH: changing section replaces the entry and records why', () => {
+  /*
+   * A control Pass 2 asks for and the model had no path to: you registered
+   * for L1, the section swap came through, and the only way to fix it was to
+   * remove the course and add it again -- losing the history of everything
+   * else on that course.
+   *
+   * The replacement is a genuinely different class, so it is a new entry with
+   * the new section's own room, time and instructors. What must survive is
+   * the RECORD that a switch happened.
+   */
+  const { state } = build();
+  const l2 = CS.sections.find((s) => s.section === 'L2');
+  const after = switchSection(state, '1008', 'L1', CS, l2);
+
+  const ids = after.entries.map((e) => e.section);
+  assert.ok(!ids.includes('L1'), 'the old section is gone');
+  assert.ok(ids.includes('L2'), 'the new one is present');
+
+  const e = after.entries.find((x) => x.section === 'L2');
+  assert.equal(e.room, '5105');
+  assert.deepEqual(e.meetings.map((m) => `${m.day}${m.hour}`), ['M2', 'W2', 'T8']);
+  assert.match(
+    e.history[0].detail, /switched from L1/i,
+    'the switch must be explainable afterwards'
+  );
+});
+
+test('SWITCH: a locked entry is not switched silently', () => {
+  // Lock means "automation stops touching this". A switch is user-driven, so
+  // it IS allowed -- but it must be reported, not slipped through.
+  const { state } = build();
+  const locked = { ...state, entries: [{ ...state.entries[0], locked: true }] };
+  const l2 = CS.sections.find((s) => s.section === 'L2');
+  const after = switchSection(locked, '1008', 'L1', CS, l2);
+  assert.equal(after.entries[0].section, 'L2', 'the user may still switch');
+  assert.equal(after.entries[0].locked, true, 'and the lock carries over');
+});
+
+test('SWITCH: switching a section that is not held changes nothing', () => {
+  const { state } = build();
+  const l2 = CS.sections.find((s) => s.section === 'L2');
+  const after = switchSection(state, '1008', 'L9', CS, l2);
+  assert.deepEqual(
+    after.entries.map((e) => e.section), state.entries.map((e) => e.section),
+    'no silent insert for a section the user never had'
+  );
+});
+
+test('FINALIZE: a timetable with blocking conflicts cannot be finalised', () => {
+  /*
+   * "Finalize once the course set is complete" only means something if it
+   * refuses when the timetable is not actually usable. Blocking conflicts --
+   * two classes in one slot, two compres in one session -- must be resolved
+   * first. Needs-input conflicts are advisory and do not block.
+   */
+  const clash = [
+    { ...build().state.entries[0], id: 'a', courseNo: 'CS F111' },
+    { ...build().state.entries[0], id: 'b', courseNo: 'MATH F211' },
+  ];
+  const bad = { ...emptyState(), entries: clash, conflicts: detectConflicts(clash) };
+  const r = finalize(bad);
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /conflict/i);
+  assert.equal(r.state.finalisedAt, undefined, 'nothing is recorded on refusal');
+});
+
+test('FINALIZE: a clean timetable is stamped and reports what it locked in', () => {
+  const { state } = build();
+  const r = finalize(state);
+  assert.equal(r.ok, true);
+  assert.ok(r.state.finalisedAt > 0, 'the moment is recorded');
+  assert.equal(r.state.entries.length, state.entries.length);
+});
+
+test('FINALIZE: finalising does not freeze the timetable', () => {
+  // It is a milestone, not a lock. Official notices must still land, because
+  // AUGSD does not care that you pressed a button.
+  const { state } = build();
+  const done = finalize(state).state;
+  const r = applyFieldChange(done.entries[0], 'room', '6101', {
+    source: 'notice', ref: 'n1',
+  });
+  assert.equal(r.applied, true, 'a notice still outranks a finalised entry');
+});
+
+test('RESET: an explicit reset clears the timetable and says so', () => {
+  /*
+   * The ONLY sanctioned way back to a rebuild. Everything else in this system
+   * updates incrementally; a full reset is destructive and therefore explicit.
+   */
+  const { state } = build();
+  const after = resetTimetable(state);
+  assert.deepEqual(after.entries, []);
+  assert.deepEqual(after.conflicts, []);
+  assert.equal(after.finalisedAt, undefined);
+  assert.ok(after.resetAt > 0, 'the reset itself is recorded');
+});
+
+test('RESET: appliedMail is cleared so past updates can be seen again', () => {
+  /*
+   * Subtle, and the reason this is not just `emptyState()`.
+   *
+   * `appliedMail` remembers which messages have already been handled so they
+   * are not re-proposed. After a reset the timetable is empty, so every one
+   * of those messages is unhandled again -- keeping the list would make the
+   * rebuilt timetable permanently deaf to mail it had already seen.
+   */
+  const seeded = { ...build().state, appliedMail: ['m1', 'm2'] };
+  assert.deepEqual(resetTimetable(seeded).appliedMail, []);
 });

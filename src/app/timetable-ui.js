@@ -20,6 +20,7 @@ import { openLayer } from './layers.js';
 import { icon } from './icons.js';
 import {
   emptyState, addCourse, removeCourse, manualEdit, setLocked,
+  switchSection, finalize, resetTimetable,
   restoreFromSource, applyFieldChange, detectConflicts,
   linkedSections, instructorsFor, sectionsByKind,
   weekView, summariseMeetings, explainEntry, fmtTime,
@@ -257,7 +258,61 @@ function header() {
   close.textContent = 'Close';
   close.addEventListener('click', () => closeTimetable());
 
-  h.append(title, sub, close);
+  h.append(title, sub);
+
+  /*
+   * FINALISE and RESET only appear once there is a timetable to act on. On the
+   * build screen they would be two disabled buttons explaining themselves.
+   */
+  if (state.entries.length) {
+    const done = document.createElement('button');
+    done.type = 'button';
+    done.className = 'ghost small';
+    // A milestone, not a lock -- official notices still land afterwards. The
+    // label says "complete", not "freeze", so it does not promise otherwise.
+    done.textContent = state.finalisedAt ? 'Finalised' : 'Mark complete';
+    done.disabled = Boolean(state.finalisedAt);
+    done.title = state.finalisedAt
+      ? `Marked complete. Official changes still apply.`
+      : 'Mark the course set complete. Official changes still apply afterwards.';
+    done.addEventListener('click', async () => {
+      const r = finalize(state);
+      if (!r.ok) { ctxRef?.toast?.(r.reason, { kind: 'error' }); return; }
+      state = r.state;
+      await persist();
+      render();
+      ctxRef?.toast?.('Timetable marked complete');
+    });
+    h.appendChild(done);
+
+    const wipe = document.createElement('button');
+    wipe.type = 'button';
+    wipe.className = 'ghost small';
+    wipe.textContent = 'Reset';
+    wipe.title = 'Delete the whole timetable and build it again';
+    wipe.addEventListener('click', async () => {
+      /*
+       * Destructive and irreversible -- the undo stack covers mail, not this.
+       * Everything else in this system updates incrementally, so throwing the
+       * timetable away is the one action that deserves a confirm.
+       */
+      const ok = typeof confirm === 'function'
+        ? confirm(
+          `Delete all ${state.entries.length} classes and start again?\n\n` +
+          'Your manual edits and change history will be lost.'
+        )
+        : true;
+      if (!ok) return;
+      state = resetTimetable(state);
+      await persist();
+      updateBadge();
+      render();
+      ctxRef?.toast?.('Timetable reset');
+    });
+    h.appendChild(wipe);
+  }
+
+  h.appendChild(close);
   return h;
 }
 
@@ -844,7 +899,55 @@ function entryRow(e) {
     render();
   });
 
-  acts.append(why, lock);
+  /*
+   * SWITCH SECTION. Previously the only route was Remove then Add, which threw
+   * away the history of everything else on the course -- and swapping section
+   * is routine in the first fortnight of a semester.
+   *
+   * Offered only when the source actually has another section of this kind to
+   * move to; a button that opens an empty list is worse than no button.
+   */
+  const course = source?.courses?.find((c) => c.comCode === e.comCode);
+  const alternatives = (course?.sections || []).filter(
+    (sec) => sec.kind === e.kind && sec.section !== e.section
+  );
+
+  if (alternatives.length) {
+    const swap = document.createElement('button');
+    swap.type = 'button';
+    swap.className = 'ghost small';
+    swap.textContent = 'Switch';
+    swap.title = `Move to a different ${e.kind} section`;
+    swap.setAttribute('aria-expanded', 'false');
+    swap.addEventListener('click', () => {
+      const open = swap.getAttribute('aria-expanded') === 'true';
+      swap.setAttribute('aria-expanded', String(!open));
+      row.querySelector('.tt-switch')?.remove();
+      if (open) return;
+
+      const box = el('div', 'tt-switch');
+      for (const sec of alternatives) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'tt-section';
+        b.textContent =
+          `${sec.section} · ${(sec.instructors || []).join(', ') || 'no instructor'}` +
+          ` · ${sec.daysHours || 'no time'}${sec.room ? ` · ${sec.room}` : ''}`;
+        b.addEventListener('click', async () => {
+          state = switchSection(state, e.comCode, e.section, course, sec);
+          await persist();
+          updateBadge();
+          render();
+        });
+        box.appendChild(b);
+      }
+      row.appendChild(box);
+    });
+    acts.append(why, swap, lock);
+  } else {
+    acts.append(why, lock);
+  }
+
   row.append(tag, when, where, who, acts);
   if (e.locked) row.dataset.locked = 'true';
   return row;

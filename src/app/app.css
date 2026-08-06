@@ -3341,6 +3341,17 @@ kbd {
   font-style: italic;
 }
 
+/* The section-switch chooser, opened inline under an entry. */
+.tt-switch {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: var(--s-1);
+  padding-left: var(--s-3);
+  border-left: 2px solid var(--line);
+}
+
 .tt-entry-acts {
   display: flex;
   gap: var(--s-1);
