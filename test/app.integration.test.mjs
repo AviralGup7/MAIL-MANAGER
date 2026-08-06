@@ -206,6 +206,19 @@ const settled = async (doc, settle) => {
 };
 const rowText = (doc) => rows(doc).map((r) => r.querySelector('.r-subj').textContent);
 
+/*
+ * The rail count is two spans, not one string -- unread and total are
+ * separated by weight and colour rather than a slash. Read them apart, so a
+ * test cannot pass by accident on a concatenation that happens to match.
+ */
+const countParts = (catButton) => {
+  const c = catButton.lastElementChild;
+  return {
+    unread: c.querySelector('.c-unread')?.textContent ?? null,
+    total: c.querySelector('.c-total')?.textContent ?? null,
+  };
+};
+
 // --------------------------------------------------------------------------
 
 test('app boots, signs in and renders the inbox', async (t) => {
@@ -259,15 +272,15 @@ test('the sidebar shows BOTH unread and total, never unread alone', async (t) =>
   try {
     const byCat = {};
     for (const b of doc.querySelectorAll('#cats .cat')) {
-      byCat[b.dataset.cat] = b.lastElementChild.textContent;
+      byCat[b.dataset.cat] = countParts(b);
     }
 
-    assert.equal(byCat.all, '2/3', 'two unread out of three total');
-    assert.equal(byCat.augsd, '1/1');
-    assert.equal(byCat.ps, '1/1');
+    assert.deepEqual(byCat.all, { unread: '2', total: '3' }, 'two unread out of three total');
+    assert.deepEqual(byCat.augsd, { unread: '1', total: '1' });
+    assert.deepEqual(byCat.ps, { unread: '1', total: '1' });
     // The read-only category shows a bare total, with no unread emphasis.
-    assert.equal(
-      byCat['external-services'], '1',
+    assert.deepEqual(
+      byCat['external-services'], { unread: '', total: '1' },
       'a fully-read category shows its total, not nothing'
     );
   } finally {
@@ -282,9 +295,13 @@ test('a category holding only READ mail still reports its messages', async (t) =
   const allRead = MESSAGES.map((m) => ({ ...m, unread: false, labels: ['INBOX'] }));
   const { doc, restore } = await boot({ messages: allRead });
   try {
-    const all = [...doc.querySelectorAll('#cats .cat')]
-      .find((b) => b.dataset.cat === 'all').lastElementChild.textContent;
-    assert.equal(all, String(allRead.length), 'all-read inbox must show its total');
+    const all = countParts(
+      [...doc.querySelectorAll('#cats .cat')].find((b) => b.dataset.cat === 'all')
+    );
+    assert.deepEqual(
+      all, { unread: '', total: String(allRead.length) },
+      'all-read inbox must show its total and no unread figure'
+    );
     assert.equal(rows(doc).length, allRead.length, 'and every read message must be listed');
   } finally {
     restore();
@@ -299,6 +316,54 @@ test('the sidebar count carries an explanatory title', async (t) => {
     const all = [...doc.querySelectorAll('#cats .cat')]
       .find((b) => b.dataset.cat === 'all').lastElementChild;
     assert.match(all.getAttribute('title') || '', /3 messages, 2 unread/);
+  } finally {
+    restore();
+  }
+});
+
+test('FRESHNESS: the app says when it last heard from Gmail', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * D-9. Nothing is wrong when the line is absent -- the user simply has no
+   * way to know it is right. After a successful boot the sync is seconds old,
+   * so the line must read "just now" rather than "0 min ago".
+   */
+  const { doc, restore } = await boot();
+  try {
+    const f = doc.getElementById('freshness');
+    assert.ok(f, 'the freshness line must exist');
+    assert.match(f.textContent, /^Updated just now$/, 'a fresh boot is "just now"');
+    assert.equal(f.getAttribute('aria-live'), 'polite');
+  } finally {
+    restore();
+  }
+});
+
+test('FRESHNESS: a signed-out app claims no freshness at all', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // An empty line, not "Updated ... ago": we have never spoken to Gmail, and
+  // saying otherwise is the one thing this feature must never do.
+  const { doc, restore } = await boot({ signedIn: false });
+  try {
+    assert.equal(doc.getElementById('freshness').textContent, '');
+  } finally {
+    restore();
+  }
+});
+
+test('FRESHNESS: signing out clears the timestamp', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Freshness belongs to a session. Carrying it across sign-out would tell
+  // the next account that we had already synced on their behalf.
+  const { doc, settle, restore } = await boot();
+  try {
+    assert.notEqual(doc.getElementById('freshness').textContent, '');
+    doc.getElementById('btn-signout').click();
+    await settle(12);
+    assert.equal(
+      doc.getElementById('freshness').textContent, '',
+      'the previous session\'s freshness survived sign-out'
+    );
   } finally {
     restore();
   }

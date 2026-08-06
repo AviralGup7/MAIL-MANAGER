@@ -22,6 +22,12 @@
           <span id="brand-text">
             <strong>BITS Mail</strong>
             <small id="account">not signed in</small>
+            <!--
+              Ambient freshness. Empty until the first successful sync, so it
+              never claims currency we have not earned. Recomputed on render,
+              not on a timer -- a ticking clock is motion nobody asked for.
+            -->
+            <small id="freshness" aria-live="polite"></small>
           </span>
         </div>
 

@@ -241,6 +241,23 @@ kbd {
   text-overflow: ellipsis;
 }
 
+/*
+ * Freshness sits one step quieter than the account address: same size, but
+ * it collapses entirely when empty so the brand block does not reserve a
+ * blank line before the first sync.
+ */
+#freshness {
+  color: var(--fg-faint);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.8;
+}
+#freshness:empty {
+  display: none;
+}
+
 #cats {
   flex: 1;
   min-height: 0;
@@ -312,14 +329,46 @@ kbd {
   white-space: nowrap;
 }
 
+/*
+ * Two numbers, separated by weight and colour instead of a slash. See
+ * setCount() in app.js for why. The gap is the only delimiter, and it is
+ * deliberately small -- these read as one glyph cluster, not two words.
+ */
 .cat-count {
   font-size: var(--t-xs);
   font-variant-numeric: tabular-nums;
   color: var(--fg-faint);
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35em;
 }
-.cat-count.unread {
+.cat-count .c-unread:empty {
+  display: none;
+}
+.cat-count.unread .c-unread {
   color: var(--accent);
-  font-weight: var(--w-bold);
+  font-weight: var(--w-medium);
+  font-size: var(--t-sm);
+}
+.cat-count .c-total {
+  color: var(--fg-faint);
+  font-size: var(--t-xs);
+}
+
+/*
+ * The digits are aria-hidden; this carries the sentence a screen reader
+ * actually needs. Clip rather than display:none, or it is not announced.
+ */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 #side-foot {

@@ -128,6 +128,15 @@ const state = {
   nextPageToken: '',
   loading: false,
   signedIn: false,
+  /*
+   * When we last successfully heard from Gmail, as an epoch ms, or 0 for
+   * never. Drives the "Updated N min ago" line under the account.
+   *
+   * Only ever set on SUCCESS. A failed refresh must not advance it, because
+   * the whole point of the line is to answer "is what I am looking at
+   * current?", and a failure means the answer is still the old timestamp.
+   */
+  lastSync: 0,
 };
 
 /** Ids currently rendered, in order. The diff baseline. */
@@ -194,6 +203,7 @@ const el = {
   listTitle: $('listtitle'),
   listCount: $('listcount'),
   account: $('account'),
+  freshness: $('freshness'),
   gate: $('gate'),
   gateError: $('gate-error'),
   reader: $('reader'),
@@ -415,6 +425,9 @@ function resetView({ allMailboxes = false } = {}) {
     }
     state.mailbox = DEFAULT_MAILBOX;
     store = wireStore(DEFAULT_MAILBOX);
+    // Freshness belongs to a SESSION. Leaving it set would tell the next
+    // person to sign in that we had spoken to Gmail on their behalf.
+    state.lastSync = 0;
     state.category = 'all';
     state.query = '';
     if (el.search) el.search.value = '';
@@ -844,6 +857,63 @@ function setText(node, value) {
   if (node.textContent !== v) node.textContent = v;
 }
 
+/*
+ * THE RAIL COUNT, WRITTEN TO BE SCANNED RATHER THAN READ.
+ *
+ * This used to render the single string "3/41". That was honest -- it was the
+ * fix for read mail looking absent -- but a slash is a *parsing* task, and the
+ * rail repeats it across twenty-two entries. The eye has to stop at each one.
+ *
+ * So the two numbers are now two elements: unread in the accent colour at
+ * medium weight, total immediately after in --fg-faint at --t-xs. The eye
+ * separates them by weight and colour, which is pre-attentive, instead of by
+ * finding a delimiter, which is not. No punctuation, no extra ink.
+ *
+ * The digits are aria-hidden and a visually-hidden sentence carries the real
+ * meaning, because "3 41" read aloud is worse than the slash ever was.
+ */
+function ensureCountParts(node) {
+  let parts = node._parts;
+  if (!parts) {
+    const un = document.createElement('span');
+    un.className = 'c-unread';
+    un.setAttribute('aria-hidden', 'true');
+    const tot = document.createElement('span');
+    tot.className = 'c-total';
+    tot.setAttribute('aria-hidden', 'true');
+    const sr = document.createElement('span');
+    sr.className = 'sr-only';
+    node.replaceChildren(un, tot, sr);
+    parts = node._parts = { un, tot, sr };
+  }
+  return parts;
+}
+
+/**
+ * Render a rail count. `unread` may be 0; `total` may be null to mean "not
+ * loaded yet", which renders nothing at all rather than asserting a zero we
+ * have not checked.
+ */
+function setCount(node, unread, total) {
+  const { un, tot, sr } = ensureCountParts(node);
+  const known = total !== null && total !== undefined;
+  const u = known ? unread || 0 : 0;
+  const t = known ? total : 0;
+
+  setText(un, u ? String(u) : '');
+  // A bare total is the whole story when nothing is unread, so it takes the
+  // primary slot's job -- but it keeps the faint styling, because "nothing
+  // unread" should not shout.
+  setText(tot, known && t ? String(t) : '');
+  const label = known && t
+    ? `${t} message${t === 1 ? '' : 's'}, ${u} unread`
+    : '';
+  setText(sr, label);
+  setAttr(node, 'title', label);
+  node.classList.toggle('unread', u > 0);
+  return label;
+}
+
 function patchRow(id) {
   const node = nodeById.get(id);
   if (node) fillRow(node, store.get(id));
@@ -941,7 +1011,38 @@ function catButton(key, label, color) {
   return b;
 }
 
+/**
+ * "Updated 2 min ago", in the product's dry register.
+ *
+ * Exported shape is a pure function of (then, now) so it can be tested
+ * without faking a clock. Deliberately coarse: nobody needs seconds, and a
+ * figure that changes every second is a distraction pretending to be
+ * information.
+ *
+ * @param {number} then  epoch ms of the last successful sync, 0 for never
+ * @param {number} now   epoch ms
+ */
+export function freshnessLabel(then, now) {
+  if (!then) return '';
+  const secs = Math.max(0, Math.round((now - then) / 1000));
+  // Under a minute reads as "just now" rather than "0 min ago", which looks
+  // like a bug even though it is arithmetically correct.
+  if (secs < 45) return 'Updated just now';
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `Updated ${mins} min ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `Updated ${hrs} hr${hrs === 1 ? '' : 's'} ago`;
+  const days = Math.round(hrs / 24);
+  return `Updated ${days} day${days === 1 ? '' : 's'} ago`;
+}
+
+function renderFreshness() {
+  if (!el.freshness) return;
+  setText(el.freshness, freshnessLabel(state.lastSync, Date.now()));
+}
+
 function renderSidebar() {
+  renderFreshness();
   const counts = store.counts();
   const unread = store.unreadCounts();
   let totalUnread = 0;
@@ -959,18 +1060,15 @@ function renderSidebar() {
       const id = b.dataset.mailbox;
       const s = stores.get(id);
       const loaded = mailboxState.get(id)?.loaded;
-      let text = '';
+      // `null` total means "never opened", which renders nothing -- showing
+      // "0" for a mailbox we have not fetched would assert something untrue.
       let un = 0;
+      let total = null;
       if (id === state.mailbox || loaded) {
         un = s ? sumUnread(s) : 0;
-        const total = s ? s.size : 0;
-        // Same rule as the category rail: never let the unread figure stand
-        // in for the total, or a mailbox with read mail looks empty.
-        text = un ? `${un}/${total}` : total ? String(total) : '';
+        total = s ? s.size : 0;
       }
-      setText(countEl, text);
-      setAttr(countEl, 'title', text ? `${s?.size || 0} message(s), ${un} unread` : '');
-      countEl.classList.toggle('unread', un > 0);
+      setCount(countEl, un, total);
       b.setAttribute('aria-current', String(state.mailbox === id));
       continue;
     }
@@ -987,15 +1085,10 @@ function renderSidebar() {
      * messages here". Read mail was always in the list, but the rail said
      * otherwise, and the rail is what people scan.
      *
-     * Now: "3/43" when some are unread, plain "43" when none are. The unread
-     * figure keeps its emphasis, and the total is always visible.
+     * Now both numbers are always present -- see setCount, which renders them
+     * as two differently-weighted spans rather than a slash-joined string.
      */
-    setText(countEl, u ? `${u}/${t}` : t ? String(t) : '');
-    setAttr(
-      countEl, 'title',
-      t ? `${t} message${t === 1 ? '' : 's'}, ${u} unread` : ''
-    );
-    countEl.classList.toggle('unread', u > 0);
+    setCount(countEl, u, t);
     b.setAttribute('aria-current', String(state.category === key));
     // A muted category is dimmed and says so, so the rule is discoverable
     // from the place it applies rather than only from a settings page.
@@ -1669,6 +1762,8 @@ async function fetchPage(pageToken) {
   });
   ingest(messages);
   state.nextPageToken = nextPageToken;
+  // Reached only if send() resolved, so this genuinely means "Gmail answered".
+  state.lastSync = Date.now();
   $('btn-more').disabled = !nextPageToken;
 }
 
@@ -1772,6 +1867,7 @@ async function refresh({ silent = false } = {}) {
     // is now showing something that is no longer in the list.
     if (state.selected && !store.get(state.selected)) closeReader();
 
+    state.lastSync = Date.now();
     const n = res.added.length;
     if (n) toast(`${n} new message${n > 1 ? 's' : ''}`);
     else if (!silent) toast('Up to date');
