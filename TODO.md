@@ -77,12 +77,31 @@ belongs in the service worker so closing the app still delivers.
 
 ---
 
-### 6 · Gmail's own labels — decide, then act — **M**
+### 6 · Gmail's own labels — **DONE**
 
-`LIST_LABELS` and `CREATE_LABEL` are implemented and called by nothing, and
-`label:` is a search operator with nothing behind it. Carried unfixed across
-two audits. **Either finish it minimally or delete the verbs** — the current
-state is the worst of both.
+Decided: finish it minimally rather than delete. `LIST_LABELS` is now called
+once per session from `start()`, fire-and-forget, and populates a cache that
+the command palette turns into "Go to label: X" entries. `label:` is no longer
+a silent alias of `category:` — it matches the real `labelIds` a message
+carries, case-insensitively, including the leaf of a nested `Parent/Child`.
+
+Three things worth knowing:
+
+- **The palette caps its list at 12.** Label commands are appended after the
+  categories and themes, so on an empty query they are legitimately off the
+  end. You reach them by typing, which is how anyone uses a palette anyway.
+- **Label names are cleared on sign-out.** They are the previous account's
+  private data. There is a test for this and it fails when the clear is removed.
+- **`features.js` module state survives a test boot.** Only `app.js` is
+  re-imported with a cache-busting URL, so `knownLabels` and `paletteLayer`
+  leak between cases. `_setLabels` exists as the seam; a palette left open by
+  an earlier test makes `openPalette()` early-return and silently invalidates
+  whatever the next test asserts.
+
+`CREATE_LABEL` remains uncalled by any verb, but it is **not dead** —
+`ensureLabel()` uses it internally on every snooze. Leaving the verb is
+harmless; the audit finding was about reachability, and that is now resolved
+for the half that was genuinely unreachable.
 
 ---
 

@@ -20,7 +20,8 @@ fixed. Everything else was rebuilt.
 - **Takes over the Gmail page in place.** Not a side panel, not a new tab. The
   URL stays `mail.google.com`.
 - **Every message, read or unread.** The list is the whole inbox; the rail
-  shows `unread/total` so a category full of read mail never looks empty.
+  shows the unread count and the total side by side, so a category full of
+  read mail never looks empty.
 - **Seven mailboxes** — Inbox, Snoozed, Sent, Drafts, Starred, Spam, Trash.
   Categories apply to the inbox, where they mean something.
 - **Read and triage:** open, search, star, archive, delete, mark read/unread,
@@ -32,6 +33,9 @@ fixed. Everything else was rebuilt.
   actions all reverse with `Ctrl+Z` for five minutes.
 - **Category rules Gmail cannot offer:** mute a category, auto-archive it, or
   correct the classifier and have it remember.
+- **Search that knows BITS:** 20 operators, including `category:ps` for the
+  classifier's own buckets and `label:Thesis` for your real Gmail labels.
+  Your labels are listed in the command palette so you need not remember them.
 - **Keyboard first:** 23 shortcuts, and `?` lists them all. `j`/`k` move,
   `Enter` open, `e` archive, `s` star, `u` unread, `#` delete, `z` snooze,
   `c` compose, `r` refresh, `/` search, `Ctrl+K` palette, `Esc` back to Gmail.
@@ -407,7 +411,9 @@ would produce a real corpus.
   exchange is five rows. This is the largest remaining feature gap and is
   specified in [`audits/08-GMAIL-COMPETITIVE-V2.md`](audits/08-GMAIL-COMPETITIVE-V2.md).
 - **No background sync.** The inbox refreshes on demand, never on a timer.
-- **No Gmail labels.** System mailboxes work; your own labels are not listed.
+- **Gmail labels are searchable, not manageable.** Your labels appear in the
+  command palette and `label:Thesis` filters by them, but you cannot apply,
+  create or remove a label from the UI.
 - **Single account.** No account switcher.
 - **Attachment preview.** Attachments download; they do not preview inline.
 

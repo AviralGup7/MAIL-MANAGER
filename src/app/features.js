@@ -212,7 +212,60 @@ function buildCommands(ctx) {
     cmds.push({ id: `q:${q}`, icon: 'search', label, hint: q, run: () => ctx.runQuery(q) });
   }
 
+  /*
+   * THE USER'S OWN GMAIL LABELS, AS JUMP TARGETS.
+   *
+   * This is what finally makes `LIST_LABELS` reachable. The verb has existed
+   * and been called by nothing across three audits, which is the worst of both
+   * worlds -- maintained code, dead to the user, and a `label:` operator that
+   * you could only use if you already knew your labels by heart.
+   *
+   * Read from a cache that a background refresh fills (see refreshLabels), NOT
+   * fetched here: buildCommands runs synchronously on every keystroke-open,
+   * and a palette that waits on the network is a palette that feels broken.
+   * An empty cache simply contributes no commands, which degrades to exactly
+   * the behaviour that existed before.
+   */
+  for (const l of knownLabels) {
+    cmds.push({
+      id: `label:${l.id}`,
+      icon: 'mail',
+      label: `Go to label: ${l.name}`,
+      hint: 'label',
+      run: () => ctx.runQuery(`label:${l.name}`),
+    });
+  }
+
   return cmds;
+}
+
+/*
+ * The user's Gmail labels, newest fetch wins. Empty until the first refresh
+ * succeeds, and left alone on failure -- a transient network error should not
+ * make the commands vanish from under someone mid-session.
+ */
+let knownLabels = [];
+
+/** Test seam: reset the cache between cases. */
+export function _setLabels(list) {
+  knownLabels = Array.isArray(list) ? list : [];
+}
+
+/**
+ * Refresh the label cache in the background.
+ *
+ * Deliberately fire-and-forget and deliberately silent. Labels are a
+ * convenience in the palette, so a failure here must not raise a toast, block
+ * boot, or leave a spinner running -- the palette just carries five fewer
+ * commands, which nobody will notice.
+ */
+export async function refreshLabels(ctx) {
+  try {
+    const list = await ctx.send('LIST_LABELS');
+    if (Array.isArray(list)) knownLabels = list.filter((l) => l && l.name);
+  } catch {
+    // Keep whatever we already had.
+  }
 }
 
 /** Subsequence match, the behaviour every command palette has trained users on. */

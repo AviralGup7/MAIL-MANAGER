@@ -53,7 +53,7 @@ import {
   renderRadar, wireRadar,
   openPalette, closePalette, wirePalette,
   openCompose, closeCompose, wireCompose, startReply,
-  restoreDraftIfAny, flushDraft,
+  restoreDraftIfAny, flushDraft, refreshLabels, _setLabels,
 } from './features.js';
 import { classify } from '../classify/index.js';
 import {
@@ -428,6 +428,9 @@ function resetView({ allMailboxes = false } = {}) {
     // Freshness belongs to a SESSION. Leaving it set would tell the next
     // person to sign in that we had spoken to Gmail on their behalf.
     state.lastSync = 0;
+    // So do the label names -- they are the previous account's private data,
+    // and leaving them would leak them into the next user's palette.
+    _setLabels([]);
     state.category = 'all';
     state.query = '';
     if (el.search) el.search.value = '';
@@ -3313,6 +3316,11 @@ async function start() {
   } catch {
     /* not fatal; the list is what matters */
   }
+
+  // Fire-and-forget: the palette gains the user's Gmail labels once this
+  // lands, and behaves exactly as before until it does. Not awaited, because
+  // nothing on screen depends on it.
+  refreshLabels(ctx);
 
   // Cache-first.
   //

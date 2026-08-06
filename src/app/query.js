@@ -9,6 +9,7 @@
  *   to:me                 recipient (we only store our own mailbox, so `me`)
  *   subject:registration  subject only
  *   category:ps           our BITS categories, which Gmail cannot do
+ *   label:Thesis          a real Gmail label, including nested Parent/Child
  *   is:unread is:read is:starred is:due is:overdue
  *   has:attachment has:deadline
  *   before:2025-11-20  after:2025-11-01  older_than:7d  newer_than:2d
@@ -148,8 +149,31 @@ function buildCheck(key, value, now) {
     case 'subject':
       return (m) => (m.subject || '').toLowerCase().includes(value);
     case 'category':
-    case 'label':
       return (m) => (m.category || '').toLowerCase() === value;
+
+    /*
+     * `label:` MEANS A GMAIL LABEL, NOT ONE OF OUR CATEGORIES.
+     *
+     * This used to be a bare alias of `category:`, which quietly answered a
+     * different question than the one asked. Someone with a Gmail label called
+     * "Thesis" typed `label:thesis`, got zero results, and had no way to tell
+     * whether that meant "no matches" or "not supported".
+     *
+     * Messages carry `labels` -- the raw labelIds from the API -- so this can
+     * be answered honestly. Gmail's own label ids are SCREAMING_CASE
+     * (INBOX, STARRED, CATEGORY_PROMOTIONS) while user labels keep their
+     * display name, so both `label:inbox` and `label:Thesis` work if we
+     * compare case-insensitively.
+     *
+     * Nested labels are `Parent/Child` in the API. Matching the trailing
+     * segment too means `label:child` finds it, which is what people expect
+     * and what Gmail itself does not do -- a small, defensible improvement.
+     */
+    case 'label':
+      return (m) => (m.labels || []).some((l) => {
+        const name = String(l).toLowerCase();
+        return name === value || name.endsWith(`/${value}`);
+      });
     case 'is':
       switch (value) {
         case 'unread': return (m) => !!m.unread;

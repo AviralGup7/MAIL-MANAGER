@@ -60,7 +60,7 @@ const MESSAGES = [
  * Boot app.html in jsdom.
  * Returns { win, doc, calls, settle } — `calls` records every worker message.
  */
-async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bodyOverride = {}, syncLatency = 0, perLabel = false, emptyLabels = [] } = {}) {
+async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bodyOverride = {}, syncLatency = 0, perLabel = false, emptyLabels = [], labels = [] } = {}) {
   const html = readFileSync(join(ROOT, 'app.html'), 'utf8');
   const dom = new JSDOM(html, {
     url: 'chrome-extension://test/app.html',
@@ -137,6 +137,8 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
         };
       case 'GET_ATTACHMENT':
         return { ok: true, data: { dataUrl: 'data:application/pdf;base64,JVBER' } };
+      case 'LIST_LABELS':
+        return { ok: true, data: labels };
       default: return { ok: true, data: {} };
     }
   }
@@ -1695,6 +1697,154 @@ test('ESCAPE: unwinds one layer at a time, innermost first', async (t) => {
   }
 });
 
+/*
+ * Open the palette and type `q`.
+ *
+ * Typing matters: filterPalette caps the list at 12, and label commands are
+ * appended after the categories and themes, so on an EMPTY query they are
+ * legitimately off the end of the list. Reaching them by typing is how a user
+ * reaches them too.
+ */
+/*
+ * Seed the label cache directly.
+ *
+ * refreshLabels() is fire-and-forget, and features.js is NOT re-imported per
+ * boot -- only app.js gets a cache-busting URL -- so the cache both survives
+ * between tests and lands at a nondeterministic moment within one. Setting it
+ * explicitly after boot makes these tests about the palette, not about race
+ * timing. `boot({labels})` still exercises the real fetch path in the first
+ * test of the group.
+ */
+const seedLabels = async (list) => {
+  const { _setLabels } = await import('../src/app/features.js');
+  _setLabels(list);
+};
+
+const openPaletteWith = async (doc, win, settle, q) => {
+  /*
+   * Close first. `paletteLayer` is module state in features.js, and features
+   * .js is not re-imported per boot, so a palette left open by an earlier
+   * test makes openPalette() early-return here -- and the assertion then
+   * passes or fails on a stale, unrelated DOM. Cost me two red tests.
+   */
+  const { closePalette } = await import('../src/app/features.js');
+  closePalette();
+  await settle(2);
+  press(doc, win, 'k', { ctrlKey: true });
+  await settle(4);
+  const input = doc.getElementById('palette-input');
+  input.value = q;
+  input.dispatchEvent(new win.Event('input', { bubbles: true }));
+  await settle(4);
+};
+
+const paletteLabels = (doc) =>
+  [...doc.querySelectorAll('#palette-list .palette-item')]
+    .map((li) => li.textContent)
+    .filter((t) => t.includes('Go to label:'));
+
+test('LABELS: the palette offers the user\'s own Gmail labels', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * LIST_LABELS was implemented and called by nothing across three audits,
+   * and `label:` was a search operator you could only use if you already
+   * knew your labels by heart. The palette is where both become reachable.
+   */
+  const { doc, win, settle, restore } = await boot({
+    labels: [{ id: 'L1', name: 'Thesis' }, { id: 'L2', name: 'Work/CI' }],
+  });
+  try {
+    await settle(8); // the fetch is fire-and-forget
+    await openPaletteWith(doc, win, settle, 'label');
+
+    const found = paletteLabels(doc);
+    assert.equal(found.length, 2, `expected two label commands, got: ${found}`);
+    assert.ok(found.some((t) => t.includes('Thesis')));
+    assert.ok(found.some((t) => t.includes('Work/CI')));
+  } finally {
+    restore();
+  }
+});
+
+test('LABELS: choosing one runs a label: search', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // The command must produce a query the parser actually understands --
+  // otherwise it is a menu entry that quietly does nothing.
+  const { doc, win, settle, restore } = await boot({
+    labels: [{ id: 'L1', name: 'Thesis' }],
+  });
+  try {
+    await settle(8);
+    await seedLabels([{ id: 'L1', name: 'Thesis' }]);
+    await openPaletteWith(doc, win, settle, 'Thesis');
+
+    const item = [...doc.querySelectorAll('#palette-list .palette-item')]
+      .find((li) => li.textContent.includes('Thesis'));
+    assert.ok(item, 'the label command must be present');
+    item.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+    await settle(8);
+
+    assert.equal(doc.getElementById('search').value, 'label:Thesis');
+  } finally {
+    restore();
+  }
+});
+
+test('LABELS: a failing LIST_LABELS degrades silently', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * The label cache lives in features.js module state, and only app.js is
+   * re-imported with a cache-busting URL per boot -- so labels from an
+   * earlier test survive into this one. Clear it, or this test passes on
+   * the PREVIOUS case's data and proves nothing about failure handling.
+   */
+
+  // Labels are a convenience. A network failure must not raise a toast or
+  // block boot -- the palette simply carries fewer commands.
+  const { doc, win, settle, restore } = await boot({ labels: null });
+  try {
+    await settle(8);
+    // Clear AFTER boot: the fetch is fire-and-forget, so clearing before it
+    // would simply be overwritten by whatever the previous test left behind.
+    await seedLabels([]);
+    await openPaletteWith(doc, win, settle, 'label');
+
+    assert.equal(paletteLabels(doc).length, 0);
+    assert.equal(
+      doc.getElementById('palette').hidden, false,
+      'the palette must still work'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('LABELS: signing out drops the previous account\'s label names', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Label names are private data belonging to the account that was signed in.
+  // Leaving them cached would leak them into the next user's palette.
+  const { doc, win, settle, restore } = await boot({
+    labels: [{ id: 'L1', name: 'Confidential-Project' }],
+  });
+  try {
+    await settle(8);
+    await seedLabels([{ id: 'L1', name: 'Confidential-Project' }]);
+    await openPaletteWith(doc, win, settle, 'Confidential');
+    assert.equal(paletteLabels(doc).length, 1, 'precondition: the label is offered');
+    press(doc, win, 'Escape');
+    await settle(4);
+
+    doc.getElementById('btn-signout').click();
+    await settle(12);
+
+    await openPaletteWith(doc, win, settle, 'Confidential');
+    const leaked = paletteLabels(doc);
+    assert.equal(leaked.length, 0, `label names survived sign-out: ${leaked}`);
+  } finally {
+    restore();
+  }
+});
+
 test('MAILBOX: the rail exposes the system mailboxes and switching works', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');
   const { doc, win, settle, restore } = await boot();
@@ -2631,3 +2781,4 @@ test('DELIGHT: the drain line restarts on every toast', async (t) => {
   assert.ok(fn.includes("style.animation = 'none'"), 'must clear before re-applying');
   assert.ok(fn.includes('offsetWidth'), 'must force a reflow between');
 });
+

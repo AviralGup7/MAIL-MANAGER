@@ -121,13 +121,16 @@ const NOW = Date.UTC(2025, 10, 20, 12, 0);
 const CORPUS = [
   { id: 'a', from: 'AUGSD <augsd@pilani.bits-pilani.ac.in>', subject: 'Course registration',
     snippet: 'x', date: Date.UTC(2025, 10, 19), unread: true, starred: false,
-    category: 'augsd', dueAt: Date.UTC(2025, 10, 25), hasAttachment: false },
+    category: 'augsd', dueAt: Date.UTC(2025, 10, 25), hasAttachment: false,
+    labels: ['INBOX', 'UNREAD', 'Thesis'] },
   { id: 'b', from: 'GitHub <noreply@github.com>', subject: 'Build failed',
     snippet: 'y', date: Date.UTC(2025, 10, 1), unread: false, starred: true,
-    category: 'external-services', hasAttachment: true },
+    category: 'external-services', hasAttachment: true,
+    labels: ['INBOX', 'STARRED', 'Work/CI'] },
   { id: 'c', from: 'PSD <psd@pilani.bits-pilani.ac.in>', subject: 'PS-II allotment',
     snippet: 'z', date: Date.UTC(2025, 10, 18), unread: true, starred: false,
-    category: 'ps', dueAt: Date.UTC(2025, 10, 10), hasAttachment: false },
+    category: 'ps', dueAt: Date.UTC(2025, 10, 10), hasAttachment: false,
+    labels: ['INBOX', 'UNREAD'] },
 ];
 const run = (q) => {
   const p = parseQuery(q, NOW);
@@ -148,6 +151,40 @@ test('every supported operator filters correctly', () => {
   assert.deepEqual(run('after:2025-11-15'), ['a', 'c']);
   assert.deepEqual(run('older_than:7d'), ['b']);
   assert.deepEqual(run('newer_than:5d'), ['a', 'c']);
+});
+
+test('label: searches real Gmail labels, not our categories', () => {
+  /*
+   * `label:` used to be a bare alias of `category:`. Someone with a Gmail
+   * label called "Thesis" typed `label:thesis`, got nothing, and could not
+   * tell "no matches" from "not supported". Messages carry the raw labelIds,
+   * so the question is answerable honestly.
+   */
+  assert.deepEqual(run('label:Thesis'), ['a'], 'a user label must match');
+  assert.deepEqual(run('label:thesis'), ['a'], 'and match case-insensitively');
+  assert.deepEqual(run('label:STARRED'), ['b'], "Gmail's own ids are labels too");
+  assert.deepEqual(run('label:inbox'), ['a', 'b', 'c']);
+  assert.deepEqual(run('label:nosuchlabel'), []);
+
+  // The two operators must now answer DIFFERENT questions. If label: were
+  // still aliased to category:, this pair would be identical.
+  assert.deepEqual(run('category:ps'), ['c']);
+  assert.deepEqual(run('label:ps'), [], 'a category name is not a Gmail label');
+});
+
+test('label: matches the trailing segment of a nested label', () => {
+  // Gmail stores nesting as "Parent/Child". Matching the leaf as well means
+  // `label:ci` finds Work/CI, which is what people expect.
+  assert.deepEqual(run('label:Work/CI'), ['b'], 'the full path must match');
+  assert.deepEqual(run('label:ci'), ['b'], 'and so must the leaf');
+  assert.deepEqual(run('label:work'), [], 'but a parent alone holds no mail');
+});
+
+test('label: on a message with no labels does not throw', () => {
+  // Cached and locally-built records can lack the field entirely.
+  const p = parseQuery('label:anything', NOW);
+  assert.doesNotThrow(() => p.predicate({ id: 'x' }));
+  assert.equal(p.predicate({ id: 'x' }), false);
 });
 
 test('negation and combination work', () => {
