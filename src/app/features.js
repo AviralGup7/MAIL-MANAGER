@@ -19,6 +19,7 @@
 import { relativeLabel, urgency } from './deadlines.js';
 import { buildReply } from './query.js';
 import { UndoStack } from './undo.js';
+import { icon } from './icons.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -147,21 +148,21 @@ let paletteIndex = 0;
 function buildCommands(ctx) {
   const sel = ctx.state.selected;
   const cmds = [
-    { id: 'compose', label: 'Compose new message', hint: 'c', run: () => openCompose(ctx) },
-    { id: 'refresh', label: 'Refresh inbox', hint: 'r', run: () => ctx.refresh() },
-    { id: 'undo', label: 'Undo last action', hint: 'ctrl+z', run: () => performUndo(ctx) },
-    { id: 'search', label: 'Search mail', hint: '/', run: () => $('search')?.focus() },
-    { id: 'gmail', label: 'Back to Gmail', hint: 'esc', run: () => ctx.release() },
+    { id: 'compose', icon: 'compose', label: 'Compose new message', hint: 'c', run: () => openCompose(ctx) },
+    { id: 'refresh', icon: 'refresh', label: 'Refresh inbox', hint: 'r', run: () => ctx.refresh() },
+    { id: 'undo', icon: 'back', label: 'Undo last action', hint: 'ctrl+z', run: () => performUndo(ctx) },
+    { id: 'search', icon: 'search', label: 'Search mail', hint: '/', run: () => $('search')?.focus() },
+    { id: 'gmail', icon: 'back', label: 'Back to Gmail', hint: 'esc', run: () => ctx.release() },
   ];
 
   if (sel) {
     cmds.unshift(
-      { id: 'reply', label: 'Reply', hint: 'shift+r', run: () => startReply(ctx, 'reply') },
-      { id: 'replyAll', label: 'Reply all', hint: 'shift+a', run: () => startReply(ctx, 'replyAll') },
-      { id: 'forward', label: 'Forward', hint: 'shift+f', run: () => startReply(ctx, 'forward') },
-      { id: 'archive', label: 'Archive this message', hint: 'e', run: () => ctx.act('archive', sel) },
-      { id: 'star', label: 'Star / unstar', hint: 's', run: () => ctx.act('star', sel) },
-      { id: 'unread', label: 'Mark unread', hint: 'u', run: () => ctx.act('unread', sel) }
+      { id: 'reply', icon: 'reply', label: 'Reply', hint: 'shift+r', run: () => startReply(ctx, 'reply') },
+      { id: 'replyAll', icon: 'reply', label: 'Reply all', hint: 'shift+a', run: () => startReply(ctx, 'replyAll') },
+      { id: 'forward', icon: 'reply', label: 'Forward', hint: 'shift+f', run: () => startReply(ctx, 'forward') },
+      { id: 'archive', icon: 'archive', label: 'Archive this message', hint: 'e', run: () => ctx.act('archive', sel) },
+      { id: 'star', icon: 'star', label: 'Star / unstar', hint: 's', run: () => ctx.act('star', sel) },
+      { id: 'unread', icon: 'mail', label: 'Mark unread', hint: 'u', run: () => ctx.act('unread', sel) }
     );
   }
 
@@ -170,6 +171,7 @@ function buildCommands(ctx) {
   for (const [key, label] of ctx.categoryList()) {
     cmds.push({
       id: `cat:${key}`,
+      icon: 'mail',
       label: `Go to ${label}`,
       hint: 'category',
       run: () => ctx.selectCategory(key),
@@ -177,7 +179,7 @@ function buildCommands(ctx) {
   }
 
   for (const t of ctx.themes()) {
-    cmds.push({ id: `theme:${t.id}`, label: `Theme: ${t.name}`, hint: 'theme', run: () => ctx.setTheme(t.id) });
+    cmds.push({ id: `theme:${t.id}`, icon: 'palette', label: `Theme: ${t.name}`, hint: 'theme', run: () => ctx.setTheme(t.id) });
   }
 
   // Search shortcuts, so the operator syntax is discoverable instead of
@@ -189,7 +191,7 @@ function buildCommands(ctx) {
     ['is:overdue', 'Filter: overdue'],
     ['has:attachment', 'Filter: has attachment'],
   ]) {
-    cmds.push({ id: `q:${q}`, label, hint: q, run: () => ctx.runQuery(q) });
+    cmds.push({ id: `q:${q}`, icon: 'search', label, hint: q, run: () => ctx.runQuery(q) });
   }
 
   return cmds;
@@ -224,6 +226,12 @@ function renderPalette() {
     li.setAttribute('aria-selected', String(i === paletteIndex));
     li.dataset.index = String(i);
 
+    // An icon per command turns a wall of text into something scannable --
+    // the eye finds a shape far faster than it reads a word.
+    const ico = document.createElement('span');
+    ico.className = 'palette-icon';
+    ico.appendChild(icon(c.icon || 'palette', { size: 15 }));
+
     const label = document.createElement('span');
     label.className = 'palette-label';
     label.textContent = c.label;
@@ -232,7 +240,7 @@ function renderPalette() {
     hint.className = 'palette-hint-key';
     hint.textContent = c.hint || '';
 
-    li.append(label, hint);
+    li.append(ico, label, hint);
     frag.appendChild(li);
   });
   list.replaceChildren(frag);

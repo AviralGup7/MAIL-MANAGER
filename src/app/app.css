@@ -1708,6 +1708,120 @@ html[data-theme='contrast'] .row[aria-selected='true'] {
   animation: swap-in var(--dur-base) var(--ease-out) both;
 }
 
+/* ========================================================================= */
+/* ICONOGRAPHY                                                               */
+/*                                                                           */
+/* One set, one geometry: 20x20 viewBox, 1.6 stroke, currentColor. The       */
+/* interface previously mixed three hand-drawn SVGs with text glyphs -- `x`  */
+/* for close, a hyphen for minimise, an emoji paperclip. A glyph renders in  */
+/* whatever font the platform picks, so it never optically matches a stroked */
+/* icon beside it and is never quite centred in its button.                  */
+/* ========================================================================= */
+
+svg {
+  /* Stops the 4px descender gap that makes every icon sit a touch high. */
+  display: block;
+  flex: none;
+}
+
+.ghost svg,
+.primary svg {
+  /* Optical, not mathematical. A stroked glyph reads slightly heavy at the
+     same nominal size as text, so it is nudged down a hair to sit on the same
+     visual baseline as the label. */
+  margin-top: -1px;
+  opacity: 0.85;
+}
+.ghost:hover svg,
+.primary svg {
+  opacity: 1;
+}
+
+.ghost.icon {
+  padding: var(--s-2);
+  aspect-ratio: 1;
+  justify-content: center;
+}
+
+.palette-icon {
+  display: flex;
+  color: var(--fg-faint);
+  flex: none;
+}
+.palette-item.active .palette-icon {
+  color: var(--accent);
+}
+
+.theme-tick {
+  display: flex;
+  align-items: center;
+}
+
+/* ========================================================================= */
+/* DEPTH                                                                     */
+/*                                                                           */
+/* Elevation is EARNED, not decorative. Three levels, and a surface only     */
+/* moves up one when it genuinely floats above what it covers.               */
+/*                                                                           */
+/*   0  the app background and the list -- flat, because they are the page   */
+/*   1  the toolbar and reader -- a hairline, so the list reads as beneath    */
+/*   2  menus, compose, toasts -- genuinely floating over content            */
+/*                                                                           */
+/* The previous version had shadows on things that do not float, which is    */
+/* what makes an interface look "designed" in the pejorative sense.          */
+/* ========================================================================= */
+
+/*
+ * Panel edges use a hairline plus a whisper of shadow rather than a hard
+ * 1px border. A pure border is a line; a border plus a 1px shadow reads as a
+ * physical edge catching light, which is most of what separates a premium
+ * surface from a flat one -- and it costs one composited layer, not a repaint.
+ */
+#topbar {
+  box-shadow:
+    0 1px 0 var(--line),
+    0 1px 3px rgba(0, 0, 0, 0.04);
+  border-bottom: 0;
+}
+
+#listpane {
+  /* The divider between list and reader gets the same treatment, so the two
+     panes read as adjacent sheets rather than as one box with a line in it. */
+  border-right: 0;
+  box-shadow:
+    1px 0 0 var(--line),
+    2px 0 8px rgba(0, 0, 0, 0.03);
+  z-index: 1;
+}
+
+html[data-scheme='dark'] #topbar {
+  box-shadow:
+    0 1px 0 var(--line),
+    0 2px 8px rgba(0, 0, 0, 0.28);
+}
+html[data-scheme='dark'] #listpane {
+  box-shadow:
+    1px 0 0 var(--line),
+    3px 0 14px rgba(0, 0, 0, 0.24);
+}
+
+/*
+ * A single, very quiet top light on the raised surfaces.
+ *
+ * One inset hairline at 5% white. This is the "natural lighting" cue: real
+ * materials catch light on their top edge. At this strength nobody will ever
+ * consciously see it, which is exactly right -- turn it off and the surface
+ * looks flat, turn it up and it looks like 2013.
+ */
+html[data-scheme='dark'] #compose,
+html[data-scheme='dark'] #palette-box,
+html[data-scheme='dark'] #gate-card,
+html[data-scheme='dark'] #thememenu {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    var(--shadow-lg);
+}
+
 /*
  * `hidden` must actually hide.
  *

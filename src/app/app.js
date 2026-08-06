@@ -28,6 +28,7 @@ import { Store } from './store.js';
 import { loadCache, saveCache, clearCache, createSaver, CACHE_MAX } from './cache.js';
 import { sanitizeHtml, escapeHtml } from './sanitize.js';
 import { THEMES, applyTheme, getTheme, DEFAULT_THEME } from './themes.js';
+import { icon, setIcon } from './icons.js';
 import { extractDeadline, relativeLabel, urgency } from './deadlines.js';
 import { parseQuery, buildReply } from './query.js';
 import {
@@ -447,9 +448,14 @@ function buildRow(id) {
     '</span>' +
     '<span class="r-right">' +
     '<span class="r-date"></span>' +
-    '<button class="r-star" type="button" aria-label="Star">★</button>' +
+    '<button class="r-star" type="button" aria-label="Star"></button>' +
     '<span class="tag"></span>' +
     '</span>';
+  // The star is a real icon, not the `★` glyph. A glyph renders in whatever
+  // font the platform picks, so it never optically matches the stroked SVGs
+  // beside it and is never quite centred in its button.
+  setIcon(li.querySelector('.r-star'), 'star', { size: 15 });
+
   fillRow(li, store.get(id));
   return li;
 }
@@ -480,7 +486,15 @@ function fillRow(li, m) {
 
   li.classList.toggle('unread', !!m.unread);
   li.classList.toggle('muted', MUTED_CATEGORIES.has(m.category));
-  q('.r-star').setAttribute('aria-pressed', String(!!m.starred));
+  const star = q('.r-star');
+  const starred = !!m.starred;
+  if (star.getAttribute('aria-pressed') !== String(starred)) {
+    star.setAttribute('aria-pressed', String(starred));
+    // Filled when on, stroked when off. This is the one place a fill carries
+    // meaning rather than being decoration.
+    setIcon(star, 'star', { size: 15, filled: starred });
+    star.setAttribute('aria-label', starred ? 'Unstar' : 'Star');
+  }
   li.setAttribute('aria-selected', String(state.selected === m.id));
 }
 
@@ -1049,7 +1063,7 @@ function buildThemeMenu() {
     const tick = document.createElement('span');
     tick.className = 'theme-tick';
     tick.setAttribute('aria-hidden', 'true');
-    tick.textContent = '✓';
+    tick.appendChild(icon('check', { size: 14 }));
 
     item.append(dot, name, tick);
     frag.appendChild(item);
@@ -1256,6 +1270,13 @@ window.addEventListener('message', (e) => {
   if (e.data?.type === 'BMM_SHOWN') el.list.focus({ preventScroll: true });
 });
 
+/** Prepend an icon to a labelled button, preserving its text. */
+function decorate(id, name) {
+  const el = $(id);
+  if (!el) return;
+  el.prepend(icon(name, { size: 15 }));
+}
+
 /**
  * A pending cache write must not be lost when the takeover closes.
  *
@@ -1358,6 +1379,18 @@ async function boot() {
 
   buildSidebar();
   renderSidebar();
+
+  // Icons on the chrome.
+  //
+  // Text-only buttons read as a form; an icon paired with a label reads as a
+  // tool. The label STAYS -- an icon alone is a guessing game, and the toolbar
+  // is the first thing a new user has to understand.
+  decorate('btn-compose', 'compose');
+  decorate('btn-refresh', 'refresh');
+  decorate('btn-gmail', 'back');
+  decorate('compose-min', 'minimise');
+  decorate('compose-close', 'close');
+
   wirePalette(ctx);
   wireCompose(ctx);
   wireRadar(ctx);

@@ -487,3 +487,34 @@ test('the empty state explains WHICH kind of empty it is', () => {
   assert.match(js, /No matches/, 'must handle the over-filtered case');
   assert.match(js, /Clear search/, 'must offer an escape from a bad search');
 });
+
+test('iconography is one coherent set, not mixed glyphs', () => {
+  // The interface previously mixed three hand-drawn SVGs with text glyphs:
+  // `x` for close, a hyphen for minimise, a star, an emoji paperclip. That is
+  // the clearest tell of an assembled interface, and it fails concretely: a
+  // glyph renders in whatever font the platform picks, so it never optically
+  // matches a stroked icon beside it and is never quite centred in its button.
+  const html = read('app.html');
+  const js = read('src/app/app.js') + read('src/app/features.js');
+
+  for (const glyph of ['★', '×', '✓', '📎', '◐']) {
+    assert.ok(
+      !html.includes(glyph),
+      `app.html still uses "${glyph}" as an icon; use icons.js instead`
+    );
+  }
+  // A glyph assigned as content in JS is the same mistake by another route.
+  assert.ok(!/textContent = '[★×✓📎◐]'/.test(js), 'a glyph is being set as icon content');
+});
+
+test('every icon shares one geometry', () => {
+  // Mixed viewBoxes or stroke widths are why an icon set looks bought rather
+  // than drawn. One 20x20 grid, one 1.6 stroke, currentColor throughout.
+  const src = read('src/app/icons.js');
+  assert.match(src, /viewBox', '0 0 20 20'/, 'all icons must share a 20x20 grid');
+  assert.match(src, /stroke-width', filled \? '0' : '1\.6'/, 'one stroke weight');
+  assert.ok(
+    !/fill="#|stroke="#/.test(src),
+    'icons must use currentColor so they theme for free'
+  );
+});
