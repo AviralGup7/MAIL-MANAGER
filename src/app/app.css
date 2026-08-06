@@ -2262,6 +2262,31 @@ html[data-scheme='dark'] #thememenu {
 }
 
 /*
+ * REMOTE IMAGE BAR.
+ *
+ * Sits between the attachment chips and the body, because it describes the
+ * body. Uses the warning tone rather than the danger tone: nothing has gone
+ * wrong, a choice is being offered.
+ */
+#r-images {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  padding: var(--s-3) var(--s-6);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-raised);
+  font-size: var(--t-sm);
+  color: var(--fg-dim);
+}
+
+#r-images-actions {
+  display: flex;
+  gap: var(--s-2);
+  margin-left: auto;
+}
+
+/*
  * `hidden` must actually hide.
  *
  * THIS WAS A REAL BUG: sign-in completed, the token was stored, and the user

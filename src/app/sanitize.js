@@ -78,6 +78,18 @@ const ATTRS = {
 /** URL schemes permitted in href. */
 const SAFE_SCHEME = /^(https?:|mailto:|tel:)/i;
 
+/** Remote image schemes. `img[src]` is handled separately from `a[href]`. */
+const REMOTE_IMG = /^https?:/i;
+
+/**
+ * Raster data: images only.
+ *
+ * `data:image/svg+xml` is deliberately excluded: SVG is a document format that
+ * can carry `<script>`, so permitting it here would reintroduce script
+ * execution through an attribute the sandbox does not police.
+ */
+const SAFE_DATA_IMG = /^data:image\/(png|jpe?g|gif|webp|bmp|x-icon|vnd\.microsoft\.icon);base64,[A-Za-z0-9+/=]*$/i;
+
 /**
  * `style` is allowed but filtered.
  *
@@ -119,7 +131,7 @@ function safeStyle(value) {
  * @param {Document} doc  a Document to parse with; defaults to the global one
  * @returns {string} HTML containing only allow-listed elements and attributes
  */
-export function sanitizeHtml(html, doc = globalThis.document) {
+export function sanitizeHtml(html, doc = globalThis.document, opts = {}) {
   if (!html) return '';
 
   // Resolve DOMParser from the document's OWN window, not from globalThis.
@@ -141,11 +153,40 @@ export function sanitizeHtml(html, doc = globalThis.document) {
   const parsed = parser.parseFromString(String(html), 'text/html');
   const out = doc.implementation.createHTMLDocument('').body;
 
-  walk(parsed.body, out, doc);
+  const ctx = {
+    allowRemote: !!opts.allowRemote,
+    // cid -> data: URL, resolved by the caller from the message's own parts.
+    cid: opts.cid instanceof Map ? opts.cid : new Map(),
+    stats: opts.stats && typeof opts.stats === 'object' ? opts.stats : {},
+  };
+  ctx.stats.blockedRemote = 0;
+  ctx.stats.inlineResolved = 0;
+  ctx.stats.inlineMissing = 0;
+
+  walk(parsed.body, out, doc, ctx);
   return out.innerHTML;
 }
 
-function walk(src, dest, doc) {
+/**
+ * Resolve a `cid:` reference against the message's own attached parts.
+ *
+ * Mail references its inline images as `cid:xyz@host`, matching a part whose
+ * `Content-ID` header is `<xyz@host>`. Some authors omit the angle brackets,
+ * some URL-encode the value, and a few reference the part's filename instead,
+ * so all three are tried before giving up.
+ */
+function resolveCid(raw, cid) {
+  const key = raw.slice(4).trim();
+  if (!key) return '';
+  const candidates = [key, decodeURIComponent(key)];
+  for (const c of candidates) {
+    const hit = cid.get(c) || cid.get(c.replace(/^<|>$/g, ''));
+    if (hit) return hit;
+  }
+  return '';
+}
+
+function walk(src, dest, doc, ctx) {
   for (const node of Array.from(src.childNodes)) {
     // Text is always safe: it is inserted as a text node, never parsed.
     if (node.nodeType === 3) {
@@ -159,30 +200,30 @@ function walk(src, dest, doc) {
 
     if (!ALLOWED.has(tag)) {
       // Unknown element: keep the text inside it, discard the element itself.
-      walk(node, dest, doc);
+      walk(node, dest, doc, ctx);
       continue;
     }
 
     const el = doc.createElement(tag);
-    copyAttributes(node, el, tag);
+    copyAttributes(node, el, tag, ctx);
 
     // Links open in a new tab and must not leak the referrer or hand the
     // opener to the target.
     if (tag === 'a') {
       if (!el.getAttribute('href')) {
-        walk(node, dest, doc);
+        walk(node, dest, doc, ctx);
         continue;
       }
       el.setAttribute('target', '_blank');
       el.setAttribute('rel', 'noopener noreferrer nofollow');
     }
 
-    walk(node, el, doc);
+    walk(node, el, doc, ctx);
     dest.appendChild(el);
   }
 }
 
-function copyAttributes(from, to, tag) {
+function copyAttributes(from, to, tag, ctx) {
   const allowed = ATTRS[tag];
   for (const attr of Array.from(from.attributes || [])) {
     const name = attr.name.toLowerCase();
@@ -199,6 +240,61 @@ function copyAttributes(from, to, tag) {
     }
 
     if (!GLOBAL_ATTRS.has(name) && !allowed?.has(name)) continue;
+
+    if (name === 'src' && tag === 'img') {
+      const url = value.trim().replace(/[\u0000-\u001F\u007F\s]/g, '');
+
+      /*
+       * INLINE IMAGES. `cid:` is not a fetchable scheme in any browser: it is
+       * a pointer into this message's own MIME tree. Resolve it to a data:
+       * URL, which the frame CSP already permits, so no CSP change is needed
+       * and no network request is made. An unresolved reference becomes a
+       * marked placeholder rather than a silently missing image.
+       */
+      if (/^cid:/i.test(url)) {
+        const data = resolveCid(url, ctx.cid);
+        // The resolved value is scheme-checked even though it comes from our
+        // own fetch. A resolver that can set an arbitrary src is a bypass of
+        // every rule below it, and defence in depth means not trusting our
+        // own inputs either.
+        if (data && SAFE_DATA_IMG.test(data)) {
+          to.setAttribute('src', data);
+          ctx.stats.inlineResolved++;
+        } else {
+          to.setAttribute('data-bmm-missing', '1');
+          ctx.stats.inlineMissing++;
+        }
+        continue;
+      }
+
+      /*
+       * REMOTE IMAGES. Previously `https:` passed here and was then killed by
+       * the frame's `img-src data:` CSP, so the tag rendered as an empty box
+       * with no explanation and no way to load it -- the sanitiser and the CSP
+       * disagreed about policy.
+       *
+       * Now the decision is made in ONE place. Blocked images keep their URL
+       * in `data-bmm-src` so the reader can offer to load them, and the caller
+       * widens the CSP only when the user has actually opted in.
+       */
+      if (REMOTE_IMG.test(url)) {
+        if (ctx.allowRemote) {
+          to.setAttribute('src', url);
+        } else {
+          to.setAttribute('data-bmm-src', url);
+          ctx.stats.blockedRemote++;
+        }
+        continue;
+      }
+
+      // data: images are inert as pixels but can carry SVG, which can script.
+      // Same predicate as the cid resolver uses, deliberately: two copies of
+      // this rule would eventually disagree.
+      if (SAFE_DATA_IMG.test(url)) {
+        to.setAttribute('src', url);
+      }
+      continue;
+    }
 
     if (name === 'href' || name === 'src') {
       const url = value.trim().replace(/[\u0000-\u001F\u007F\s]/g, '');

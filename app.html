@@ -248,6 +248,23 @@
               -->
               <div id="r-attachments" hidden></div>
 
+              <!--
+                REMOTE IMAGE BAR.
+
+                Blocked images previously rendered as empty boxes with no
+                explanation and no override, because the sanitiser allowed
+                https: and the frame CSP then refused to fetch it. The policy
+                now lives in one place and this bar is how the user overrides
+                it for a single message or a whole sender.
+              -->
+              <div id="r-images" hidden>
+                <span id="r-images-text"></span>
+                <span id="r-images-actions">
+                  <button id="r-images-show" class="ghost small" type="button">Show images</button>
+                  <button id="r-images-always" class="ghost small" type="button">Always from this sender</button>
+                </span>
+              </div>
+
               <div id="r-bodywrap">
                 <div id="r-loading">Loading…</div>
                 <!--

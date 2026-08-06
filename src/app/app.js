@@ -33,6 +33,7 @@ import { Selection, selectionLabel } from './selection.js';
 import { loadViews, saveView, removeView } from './views.js';
 import { extractDeadline, relativeLabel, urgency } from './deadlines.js';
 import { parseQuery, buildReply } from './query.js';
+import * as settings from './settings.js';
 import {
   undoStack, recordUndo, performUndo,
   renderRadar, wireRadar,
@@ -161,6 +162,10 @@ const el = {
   rTags: $('r-tags'),
   rBody: $('r-body'),
   rAttachments: $('r-attachments'),
+  rImages: $('r-images'),
+  rImagesText: $('r-images-text'),
+  rImagesShow: $('r-images-show'),
+  rImagesAlways: $('r-images-always'),
   rLoading: $('r-loading'),
   rOpen: $('r-open'),
   toast: $('toast'),
@@ -661,9 +666,28 @@ async function openMessage(id) {
   try {
     const body = await send('GET_BODY', { id });
     if (token !== bodyToken) return; // user moved on; drop the stale response
+
+    /*
+     * Inline images are fetched BEFORE the first paint of the body.
+     *
+     * Painting without them and substituting afterwards would reflow the
+     * message under the reader's eyes, which is worse than a marginally later
+     * paint -- and these parts come from the message we have already fetched,
+     * so the extra round trip is small and predictable.
+     */
+    if (body.inline?.length) {
+      try {
+        const res = await send('GET_INLINE', { messageId: id, parts: body.inline });
+        if (token !== bodyToken) return;
+        body.inlineData = res.inline || [];
+      } catch {
+        body.inlineData = []; // placeholders rather than a failed message
+      }
+    }
+
     lastBody = body;
     renderAttachments(body);
-    el.rBody.srcdoc = renderBody(body);
+    renderBodyInto(body);
   } catch (err) {
     if (token !== bodyToken) return;
     el.rBody.srcdoc = escapeDoc(`Could not load this message.\n\n${err.message}`);
@@ -770,9 +794,88 @@ function tagNode(text, color) {
  * can execute or exfiltrate, and we block remote images by default so opening
  * a mail does not confirm your address to a spammer.
  */
-function renderBody(body) {
+/**
+ * Remote-image allow-list, keyed by sender address.
+ *
+ * Kept out of `settings.js` because it is unbounded user data rather than a
+ * preference, and it is written from the reader rather than the options page.
+ */
+let imageAllowList = new Set();
+
+export async function loadImageAllowList(storage = chrome.storage?.local) {
+  try {
+    const { imageAllow } = (await storage.get('imageAllow')) || {};
+    imageAllowList = new Set(Array.isArray(imageAllow) ? imageAllow : []);
+  } catch {
+    imageAllowList = new Set();
+  }
+  return imageAllowList;
+}
+
+async function allowSenderImages(address, storage = chrome.storage?.local) {
+  if (!address) return;
+  imageAllowList.add(address);
+  try {
+    await storage.set({ imageAllow: [...imageAllowList] });
+  } catch {
+    // Session-only; the user can click again next time.
+  }
+}
+
+/** The bare address out of a `Name <a@b>` header. */
+function addressOf(from) {
+  const m = /<([^>]+)>/.exec(String(from || ''));
+  return (m ? m[1] : String(from || '')).trim().toLowerCase();
+}
+
+/**
+ * Decide whether this message may load remote images, and render it.
+ *
+ * Kept as one function because the CSP and the sanitiser MUST agree: if the
+ * sanitiser emits an `https:` src, the CSP has to permit `https:` or we are
+ * back to the invisible-blank-box defect. Both read `allowRemote` here.
+ */
+function renderBodyInto(body, forceRemote = false) {
+  const policy = settings.get('remoteImages');
+  const sender = addressOf(body.from);
+  const allowRemote =
+    forceRemote ||
+    policy === 'always' ||
+    (policy !== 'never' && imageAllowList.has(sender));
+
+  const stats = {};
+  el.rBody.srcdoc = renderBody(body, { allowRemote, stats });
+
+  // The bar only appears when there is something to unblock.
+  const blocked = stats.blockedRemote || 0;
+  el.rImages.hidden = blocked === 0;
+  if (blocked > 0) {
+    el.rImagesText.textContent =
+      blocked === 1 ? '1 image was not loaded, to protect your privacy.'
+        : `${blocked} images were not loaded, to protect your privacy.`;
+    el.rImagesAlways.hidden = !sender;
+    el.rImagesShow.onclick = () => {
+      renderBodyInto(body, true);
+      el.rBody.focus?.();
+    };
+    el.rImagesAlways.onclick = async () => {
+      await allowSenderImages(sender);
+      renderBodyInto(body, true);
+      toast(`Images will load from ${sender}`);
+    };
+  }
+}
+
+function renderBody(body, { allowRemote = false, stats = {} } = {}) {
+  // cid -> data: URL, from the parts we just fetched.
+  const cid = new Map();
+  for (const p of body.inlineData || []) {
+    if (p.contentId) cid.set(p.contentId, p.dataUrl);
+    if (p.filename) cid.set(p.filename, p.dataUrl);
+  }
+
   const html = body.html
-    ? sanitizeHtml(body.html)
+    ? sanitizeHtml(body.html, document, { allowRemote, cid, stats })
     : `<pre>${escapeHtml(body.text || '(no content)')}</pre>`;
 
 
@@ -790,9 +893,22 @@ function renderBody(body) {
   const surface = dark ? t.bgRaised : '#ffffff';
   const ink = dark ? t.fg : '#16181d';
 
+  /*
+   * The CSP is derived from the SAME decision the sanitiser made.
+   *
+   * `https:` is added only when remote images were actually emitted. This is
+   * the fix for the defect where the sanitiser allowed an https src that the
+   * CSP then silently refused: there is now exactly one source of truth.
+   *
+   * Note this stays `img-src` only -- no script, no frame, no connect. An
+   * image request leaks the read to the sender, which is why it is opt-in,
+   * but it cannot execute anything.
+   */
+  const imgSrc = allowRemote ? 'data: https:' : 'data:';
+
   return `<!doctype html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy"
-      content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:;">
+      content="default-src 'none'; img-src ${imgSrc}; style-src 'unsafe-inline'; font-src data:;">
 <style>
   html{color-scheme:${t.scheme}}
   /*
@@ -816,6 +932,22 @@ function renderBody(body) {
     max-width:68ch;
   }
   img{max-width:100%;height:auto;border-radius:6px}
+  /*
+   * BLOCKED AND UNRESOLVED IMAGES.
+   *
+   * An image with no usable src collapses to a 0x0 box in every browser, so
+   * without this the user cannot tell the difference between "this mail has
+   * no images" and "this mail's images were withheld". Giving the placeholder
+   * a visible frame and the alt text room to show is what makes the reader
+   * bar's offer make sense.
+   */
+  img[data-bmm-src], img[data-bmm-missing]{
+    min-width:120px;min-height:44px;
+    border:1px dashed ${t.line};border-radius:8px;
+    background:${t.accentSoft};
+    padding:8px 12px;box-sizing:border-box;
+    font-size:12px;color:${t.fgDim};
+  }
   pre{white-space:pre-wrap;font:inherit;margin:0}
   table{max-width:100%!important}
   a{color:${t.accent};text-underline-offset:2px}
@@ -853,6 +985,7 @@ function closeReader() {
   el.rBody.srcdoc = '';
   el.rAttachments.hidden = true;
   el.rAttachments.replaceChildren();
+  el.rImages.hidden = true;
 }
 
 // ------------------------------------------------------------------ triage --

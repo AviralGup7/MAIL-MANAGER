@@ -26,14 +26,14 @@ try {
 const { sanitizeHtml, escapeHtml } = await import('../src/app/sanitize.js');
 
 /** Run the sanitiser inside a jsdom document. */
-function clean(html) {
+function clean(html, opts) {
   // Deliberately does NOT set globalThis.DOMParser. The first version of this
   // helper did, which masked a real bug: sanitizeHtml read the parser off
   // globalThis and threw "DOMParser is not a constructor" in the actual
   // extension. It now resolves the parser from the document's own window, and
   // this helper proves it.
   const dom = new JSDOM('<!doctype html><body></body>');
-  return sanitizeHtml(html, dom.window.document);
+  return sanitizeHtml(html, dom.window.document, opts);
 }
 
 /** Parse the output and ask real DOM questions about it. */
@@ -194,11 +194,98 @@ test('safe links are kept and hardened', async (t) => {
   assert.ok(rel.includes('noopener') && rel.includes('noreferrer'));
 });
 
-test('images keep their src and alt', async (t) => {
+/*
+ * REMOTE IMAGES.
+ *
+ * The old test here asserted that an https src survived. That was asserting a
+ * BUG: the src survived the sanitiser and was then refused by the frame's
+ * `img-src data:` CSP, so the user saw an empty box with no explanation. The
+ * decision now lives in one place and these tests pin both branches.
+ */
+test('remote images are blocked by default, and parked for later', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');
-  const img = parse(clean('<img src="https://x.example/a.png" alt="Logo" width="80">')).querySelector('img');
+  const stats = {};
+  const img = parse(
+    clean('<img src="https://x.example/a.png" alt="Logo" width="80">', { stats })
+  ).querySelector('img');
+  assert.equal(img.getAttribute('src'), null, 'must not emit a src the CSP will refuse');
+  assert.equal(img.getAttribute('data-bmm-src'), 'https://x.example/a.png');
+  assert.equal(img.getAttribute('alt'), 'Logo', 'alt survives so the placeholder says something');
+  assert.equal(stats.blockedRemote, 1, 'the reader needs a count to offer an unblock');
+});
+
+test('remote images load when the user has opted in', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const stats = {};
+  const img = parse(
+    clean('<img src="https://x.example/a.png" alt="Logo">', { allowRemote: true, stats })
+  ).querySelector('img');
   assert.equal(img.getAttribute('src'), 'https://x.example/a.png');
-  assert.equal(img.getAttribute('alt'), 'Logo');
+  assert.equal(img.getAttribute('data-bmm-src'), null);
+  assert.equal(stats.blockedRemote, 0, 'nothing blocked means no bar');
+});
+
+test('opting in to images does not also unblock scripts or other schemes', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // allowRemote widens img-src ONLY. A javascript: href must still die.
+  const out = clean('<a href="javascript:alert(1)">x</a><img src="vbscript:evil">', {
+    allowRemote: true,
+  });
+  assert.ok(!/javascript:/i.test(out));
+  assert.ok(!/vbscript:/i.test(out));
+});
+
+// ------------------------------------------------------------ cid images ----
+
+test('cid: images resolve against the message own parts', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const cid = new Map([['logo@bits', 'data:image/png;base64,AAAA']]);
+  const stats = {};
+  const img = parse(
+    clean('<img src="cid:logo@bits" alt="Logo">', { cid, stats })
+  ).querySelector('img');
+  assert.equal(img.getAttribute('src'), 'data:image/png;base64,AAAA');
+  assert.equal(stats.inlineResolved, 1);
+  // Inline images are NOT remote: they must never trigger the privacy bar.
+  assert.equal(stats.blockedRemote, 0);
+});
+
+test('cid: tolerates angle brackets and percent-encoding', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const cid = new Map([['a@b', 'data:image/png;base64,BBBB']]);
+  const bracket = parse(clean('<img src="cid:<a@b>">', { cid })).querySelector('img');
+  assert.equal(bracket.getAttribute('src'), 'data:image/png;base64,BBBB');
+  const encoded = parse(clean('<img src="cid:a%40b">', { cid })).querySelector('img');
+  assert.equal(encoded.getAttribute('src'), 'data:image/png;base64,BBBB');
+});
+
+test('an unresolved cid becomes a marked placeholder, not a silent gap', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const stats = {};
+  const img = parse(clean('<img src="cid:missing@x" alt="Chart">', { stats })).querySelector('img');
+  assert.equal(img.getAttribute('src'), null);
+  assert.equal(img.getAttribute('data-bmm-missing'), '1');
+  assert.equal(stats.inlineMissing, 1);
+});
+
+test('a cid value cannot smuggle a script URL through the resolver', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // A hostile map entry is the threat: the resolver must not be a way to set
+  // an arbitrary src. Values come from our own fetch, but assert the shape.
+  const cid = new Map([['x@y', 'javascript:alert(1)']]);
+  const out = clean('<img src="cid:x@y">', { cid });
+  assert.ok(!/javascript:/i.test(out), 'resolver output must still be scheme-checked');
+});
+
+test('inline data: images are limited to real raster types', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // data:image/svg+xml can carry script. It must not survive.
+  const svg = parse(
+    clean('<img src="data:image/svg+xml;base64,PHN2Zz4=">')
+  ).querySelector('img');
+  assert.equal(svg.getAttribute('src'), null);
+  const png = parse(clean('<img src="data:image/png;base64,AAAA">')).querySelector('img');
+  assert.equal(png.getAttribute('src'), 'data:image/png;base64,AAAA');
 });
 
 test('unknown elements are unwrapped, keeping their text', async (t) => {

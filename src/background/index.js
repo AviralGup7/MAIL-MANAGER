@@ -18,6 +18,16 @@ import { syncPage, syncDelta } from './sync.js';
 import { api } from './gmail.js';
 
 /**
+ * Inline-image budget. See GET_INLINE.
+ *
+ * 2MB of source bytes becomes roughly 2.7MB of base64 in the srcdoc string,
+ * which is a large but survivable document. 20 parts covers every legitimate
+ * newsletter seen in the data pack with room to spare.
+ */
+const MAX_INLINE_BYTES = 2 * 1024 * 1024;
+const MAX_INLINE_PARTS = 20;
+
+/**
  * Is this a Gmail tab?
  *
  * `tab.url` is only populated when the extension holds either the broad `tabs`
@@ -217,6 +227,33 @@ async function handle(msg) {
     case 'GET_ATTACHMENT':
       return { dataUrl: await getAttachment(msg.messageId, msg.attachmentId, msg.mimeType) };
 
+    /*
+     * Inline images for one message, resolved in a single round trip.
+     *
+     * BOUNDED. A message can legitimately carry a dozen inline images, and a
+     * hostile one can claim a hundred. Every resolved part is inlined into the
+     * srcdoc as base64, which costs ~1.37x its byte size in the string, so an
+     * unbounded fetch here is a memory and paint problem, not just a network
+     * one. Oversized parts are skipped and render as placeholders.
+     */
+    case 'GET_INLINE': {
+      const parts = Array.isArray(msg.parts) ? msg.parts.slice(0, MAX_INLINE_PARTS) : [];
+      const out = [];
+      let budget = MAX_INLINE_BYTES;
+      for (const p of parts) {
+        if (!p?.attachmentId || !p?.contentId) continue;
+        if ((p.size || 0) > budget) continue;
+        try {
+          const dataUrl = await getAttachment(msg.messageId, p.attachmentId, p.mimeType);
+          budget -= p.size || 0;
+          out.push({ contentId: p.contentId, filename: p.filename || '', dataUrl });
+        } catch {
+          // One unfetchable part must not blank the whole message body.
+        }
+      }
+      return { inline: out };
+    }
+
     default:
       throw new Error(`Unknown message: ${msg?.type}`);
   }
@@ -252,6 +289,10 @@ function extractBody(full) {
     html: '',
     text: '',
     attachments: [],
+    // Inline parts referenced by the HTML as `cid:`. Kept separate from
+    // `attachments` so they do not appear as download chips: they are part of
+    // the message body, not things the user attached.
+    inline: [],
     // For threading and for pre-filling reply-all.
     messageId: h['message-id'] || '',
     references: h.references || '',
@@ -269,7 +310,34 @@ function extractBody(full) {
     if (!part) return;
     const mime = part.mimeType || '';
     const filename = part.filename || '';
-    if (filename && part.body?.attachmentId) {
+
+    /*
+     * INLINE vs ATTACHED.
+     *
+     * A part is inline when it carries a Content-ID that the HTML references,
+     * or when it is explicitly `Content-Disposition: inline`. Those must NOT
+     * become download chips -- a signature logo listed as an attachment is
+     * noise, and it is why some clients show "3 attachments" on a message that
+     * visibly has none.
+     */
+    const ph = Object.create(null);
+    for (const { name, value } of part.headers || []) {
+      ph[name.toLowerCase()] = value;
+    }
+    const contentId = (ph['content-id'] || '').trim().replace(/^<|>$/g, '');
+    const disposition = (ph['content-disposition'] || '').toLowerCase();
+    const isInline = mime.startsWith('image/') &&
+      (!!contentId || disposition.startsWith('inline'));
+
+    if (isInline && part.body?.attachmentId) {
+      out.inline.push({
+        contentId,
+        filename,
+        mimeType: mime,
+        size: part.body.size || 0,
+        attachmentId: part.body.attachmentId,
+      });
+    } else if (filename && part.body?.attachmentId) {
       out.attachments.push({
         filename,
         mimeType: mime,
