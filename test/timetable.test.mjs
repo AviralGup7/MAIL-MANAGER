@@ -1525,3 +1525,67 @@ test('VALIDATE: a missing or empty catalogue is not evidence of staleness', () =
     'and an empty course list, which is what a failed load actually produces'
   );
 });
+
+/* ================================================================ idempotency == */
+
+test('IDEMPOTENT: the same message twice in one scan yields one proposal', () => {
+  /*
+   * FOUND BY PROBING. Pass 3 names "duplicate mail-triggered updates" and
+   * "the same source processed twice must not create duplicate data".
+   *
+   * `appliedMail` correctly suppressed messages handled in a PREVIOUS session,
+   * but the set was never told about ids seen during the current loop. A
+   * duplicate in the input -- the same message returned by two mailbox
+   * queries, or a re-scan concatenating results -- produced two identical
+   * proposals, so the user was asked to approve the same room change twice.
+   */
+  const { state } = build();
+  const msg = {
+    id: 'm1',
+    from: 'AUGSD <augsd@pilani.bits-pilani.ac.in>',
+    subject: 'CS F111 L1 venue change',
+    snippet: 'CS F111 L1 will be held in room 6101.',
+    date: Date.now(),
+  };
+
+  assert.equal(scanMessages([msg], state).length, 1, 'precondition: one proposal');
+  assert.equal(
+    scanMessages([msg, { ...msg }], state).length, 1,
+    'the same id twice must not double the proposals'
+  );
+});
+
+test('IDEMPOTENT: two different messages about one change are both offered', () => {
+  /*
+   * THE LIMIT OF THE DEDUPE, stated deliberately.
+   *
+   * A forward or a reply is a genuinely different message with its own id.
+   * Collapsing them would mean guessing that two texts describe the same
+   * event, which is inference -- exactly what this system refuses to do. Both
+   * are offered; accepting one applies the change and the other then becomes
+   * a no-op through precedence ("no change").
+   */
+  const { state } = build();
+  const base = {
+    from: 'AUGSD <augsd@pilani.bits-pilani.ac.in>',
+    subject: 'CS F111 L1 venue change',
+    snippet: 'CS F111 L1 will be held in room 6101.',
+    date: Date.now(),
+  };
+  const found = scanMessages([{ ...base, id: 'm1' }, { ...base, id: 'm2' }], state);
+  assert.equal(found.length, 2, 'distinct ids are distinct messages');
+});
+
+test('IDEMPOTENT: a message already applied stays suppressed across a reload', () => {
+  // The cross-session half. appliedMail is persisted, so a message handled
+  // last week must not reappear every time the app opens.
+  const { state } = build();
+  const msg = {
+    id: 'm1',
+    from: 'AUGSD <augsd@pilani.bits-pilani.ac.in>',
+    subject: 'CS F111 L1 venue change',
+    snippet: 'CS F111 L1 will be held in room 6101.',
+    date: Date.now(),
+  };
+  assert.deepEqual(scanMessages([msg], { ...state, appliedMail: ['m1'] }), []);
+});

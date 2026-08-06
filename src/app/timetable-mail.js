@@ -280,10 +280,24 @@ function dedupe(findings) {
  * value the user has since edited.
  */
 export function scanMessages(messages, state) {
-  const already = new Set(state.appliedMail || []);
+  /*
+   * ONE SET FOR BOTH KINDS OF REPEAT.
+   *
+   * `appliedMail` covers messages handled in a PREVIOUS session. It did not
+   * cover a duplicate inside the CURRENT input -- the same message returned by
+   * two mailbox queries, or a re-scan concatenating results -- so the user was
+   * asked to approve the same room change twice.
+   *
+   * Adding each id as it is consumed makes the scan idempotent within a call
+   * as well as across sessions. A message with no id is skipped rather than
+   * treated as a repeat of the last one: '' would collide with itself.
+   */
+  const seen = new Set(state.appliedMail || []);
   const out = [];
   for (const m of messages || []) {
-    if (already.has(m.id)) continue;
+    if (!m || !m.id) continue;
+    if (seen.has(m.id)) continue;
+    seen.add(m.id);
     out.push(...scanMessage(m, state));
   }
   return out;
