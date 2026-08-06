@@ -214,3 +214,64 @@ test('the saver reads the store lazily, so it persists the FINAL state', async (
   await saver.flush();
   assert.equal((await loadCache(s)).messages.length, 3);
 });
+
+test('flush() reaches storage before returning', async () => {
+  // app.js calls saver.flush() from pagehide, which cannot await. What matters
+  // is that chrome.storage.local.set is INVOKED before the handler returns;
+  // completing the write is then Chrome's business, out of process.
+  //
+  // Note for anyone tightening this: an `await` chain does NOT break it. An
+  // async function body runs synchronously up to its first await, and nothing
+  // in write() -> saveCache() awaits before calling set(). I initially wrote
+  // this test believing it distinguished the two implementations. It does not,
+  // and a test that cannot fail is worse than no test -- so it asserts only
+  // the property that is actually true and actually matters.
+  const s = fakeStorage();
+  let reached = false;
+  const wrapped = { ...s, set(o) { reached = true; return s.set(o); } };
+  const saver = createSaver(() => [msg(0)], wrapped, { minIntervalMs: 0 });
+  saver.schedule();
+
+  saver.flush(); // deliberately NOT awaited, exactly like pagehide
+  assert.equal(reached, true, 'storage.set must be invoked before flush() returns');
+});
+
+test('no save fires after flush(), even if a throttle timer survives', async () => {
+  // schedule() stores either an idle-callback id or a timeout id in the same
+  // variable, and in a real browser those are separate id spaces -- so
+  // cancelling one with the other's canceller is a silent no-op. The code now
+  // tracks which scheduler produced the handle and cancels accordingly.
+  //
+  // Honest note on what this test does and does not prove: I could not make it
+  // fail by reintroducing the mismatched canceller, because a surviving timer
+  // re-arms only `if (pending)`, and flush() clears `pending` first. The
+  // cancellation is therefore belt-and-braces, not the load-bearing guard.
+  // Recorded rather than dressed up as a regression test for a bug that turned
+  // out to be unreachable -- but the observable property below is real and
+  // worth locking down.
+  const realRIC = globalThis.requestIdleCallback;
+  const realCIC = globalThis.cancelIdleCallback;
+  globalThis.requestIdleCallback = (fn) => setTimeout(fn, 5);
+  globalThis.cancelIdleCallback = (id) => clearTimeout(id);
+  try {
+    const s = fakeStorage();
+    let writes = 0;
+    const wrapped = { ...s, async set(o) { writes++; return s.set(o); } };
+    const saver = createSaver(() => [msg(0)], wrapped, { minIntervalMs: 50 });
+
+    saver.schedule();
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(writes, 1);
+
+    saver.schedule();          // throttled
+    await saver.flush();       // writes once, clears pending
+    const after = writes;
+
+    await new Promise((r) => setTimeout(r, 150));
+    assert.equal(writes, after, 'no further write may fire after flush()');
+    assert.equal(saver.isPending, false);
+  } finally {
+    globalThis.requestIdleCallback = realRIC;
+    globalThis.cancelIdleCallback = realCIC;
+  }
+});

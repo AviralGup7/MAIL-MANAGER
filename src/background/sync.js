@@ -36,25 +36,44 @@ export async function setHistoryId(id) {
  * @returns {Promise<{messages:object[], nextPageToken:string}>}
  */
 export async function syncPage({ pageToken = '', max = BATCH_SIZE, q = '', labelIds } = {}) {
+  // Read the cursor BEFORE listing, on the first page of a fresh sync.
+  //
+  // This used to be read AFTER the messages were fetched, which loses mail:
+  //
+  //   t0  listIds()        -> the inbox as it is now
+  //   t1  batchMetadata()  -> hydrate exactly those ids
+  //   t2  profile()        -> historyId as of t2
+  //
+  // Anything that arrived between t0 and t2 is absent from our list, yet the
+  // stored cursor already covers it, so the next delta reports no change for
+  // it. That message stays invisible until the cursor expires, about a week.
+  //
+  // Taking the cursor first inverts the failure: it can only be slightly
+  // STALE, so the next delta replays a handful of changes we already have.
+  // `upsert` is idempotent, so a replay costs nothing. Stale loses nothing;
+  // too-new loses mail irrecoverably.
+  let anchor = null;
+  if (!pageToken) {
+    try {
+      anchor = (await profile()).historyId;
+    } catch {
+      /* a missing cursor only costs a full resync later */
+    }
+  }
+
   const { ids, nextPageToken } = await listIds({
     pageToken,
     max: Math.min(max, BATCH_SIZE),
     q,
     labelIds: labelIds || (q ? [] : ['INBOX']),
   });
-  if (ids.length === 0) return { messages: [], nextPageToken: '' };
-  const messages = await batchMetadata(ids);
-  // Only anchor the history cursor on the first page of a fresh sync — the
-  // profile call is cheap and its historyId is the only one guaranteed to be
-  // consistent with "everything we have just read".
-  if (!pageToken) {
-    try {
-      const p = await profile();
-      await setHistoryId(p.historyId);
-    } catch {
-      /* a missing cursor only costs us a full resync later */
-    }
+  if (ids.length === 0) {
+    if (anchor) await setHistoryId(anchor);
+    return { messages: [], nextPageToken: '' };
   }
+
+  const messages = await batchMetadata(ids);
+  if (anchor) await setHistoryId(anchor);
   return { messages, nextPageToken };
 }
 

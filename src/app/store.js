@@ -179,9 +179,29 @@ export class Store {
     const existing = this.byId.get(msg.id);
     if (existing) {
       this._deindex(existing);
-      // Date is immutable for a given message, so the order array stands.
-      this.byId.set(msg.id, { ...existing, ...msg });
-      this._index(this.byId.get(msg.id));
+      const merged = { ...existing, ...msg };
+      this.byId.set(msg.id, merged);
+      this._index(merged);
+
+      // Re-position if the date moved.
+      //
+      // This used to assume "date is immutable for a given message, so the
+      // order array stands". It is not safe. `_insertOrdered` is a binary
+      // search, which requires `order` to be sorted; a single changed date
+      // leaves it unsorted, and every SUBSEQUENT insert then lands in the
+      // wrong slot. One bad record silently corrupts the ordering of the
+      // whole list, and it never repairs itself.
+      //
+      // The real trigger is ordinary: cache.js persists `date`, and a delta
+      // sync re-fetches and re-upserts the same ids. Any drift between the
+      // cached value and the refetched `internalDate` reorders that message.
+      if (merged.date !== existing.date) {
+        const i = this.order.indexOf(msg.id);
+        if (i !== -1) this.order.splice(i, 1);
+        this._insertOrdered(msg.id, merged.date);
+        this._structuralChange = true;
+      }
+
       this._touch(msg.id);
       return;
     }

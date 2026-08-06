@@ -334,3 +334,36 @@ test('mutating the array idsFor returned cannot corrupt the store', () => {
   assert.equal(s.size, 2, 'store survives a caller abusing the returned array');
   assert.equal(s.idsFor('all').length, 2);
 });
+
+test('a changed date re-positions the message and keeps order sorted', () => {
+  // upsert() used to comment "date is immutable for a given message, so the
+  // order array stands" and skip re-positioning. It is not immutable: cache.js
+  // persists `date`, and a delta re-fetches and re-upserts the same ids, so any
+  // drift reorders that message.
+  //
+  // The damage is not one row out of place. `_insertOrdered` is a BINARY
+  // SEARCH, which requires `order` to be sorted -- once it is not, every
+  // subsequent insert lands in the wrong slot and the list never repairs
+  // itself.
+  const s = new Store();
+  s.upsertMany([msg(1, { date: 300 }), msg(2, { date: 200 }), msg(3, { date: 100 })]);
+
+  s.upsert(msg(3, { date: 999 })); // same id, now the newest
+  s.upsert(msg(4, { date: 250 })); // must still land correctly
+
+  const dates = s.idsFor('all').map((id) => s.get(id).date);
+  assert.deepEqual(dates, [...dates].sort((a, b) => b - a), 'order must stay newest-first');
+  assert.equal(s.order.length, s.size, 'no duplicate or orphaned entries');
+  assert.equal(new Set(s.order).size, s.order.length, 'no id appears twice');
+});
+
+test('re-upserting with an unchanged date does not touch the order array', () => {
+  // The common case: a delta re-fetches a message we already have. Splicing on
+  // every re-upsert would make an idempotent sync O(n) per message.
+  const s = new Store();
+  s.upsertMany([msg(1), msg(2), msg(3)]);
+  const before = s.idsFor('all');
+  s.upsert(msg(2, { unread: true }));
+  assert.deepEqual(s.idsFor('all'), before);
+  assert.equal(s.get('m2').unread, true, 'the field still updated');
+});

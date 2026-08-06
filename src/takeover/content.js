@@ -109,8 +109,24 @@ function suspendGmail() {
     el,
     visibility: el.style.visibility,
     display: el.style.display,
+    inert: el.hasAttribute('inert'),
   }));
-  for (const n of hiddenNodes) n.el.style.visibility = 'hidden';
+  for (const n of hiddenNodes) {
+    n.el.style.visibility = 'hidden';
+    // `inert` removes the subtree from the accessibility tree and from focus
+    // order. `visibility: hidden` alone does the first but Gmail can still
+    // programmatically focus something underneath us -- it moves focus on a
+    // timer for its own dialogs -- which steals typing from our search box.
+    n.el.setAttribute('inert', '');
+  }
+  // Gmail is a single-page app and keeps appending top-level nodes after we
+  // have taken over. Those are not in `hiddenNodes`, so they are neither
+  // hidden nor inert. The iframe covers them visually (position:fixed at max
+  // z-index), but a late Gmail dialog could still take focus. Marking the
+  // BODY inert covers every future child; our host lives outside that because
+  // it is explicitly un-inerted below.
+  document.body.setAttribute('inert', '');
+  host?.removeAttribute('inert');
 }
 
 function fullyHideGmail() {
@@ -121,7 +137,10 @@ function restoreGmail() {
   for (const n of hiddenNodes) {
     n.el.style.visibility = n.visibility;
     n.el.style.display = n.display;
+    // Only clear `inert` if Gmail did not set it itself.
+    if (!n.inert) n.el.removeAttribute('inert');
   }
+  document.body.removeAttribute('inert');
   hiddenNodes = [];
 }
 

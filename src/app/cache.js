@@ -142,15 +142,35 @@ export function createSaver(getMessages, storage = chrome.storage.local, opts = 
   let lastWrite = 0;
   let pending = false;
 
-  const idle =
-    typeof requestIdleCallback === 'function'
-      ? (fn) => requestIdleCallback(fn, { timeout: idleTimeout })
-      : (fn) => setTimeout(fn, 50);
-  const cancelIdle =
-    typeof cancelIdleCallback === 'function' ? cancelIdleCallback : clearTimeout;
+  const hasIdle = typeof requestIdleCallback === 'function';
+
+  // Track WHICH scheduler produced the current handle.
+  //
+  // Both branches below store into the same `handle`, but one is an idle
+  // callback id and the other a timeout id. Cancelling a timeout id with
+  // `cancelIdleCallback` is a silent no-op -- the two id spaces are unrelated
+  // -- so a throttled save could still fire after `flush()` claimed to have
+  // cancelled it, producing a second, stale write.
+  let handleKind = null; // 'idle' | 'timeout'
+
+  const schedIdle = (fn) => {
+    handleKind = 'idle';
+    return hasIdle ? requestIdleCallback(fn, { timeout: idleTimeout }) : setTimeout(fn, 50);
+  };
+  const schedTimeout = (fn, ms) => {
+    handleKind = 'timeout';
+    return setTimeout(fn, ms);
+  };
+  const cancel = (h) => {
+    if (h === null) return;
+    if (handleKind === 'idle' && hasIdle) cancelIdleCallback(h);
+    else clearTimeout(h);
+    handleKind = null;
+  };
 
   async function write() {
     handle = null;
+    handleKind = null;
     pending = false;
     lastWrite = Date.now();
     await saveCache(getMessages(), storage);
@@ -163,21 +183,37 @@ export function createSaver(getMessages, storage = chrome.storage.local, opts = 
       pending = true;
       const since = Date.now() - lastWrite;
       if (since < minIntervalMs) {
-        handle = setTimeout(() => {
+        handle = schedTimeout(() => {
           handle = null;
+          handleKind = null;
           if (pending) this.schedule();
         }, minIntervalMs - since);
         return;
       }
-      handle = idle(write);
+      handle = schedIdle(write);
     },
-    /** Write now, e.g. on pagehide. */
-    async flush() {
-      if (handle !== null) {
-        cancelIdle(handle);
-        handle = null;
-      }
-      if (pending) await write();
+
+    /**
+     * Write now.
+     *
+     * SYNCHRONOUS by design, despite returning a promise for callers that can
+     * await it. `pagehide` cannot await anything -- the document is being torn
+     * down -- so anything deferred here is simply lost, and losing it means
+     * losing the triage the user just performed.
+     *
+     * `chrome.storage.local.set` accepts the write synchronously and completes
+     * it out of process, so issuing it before returning is what actually gets
+     * the data to disk. The returned promise is for `release()`, which can
+     * await, and for tests.
+     */
+    flush() {
+      cancel(handle);
+      handle = null;
+      if (!pending) return Promise.resolve();
+      pending = false;
+      lastWrite = Date.now();
+      // Issued immediately, not scheduled.
+      return Promise.resolve(saveCache(getMessages(), storage));
     },
     get isPending() {
       return pending;
