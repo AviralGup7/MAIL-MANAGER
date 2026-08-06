@@ -17,7 +17,8 @@ import {
   applyFieldChange, manualEdit, setLocked, restoreFromSource,
   detectConflicts, linkedSections, instructorsFor, sectionsByKind,
   weekView, summariseMeetings, explainEntry, entriesForMessage, examEvents,
-  parseDaysHours, switchSection, finalize, resetTimetable, PRECEDENCE,
+  parseDaysHours, switchSection, finalize, resetTimetable,
+  validateAgainstSource, PRECEDENCE,
 } from '../src/app/timetable.js';
 
 import {
@@ -1447,4 +1448,80 @@ test('INTEGRITY: removing the whole course removes the link too', () => {
   const gone = removeCourse(withBoth, '1008');
   assert.deepEqual(gone.entries, []);
   assert.deepEqual(gone.conflicts, []);
+});
+
+/* ============================================== validation against the source == */
+
+test('VALIDATE: a held section the catalogue no longer offers is reported', () => {
+  /*
+   * Pass 3 requires "course exists in the source" and "section exists in the
+   * source". Nothing checked either, because addCourse only ever ran against
+   * a catalogue that by definition contained the section.
+   *
+   * The case that matters is a REGENERATED catalogue: `npm run timetable`
+   * against a revised document, or a new semester. A section that is no
+   * longer offered stays in the timetable forever, and the user keeps
+   * attending a class that has moved.
+   *
+   * Deliberately NOT auto-removed. The entry may carry manual edits and a
+   * history, and the document being revised is not proof the user dropped the
+   * class -- only that the source changed. Surface it and let them decide.
+   */
+  const { state } = build();
+  const revised = {
+    courses: [{
+      comCode: '1008', courseNo: 'CS F111', title: 'COMPUTER PROGRAMMING',
+      sections: [{ section: 'L2', kind: 'lecture' }],
+    }],
+  };
+  const found = validateAgainstSource(state, revised);
+
+  assert.equal(found.length, 1, 'the vanished section must be reported');
+  assert.equal(found[0].kind, 'stale-section');
+  assert.equal(found[0].severity, 'needs-input');
+  assert.match(found[0].message, /L1/);
+  assert.match(found[0].message, /no longer/i);
+});
+
+test('VALIDATE: a course dropped from the catalogue entirely is reported', () => {
+  // Whole-course removal is a different message: "the section moved" and
+  // "the course is not offered" need different actions from the user.
+  /*
+   * A NON-EMPTY catalogue that lacks this course. An empty list cannot be the
+   * signal: loadSourceData degrades to `{courses: []}` on a failed fetch, and
+   * treating that as "every class you have was cancelled" turns a transient
+   * load error into a screen of alarming nonsense. See the test below.
+   */
+  const { state } = build();
+  const found = validateAgainstSource(state, {
+    courses: [{ comCode: '9999', courseNo: 'ZZ F999', title: 'OTHER', sections: [] }],
+  });
+  assert.equal(found.length, 1);
+  assert.equal(found[0].kind, 'stale-course');
+  assert.match(found[0].message, /CS F111/);
+});
+
+test('VALIDATE: a timetable matching its source reports nothing', () => {
+  // The control. This runs on every load, so a false positive here would
+  // greet every user with a warning about a perfectly good timetable.
+  const { state } = build();
+  assert.deepEqual(validateAgainstSource(state, { courses: [CS] }), []);
+});
+
+test('VALIDATE: a missing or empty catalogue is not evidence of staleness', () => {
+  /*
+   * IMPORTANT NEGATIVE CASE. loadSourceData degrades to an empty catalogue on
+   * a packaging error or a failed fetch. Treating that as "every one of your
+   * classes has been cancelled" would turn a transient load failure into a
+   * screen full of alarming nonsense.
+   *
+   * No source means no opinion.
+   */
+  const { state } = build();
+  assert.deepEqual(validateAgainstSource(state, null), [], 'no source at all');
+  assert.deepEqual(validateAgainstSource(state, {}), [], 'a source with no courses key');
+  assert.deepEqual(
+    validateAgainstSource(state, { courses: [] }), [],
+    'and an empty course list, which is what a failed load actually produces'
+  );
 });

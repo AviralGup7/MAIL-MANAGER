@@ -3853,3 +3853,105 @@ test('TIMETABLE: the Pass 2 verification checklist, end to end', async (t) => {
     restore();
   }
 });
+
+test('TIMETABLE: a section the catalogue dropped is flagged after reload', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * THE SEMESTER-TRANSITION CASE, end to end.
+   *
+   * Build against one catalogue, then reload against a revised one where the
+   * held section no longer exists -- which is what `npm run timetable` against
+   * a new document produces. The class must still be shown (it may carry
+   * manual edits, and a revised document is not proof the user dropped it),
+   * but the user must be told it is no longer offered.
+   */
+  const first = await boot({ timetableData: TT_DATA });
+  let saved;
+  try {
+    await openTT(first.doc, first.win, first.settle);
+    const r = await ttSearch(first.doc, first.win, first.settle, 'CS F111');
+    r[0].querySelector('button').click();
+    await first.settle(4);
+    [...first.doc.querySelectorAll('.tt-chooser .tt-section')]
+      .find((b) => b.textContent.startsWith('L1')).click();
+    await first.settle(10);
+    saved = first.storage.timetable;
+    assert.ok(saved, 'precondition: the build persisted');
+  } finally {
+    first.restore();
+  }
+
+  // The revised catalogue: CS F111 now runs L2 only.
+  const revised = {
+    ...TT_DATA,
+    courses: TT_DATA.courses.map((c) => (c.courseNo !== 'CS F111' ? c : {
+      ...c,
+      sections: c.sections.filter((sec) => sec.section !== 'L1'),
+    })),
+  };
+
+  const { doc, win, settle, restore } = await boot({
+    timetableData: revised, storageTimetable: saved,
+  });
+  try {
+    await settle(10);
+    await openTT(doc, win, settle);
+
+    const { getTimetableState } = await import('../src/app/timetable-ui.js');
+    assert.ok(
+      getTimetableState().entries.some((e) => e.section === 'L1'),
+      'the class must NOT be silently deleted'
+    );
+
+    const warnings = [...doc.querySelectorAll('#tt-panel .tt-conflict')]
+      .map((n) => n.textContent).join(' | ');
+    assert.match(
+      warnings, /no longer offered/i,
+      `the user must be told the section is gone: ${warnings}`
+    );
+    assert.match(warnings, /L1/);
+  } finally {
+    restore();
+  }
+});
+
+test('TIMETABLE: a failed catalogue load does not condemn every class', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * loadSourceData degrades to an empty catalogue when the asset cannot be
+   * fetched. If that counted as evidence, every class would be flagged as
+   * withdrawn -- turning a transient load failure into a screenful of alarming
+   * nonsense. No source means no opinion.
+   */
+  const built = await boot({ timetableData: TT_DATA });
+  let saved;
+  try {
+    await openTT(built.doc, built.win, built.settle);
+    const r = await ttSearch(built.doc, built.win, built.settle, 'CS F111');
+    r[0].querySelector('button').click();
+    await built.settle(4);
+    [...built.doc.querySelectorAll('.tt-chooser .tt-section')]
+      .find((b) => b.textContent.startsWith('L1')).click();
+    await built.settle(10);
+    saved = built.storage.timetable;
+  } finally {
+    built.restore();
+  }
+
+  const { doc, win, settle, restore } = await boot({
+    timetableData: { schemaVersion: 1, semester: '', courses: [], changes: [] },
+    storageTimetable: saved,
+  });
+  try {
+    await settle(10);
+    await openTT(doc, win, settle);
+    const warnings = [...doc.querySelectorAll('#tt-panel .tt-conflict')]
+      .map((n) => n.textContent).join(' | ');
+    assert.doesNotMatch(
+      warnings, /no longer offered|not in the current/i,
+      `an empty catalogue must not condemn anything: ${warnings}`
+    );
+  } finally {
+    restore();
+  }
+});

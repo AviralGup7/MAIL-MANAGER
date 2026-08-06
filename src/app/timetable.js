@@ -736,6 +736,67 @@ export function parseDaysHours(cell) {
 }
 
 
+/**
+ * Check the held timetable against the CURRENT catalogue.
+ *
+ * Pass 3 requires "course exists in the source" and "section exists in the
+ * source". Nothing checked either, because `addCourse` only ever runs against
+ * a catalogue that by definition contains the section.
+ *
+ * The case that matters is a REGENERATED catalogue -- `npm run timetable`
+ * against a revised document, or a new semester. A section that is no longer
+ * offered otherwise stays in the timetable forever, and the user keeps turning
+ * up to a class that has moved.
+ *
+ * NOTHING IS AUTO-REMOVED. An entry may carry manual edits and a history, and
+ * a revised document is not proof the user dropped the class -- only that the
+ * source changed. These are reported so the user decides.
+ *
+ * AN ABSENT OR EMPTY CATALOGUE MEANS NO OPINION. `loadSourceData` degrades to
+ * `{courses: []}` on a packaging error or a failed fetch, and reading that as
+ * "every class you have was cancelled" would turn a transient load failure
+ * into a screenful of alarming nonsense. Silence is the honest answer.
+ *
+ * Returned rather than pushed into `conflicts`, because this is a function of
+ * (state, source) and `detectConflicts` is a function of entries alone --
+ * folding a source dependency into it would make the conflict list depend on
+ * whether an async fetch had landed yet.
+ */
+export function validateAgainstSource(state, source) {
+  const courses = source?.courses;
+  if (!Array.isArray(courses) || courses.length === 0) return [];
+
+  const byCode = new Map(courses.map((c) => [c.comCode, c]));
+  const out = [];
+
+  for (const e of state?.entries || []) {
+    const course = byCode.get(e.comCode);
+    if (!course) {
+      out.push({
+        kind: 'stale-course',
+        severity: 'needs-input',
+        entryIds: [e.id],
+        message:
+          `${e.courseNo} is not in the current timetable document. It may have ` +
+          'been withdrawn. Remove it, or keep it if you know better.',
+      });
+      continue;
+    }
+    const has = (course.sections || []).some((sec) => sec.section === e.section);
+    if (!has) {
+      out.push({
+        kind: 'stale-section',
+        severity: 'needs-input',
+        entryIds: [e.id],
+        message:
+          `${e.courseNo} ${e.section} is no longer offered in the current ` +
+          'timetable document. Switch to another section, or remove it.',
+      });
+    }
+  }
+  return out;
+}
+
 /* ========================================================================== *
  * EXAMS
  * ========================================================================== */

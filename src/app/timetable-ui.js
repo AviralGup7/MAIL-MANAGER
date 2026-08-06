@@ -24,7 +24,7 @@ import {
   restoreFromSource, applyFieldChange, detectConflicts,
   linkedSections, instructorsFor, sectionsByKind,
   weekView, summariseMeetings, explainEntry, fmtTime,
-  SOURCE_LABEL, entryId, entriesForMessage, examEvents,
+  SOURCE_LABEL, entryId, entriesForMessage, examEvents, validateAgainstSource,
 } from './timetable.js';
 import {
   loadTimetable, saveTimetable, searchCourses, courseByComCode, loadSourceData,
@@ -586,7 +586,17 @@ function manageView() {
   const b = el('div', 'tt-body');
 
   if (pending.length) b.appendChild(pendingSection());
-  if (state.conflicts.length) b.appendChild(conflictSection());
+  /*
+   * Staleness is computed at RENDER time, not stored in `state.conflicts`.
+   *
+   * It is a function of (state, catalogue), while detectConflicts is a
+   * function of entries alone. Folding it into the stored list would make the
+   * conflict set depend on whether an async fetch had landed yet -- so a
+   * reload with a slow network would silently show fewer problems.
+   */
+  const stale = validateAgainstSource(state, source);
+  const problems = [...state.conflicts, ...stale];
+  if (problems.length) b.appendChild(conflictSection(problems));
 
   b.appendChild(gridSection());
   const exams = examSection();
@@ -703,10 +713,10 @@ function pendingSection() {
   return s;
 }
 
-function conflictSection() {
+function conflictSection(problems = state.conflicts) {
   const s = el('section', 'tt-block tt-conflicts');
-  s.appendChild(blockTitle(`${state.conflicts.length} thing${state.conflicts.length === 1 ? '' : 's'} to check`));
-  for (const c of state.conflicts) {
+  s.appendChild(blockTitle(`${problems.length} thing${problems.length === 1 ? '' : 's'} to check`));
+  for (const c of problems) {
     const row = el('div', `tt-conflict tt-${c.severity}`);
     const msg = el('span', 'tt-conflict-msg');
     msg.textContent = c.message;
