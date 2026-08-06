@@ -1326,8 +1326,18 @@ a.ghost {
   :root {
     --sidebar-w: 64px;
   }
+  /*
+   * At 64px the rail is PURE NAVIGATION: things you can hit, nothing you have
+   * to read. Saved views and the deadline radar are headed lists of prose --
+   * "Due soon", a full subject line -- and were being squeezed into 64 pixels.
+   * The timetable button loses its label the same way the other footer
+   * buttons do; its badge and title remain.
+   */
   #brand-text,
   .cat-name,
+  #views,
+  #radar,
+  #btn-timetable,
   #btn-gmail,
   #btn-signout {
     display: none;
@@ -1593,10 +1603,18 @@ html[data-theme='contrast'] .row[aria-selected='true'] {
 
 /* --------------------------------------------------------- deadline radar -- */
 
+/*
+ * The radar now sits BELOW the mailbox nav rather than above it, so its
+ * separator flips: it divides itself from the scrolling category list above,
+ * not from content below. `#cats` carries flex:1 and absorbs the free space,
+ * which pins the radar to the bottom of the rail just above the footer --
+ * present, glanceable, and clearly not the headline.
+ */
 #radar {
-  padding: var(--s-1) var(--s-2) var(--s-3);
-  border-bottom: 1px solid var(--line);
-  margin-bottom: var(--s-1);
+  padding: var(--s-3) var(--s-2) var(--s-1);
+  border-top: 1px solid var(--line);
+  margin-top: var(--s-1);
+  flex-shrink: 0;
 }
 
 

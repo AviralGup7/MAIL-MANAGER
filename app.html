@@ -32,16 +32,6 @@
         </div>
 
         <!--
-          DEADLINE RADAR. The question a student actually has is "what is due",
-          and no mail client answers it. Hidden until something is found, so it
-          never occupies space for nothing.
-        -->
-        <section id="radar" aria-labelledby="radar-title" hidden>
-          <h2 id="radar-title">Due soon</h2>
-          <ul id="radar-list"></ul>
-        </section>
-
-        <!--
           SAVED VIEWS.
 
           A filter you cannot keep is a filter you use once. Ships with four
@@ -55,16 +45,42 @@
 
         <nav id="cats" aria-label="Categories"><!-- built once by app.js --></nav>
 
+        <!--
+          DEADLINE RADAR — academic context, deliberately BELOW the mail
+          navigation.
+
+          It used to sit directly under the brand, above saved views and above
+          the mailbox list, so the first thing this product showed was academic
+          data. That is the wrong claim: this is a mail client that understands
+          student life, not a student platform with a mailbox attached.
+
+          The feature earns its place -- deadlines extracted from mail are the
+          single most useful thing the classifier does -- but it orbits the
+          inbox rather than leading it. Still hidden when empty, so a
+          non-academic user never sees it at all.
+        -->
+        <section id="radar" aria-labelledby="radar-title" hidden>
+          <h2 id="radar-title">Due soon</h2>
+          <ul id="radar-list"></ul>
+        </section>
+
         <div id="side-foot">
           <button id="btn-compose" class="primary full" type="button" title="Compose (c)">
             Compose
           </button>
           <!--
-            Timetable. The badge shows the class count, or a count of things
-            needing attention when there are any — the two are visually
-            distinguished by colour, not by the number alone.
+            Timetable — a secondary tool, sized like one.
+
+            It was `ghost full`: the same full-bleed width as Compose, one step
+            down in colour only. Two stacked full-width buttons read as two
+            equal choices, and they are not. Compose is the one thing a mail
+            client asks you to do.
+
+            The badge stays: when a class needs attention that IS mail-adjacent
+            news, and it is the only way the panel can ask for you without
+            opening itself.
           -->
-          <button id="btn-timetable" class="ghost full" type="button" title="Build your timetable">
+          <button id="btn-timetable" class="ghost small" type="button" title="Build your timetable">
             Timetable
             <span class="tt-badge" data-kind="count" aria-hidden="true"></span>
           </button>

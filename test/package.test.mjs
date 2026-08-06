@@ -1491,3 +1491,104 @@ test('only one animation is allowed to force layout, and it is documented', () =
     .filter((p) => LAYOUT.includes(p));
   assert.deepEqual(badTransitions, [], 'transitions must not animate layout');
 });
+
+/* ================================================== product identity: mail == */
+
+test('the sidebar leads with mail, not with academics', async () => {
+  /*
+   * PRODUCT IDENTITY, ENFORCED STRUCTURALLY.
+   *
+   * This is a Gmail replacement that understands student life -- not a student
+   * platform that has mail. Measured, the sidebar had drifted the other way:
+   * the deadline radar sat directly under the brand, ABOVE saved views and
+   * above the mailbox navigation itself. The first thing the product showed
+   * was academic data.
+   *
+   * The radar is genuinely useful and stays. But the inbox is the centre of
+   * gravity, so navigation comes first and academic context orbits it.
+   *
+   * Order is asserted rather than described, because "keep it mail-first" in a
+   * comment is a preference and this is a rule.
+   */
+  let JSDOM;
+  try {
+    ({ JSDOM } = await import('jsdom'));
+  } catch {
+    return; // graceful skip, as elsewhere
+  }
+  const doc = new JSDOM(read('app.html')).window.document;
+  const order = [...doc.getElementById('sidebar').children].map((el) => el.id);
+
+  const cats = order.indexOf('cats');
+  const radar = order.indexOf('radar');
+  const views = order.indexOf('views');
+
+  assert.ok(cats > -1 && radar > -1 && views > -1, 'all three sections must exist');
+  assert.ok(
+    cats < radar,
+    `mailbox navigation must come before the deadline radar (got ${order.join(' > ')})`
+  );
+  assert.ok(
+    views < radar,
+    `saved mail searches must come before the deadline radar (got ${order.join(' > ')})`
+  );
+});
+
+test('Compose is the only primary action in the sidebar', async () => {
+  /*
+   * Timetable was `ghost full` -- the same full-bleed width as Compose, one
+   * step down in colour only, and carrying a badge that competes for
+   * attention. Two full-width buttons stacked together read as two equal
+   * choices, which is the wrong claim about what this product is for.
+   *
+   * Compose is the one thing a mail client asks you to do. Everything else in
+   * that footer is secondary by definition.
+   */
+  let JSDOM;
+  try {
+    ({ JSDOM } = await import('jsdom'));
+  } catch {
+    return;
+  }
+  const doc = new JSDOM(read('app.html')).window.document;
+  const foot = [...doc.querySelectorAll('#side-foot button')];
+
+  const primaries = foot.filter((b) => b.classList.contains('primary'));
+  assert.deepEqual(
+    primaries.map((b) => b.id), ['btn-compose'],
+    'exactly one primary action, and it is Compose'
+  );
+
+  const full = foot.filter((b) => b.classList.contains('full'));
+  assert.deepEqual(
+    full.map((b) => b.id), ['btn-compose'],
+    'no other footer button may claim Compose\'s full width'
+  );
+});
+
+test('the collapsed rail hides everything that needs width', () => {
+  /*
+   * PRE-EXISTING RESPONSIVE BUG, found while re-ordering the sidebar.
+   *
+   * Below 860px the rail collapses to 64px and hides the brand text, category
+   * names and two footer buttons. It did NOT hide the saved-views section or
+   * the deadline radar -- both of which are headed lists of prose ("Due soon",
+   * "Registration for Semester II") being squeezed into 64 pixels.
+   *
+   * These are secondary surfaces. On a narrow window the rail should be pure
+   * navigation: icons you can hit, nothing you have to read.
+   */
+  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const rail = css.match(/@media \(max-width: 860px\)\s*\{([\s\S]*?)\n\}/);
+  assert.ok(rail, 'the collapsed-rail breakpoint must exist');
+
+  const hidden = [...rail[1].matchAll(/([^{}]+)\{\s*display:\s*none/g)]
+    .map((m) => m[1]).join(' ');
+
+  for (const sel of ['#views', '#radar']) {
+    assert.ok(
+      hidden.includes(sel),
+      `${sel} is prose and must be hidden in the 64px rail`
+    );
+  }
+});
