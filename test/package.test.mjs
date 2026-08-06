@@ -411,3 +411,37 @@ test('every element the app hides with [hidden] actually disappears', async () =
   }
   assert.deepEqual(stillVisible, [], 'these ignore the hidden attribute');
 });
+
+test('the preview bundler survives modules sharing a top-level name', () => {
+  // The bundler used to concatenate every module into ONE scope and strip the
+  // import/export keywords. That works only while no two files share a
+  // top-level name -- and the moment two of them each defined `DAY_MS`, and
+  // later `$`, the whole preview died with "Identifier has already been
+  // declared" and rendered a blank page.
+  //
+  // That was a BUNDLER defect, not a source defect: both files are valid ES
+  // modules that Node loads without complaint. Renaming symbols to appease the
+  // preview would have been fixing the wrong thing.
+  const tool = read('tools/make-preview.mjs');
+  assert.ok(
+    tool.includes('__m['),
+    'each module must be emitted in its own closure, keyed in a registry'
+  );
+  assert.ok(
+    !/everything ends up in one module scope/.test(tool),
+    'the flat-scope approach must not come back'
+  );
+});
+
+test('new UI surfaces exist and start hidden', () => {
+  // A surface that ships visible-by-default is immediately obvious; one that
+  // ships permanently hidden is not, and the [hidden] override bug already
+  // caught us once.
+  const html = read('app.html');
+  for (const id of ['compose', 'palette', 'radar']) {
+    const m = html.match(new RegExp(`<[^>]*id="${id}"[^>]*>`));
+    assert.ok(m, `#${id} must exist in app.html`);
+    assert.ok(m[0].includes('hidden'), `#${id} must start hidden`);
+  }
+  assert.ok(html.includes('id="btn-compose"'), 'compose button must exist');
+});

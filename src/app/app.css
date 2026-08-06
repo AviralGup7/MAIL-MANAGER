@@ -1056,6 +1056,283 @@ html[data-theme='contrast'] .row[aria-selected='true'] {
   outline-offset: -2px;
 }
 
+/* ========================================================================= */
+/* FEATURES: radar, palette, compose                                         */
+/* Same five rules: 3 durations, 2 easings, transform/opacity only, nothing  */
+/* infinite, all disabled under prefers-reduced-motion (block at the end).   */
+/* ========================================================================= */
+
+/* --------------------------------------------------------- deadline radar -- */
+
+#radar {
+  padding: 4px 8px 10px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 4px;
+}
+
+#radar-title {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--fg-faint);
+  margin: 2px 0 6px 9px;
+  font-weight: 700;
+}
+
+#radar-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.radar-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 9px;
+  border-radius: 8px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  transition: background-color var(--dur-fast) linear;
+}
+.radar-item:hover {
+  background: var(--bg-raised);
+}
+.radar-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.radar-when {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+.radar-what {
+  font-size: 11.5px;
+  color: var(--fg-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Urgency is carried by colour AND by the word in .radar-when, never colour
+   alone -- the same rule the category tags follow. */
+.radar-overdue { border-left-color: var(--danger); }
+.radar-overdue .radar-when { color: var(--danger); }
+.radar-today { border-left-color: var(--danger); }
+.radar-today .radar-when { color: var(--danger); }
+.radar-soon { border-left-color: var(--warning); }
+.radar-soon .radar-when { color: var(--warning); }
+.radar-week { border-left-color: var(--accent); }
+.radar-week .radar-when { color: var(--accent); }
+
+/* --------------------------------------------------------------- palette -- */
+
+#palette {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 14vh;
+  background: rgba(0, 0, 0, 0.42);
+}
+
+#palette-box {
+  width: min(560px, 92vw);
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: palette-in var(--dur-base) var(--ease-in) both;
+}
+
+@keyframes palette-in {
+  from { opacity: 0; transform: translate3d(0, -8px, 0) scale(0.98); }
+  to   { opacity: 1; transform: none; }
+}
+
+#palette-input {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 15px;
+  padding: 15px 18px;
+}
+#palette-input:focus {
+  outline: none;
+}
+
+#palette-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.palette-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 11px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13.5px;
+  color: var(--fg-dim);
+}
+.palette-item.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+.palette-label {
+  flex: 1;
+}
+.palette-hint-key {
+  font-size: 10.5px;
+  color: var(--fg-faint);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+#palette-hint {
+  padding: 8px 18px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--fg-faint);
+}
+
+/* --------------------------------------------------------------- compose -- */
+
+/*
+ * A PANEL, not a modal. Mail is often written while referring to another
+ * message, and a modal makes that impossible -- which is why Gmail's compose
+ * is also a panel.
+ */
+#compose {
+  position: fixed;
+  right: 22px;
+  bottom: 0;
+  z-index: 50;
+  width: min(580px, calc(100vw - 44px));
+  display: flex;
+  flex-direction: column;
+  max-height: min(620px, 82vh);
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: 12px 12px 0 0;
+  box-shadow: var(--shadow-lg);
+  animation: compose-in var(--dur-base) var(--ease-in) both;
+}
+
+@keyframes compose-in {
+  from { opacity: 0; transform: translate3d(0, 16px, 0); }
+  to   { opacity: 1; transform: none; }
+}
+
+#compose.minimised #compose-body,
+#compose.minimised #compose-foot {
+  display: none;
+}
+
+#compose-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--bg-sunken);
+  border-radius: 11px 11px 0 0;
+  border-bottom: 1px solid var(--line);
+}
+#compose-title {
+  flex: 1;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+}
+#compose-head-actions {
+  display: flex;
+  gap: 4px;
+}
+
+#compose-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 4px 14px 0;
+  overflow-y: auto;
+}
+
+.c-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--line);
+}
+.c-row span {
+  width: 54px;
+  font-size: 12px;
+  color: var(--fg-faint);
+  flex: none;
+}
+.c-row input {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+  padding: 10px 0;
+}
+.c-row input:focus {
+  outline: none;
+}
+
+#c-text {
+  flex: 1;
+  min-height: 190px;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: 13.5px;
+  line-height: 1.6;
+  padding: 12px 0;
+  resize: none;
+}
+#c-text:focus {
+  outline: none;
+}
+
+#compose-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 14px;
+  border-top: 1px solid var(--line);
+}
+#c-status {
+  font-size: 11.5px;
+  color: var(--fg-faint);
+  margin-left: auto;
+  max-width: 55%;
+  text-align: right;
+}
+
+.primary.full {
+  width: 100%;
+  justify-content: center;
+}
+
 /*
  * `hidden` must actually hide.
  *

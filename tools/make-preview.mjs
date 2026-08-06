@@ -27,17 +27,76 @@ function bundle(entry) {
 
   visit(entry);
 
-  return order
-    .map((p) => {
-      let src = read(p);
-      // Strip import/export syntax; everything ends up in one module scope.
-      src = src.replace(/^\s*import\s+[^'"]*from\s+['"][^'"]+['"];?\s*$/gm, '');
-      src = src.replace(/^\s*export\s+\{[^}]*\}\s+from\s+['"][^'"]+['"];?\s*$/gm, '');
-      src = src.replace(/^\s*export\s+(const|let|function|class|async)/gm, '$1');
-      src = src.replace(/^\s*export\s+default\s+/gm, 'const __default_' + seen.get(p) + ' = ');
-      return `// ==== ${p} ====\n${src}`;
-    })
-    .join('\n\n');
+  // Emit each module inside its OWN closure, wired together by a tiny
+  // registry.
+  //
+  // The first version concatenated every file into one scope and stripped the
+  // import/export keywords. That works only while no two modules share a
+  // top-level name -- and the moment two of them each defined `DAY_MS`, and
+  // later `$`, the bundle died with "Identifier has already been declared".
+  //
+  // That is a bundler defect, not a source defect: both files are correct ES
+  // modules and Node loads them fine. Renaming symbols to appease the preview
+  // would have been fixing the wrong thing.
+  const chunks = order.map((p) => {
+    let src = read(p);
+    const exported = [];
+
+    // `export { a, b } from './x.js'` -> re-export
+    src = src.replace(/^\s*export\s+\{([^}]*)\}\s+from\s+['"]([^'"]+)['"];?\s*$/gm, (_m, names, from) => {
+      const dep = join(dirname(p), from).replace(/\\/g, '/');
+      return names
+        .split(',')
+        .map((n) => n.trim())
+        .filter(Boolean)
+        .map((n) => {
+          const [orig, alias = orig] = n.split(/\s+as\s+/).map((x) => x.trim());
+          exported.push(alias);
+          return `const ${alias} = __m[${JSON.stringify(dep)}].${orig};`;
+        })
+        .join('\n');
+    });
+
+    // `import { a, b as c } from './x.js'`
+    src = src.replace(/^\s*import\s+\{([^}]*)\}\s+from\s+['"]([^'"]+)['"];?\s*$/gm, (_m, names, from) => {
+      const dep = join(dirname(p), from).replace(/\\/g, '/');
+      return names
+        .split(',')
+        .map((n) => n.trim())
+        .filter(Boolean)
+        .map((n) => {
+          const [orig, alias = orig] = n.split(/\s+as\s+/).map((x) => x.trim());
+          return `const ${alias} = __m[${JSON.stringify(dep)}].${orig};`;
+        })
+        .join('\n');
+    });
+
+    // Bare side-effect imports.
+    src = src.replace(/^\s*import\s+['"][^'"]+['"];?\s*$/gm, '');
+
+    // `export const/let/function/class/async function`
+    src = src.replace(/^\s*export\s+(const|let|var)\s+([A-Za-z_$][\w$]*)/gm, (_m, kw, name) => {
+      exported.push(name);
+      return `${kw} ${name}`;
+    });
+    src = src.replace(/^\s*export\s+(async\s+)?function\s+([A-Za-z_$][\w$]*)/gm, (_m, asy, name) => {
+      exported.push(name);
+      return `${asy || ''}function ${name}`;
+    });
+    src = src.replace(/^\s*export\s+class\s+([A-Za-z_$][\w$]*)/gm, (_m, name) => {
+      exported.push(name);
+      return `class ${name}`;
+    });
+
+    const uniq = [...new Set(exported)];
+    return (
+      `// ==== ${p} ====\n` +
+      `__m[${JSON.stringify(p)}] = (function () {\n${src}\n` +
+      `return { ${uniq.join(', ')} };\n})();`
+    );
+  });
+
+  return `const __m = {};\n\n${chunks.join('\n\n')}`;
 
   function visit(p) {
     if (seen.has(p)) return;

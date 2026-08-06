@@ -25,9 +25,22 @@
           </span>
         </div>
 
+        <!--
+          DEADLINE RADAR. The question a student actually has is "what is due",
+          and no mail client answers it. Hidden until something is found, so it
+          never occupies space for nothing.
+        -->
+        <section id="radar" aria-labelledby="radar-title" hidden>
+          <h2 id="radar-title">Due soon</h2>
+          <ul id="radar-list"></ul>
+        </section>
+
         <nav id="cats" aria-label="Categories"><!-- built once by app.js --></nav>
 
         <div id="side-foot">
+          <button id="btn-compose" class="primary full" type="button" title="Compose (c)">
+            Compose
+          </button>
           <button id="btn-gmail" class="ghost" type="button" title="Return to Gmail (Esc)">
             Back to Gmail
           </button>
@@ -172,6 +185,50 @@
           <button id="btn-signin" class="primary" type="button">Sign in with Google</button>
           <p id="gate-error" class="err" hidden></p>
           <button id="btn-options" class="ghost small" type="button">Set OAuth client ID…</button>
+        </div>
+      </div>
+
+      <!--
+        COMPOSE. A panel, not a modal: mail is often written while referring to
+        another message, and a modal makes that impossible.
+      -->
+      <div id="compose" role="dialog" aria-modal="false" aria-labelledby="compose-title" hidden>
+        <header id="compose-head">
+          <h2 id="compose-title">New message</h2>
+          <div id="compose-head-actions">
+            <button id="compose-min" class="ghost icon" type="button" aria-label="Minimise">–</button>
+            <button id="compose-close" class="ghost icon" type="button" aria-label="Discard">×</button>
+          </div>
+        </header>
+        <div id="compose-body">
+          <label class="c-row"><span>To</span>
+            <input id="c-to" type="text" autocomplete="off" spellcheck="false" /></label>
+          <label class="c-row" id="c-cc-row" hidden><span>Cc</span>
+            <input id="c-cc" type="text" autocomplete="off" spellcheck="false" /></label>
+          <label class="c-row"><span>Subject</span>
+            <input id="c-subject" type="text" autocomplete="off" /></label>
+          <textarea id="c-text" placeholder="Write your message…" spellcheck="true"></textarea>
+        </div>
+        <footer id="compose-foot">
+          <button id="c-send" class="primary" type="button">Send</button>
+          <button id="c-cc-toggle" class="ghost small" type="button">Cc</button>
+          <button id="c-draft" class="ghost small" type="button">Save draft</button>
+          <span id="c-status"></span>
+        </footer>
+      </div>
+
+      <!--
+        COMMAND PALETTE. Ctrl+K. Every action in one searchable list, so a new
+        user never has to memorise a shortcut and an expert never has to reach
+        for the mouse. Gmail has no equivalent.
+      -->
+      <div id="palette" role="dialog" aria-modal="true" aria-label="Commands" hidden>
+        <div id="palette-box">
+          <input id="palette-input" type="text" placeholder="Type a command or search…"
+                 autocomplete="off" spellcheck="false"
+                 role="combobox" aria-expanded="true" aria-controls="palette-list" />
+          <ul id="palette-list" role="listbox" aria-label="Commands"></ul>
+          <div id="palette-hint">↑↓ navigate · ↵ run · esc close</div>
         </div>
       </div>
 

@@ -28,6 +28,14 @@ import { Store } from './store.js';
 import { loadCache, saveCache, clearCache, createSaver, CACHE_MAX } from './cache.js';
 import { sanitizeHtml, escapeHtml } from './sanitize.js';
 import { THEMES, applyTheme, getTheme, DEFAULT_THEME } from './themes.js';
+import { extractDeadline, relativeLabel, urgency } from './deadlines.js';
+import { parseQuery, buildReply } from './query.js';
+import {
+  undoStack, recordUndo, performUndo,
+  renderRadar, wireRadar,
+  openPalette, closePalette, wirePalette,
+  openCompose, closeCompose, wireCompose, startReply,
+} from './features.js';
 import { classify } from '../classify/index.js';
 import {
   CATEGORY_LABELS,
@@ -189,6 +197,7 @@ function scheduleRender({ changed, structural } = { changed: new Set(), structur
       for (const id of ids) patchRow(id);
       renderSidebar();
     }
+    renderRadar(ctx);
   });
 }
 
@@ -230,7 +239,24 @@ function resetView() {
 
 /** The ids the list should currently show. */
 function visibleIds() {
-  return state.query ? store.search(state.query, state.category) : store.idsFor(state.category);
+  if (!state.query) return store.idsFor(state.category);
+
+  // Operators are applied as a PREDICATE over what the index returns, not by
+  // scanning every message. The index still does the fast token lookup; the
+  // parser only narrows it. That keeps `from:augsd registration` as cheap as
+  // `registration` was.
+  const parsed = parseQuery(state.query);
+  const base = parsed.terms.length
+    ? store.search(parsed.terms.join(' '), state.category)
+    : store.idsFor(state.category);
+
+  if (!parsed.predicate) return base;
+  const out = [];
+  for (const id of base) {
+    const m = store.get(id);
+    if (m && parsed.predicate(m)) out.push(id);
+  }
+  return out;
 }
 
 /**
@@ -598,10 +624,15 @@ async function act(action, id) {
       const snapshot = { ...m };
       selectNeighbourThen(id);
       store.remove(id);
-      toast('Archived');
       send('ARCHIVE', { id }).catch(() => {
         store.upsert(snapshot);
         toast('Could not archive');
+      });
+      // Gmail cannot undo an archive. We can, because the message is still in
+      // memory and re-applying INBOX is one call.
+      recordUndo(ctx, 'Archived', async () => {
+        store.upsert(snapshot);
+        await send('UNARCHIVE', { id });
       });
       break;
     }
@@ -609,10 +640,13 @@ async function act(action, id) {
       const snapshot = { ...m };
       selectNeighbourThen(id);
       store.remove(id);
-      toast('Deleted');
       send('TRASH', { id }).catch(() => {
         store.upsert(snapshot);
         toast('Could not delete');
+      });
+      recordUndo(ctx, 'Deleted', async () => {
+        store.upsert(snapshot);
+        await send('UNTRASH', { id });
       });
       break;
     }
@@ -647,7 +681,15 @@ function ingest(messages) {
   for (let i = 0; i < messages.length; i++) {
     const m = messages[i];
     const c = classify(m);
+    // Deadline extraction rides along with classification: same pass, same
+    // data, measured at a few microseconds per message. Doing it here rather
+    // than at render time means search operators (is:due, is:overdue) can use
+    // it without re-parsing on every keystroke.
+    const d = extractDeadline(m);
     records[i] = {
+      dueAt: d ? d.at : undefined,
+      dueKind: d ? d.kind : undefined,
+      hasAttachment: !!m.hasAttachment,
       id: m.id,
       threadId: m.threadId,
       from: m.from,
@@ -972,6 +1014,16 @@ document.addEventListener('keydown', (e) => {
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
 
   if (e.key === 'Escape') {
+    // Layered: innermost surface first. Releasing the takeover while a compose
+    // panel is open would discard a half-written message.
+    if (!$('palette').hidden) {
+      closePalette();
+      return;
+    }
+    if (!$('compose').hidden) {
+      $('compose-close').click();
+      return;
+    }
     if (typing) {
       el.search.blur();
       return;
@@ -979,7 +1031,30 @@ document.addEventListener('keydown', (e) => {
     if (state.selected) return closeReader();
     return release();
   }
+  // Ctrl/Cmd combinations are handled BEFORE the modifier guard below, which
+  // exists to let browser shortcuts through. These two are ours.
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'k') {
+    e.preventDefault();
+    openPalette(ctx);
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
+    e.preventDefault();
+    performUndo(ctx);
+    return;
+  }
+
   if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
+
+  // Shift shortcuts for reply. Checked before the plain-key switch so that
+  // Shift+R is not swallowed by the `r` = refresh case.
+  if (e.shiftKey) {
+    const k = e.key.toLowerCase();
+    if (k === 'r' && state.selected) { e.preventDefault(); startReply(ctx, 'reply'); return; }
+    if (k === 'a' && state.selected) { e.preventDefault(); startReply(ctx, 'replyAll'); return; }
+    if (k === 'f' && state.selected) { e.preventDefault(); startReply(ctx, 'forward'); return; }
+    return;
+  }
 
   switch (e.key) {
     case '/':
@@ -1010,6 +1085,10 @@ document.addEventListener('keydown', (e) => {
       break;
     case 'r':
       refresh();
+      break;
+    case 'c':
+      e.preventDefault();
+      openCompose(ctx);
       break;
   }
 });
@@ -1056,6 +1135,39 @@ window.addEventListener('pagehide', () => {
  * graph, and it cannot be reached from a web page: this document is an
  * extension origin and is framed only by our own content script.
  */
+/**
+ * The surface features.js is allowed to use.
+ *
+ * Explicit rather than letting that module reach into this one: the render
+ * invariant is only enforceable if every path into the store goes through a
+ * known set of functions.
+ */
+const ctx = {
+  store,
+  state,
+  send,
+  toast,
+  act,
+  openMessage,
+  refresh: () => refresh(),
+  release: () => release(),
+  setTheme: (id) => setTheme(id),
+  themes: () => THEMES,
+  categoryList: () => [['all', 'All mail'], ...SIDEBAR_ORDER.map((c) => [c, CATEGORY_LABELS[c] || c])],
+  selectCategory: (key) => {
+    state.category = key;
+    el.scroller.scrollTop = 0;
+    renderList();
+    renderSidebar();
+  },
+  runQuery: (q) => {
+    el.search.value = q;
+    state.query = q;
+    el.scroller.scrollTop = 0;
+    renderList();
+  },
+};
+
 window.__bmmIngest = ingest;
 window.__bmmStore = store;
 
@@ -1107,6 +1219,10 @@ async function boot() {
 
   buildSidebar();
   renderSidebar();
+  wirePalette(ctx);
+  wireCompose(ctx);
+  wireRadar(ctx);
+  $('btn-compose').addEventListener('click', () => openCompose(ctx));
   // Render the (empty) list once up front. The store only notifies when it
   // actually changes, so an inbox that syncs zero messages never triggers a
   // render at all — and the "Nothing here." state stayed hidden behind a

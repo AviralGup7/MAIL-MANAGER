@@ -23,7 +23,12 @@
  * the store is implemented, and the store never needs to know about operators.
  */
 
-const DAY_MS = 86_400_000;
+import { DAY_MS } from './deadlines.js';
+
+// Imported rather than redeclared. Two modules each defining their own
+// DAY_MS is legal under ES modules but is duplicated truth, and it broke the
+// preview bundler, which flattens scopes -- a real signal that the constant
+// wanted one owner.
 
 /**
  * Split a query into tokens, respecting quotes.
