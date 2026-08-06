@@ -120,6 +120,34 @@ goes red.
 
 ---
 
+## Also fixed: the extension ID was changing on every load
+
+`manifest.json` was missing the `"key"` field. Chrome derives the extension ID
+by hashing the public key, and with no `"key"` it generates a **new keypair on
+every unpacked load** — so the ID changed each time, and with it the OAuth
+redirect URI:
+
+```
+https://<extension-id>.chromiumapp.org/
+```
+
+Google rejects any redirect URI that is not registered, so sign-in would have
+failed with `redirect_uri_mismatch` no matter which client ID you entered, and
+re-registering would have lasted exactly until the next reload.
+
+v1 carried this key; the rewrite dropped it. Restored, verified as a valid
+2048-bit RSA **public** key (safe to commit — a private key would let anyone
+sign an update Chrome accepts as this extension), and pinned by a test:
+
+```
+Extension ID : dgeanijfllibcphbblkhacjcbdehihcp
+Redirect URI : https://dgeanijfllibcphbblkhacjcbdehihcp.chromiumapp.org/
+```
+
+**Register that exact redirect URI** in your Google Cloud OAuth client. The
+Options page now shows both the URI and the live extension ID, and turns the ID
+red if it is not the expected one.
+
 ## Still to check once it loads
 
 - Does the takeover animate in over Gmail?

@@ -17,10 +17,29 @@ const V1_CLIENT_ID = '67277529230-7onu3erjki89r3vcsjmjc4ud2m026tpl.apps.googleus
 
 const $ = (id) => document.getElementById(id);
 
-// chrome.identity.getRedirectURL() is derived from the extension ID, which
-// changes between an unpacked load and a Web Store install. Showing the live
-// value avoids the single most common setup failure: redirect_uri_mismatch.
+// chrome.identity.getRedirectURL() is derived from the extension ID. Showing
+// the live value avoids the single most common setup failure:
+// redirect_uri_mismatch.
+//
+// The ID is stable because manifest.json carries a fixed "key". Without it
+// Chrome mints a new keypair on every unpacked load, the ID changes, and this
+// URI would have to be re-registered with Google after every single reload.
 $('redirect').textContent = chrome.identity.getRedirectURL();
+
+// Surface the ID too, and flag it when it is not the expected one -- an
+// unexpected ID means the key is missing or altered, and sign-in WILL fail
+// with redirect_uri_mismatch no matter what client ID is entered.
+const EXPECTED_ID = 'dgeanijfllibcphbblkhacjcbdehihcp';
+const idEl = document.getElementById('extid');
+if (idEl) {
+  idEl.textContent = chrome.runtime.id;
+  if (chrome.runtime.id !== EXPECTED_ID) {
+    idEl.style.color = '#c0392b';
+    idEl.title =
+      'Unexpected extension ID. manifest.json should contain the fixed "key" ' +
+      'field; without it the ID changes on every load and OAuth cannot work.';
+  }
+}
 
 chrome.storage.local.get('clientId').then(({ clientId }) => {
   if (clientId) $('clientId').value = clientId;

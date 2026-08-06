@@ -332,3 +332,45 @@ test('prefers-reduced-motion is the LAST rule in app.css', () => {
   const after = css.slice(i).split('}').slice(4).join('}');
   assert.equal(after.trim(), '', 'no rules may follow the reduced-motion block');
 });
+
+test('the manifest key is present and pins the extension ID', async () => {
+  // WHY THIS MATTERS MORE THAN IT LOOKS
+  //
+  // Chrome derives the extension ID by hashing the public key. With no "key"
+  // field it invents a new keypair per unpacked load, so the ID -- and
+  // therefore the OAuth redirect URI https://<id>.chromiumapp.org/ -- changes
+  // every time. Google then rejects the sign-in with redirect_uri_mismatch,
+  // and the only fix is re-registering the URI after every single reload.
+  //
+  // v1 carried this key. Dropping it in the rewrite is why auth could never
+  // have worked on a fresh load.
+  const { createHash } = await import('node:crypto');
+
+  assert.ok(manifest.key, 'manifest.key is required to keep the ID stable');
+
+  const der = Buffer.from(manifest.key, 'base64');
+  assert.equal(
+    der.toString('base64'),
+    manifest.key,
+    'key must be valid base64 with no whitespace or line breaks'
+  );
+  assert.equal(der[0], 0x30, 'must be a DER SEQUENCE (SPKI public key)');
+
+  // It must be a PUBLIC key. Committing a private key would let anyone sign
+  // an update that Chrome accepts as this extension.
+  const { createPublicKey } = await import('node:crypto');
+  const parsed = createPublicKey({ key: der, format: 'der', type: 'spki' });
+  assert.equal(parsed.type, 'public', 'never commit a private key');
+  assert.equal(parsed.asymmetricKeyType, 'rsa');
+
+  // Chrome's ID derivation: first 16 bytes of sha256(DER), each hex nibble
+  // mapped 0-f -> a-p.
+  const hash = createHash('sha256').update(der).digest('hex').slice(0, 32);
+  const id = [...hash].map((c) => String.fromCharCode(97 + parseInt(c, 16))).join('');
+
+  assert.equal(
+    id,
+    'dgeanijfllibcphbblkhacjcbdehihcp',
+    'the extension ID changed — every registered OAuth redirect URI is now invalid'
+  );
+});
