@@ -2250,12 +2250,7 @@ async function doSignIn() {
 let catMenu = null;
 
 function closeCategoryMenu() {
-  if (!catMenu) return;
-  const back = catMenu.returnFocus;
-  catMenu.node.remove();
-  document.removeEventListener('mousedown', catMenu.onDocDown, true);
-  catMenu = null;
-  if (back?.isConnected) back.focus?.();
+  catMenu?.layer.close();
 }
 
 /**
@@ -2336,9 +2331,18 @@ function openCategoryMenu(category, anchor) {
     else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeCategoryMenu(); }
   });
 
-  const onDocDown = (ev) => { if (!node.contains(ev.target)) closeCategoryMenu(); };
-  document.addEventListener('mousedown', onDocDown, true);
-  catMenu = { node, onDocDown, returnFocus: anchor || document.activeElement };
+  // Outside-click, focus restoration and teardown all belong to the layer.
+  const layer = openLayer({
+    name: 'category-menu',
+    node,
+    dismissOnOutsideClick: true,
+    restoreFocusTo: anchor || document.activeElement,
+    onClose: () => {
+      node.remove();
+      catMenu = null;
+    },
+  });
+  catMenu = { node, layer };
 
   anchor.style.position = anchor.style.position || 'relative';
   anchor.appendChild(node);
@@ -2360,12 +2364,7 @@ function openCategoryMenu(category, anchor) {
 let snoozeMenu = null;
 
 function closeSnoozeMenu() {
-  if (!snoozeMenu) return;
-  const returnTo = snoozeMenu.returnFocus;
-  snoozeMenu.node.remove();
-  document.removeEventListener('mousedown', snoozeMenu.onDocDown, true);
-  snoozeMenu = null;
-  if (returnTo?.isConnected) returnTo.focus?.();
+  snoozeMenu?.layer.close();
 }
 
 function openSnoozeMenu(id, anchor) {
@@ -2426,12 +2425,17 @@ function openSnoozeMenu(id, anchor) {
     }
   });
 
-  const onDocDown = (e) => {
-    if (!node.contains(e.target)) closeSnoozeMenu();
-  };
-  document.addEventListener('mousedown', onDocDown, true);
-
-  snoozeMenu = { node, onDocDown, returnFocus: anchor || document.activeElement };
+  const layer = openLayer({
+    name: 'snooze-menu',
+    node,
+    dismissOnOutsideClick: true,
+    restoreFocusTo: anchor || document.activeElement,
+    onClose: () => {
+      node.remove();
+      snoozeMenu = null;
+    },
+  });
+  snoozeMenu = { node, layer };
   (anchor?.closest('#r-actions') || el.reader || document.body).appendChild(node);
   node.querySelector('.snooze-opt')?.focus();
 }
@@ -2494,23 +2498,26 @@ document.addEventListener('keydown', (e) => {
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
 
   if (e.key === 'Escape') {
-    // Layered: innermost surface first. Releasing the takeover while a compose
-    // panel is open would discard a half-written message.
-    //
-    // Help is checked FIRST because it can be opened on top of anything else,
-    // including the palette and compose.
-    if (el.help && !el.help.hidden) {
-      closeHelp();
-      return;
-    }
-    if (snoozeMenu) {
-      closeSnoozeMenu();
-      return;
-    }
-    if (catMenu) {
-      closeCategoryMenu();
-      return;
-    }
+    /*
+     * UNWIND THE LAYER STACK, then the fixed surfaces beneath it.
+     *
+     * This used to be a nine-branch ladder whose correctness depended on the
+     * ORDER THE `if`s WERE WRITTEN IN. Every new overlay had to be inserted at
+     * the right depth, and nothing enforced it — the ordering was prose in a
+     * comment. It was the only place in this codebase where behaviour hinged
+     * on statement order rather than on data.
+     *
+     * `closeTopLayer()` pops whatever was opened last, which is exactly what
+     * "innermost first" means. Overlays no longer need to know about each
+     * other, and a fifth one needs no change here at all.
+     *
+     * Below the stack sit surfaces that are not layers because they are not
+     * dismissable overlays: the palette and compose own their own visibility,
+     * selection is transient state, and the reader and the takeover are the
+     * app itself.
+     */
+    if (closeTopLayer()) return;
+
     if (!$('palette').hidden) {
       closePalette();
       return;
@@ -2519,7 +2526,7 @@ document.addEventListener('keydown', (e) => {
       $('compose-close').click();
       return;
     }
-    // Selection is the innermost transient state, so it unwinds first.
+    // Selection is transient state, so it unwinds before the reader.
     if (selection.active) {
       selection.clear();
       renderSelection();
@@ -2562,14 +2569,14 @@ document.addEventListener('keydown', (e) => {
    */
   if (e.key === '?') {
     e.preventDefault();
-    if (el.help && el.help.hidden) openHelp();
-    else closeHelp();
+    if (helpLayer) closeHelp();
+    else openHelp();
     return;
   }
 
   // While help is open, swallow the single-letter shortcuts. Acting on a
   // message the user cannot see is the worst kind of surprise.
-  if (el.help && !el.help.hidden) return;
+  if (helpLayer) return;
 
   /*
    * `g` then a digit jumps to a category — Gmail's two-key "go to" idiom.

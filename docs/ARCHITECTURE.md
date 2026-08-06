@@ -192,12 +192,33 @@ Each step keeps the suite green and is independently revertible.
 | # | Step | Risk | Status |
 |---|---|---|---|
 | 1 | Write this document | none | **done** |
-| 2 | Introduce the layer primitive; migrate the **help** overlay | low | |
-| 3 | Migrate the **theme menu** | low | |
-| 4 | Migrate the **category rule menu** | low | |
-| 5 | Migrate the **snooze picker** | low | |
-| 6 | Replace the `Escape` ladder with stack unwinding | medium | |
+| 2 | Introduce the layer primitive; migrate the **help** overlay | low | **done** |
+| 3 | Migrate the **theme menu** | low | **done** |
+| 4 | Migrate the **category rule menu** | low | **done** |
+| 5 | Migrate the **snooze picker** | low | **done** |
+| 5b | Migrate the **command palette** — see note | low | **done** |
+| 6 | Replace the `Escape` ladder with stack unwinding | medium | **done** |
 | 7 | Enforce the layering rules with a dependency test | low | |
+
+### Note on step 5b
+
+The palette was not in the original plan. Replacing the ladder exposed why it
+had to be: the global handler popped the stack, found nothing, and fell
+through to the surfaces *below* the palette — so a second Escape stopped
+closing it. The palette is a dismissable overlay and belongs on the stack like
+the other four. Caught by an existing behavioural test, not by review.
+
+### Result
+
+- Five overlays share one lifecycle. Focus capture, focus restoration and
+  outside-click dismissal are implemented **once**, not five times.
+- The nine-branch `Escape` ladder is four lines: pop the stack, then the
+  fixed surfaces beneath it.
+- Two hand-rolled document-level dismiss listeners are gone; the theme menu's
+  duplicate `click` listener (which fought the primitive's `mousedown`) with
+  them.
+- 11 new tests on the primitive; 15/16 mutants killed, the survivor analysed
+  and documented as defensive rather than load-bearing.
 
 **Order rationale:** help is the simplest (no anchor, no outside-click), so it
 proves the primitive. The ladder is replaced *last*, once every overlay is on

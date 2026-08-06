@@ -22,6 +22,7 @@ import { UndoStack } from './undo.js';
 import { icon } from './icons.js';
 import { createDraftSaver, loadDraft, isMeaningful } from './draft-store.js';
 import * as settings from './settings.js';
+import { openLayer } from './layers.js';
 import {
   buildContacts, matchContacts, currentFragment, completeValue, invalidAddresses,
 } from './contacts.js';
@@ -262,20 +263,42 @@ function filterPalette(q) {
   renderPalette();
 }
 
+/** The open palette layer, or null. */
+let paletteLayer = null;
+
 export function openPalette(ctx) {
   const box = $('palette');
   const input = $('palette-input');
-  if (!box || !input) return;
+  if (!box || !input || paletteLayer) return;
   paletteCommands = buildCommands(ctx);
   input.value = '';
   filterPalette('');
   box.hidden = false;
+  /*
+   * The palette is a dismissable overlay, so it belongs on the layer stack
+   * like the other four. It was initially left off, which broke the Escape
+   * chain: the global handler popped the stack, found nothing, and fell
+   * through to the surfaces BELOW the palette.
+   */
+  paletteLayer = openLayer({
+    name: 'palette',
+    node: box,
+    onClose: () => {
+      box.hidden = true;
+      paletteLayer = null;
+    },
+  });
   input.focus();
 }
 
 export function closePalette() {
-  const box = $('palette');
-  if (box) box.hidden = true;
+  // Idempotent, and safe to call when the palette was never opened (the
+  // shell's Escape path and several command handlers both call it).
+  if (paletteLayer) paletteLayer.close();
+  else {
+    const box = $('palette');
+    if (box) box.hidden = true;
+  }
 }
 
 export function wirePalette(ctx) {

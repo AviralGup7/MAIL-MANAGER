@@ -108,6 +108,14 @@ export function closeLayer(id, doc = globalThis.document) {
   const i = stack.findIndex((l) => l.id === id);
   if (i === -1) return false;
   const layer = stack[i];
+  /*
+   * Belt and braces. The `splice` below already makes a second call a no-op
+   * (findIndex returns -1), so mutation testing correctly shows this flag is
+   * not load-bearing today. It is kept because idempotency is a CONTRACT here
+   * — overlays are closed from Escape, an outside click, a button and a
+   * selection — and a future reordering that ran teardown before the splice
+   * would silently double-fire without it.
+   */
   if (layer.closed) return false;
   layer.closed = true;
   stack.splice(i, 1);

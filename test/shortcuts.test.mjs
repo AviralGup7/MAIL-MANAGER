@@ -133,23 +133,34 @@ test('the help overlay markup exists and starts hidden', () => {
   assert.ok(html.includes('id="help-body"'));
 });
 
-test('help is the innermost Escape layer', () => {
-  // Escape must close help before it closes the palette, compose, the reader,
-  // or the takeover. Assert the ordering in the source.
-  // Anchor to the GLOBAL keydown handler. An earlier `else if (e.key ===
-  // 'Escape')` belongs to the palette's own listener and matching that one
-  // made this test assert nothing useful.
+test('Escape unwinds the layer stack rather than a hand-written ladder', () => {
+  /*
+   * This used to assert that `closeHelp()` appeared before `closePalette()`
+   * and `release()` in the source — i.e. it pinned the ORDER OF STATEMENTS in
+   * the ladder, which was the fragility, not the guarantee.
+   *
+   * Overlays are on a stack now, so ordering is structural: the last thing
+   * opened is the first thing closed. What is worth asserting here is that no
+   * new ladder grows back.
+   */
   const handler = appSrc.indexOf("document.addEventListener('keydown'");
   assert.ok(handler > 0, 'global keydown handler not found');
   const esc = appSrc.indexOf("if (e.key === 'Escape')", handler);
   assert.ok(esc > 0);
-  const block = appSrc.slice(esc, esc + 1400);
-  const help = block.indexOf('closeHelp()');
-  const palette = block.indexOf('closePalette()');
-  const release = block.indexOf('release()');
-  assert.ok(help > 0, 'Escape does not close help');
-  assert.ok(help < palette, 'help must unwind before the palette');
-  assert.ok(help < release, 'help must unwind before releasing the takeover');
+  const block = appSrc.slice(esc, esc + 1600);
+
+  assert.ok(block.includes('closeTopLayer()'), 'Escape must pop the layer stack');
+  for (const gone of ['closeHelp()', 'closeSnoozeMenu()', 'closeCategoryMenu()']) {
+    assert.ok(
+      !block.includes(gone),
+      `${gone} is back in the Escape ladder; it should be a layer`
+    );
+  }
+  // The stack must be popped BEFORE the fixed surfaces beneath it.
+  assert.ok(
+    block.indexOf('closeTopLayer()') < block.indexOf('release()'),
+    'the takeover must not be released while an overlay is open'
+  );
 });
 
 test('help delegates its lifecycle to the layer stack', () => {
@@ -182,8 +193,9 @@ test('the layer primitive restores focus, and checks the node still exists', () 
 
 test('single-letter shortcuts are swallowed while help is open', () => {
   // Archiving a message the user cannot see is the worst kind of surprise.
+  // Keyed on the layer now rather than on the element's hidden attribute.
   assert.ok(
-    /if \(el\.help && !el\.help\.hidden\) return;/.test(appSrc),
+    /if \(helpLayer\) return;/.test(appSrc),
     'shortcuts still fire behind the help overlay'
   );
 });
