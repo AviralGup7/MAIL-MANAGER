@@ -207,8 +207,14 @@ function respond(msg) {
       return { ok: true, data: { kind: 'delta', added: [], removed: [], patched: [] } };
     case 'GET_BODY': {
       const m = MESSAGES.find((x) => x.id === msg.id);
+      // One message carries an attachment, so the chip and its download path
+      // are actually exercisable in review rather than dead UI.
+      const withAtt = msg.id === 'm1'
+        ? [{ filename: 'Registration-Schedule.pdf', mimeType: 'application/pdf',
+             size: 284_112, attachmentId: 'att-1' }]
+        : [];
       return { ok: true, data: {
-        id: msg.id, attachments: [],
+        id: msg.id, attachments: withAtt,
         html: '<p>' + esc(m.snippet) + '</p>' +
               '<p>This is preview content. The real extension renders the actual message body here, ' +
               'inside a sandboxed iframe with no allow-scripts and no allow-same-origin.</p>' +
@@ -221,6 +227,8 @@ function respond(msg) {
     case 'SEND':       return { ok: true, data: { id: 'sent-1' } };
     case 'SAVE_DRAFT': return { ok: true, data: { id: 'draft-1' } };
     case 'LIST_LABELS':return { ok: true, data: [] };
+    case 'GET_ATTACHMENT':
+      return { ok: true, data: { dataUrl: 'data:application/pdf;base64,JVBERi0xLjQK' } };
     case 'UNARCHIVE':
     case 'UNTRASH':    return { ok: true, data: {} };
     default: return { ok: true, data: {} };  // triage actions all "succeed"

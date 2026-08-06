@@ -2098,6 +2098,71 @@ html[data-scheme='dark'] #thememenu {
   border-color: var(--danger);
 }
 
+/* ------------------------------------------------------- attachments -- */
+
+#r-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-6);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-raised);
+}
+
+/*
+ * A chip, not a list row. Attachments are usually one or two and are
+ * secondary to the message, so they should read as objects you can pick up
+ * rather than as another list competing with the body.
+ */
+.att-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  max-width: 260px;
+  padding: var(--s-1) var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  background: var(--bg);
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: var(--t-sm);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-instant) linear,
+    background-color var(--dur-instant) linear,
+    color var(--dur-instant) linear,
+    transform var(--dur-instant) var(--ease-out);
+}
+.att-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.att-chip:active {
+  transform: translateY(1px);
+}
+.att-chip:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.att-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--w-medium);
+}
+.att-size {
+  color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+/* A pulse while fetching. Bounded by the disabled state, so it stops. */
+.att-chip.loading .att-name {
+  opacity: 0.6;
+}
+
 /*
  * `hidden` must actually hide.
  *

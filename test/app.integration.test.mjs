@@ -60,7 +60,7 @@ const MESSAGES = [
  * Boot app.html in jsdom.
  * Returns { win, doc, calls, settle } — `calls` records every worker message.
  */
-async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {} } = {}) {
+async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bodyOverride = {} } = {}) {
   const html = readFileSync(join(ROOT, 'app.html'), 'utf8');
   const dom = new JSDOM(html, {
     url: 'chrome-extension://test/app.html',
@@ -109,7 +109,12 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {} } =
       case 'SYNC_DELTA':
         return { ok: true, data: { kind: 'delta', added: [], removed: [], patched: [] } };
       case 'GET_BODY':
-        return { ok: true, data: { id: msg.id, html: '<p>body</p>', text: '', attachments: [] } };
+        return {
+          ok: true,
+          data: { id: msg.id, html: '<p>body</p>', text: '', attachments: [], ...bodyOverride },
+        };
+      case 'GET_ATTACHMENT':
+        return { ok: true, data: { dataUrl: 'data:application/pdf;base64,JVBER' } };
       default: return { ok: true, data: {} };
     }
   }
@@ -1124,6 +1129,62 @@ test('BULK: selection survives a re-render', async (t) => {
 
     assert.equal(doc.querySelectorAll('.row.picked').length, 2, 'ticks must survive');
     assert.equal(doc.getElementById('bulk-count').textContent, '2 selected');
+  } finally {
+    restore();
+  }
+});
+
+// -------------------------------------------------------- attachments ----
+
+test('ATT: attachments are actionable chips in the app, not text in the frame', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // The body iframe has no allow-scripts by design, so anything rendered
+  // inside it can NEVER be clickable. Attachments were a filename printed as
+  // text: named, visible, and impossible to open. Moving them into the app
+  // chrome is the only way they become actionable without weakening the
+  // sandbox that protects against hostile mail.
+  const withAtt = [
+    { ...MESSAGES[0], id: 'att-msg' },
+  ];
+  const { doc, settle, restore } = await boot({
+    messages: withAtt,
+    bodyOverride: {
+      attachments: [
+        { filename: 'Schedule.pdf', mimeType: 'application/pdf', size: 284112, attachmentId: 'a1' },
+      ],
+    },
+  });
+  try {
+    rows(doc)[0].click();
+    await settle();
+    await settle();
+
+    const strip = doc.getElementById('r-attachments');
+    assert.equal(strip.hidden, false, 'the strip must appear');
+
+    const chip = doc.querySelector('.att-chip');
+    assert.ok(chip, 'an attachment chip must exist');
+    assert.equal(chip.tagName, 'BUTTON', 'it must be a real control, not text');
+    assert.equal(chip.querySelector('.att-name').textContent, 'Schedule.pdf');
+    assert.equal(chip.querySelector('.att-size').textContent, '277 KB', 'bytes are meaningless');
+    assert.ok(chip.querySelector('svg'), 'and carries the shared icon');
+
+    // The body frame must no longer print them.
+    const srcdoc = doc.getElementById('r-body').getAttribute('srcdoc') || '';
+    assert.ok(!srcdoc.includes('Schedule.pdf'), 'the inert copy must be gone');
+  } finally {
+    restore();
+  }
+});
+
+test('ATT: the strip hides for a message with no attachments', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, settle, restore } = await boot();
+  try {
+    rows(doc)[0].click();
+    await settle();
+    await settle();
+    assert.equal(doc.getElementById('r-attachments').hidden, true);
   } finally {
     restore();
   }

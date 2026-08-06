@@ -158,6 +158,7 @@ const el = {
   rDate: $('r-date'),
   rTags: $('r-tags'),
   rBody: $('r-body'),
+  rAttachments: $('r-attachments'),
   rLoading: $('r-loading'),
   rOpen: $('r-open'),
   toast: $('toast'),
@@ -658,6 +659,7 @@ async function openMessage(id) {
     const body = await send('GET_BODY', { id });
     if (token !== bodyToken) return; // user moved on; drop the stale response
     lastBody = body;
+    renderAttachments(body);
     el.rBody.srcdoc = renderBody(body);
   } catch (err) {
     if (token !== bodyToken) return;
@@ -668,6 +670,84 @@ async function openMessage(id) {
 }
 
 el.reader.addEventListener('animationend', () => el.reader.classList.remove('swap'));
+
+/**
+ * Attachment chips, rendered in the APP rather than the body iframe.
+ *
+ * The frame has no `allow-scripts`, so anything inside it can never respond to
+ * a click. Attachments were a filename printed as text: named, visible, and
+ * impossible to open. This is the only way they become actionable without
+ * weakening the sandbox that protects against hostile mail.
+ */
+function renderAttachments(body) {
+  const list = body.attachments || [];
+  el.rAttachments.replaceChildren();
+  el.rAttachments.hidden = list.length === 0;
+  if (!list.length) return;
+
+  for (const a of list) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'att-chip';
+    chip.dataset.attachmentId = a.attachmentId;
+    chip.dataset.filename = a.filename;
+    chip.dataset.mime = a.mimeType || '';
+    chip.title = `${a.filename} — ${formatBytes(a.size)}`;
+
+    const name = document.createElement('span');
+    name.className = 'att-name';
+    name.textContent = a.filename;
+
+    const size = document.createElement('span');
+    size.className = 'att-size';
+    size.textContent = formatBytes(a.size);
+
+    chip.append(icon('attachment', { size: 14 }), name, size);
+    el.rAttachments.appendChild(chip);
+  }
+}
+
+/** Human file size. Attachments are meaningless as a raw byte count. */
+function formatBytes(n) {
+  if (!n || n < 0) return '';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+/**
+ * Download one attachment.
+ *
+ * The worker returns a data: URL because it has no DOM and therefore no
+ * `URL.createObjectURL`. A synthetic anchor click is the only way to trigger a
+ * download with a chosen filename from an extension page.
+ */
+async function downloadAttachment(chip) {
+  const { attachmentId, filename, mime } = chip.dataset;
+  if (!attachmentId || !state.selected) return;
+
+  chip.disabled = true;
+  chip.classList.add('loading');
+  try {
+    const { dataUrl } = await send('GET_ATTACHMENT', {
+      messageId: state.selected,
+      attachmentId,
+      mimeType: mime,
+    });
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = filename || 'attachment';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    toast(`Downloaded ${filename}`);
+  } catch (err) {
+    toast(`Could not download: ${err.message}`);
+  } finally {
+    chip.disabled = false;
+    chip.classList.remove('loading');
+  }
+}
 
 function tagNode(text, color) {
   const s = document.createElement('span');
@@ -692,11 +772,6 @@ function renderBody(body) {
     ? sanitizeHtml(body.html)
     : `<pre>${escapeHtml(body.text || '(no content)')}</pre>`;
 
-  const attachments = (body.attachments || []).length
-    ? `<div class="att">&#128206; ${body.attachments
-        .map((a) => escapeHtml(a.filename))
-        .join(', ')} — open in Gmail to download</div>`
-    : '';
 
   // The body iframe is a separate document and inherits nothing from us, so
   // the palette is interpolated in.
@@ -753,7 +828,7 @@ function renderBody(body) {
     margin-bottom:18px;padding:10px 13px;background:${t.accentSoft};
     color:${t.fgDim};border-radius:10px;font-size:13px;
   }
-</style></head><body>${attachments}${html}</body></html>`;
+</style></head><body>${html}</body></html>`;
 }
 
 function escapeDoc(text) {
@@ -773,6 +848,8 @@ function closeReader() {
   el.reader.hidden = true;
   el.readerEmpty.hidden = false;
   el.rBody.srcdoc = '';
+  el.rAttachments.hidden = true;
+  el.rAttachments.replaceChildren();
 }
 
 // ------------------------------------------------------------------ triage --
@@ -1100,6 +1177,11 @@ function selectCategory(key) {
   renderList();
   renderSidebar();
 }
+
+el.rAttachments.addEventListener('click', (e) => {
+  const chip = e.target.closest('.att-chip');
+  if (chip) downloadAttachment(chip);
+});
 
 $('r-actions').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-act]');

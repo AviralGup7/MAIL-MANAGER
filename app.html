@@ -223,6 +223,17 @@
                   <a id="r-open" class="ghost" target="_blank" rel="noopener">Open in Gmail</a>
                 </div>
               </div>
+              <!--
+                ATTACHMENTS live in the APP, not in the body iframe.
+
+                The body frame has no allow-scripts by design, so anything
+                rendered inside it can never be clickable. Attachments were
+                therefore a filename printed as text: visible, named, and
+                impossible to open. Moving them out here is the only way they
+                can be actionable without weakening the sandbox.
+              -->
+              <div id="r-attachments" hidden></div>
+
               <div id="r-bodywrap">
                 <div id="r-loading">Loading…</div>
                 <!--
