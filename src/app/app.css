@@ -301,6 +301,7 @@ kbd {
   min-height: 0;
   overflow-y: auto;
   padding: var(--s-1) var(--s-2) var(--s-2);
+  overscroll-behavior: contain;
 }
 
 .cat {
@@ -649,6 +650,7 @@ a.ghost {
    * re-derive that.
    */
   overflow-anchor: auto;
+  overscroll-behavior: contain;
 }
 /*
  * The listbox is the tab stop, because it is the element carrying
@@ -1689,6 +1691,7 @@ html[data-theme='contrast'] .row[aria-selected='true'] {
   padding: var(--s-2);
   max-height: 46vh;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .palette-item {
@@ -1784,6 +1787,7 @@ html[data-theme='contrast'] .row[aria-selected='true'] {
   min-height: 0;
   padding: var(--s-1) var(--s-4) 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .c-row {
@@ -2389,8 +2393,42 @@ html[data-scheme='dark'] #thememenu {
   transform: translateY(1px);
 }
 .att-chip:disabled {
+  /* Downloading: `progress` is more specific than `not-allowed` here, because
+     the control is busy rather than unavailable. */
   opacity: 0.6;
   cursor: progress;
+}
+
+/*
+ * ONE DISABLED STATE FOR EVERY BUTTON.
+ *
+ * Measured: an enabled and a disabled .primary computed to the same opacity,
+ * the same background and `cursor: pointer` for both. Four controls get
+ * disabled at runtime -- Sign in, Send, Load more, the finalise button -- and
+ * every one went on looking fully clickable. During a slow send the user
+ * clicks Send again, sees nothing happen, and concludes the app is broken.
+ *
+ * `pointer` on something unpressable is the specific lie: the cursor is the
+ * fastest affordance signal there is, and it was pointing the wrong way.
+ *
+ * Hover and press feedback are suppressed too, or the button still lifts
+ * under the cursor while refusing to do anything.
+ */
+.primary:disabled,
+.ghost:disabled,
+.tt-section:disabled,
+.snooze-opt:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.primary:disabled:hover,
+.ghost:disabled:hover,
+.primary:disabled:active,
+.ghost:disabled:active {
+  background: inherit;
+  box-shadow: none;
+  transform: none;
 }
 
 .att-name {
@@ -2600,6 +2638,7 @@ html[data-scheme='dark'] #thememenu {
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   box-shadow: var(--shadow-lg);
+  overscroll-behavior: contain;
 }
 
 .ac-opt {
@@ -2845,6 +2884,7 @@ html[data-scheme='dark'] #thememenu {
   box-shadow: var(--shadow-lg);
   /* Reuses the palette's entrance: same interaction class, same motion. */
   animation: palette-in var(--dur-base) var(--ease-in) both;
+  overscroll-behavior: contain;
 }
 
 #help-head {
@@ -3033,6 +3073,7 @@ kbd {
   display: flex;
   flex-direction: column;
   gap: var(--s-5);
+  overscroll-behavior: contain;
 }
 .tt-intro,
 .tt-note {
@@ -3088,6 +3129,7 @@ kbd {
   border-radius: var(--r-sm);
   max-height: 320px;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .tt-results[hidden] {
   display: none;

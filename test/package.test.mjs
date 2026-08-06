@@ -1307,3 +1307,83 @@ test('typography, spacing and motion all come from tokens', () => {
     'every cubic-bezier must be a token definition, not an inline curve'
   );
 });
+
+test('a disabled control looks and behaves disabled', () => {
+  /*
+   * MEASURED IN JSDOM: an enabled and a disabled .primary computed to the
+   * SAME opacity, the SAME background and cursor: pointer for both.
+   *
+   * Four controls get disabled at runtime -- Sign in, Send, Load more, and
+   * the finalise button -- and every one of them went on looking fully
+   * clickable. During a slow send the user clicks Send again, gets nothing,
+   * and concludes the app is broken. Only .att-chip:disabled was ever styled.
+   *
+   * `pointer` on something that cannot be pressed is the specific lie: the
+   * cursor is the fastest affordance signal there is.
+   */
+  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  /*
+   * Find the rule that covers BOTH button classes. Matching the first
+   * :disabled rule found the .att-chip one, which is a legitimately separate
+   * case -- a downloading chip is busy, not unavailable, so it keeps
+   * `cursor: progress`. The shared rule is the one under test.
+   */
+  /*
+   * Split on `}` rather than using a lookbehind-free `(?:^|\})` prefix. The
+   * prefix form CONSUMES the closing brace of the previous rule, so with two
+   * adjacent :disabled rules the first match ate the second's selector and it
+   * vanished from the list -- which is why this test first reported a rule
+   * that plainly exists as missing.
+   */
+  const rules = css.split('}')
+    .map((chunk) => {
+      const i = chunk.indexOf('{');
+      return i < 0 ? null : [null, chunk.slice(0, i), chunk.slice(i + 1)];
+    })
+    .filter((r) => r && r[1].includes(':disabled'));
+  const shared = rules.find(
+    ([, sel]) => sel.includes('.primary')
+      && sel.includes('.ghost')
+      // The base state, not the :hover/:active suppressors that follow it and
+      // also mention both classes.
+      && !sel.includes(':hover')
+      && !sel.includes(':active')
+  );
+  assert.ok(
+    shared,
+    `no rule covers both .primary:disabled and .ghost:disabled. Saw: ` +
+    rules.map(([, sel]) => sel.trim().replace(/\s+/g, ' ')).join(' // ')
+  );
+  assert.match(shared[2], /cursor:\s*not-allowed/, 'the cursor must stop promising');
+  assert.match(shared[2], /opacity/, 'and it must read as inactive');
+});
+
+test('scrollable overlays do not scroll the page behind them', () => {
+  /*
+   * MEASURED: nine scroll containers, none with overscroll-behavior.
+   *
+   * Without it, reaching the bottom of the command palette, the help sheet or
+   * the timetable panel hands the remaining scroll to the document underneath
+   * -- so the list behind the dialog slides away while the user is reading the
+   * dialog. It is the single most common "this feels cheap" bug in overlay UI
+   * and it is one declaration.
+   *
+   * .err is deliberately excluded: it is a small inline error box inside the
+   * gate, not an overlay, and containing it there would be cargo-culting.
+   */
+  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const scrollers = [...css.matchAll(/([^{}]+)\{([^}]*overflow(?:-y)?:\s*(?:auto|scroll)[^}]*)\}/g)]
+    .map(([, sel, body]) => [sel.trim().split('\n').pop().trim(), body]);
+
+  assert.ok(scrollers.length >= 8, 'the scroll containers must still be found');
+
+  const chaining = scrollers
+    .filter(([sel]) => sel !== '.err')
+    .filter(([, body]) => !/overscroll-behavior/.test(body))
+    .map(([sel]) => sel);
+
+  assert.deepEqual(
+    chaining, [],
+    `these scroll containers leak scroll to the page: ${chaining.join(', ')}`
+  );
+});
