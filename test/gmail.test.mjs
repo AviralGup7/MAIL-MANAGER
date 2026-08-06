@@ -235,3 +235,173 @@ test('history() reports an expired cursor as tooOld', async () => {
     globalThis.fetch = realFetch;
   }
 });
+
+// ------------------------------------------------- retry / backoff --------
+
+/**
+ * Stub fetch with a scripted sequence of responses.
+ * Records how many attempts were made and how long each wait was.
+ */
+function scriptFetch(responses) {
+  const attempts = [];
+  const realFetch = globalThis.fetch;
+  const realSetTimeout = globalThis.setTimeout;
+  const waits = [];
+
+  // Collapse real backoff delays so the suite stays fast, while still
+  // recording what the code ASKED to wait -- that is the behaviour under test.
+  globalThis.setTimeout = (fn, ms) => {
+    if (ms > 0) waits.push(ms);
+    return realSetTimeout(fn, 0);
+  };
+
+  globalThis.fetch = async (url, init) => {
+    attempts.push({ url: String(url), init });
+    const next = responses.shift();
+    if (typeof next === 'function') return next();
+    return next;
+  };
+
+  return {
+    attempts,
+    waits,
+    restore() {
+      globalThis.fetch = realFetch;
+      globalThis.setTimeout = realSetTimeout;
+    },
+  };
+}
+
+const res = (status, body = '{}', headers = {}) => ({
+  ok: status >= 200 && status < 300,
+  status,
+  headers: { get: (k) => headers[k.toLowerCase()] ?? null },
+  json: async () => JSON.parse(body),
+  text: async () => body,
+});
+
+test('RETRY: a 429 is retried and then succeeds', async () => {
+  // The point of the whole feature. Gmail rate-limits per user and a
+  // 100-message batch is a burst, so a healthy sync produces these routinely.
+  const { api } = await import('../src/background/gmail.js');
+  const s = scriptFetch([res(429, 'rate limited'), res(200, '{"ok":true}')]);
+  try {
+    assert.deepEqual(await api('/messages'), { ok: true });
+    assert.equal(s.attempts.length, 2, 'must retry once');
+  } finally {
+    s.restore();
+  }
+});
+
+test('RETRY: Retry-After is honoured rather than guessed', async () => {
+  const { api } = await import('../src/background/gmail.js');
+  const s = scriptFetch([res(429, 'slow down', { 'retry-after': '2' }), res(200, '{}')]);
+  try {
+    await api('/messages');
+    assert.deepEqual(s.waits, [2000], `expected a 2s wait, got ${s.waits}`);
+  } finally {
+    s.restore();
+  }
+});
+
+test('RETRY: backoff grows and is jittered', async () => {
+  const { api } = await import('../src/background/gmail.js');
+  const s = scriptFetch([res(503), res(503), res(200, '{}')]);
+  try {
+    await api('/messages');
+    assert.equal(s.waits.length, 2);
+    // 500 and 1000 base, plus up to 250ms jitter.
+    assert.ok(s.waits[0] >= 500 && s.waits[0] < 750, `first wait ${s.waits[0]}`);
+    assert.ok(s.waits[1] >= 1000 && s.waits[1] < 1250, `second wait ${s.waits[1]}`);
+    assert.ok(s.waits[1] > s.waits[0], 'backoff must grow');
+  } finally {
+    s.restore();
+  }
+});
+
+test('RETRY: gives up after 3 attempts and reports the real status', async () => {
+  const { api } = await import('../src/background/gmail.js');
+  const s = scriptFetch([res(503), res(503), res(503)]);
+  try {
+    await assert.rejects(() => api('/messages'), /503/);
+    assert.equal(s.attempts.length, 3, 'bounded at 3 attempts');
+  } finally {
+    s.restore();
+  }
+});
+
+test('RETRY: a 404 is NOT retried — it is terminal', async () => {
+  // Notably this is the expired-historyId path, which must fail fast so
+  // syncDelta can fall back to a full resync.
+  const { api } = await import('../src/background/gmail.js');
+  const s = scriptFetch([res(404, 'not found')]);
+  try {
+    await assert.rejects(() => api('/history?x=1'), /404/);
+    assert.equal(s.attempts.length, 1, 'must not retry a 404');
+  } finally {
+    s.restore();
+  }
+});
+
+test('RETRY: a 401 is NOT retried — the token needs refreshing, not repeating', async () => {
+  const { api } = await import('../src/background/gmail.js');
+  const s = scriptFetch([res(401, 'unauthorized')]);
+  try {
+    await assert.rejects(() => api('/profile'), /401/);
+    assert.equal(s.attempts.length, 1);
+  } finally {
+    s.restore();
+  }
+});
+
+test('RETRY: a 403 is retried only when it is a quota error', async () => {
+  // Gmail returns 403 for BOTH rateLimitExceeded and insufficient scope.
+  // Retrying a permissions failure three times just delays a clear message.
+  const { api } = await import('../src/background/gmail.js');
+
+  const quota = scriptFetch([res(403, '{"error":{"errors":[{"reason":"rateLimitExceeded"}]}}'), res(200, '{}')]);
+  try {
+    await api('/messages');
+    assert.equal(quota.attempts.length, 2, 'quota 403 must retry');
+  } finally {
+    quota.restore();
+  }
+
+  const scope = scriptFetch([res(403, '{"error":{"message":"Insufficient Permission"}}')]);
+  try {
+    await assert.rejects(() => api('/messages'), /403/);
+    assert.equal(scope.attempts.length, 1, 'permission 403 must not retry');
+  } finally {
+    scope.restore();
+  }
+});
+
+test('RETRY: a network failure is retried', async () => {
+  const { api } = await import('../src/background/gmail.js');
+  const s = scriptFetch([
+    () => { throw new Error('ECONNRESET'); },
+    res(200, '{"recovered":true}'),
+  ]);
+  try {
+    assert.deepEqual(await api('/messages'), { recovered: true });
+    assert.equal(s.attempts.length, 2);
+  } finally {
+    s.restore();
+  }
+});
+
+test('RETRY: the batch endpoint retries too', async () => {
+  // It is the most likely request to be limited: 100 sub-requests at once.
+  const { batchMetadata } = await import('../src/background/gmail.js');
+  const body =
+    `--b\r\nContent-Type: application/http\r\n\r\nHTTP/1.1 200 OK\r\n` +
+    `Content-Type: application/json\r\n\r\n{"id":"a","payload":{"headers":[]}}\r\n\r\n--b--\r\n`;
+  const s = scriptFetch([res(429, 'slow'), res(200, body)]);
+  try {
+    const out = await batchMetadata(['a']);
+    assert.equal(s.attempts.length, 2, 'batch must retry');
+    assert.equal(out[0].id, 'a');
+  } finally {
+    s.restore();
+  }
+});

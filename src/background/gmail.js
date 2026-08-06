@@ -31,16 +31,91 @@ async function authHeaders(extra = {}) {
   return { Authorization: `Bearer ${token}`, ...extra };
 }
 
+/**
+ * Statuses worth trying again.
+ *
+ * 429 is the important one and it is NOT an error condition here: Gmail
+ * rate-limits per user, and a 100-message batch is a burst by definition, so a
+ * healthy sync of a busy inbox produces these routinely. Treating one as fatal
+ * showed the user `Gmail 429 /messages` and stopped the sync, and their only
+ * recourse was Refresh, which reissued the same burst.
+ *
+ * 403 is deliberately NOT here. Gmail returns 403 both for `rateLimitExceeded`
+ * (retryable) and for insufficient scope (never retryable), and retrying a
+ * permissions failure three times just delays a clear error. It is
+ * distinguished by body text below.
+ */
+const RETRYABLE = new Set([429, 500, 502, 503, 504]);
+
+/** Cap on attempts, including the first. Keep small: the user is waiting. */
+const MAX_ATTEMPTS = 3;
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * How long to wait before attempt N (1-indexed).
+ *
+ * Honours `Retry-After` when Google sends it — guessing when we have been told
+ * is how you get rate-limited harder. Otherwise exponential with jitter; the
+ * jitter matters because several parallel batch requests will otherwise all
+ * wake at the same instant and re-collide.
+ */
+function backoffMs(attempt, res) {
+  const header = res?.headers?.get?.('Retry-After');
+  if (header) {
+    const secs = Number(header);
+    if (Number.isFinite(secs)) return Math.min(secs * 1000, 30_000);
+    const when = Date.parse(header);
+    if (!Number.isNaN(when)) return Math.max(0, Math.min(when - Date.now(), 30_000));
+  }
+  const base = 500 * 2 ** (attempt - 1); // 500, 1000, 2000
+  return base + Math.random() * 250;
+}
+
+/** True for a 403 that is a quota problem rather than a permissions problem. */
+function isQuota403(body) {
+  return /rateLimitExceeded|userRateLimitExceeded|quotaExceeded/i.test(body);
+}
+
+/**
+ * Fetch with bounded retry. Shared by `api()` and the batch endpoint so both
+ * behave identically under load.
+ *
+ * Returns the successful Response. Throws with the last status on give-up.
+ */
+async function fetchRetrying(url, init, label) {
+  let lastErr;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    let res;
+    try {
+      res = await fetch(url, init);
+    } catch (err) {
+      // Network-level failure (offline, DNS, connection reset). Retryable.
+      lastErr = new Error(`Network error on ${label}: ${err.message}`);
+      if (attempt === MAX_ATTEMPTS) break;
+      await sleep(backoffMs(attempt, null));
+      continue;
+    }
+
+    if (res.ok) return res;
+
+    const body = await res.text().catch(() => '');
+    const retryable = RETRYABLE.has(res.status) || (res.status === 403 && isQuota403(body));
+    lastErr = new Error(`Gmail ${res.status} ${label} ${body.slice(0, 200)}`);
+
+    if (!retryable || attempt === MAX_ATTEMPTS) break;
+    await sleep(backoffMs(attempt, res));
+  }
+  throw lastErr;
+}
+
 /** Single authenticated call. `path` is relative to /users/me. */
 export async function api(path, init = {}) {
-  const res = await fetch(`${BASE}${path}`, {
-    ...init,
-    headers: await authHeaders(init.headers || {}),
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`Gmail ${res.status} ${path} ${body.slice(0, 200)}`);
-  }
+  // The token is resolved once, outside the retry loop: getToken() already
+  // single-flights refreshes, and an access token cannot expire inside the
+  // ~3.5s worst-case retry window (it is refreshed 60s early).
+  const headers = await authHeaders(init.headers || {});
+  const res = await fetchRetrying(`${BASE}${path}`, { ...init, headers }, path);
   if (res.status === 204) return null;
   return res.json();
 }
@@ -88,14 +163,17 @@ export async function batchMetadata(ids) {
       )
       .join('') + `--${boundary}--\r\n`;
 
-  const res = await fetch(BATCH_URL, {
-    method: 'POST',
-    headers: await authHeaders({ 'Content-Type': `multipart/mixed; boundary=${boundary}` }),
-    body,
-  });
-  if (!res.ok) {
-    throw new Error(`Gmail batch ${res.status}`);
-  }
+  // Same retry policy as api(). The batch endpoint is the single most likely
+  // request to be rate-limited, because it is 100 sub-requests at once.
+  const res = await fetchRetrying(
+    BATCH_URL,
+    {
+      method: 'POST',
+      headers: await authHeaders({ 'Content-Type': `multipart/mixed; boundary=${boundary}` }),
+      body,
+    },
+    '/batch'
+  );
   const text = await res.text();
   return parseBatch(text).map(normalise).filter(Boolean);
 }
