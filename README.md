@@ -1,8 +1,13 @@
 # BITS Mail Manager
 
 A Chrome extension that takes over the Gmail tab and replaces it with a faster,
-BITS-Pilani-aware inbox. One click (or `Alt+Shift+M`), Gmail slides out, this
+cleaner mail client. One click (or `Alt+Shift+M`), Gmail slides out, this
 slides in. `Esc` gives the page back.
+
+**A better Gmail that happens to understand student life** — not a student
+platform with a mailbox bolted on. The inbox is the centre of gravity and the
+BITS-aware parts orbit it: they surface where they help with mail and stay
+invisible where they do not.
 
 Version 2. Version 1 worked but became slow and drifted from the idea; the
 classification rules were the good part and they are carried over here, bugs
@@ -12,11 +17,12 @@ fixed. Everything else was rebuilt.
 
 ## What it does
 
-- **Sorts every message into 15 BITS categories** — AUGSD, Academics, Practice
-  School, Internship, Competitions, Clubs, Events, Library, Technology, Admin,
-  Administration, Ext Services, Ext Promotions, Spam, Other — using ~1000
-  generated sender and keyword rules built around Pilani's actual mailing
-  lists.
+**This is a mail client first.** Everything below the first group is a mail
+feature; the BITS-specific intelligence exists to make those same tasks
+faster, and it stays out of the way when it has nothing to add.
+
+### The mail client
+
 - **Takes over the Gmail page in place.** Not a side panel, not a new tab. The
   URL stays `mail.google.com`.
 - **Every message, read or unread.** The list is the whole inbox; the rail
@@ -52,6 +58,22 @@ fixed. Everything else was rebuilt.
   Midnight, Pilani Dusk, Solarised, Nord, and a AAA High Contrast.
 - **Privacy by default:** remote images are blocked until you ask for them,
   which is stronger than Gmail's proxy. No telemetry, no server.
+
+### What it knows about BITS
+
+The quiet advantage. None of this replaces the inbox or takes over the
+navigation — it is reachable from the mail it relates to.
+
+- **Sorts every message into 15 BITS categories** — AUGSD, Academics, Practice
+  School, Internship, Competitions, Clubs, Events, Library, Technology, Admin,
+  Administration, Ext Services, Ext Promotions, Spam, Other — using ~1000
+  generated sender and keyword rules built around Pilani's actual mailing
+  lists.
+- **Deadlines extracted from mail**, shown in a rail panel *below* the mailbox
+  navigation, hidden entirely when there is nothing due.
+- **A deterministic timetable** built from the official document, which mail
+  can update through strict rules. A secondary tool, opened from a small
+  button — see [`docs/TIMETABLE.md`](docs/TIMETABLE.md).
 
 ## Themes
 
