@@ -13,7 +13,8 @@
     "test:ci": "node tools/ci-test.mjs",
     "contrast": "node tools/check-contrast.mjs",
     "push": "bash tools/push.sh",
-    "mutate": "node tools/mutate.mjs"
+    "mutate": "node tools/mutate.mjs",
+    "timetable": "node tools/parse-timetable.mjs"
   },
   "devDependencies": {
     "jsdom": "^24.0.0"

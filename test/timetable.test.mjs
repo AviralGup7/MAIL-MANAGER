@@ -16,7 +16,7 @@ import {
   emptyState, entryId, addCourse, removeCourse, makeEntry,
   applyFieldChange, manualEdit, setLocked, restoreFromSource,
   detectConflicts, linkedSections, instructorsFor, sectionsByKind,
-  weekView, summariseMeetings, explainEntry, entriesForMessage, PRECEDENCE,
+  weekView, summariseMeetings, explainEntry, entriesForMessage, examEvents, PRECEDENCE,
 } from '../src/app/timetable.js';
 
 import {
@@ -49,7 +49,7 @@ const CS = {
         { day: 'W', dayName: 'Wednesday', hour: 3, startMin: 600, endMin: 650 },
         { day: 'Th', dayName: 'Thursday', hour: 9, startMin: 960, endMin: 1010 },
       ],
-      midsem: '02/12 AN', compre: '', unresolved: [],
+      midsem: '', compre: '02/12 AN', unresolved: [],
     },
     {
       section: 'L2', kind: 'lecture', instructors: ['Yash Sinha'], room: '5105',
@@ -59,7 +59,7 @@ const CS = {
         { day: 'W', dayName: 'Wednesday', hour: 2, startMin: 540, endMin: 590 },
         { day: 'T', dayName: 'Tuesday', hour: 8, startMin: 900, endMin: 950 },
       ],
-      midsem: '02/12 AN', compre: '', unresolved: [],
+      midsem: '', compre: '02/12 AN', unresolved: [],
     },
     {
       section: 'P1', kind: 'practical', instructors: ['Manasvi Singh(RS)'], room: '6117',
@@ -804,4 +804,165 @@ test('CATALOGUE: a course with no schedule is unresolved, not invented', () => {
   assert.equal(s.room, '', 'no room must stay empty');
   assert.ok(s.instructors.length, 'but the instructor IS stated and must survive');
   assert.ok(s.unresolved.includes('time'), 'and the gap must be declared');
+});
+
+/* ============================================== exam sessions (the legend) == */
+
+test('PARSE: a lone exam date is placed by its SESSION, not by its position', () => {
+  /*
+   * THE LEGEND DISAMBIGUATES WHAT POSITION CANNOT.
+   *
+   * Most rows carry two dates: midsem then compre. Some carry only one, and
+   * the parser assigned the first match to `midsem` unconditionally. For the
+   * eleven sections that list only a compre, that put the FINAL EXAM in the
+   * mid-semester field -- CS F111 among them, a first-year core.
+   *
+   * The document's own legend settles it (section 10 and 11):
+   *
+   *   MIDSEM sessions are FN1, FN2, AN1, AN2   (90-minute slots)
+   *   COMPRE sessions are FN, AN               (3-hour slots)
+   *
+   * So a bare FN/AN is a compre no matter where it appears in the row. This
+   * is reading the source harder, not guessing.
+   */
+  const text = readFileSync(
+    join(ROOT, 'src/timetable/sources/Timetable_05_Aug_2026_f4b34f8b-8fb7-4f3a-905e-714ab50065a5.txt'),
+    'utf8'
+  );
+  const { courses } = parseTimetable(text);
+
+  // CS F111 lists ONE date: "02/12 AN". Bare AN => compre.
+  const cs = courses.find((c) => c.comCode === '1008');
+  const l1 = cs.sections.find((s) => s.section === 'L1');
+  assert.equal(l1.compre, '02/12 AN', 'a lone bare-AN date is the compre');
+  assert.equal(l1.midsem, '', 'and there is no midsem date to claim');
+
+  // BIO F101 lists BOTH: "09/10 AN2" (numbered => midsem) then "14/12 AN".
+  const bio = courses.find((c) => c.comCode === '2863');
+  const bioL1 = bio.sections.find((s) => s.section === 'L1');
+  assert.equal(bioL1.midsem, '09/10 AN2', 'a numbered session is the midsem');
+  assert.equal(bioL1.compre, '14/12 AN');
+});
+
+test('PARSE: no section ends up with a bare session in the midsem field', () => {
+  // The invariant, across all 1681 sections rather than two hand-picked ones.
+  const text = readFileSync(
+    join(ROOT, 'src/timetable/sources/Timetable_05_Aug_2026_f4b34f8b-8fb7-4f3a-905e-714ab50065a5.txt'),
+    'utf8'
+  );
+  const { courses } = parseTimetable(text);
+  const bad = [];
+  for (const c of courses) {
+    for (const s of c.sections || []) {
+      const session = (s.midsem || '').split(/\s+/)[1] || '';
+      if (/^(FN|AN)$/.test(session)) bad.push(`${c.courseNo} ${s.section} ${s.midsem}`);
+      const cSession = (s.compre || '').split(/\s+/)[1] || '';
+      if (/^(FN|AN)\d$/.test(cSession)) bad.push(`${c.courseNo} ${s.section} compre=${s.compre}`);
+    }
+  }
+  assert.deepEqual(bad, [], 'exam dates filed under the wrong session type');
+});
+
+/* ================================================================== exams == */
+
+test('EXAMS: midsem and compre are typed events with real clock times', () => {
+  /*
+   * Pass 2 asks for midsem and compre as first-class event types, not a
+   * generic blob. The dates were being STORED and never modelled, so nothing
+   * could render them and nothing could tell one from the other.
+   *
+   * The session codes come from the document's legend, which gives exact
+   * times -- so these are converted, not invented:
+   *
+   *   FN1 09:00-10:30   FN2 11:00-12:30   AN1 14:00-15:30   AN2 16:00-17:30
+   *   FN  09:00-12:00   AN  14:00-17:00
+   */
+  const { state } = build();
+  const withExams = {
+    ...state,
+    entries: [{ ...state.entries[0], midsem: '09/10 AN2', compre: '14/12 AN' }],
+  };
+
+  const events = examEvents(withExams.entries);
+  assert.equal(events.length, 2, 'a midsem and a compre');
+
+  const mid = events.find((e) => e.type === 'midsem');
+  assert.equal(mid.courseNo, 'CS F111');
+  assert.equal(mid.date, '09/10');
+  assert.equal(mid.session, 'AN2');
+  assert.equal(mid.startMin, 16 * 60, 'AN2 starts at 16:00 per the legend');
+  assert.equal(mid.endMin, 17 * 60 + 30);
+  assert.match(mid.time, /4:00 PM-5:30 PM/);
+
+  const com = events.find((e) => e.type === 'compre');
+  assert.equal(com.session, 'AN');
+  assert.equal(com.startMin, 14 * 60, 'a bare AN is the three-hour compre slot');
+  assert.equal(com.endMin, 17 * 60);
+});
+
+test('EXAMS: a section with no exam date produces no event', () => {
+  // Lab and project courses have none. Inventing a placeholder would put a
+  // fictional exam on someone's calendar.
+  const { state } = build();
+  const bare = { ...state, entries: [{ ...state.entries[0], midsem: '', compre: '' }] };
+  assert.deepEqual(examEvents(bare.entries), []);
+});
+
+test('EXAMS: an unrecognised session yields no time, never a guess', () => {
+  // If the legend does not describe the session code, the event still exists
+  // -- the date IS known -- but the clock time stays unresolved.
+  const { state } = build();
+  const odd = { ...state, entries: [{ ...state.entries[0], midsem: '09/10 XX9' }] };
+  const [e] = examEvents(odd.entries);
+  assert.equal(e.date, '09/10');
+  assert.equal(e.startMin, null, 'an unknown session must not be given a time');
+  assert.equal(e.time, '', 'and must not be rendered as one');
+});
+
+test('EXAMS: two courses examined in the same session are a conflict', () => {
+  /*
+   * The clash that actually matters to a student. Two classes overlapping is
+   * annoying; two COMPRES in the same slot is a problem you must report to
+   * AUGSD, and the timetable is the only place it is visible.
+   */
+  const { state } = build();
+  const two = [
+    { ...state.entries[0], id: 'a', courseNo: 'CS F111', midsem: '', compre: '14/12 AN' },
+    { ...state.entries[0], id: 'b', courseNo: 'MATH F211', midsem: '', compre: '14/12 AN' },
+  ];
+  const clashes = detectConflicts(two).filter((c) => c.kind === 'exam-clash');
+  assert.equal(clashes.length, 1, 'the clash must be surfaced');
+  assert.match(clashes[0].message, /14\/12/);
+  assert.match(clashes[0].message, /CS F111/);
+  assert.match(clashes[0].message, /MATH F211/);
+  assert.equal(clashes[0].severity, 'blocking');
+});
+
+test('EXAMS: one course\'s own sections do not clash with each other', () => {
+  /*
+   * THE CASE THAT MAKES THE GROUPING NECESSARY.
+   *
+   * A course you attend as a lecture plus a lab is two entries, and BOTH
+   * carry the same compre date and session -- because it is one exam for one
+   * course. Keying the clash detector on entries instead of course numbers
+   * reports that as a conflict with itself, which would fire for nearly every
+   * course a student holds and train them to ignore the warnings.
+   *
+   * Two sections, same date, same session, same courseNo: silence.
+   */
+  const { state } = build();
+  const sameCourse = [
+    { ...state.entries[0], id: 'a', section: 'L1', midsem: '', compre: '14/12 AN' },
+    { ...state.entries[0], id: 'b', section: 'P1', midsem: '', compre: '14/12 AN' },
+  ];
+  assert.deepEqual(
+    detectConflicts(sameCourse).filter((c) => c.kind === 'exam-clash'), [],
+    'a course cannot clash with itself'
+  );
+
+  // And a midsem and compre on one date in DIFFERENT sessions is also fine.
+  const midAndCompre = [{ ...state.entries[0], midsem: '14/12 FN1', compre: '14/12 AN' }];
+  assert.deepEqual(
+    detectConflicts(midAndCompre).filter((c) => c.kind === 'exam-clash'), []
+  );
 });

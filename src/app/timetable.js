@@ -500,6 +500,73 @@ export function entriesForMessage(state, ref) {
 }
 
 /* ========================================================================== *
+ * EXAMS
+ * ========================================================================== */
+
+/**
+ * Exam session times, transcribed from the document's own legend.
+ *
+ *   10. MIDSEM EXAM DATE (Session)
+ *       FN1: 9.00-10.30   FN2: 11.00-12.30   AN1: 14.00-15.30   AN2: 16.00-17.30
+ *   11. COMPRE EXAM DATE (Session)
+ *       FN: 9.00-12.00    AN: 14.00-17.00
+ *
+ * The numbered codes are 90-minute mid-semester slots; the bare ones are
+ * three-hour comprehensives. That distinction is what tells a lone date in a
+ * row which field it belongs to -- see the parser.
+ *
+ * A session code not listed here yields NO time rather than a guessed one.
+ */
+export const EXAM_SESSIONS = {
+  FN1: [9 * 60, 10 * 60 + 30],
+  FN2: [11 * 60, 12 * 60 + 30],
+  AN1: [14 * 60, 15 * 60 + 30],
+  AN2: [16 * 60, 17 * 60 + 30],
+  FN: [9 * 60, 12 * 60],
+  AN: [14 * 60, 17 * 60],
+};
+
+/**
+ * Turn stored exam dates into typed events.
+ *
+ * The dates were parsed and stored from the beginning and then never modelled,
+ * so nothing could render them and nothing could distinguish a mid-semester
+ * test from a comprehensive. Pass 2 wants both as first-class event types.
+ *
+ * The document prints the date as `DD/MM` with no year, so no year is invented
+ * here -- `date` stays exactly as the source wrote it. The clock time IS
+ * derived, because the legend states it outright.
+ *
+ * @returns {{type:'midsem'|'compre', courseNo:string, section:string,
+ *   entryId:string, date:string, session:string,
+ *   startMin:number|null, endMin:number|null, time:string}[]}
+ */
+export function examEvents(entries) {
+  const out = [];
+  for (const e of entries || []) {
+    for (const type of ['midsem', 'compre']) {
+      const raw = (e[type] || '').trim();
+      if (!raw) continue;
+      const [date, session = ''] = raw.split(/\s+/);
+      if (!date) continue;
+      const slot = EXAM_SESSIONS[session] || null;
+      out.push({
+        type,
+        courseNo: e.courseNo,
+        section: e.section,
+        entryId: e.id,
+        date,
+        session,
+        startMin: slot ? slot[0] : null,
+        endMin: slot ? slot[1] : null,
+        time: slot ? `${fmtTime(slot[0])}-${fmtTime(slot[1])}` : '',
+      });
+    }
+  }
+  return out;
+}
+
+/* ========================================================================== *
  * CONFLICTS
  * ========================================================================== */
 
@@ -570,7 +637,40 @@ export function detectConflicts(entries) {
     }
   }
 
-  // 4. The same section added twice.
+  /*
+   * 4. Two DIFFERENT courses examined in the same date and session.
+   *
+   * The clash that actually matters. Two lectures overlapping is an
+   * inconvenience you can work around; two comprehensives in the same slot is
+   * something you must report to AUGSD, and this is the only place it becomes
+   * visible before the day itself.
+   *
+   * Keyed on date+session, and grouped by COURSE -- a course's own sections,
+   * or its midsem and compre falling on one date in different sessions, are
+   * not clashes.
+   */
+  const examSlots = new Map();
+  for (const ev of examEvents(entries)) {
+    if (!ev.session) continue; // no session stated: nothing to compare
+    const key = `${ev.date}|${ev.session}`;
+    if (!examSlots.has(key)) examSlots.set(key, new Map());
+    examSlots.get(key).set(ev.courseNo, ev);
+  }
+  for (const [key, byCourseNo] of examSlots) {
+    if (byCourseNo.size < 2) continue;
+    const [date, session] = key.split('|');
+    const evs = [...byCourseNo.values()];
+    conflicts.push({
+      kind: 'exam-clash',
+      severity: 'blocking',
+      entryIds: evs.map((e) => e.entryId),
+      message:
+        `${evs.map((e) => e.courseNo).join(' and ')} are both examined on ` +
+        `${date} in session ${session}. Contact AUGSD.`,
+    });
+  }
+
+  // 5. The same section added twice.
   const seen = new Set();
   for (const e of entries) {
     if (seen.has(e.id)) {

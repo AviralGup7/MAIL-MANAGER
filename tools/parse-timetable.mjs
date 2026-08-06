@@ -25,6 +25,7 @@
 
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /* ========================================================================== *
  * HOUR MAP — read from the document's own legend, not hardcoded belief.
@@ -267,12 +268,38 @@ function splitTail(rest) {
   const exams = [...after.matchAll(examRe)];
   const daysHours = (exams.length ? after.slice(0, exams[0].index) : after).trim();
 
+  /*
+   * PLACE EXAM DATES BY SESSION, NOT BY POSITION.
+   *
+   * Most rows read "midsem then compre" and taking exams[0] as the midsem
+   * works. Eleven sections list only ONE date, and it is the compre -- which
+   * this code used to file as the mid-semester exam. CS F111, a first-year
+   * core, showed its final exam as a midsem.
+   *
+   * The document's own legend settles it without any guessing:
+   *
+   *   10. MIDSEM EXAM DATE (Session)  FN1, FN2, AN1, AN2   90-minute slots
+   *   11. COMPRE EXAM DATE (Session)  FN, AN               3-hour slots
+   *
+   * A NUMBERED session is a midsem; a BARE one is a compre. That is a fact
+   * stated by the source, so it decides, and position is only a fallback for
+   * a session string the legend does not describe.
+   */
+  const slots = { midsem: '', compre: '' };
+  for (const e of exams) {
+    const value = `${e[1]} ${e[2]}`;
+    const numbered = /\d$/.test(e[2]);
+    const field = numbered ? 'midsem' : 'compre';
+    // First writer wins, so a malformed row with two compres keeps the first
+    // rather than silently overwriting it.
+    if (!slots[field]) slots[field] = value;
+  }
+
   return {
     instructor,
     room: m.groups.room,
     daysHours,
-    midsem: exams[0] ? `${exams[0][1]} ${exams[0][2]}` : '',
-    compre: exams[1] ? `${exams[1][1]} ${exams[1][2]}` : '',
+    ...slots,
   };
 }
 
@@ -481,12 +508,32 @@ export function parseNotice(text) {
  * MAIN
  * ========================================================================== */
 
+/*
+ * Default the inputs from the REPO, not from the shell's cwd.
+ *
+ * The two classifier generators shipped with defaults pointing at an uploads
+ * directory that existed on exactly one machine, so `npm run` reproduced
+ * nothing anywhere else. This tool had the opposite failure: no defaults at
+ * all, so regenerating meant remembering two long filenames and the argument
+ * order. Both make a GENERATED artifact hard to regenerate, which is how a
+ * generated artifact quietly becomes hand-maintained.
+ *
+ * The sources are committed under src/timetable/sources/, so they can be
+ * resolved relative to this file and `npm run timetable` just works.
+ */
+const HERE = dirname(fileURLToPath(import.meta.url));
+const REPO = resolve(HERE, '..');
+const DEFAULTS = {
+  tt: resolve(REPO, 'src/timetable/sources/Timetable_05_Aug_2026_f4b34f8b-8fb7-4f3a-905e-714ab50065a5.txt'),
+  notice: resolve(REPO, 'src/timetable/sources/TIMETABLE_CHANGES_NOTICE_4thAug26_1.txt'),
+  out: resolve(REPO, 'src/timetable/data.json'),
+};
+
 function main() {
-  const [ttPath, noticePath, outPath] = process.argv.slice(2);
-  if (!ttPath || !noticePath) {
-    console.error('usage: parse-timetable.mjs <timetable.txt> <notice.txt> [out.json]');
-    process.exit(2);
-  }
+  const [argTt, argNotice, argOut] = process.argv.slice(2);
+  const ttPath = argTt || DEFAULTS.tt;
+  const noticePath = argNotice || DEFAULTS.notice;
+  const outPath = argOut || DEFAULTS.out;
   const ttText = readFileSync(ttPath, 'utf8');
   const noticeText = readFileSync(noticePath, 'utf8');
 
@@ -519,7 +566,7 @@ function main() {
     changes: notice.changes,
   };
 
-  const dest = outPath || resolve(process.cwd(), 'src/timetable/data.json');
+  const dest = outPath;
   mkdirSync(dirname(dest), { recursive: true });
   writeFileSync(dest, JSON.stringify(out));
 
