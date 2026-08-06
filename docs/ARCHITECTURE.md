@@ -1,6 +1,8 @@
 # Target architecture
 
-**Status:** living document. Written at `c04eadb`, after audit
+**Status:** living document. Steps 1–7 of the migration are complete; the
+layering rules below are now enforced by tests rather than described. Written
+at `c04eadb`, after audit
 [`09-ARCHITECTURE-POST-CHANGE.md`](../audits/09-ARCHITECTURE-POST-CHANGE.md).
 
 This is not a rewrite plan. The system has 11,600 lines under 639 tests and a
@@ -198,7 +200,7 @@ Each step keeps the suite green and is independently revertible.
 | 5 | Migrate the **snooze picker** | low | **done** |
 | 5b | Migrate the **command palette** — see note | low | **done** |
 | 6 | Replace the `Escape` ladder with stack unwinding | medium | **done** |
-| 7 | Enforce the layering rules with a dependency test | low | |
+| 7 | Enforce the layering rules with a dependency test | low | **done** |
 
 ### Note on step 5b
 

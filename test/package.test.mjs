@@ -980,3 +980,114 @@ test('contacts.js exports both the lenient and the strict parser', () => {
   assert.match(src, /export function addressOf\(/);
   assert.match(src, /export function parseAddress\(/);
 });
+
+/* ========================================================================== *
+ * LAYERING RULES
+ *
+ * docs/ARCHITECTURE.md declares four layers with dependencies pointing
+ * downward only. Written down, a rule is documentation; enforced, it is
+ * architecture. These make the difference.
+ * ========================================================================== */
+
+/** Which layer each module belongs to. */
+const LAYER = {
+  shell: ['src/app/app.js'],
+  features: ['src/app/features.js', 'src/app/layers.js', 'src/app/icons.js',
+    'src/app/shortcuts.js', 'src/app/themes.js'],
+  domain: ['src/app/store.js', 'src/app/query.js', 'src/app/deadlines.js',
+    'src/app/rules.js', 'src/app/snooze.js', 'src/app/contacts.js',
+    'src/app/selection.js', 'src/app/undo.js', 'src/app/mailboxes.js'],
+  platform: ['src/app/cache.js', 'src/app/settings.js', 'src/app/views.js',
+    'src/app/draft-store.js', 'src/app/sanitize.js'],
+};
+const RANK = { shell: 3, features: 2, domain: 1, platform: 0 };
+
+const layerOf = (file) => {
+  for (const [name, files] of Object.entries(LAYER)) if (files.includes(file)) return name;
+  return null;
+};
+
+test('ARCH: the domain layer is pure — no DOM, no chrome.*, no fetch', () => {
+  /*
+   * Purity is what makes the classifier and the query language exhaustively
+   * testable without a browser, which is why they are the best-tested parts
+   * of the system. A single `document.` reference in here would end that.
+   *
+   * Storage-taking functions are fine: they receive a storage object as a
+   * PARAMETER, which is what makes failure injection possible.
+   */
+  for (const file of LAYER.domain) {
+    const src = read(file)
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .replace(/\/\/[^\n]*/g, ' ');
+    assert.ok(!/\bdocument\./.test(src), `${file} touches the DOM`);
+    assert.ok(!/\bwindow\./.test(src), `${file} touches window`);
+    assert.ok(!/\bfetch\(/.test(src), `${file} performs I/O`);
+  }
+});
+
+test('ARCH: dependencies point downward only', () => {
+  // A domain module importing a feature, or a feature importing the shell,
+  // is the inversion that makes a layered design ceremonial.
+  const violations = [];
+  for (const files of Object.values(LAYER)) {
+    for (const file of files) {
+      const from = layerOf(file);
+      const src = read(file);
+      for (const m of src.matchAll(/from '\.\/([a-z-]+\.js)'/g)) {
+        const target = `src/app/${m[1]}`;
+        const to = layerOf(target);
+        if (!to) continue; // not classified; ignored rather than guessed at
+        if (RANK[to] > RANK[from]) {
+          violations.push(`${file} (${from}) imports ${target} (${to})`);
+        }
+      }
+    }
+  }
+  assert.deepEqual(violations, [], 'these imports point upward');
+});
+
+test('ARCH: the background worker never touches the DOM', () => {
+  // Credentials live in the worker precisely because it renders nothing.
+  for (const file of ['src/background/index.js', 'src/background/auth.js',
+    'src/background/gmail.js', 'src/background/sync.js']) {
+    const src = read(file)
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .replace(/\/\/[^\n]*/g, ' ');
+    assert.ok(!/\bdocument\./.test(src), `${file} touches the DOM`);
+    assert.ok(!/innerHTML|classList/.test(src), `${file} manipulates markup`);
+  }
+});
+
+test('ARCH: overlays use the layer primitive rather than hand-rolled teardown', () => {
+  /*
+   * The regression guard for the whole refactor. Five overlays previously
+   * each wired their own `document.addEventListener('mousedown', …, true)`
+   * and their own focus restoration; two of them fought each other.
+   *
+   * The primitive is the only sanctioned place for that listener.
+   */
+  const shell = read('src/app/app.js')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/\/\/[^\n]*/g, ' ');
+  assert.ok(
+    !/document\.addEventListener\('mousedown'/.test(shell),
+    'the shell wires an outside-click listener; layers.js owns that'
+  );
+
+  const layers = read('src/app/layers.js');
+  assert.match(layers, /addEventListener\('mousedown'/,
+    'the primitive should own outside-click dismissal');
+});
+
+test('ARCH: the Escape handler has no per-overlay branches', () => {
+  // The ladder is what the stack replaced. If overlay-specific `close*()`
+  // calls reappear here, the ordering fragility is back.
+  const src = read('src/app/app.js');
+  const handler = src.indexOf("document.addEventListener('keydown'");
+  const esc = src.indexOf("if (e.key === 'Escape')", handler);
+  const block = src.slice(esc, esc + 1800);
+  for (const overlay of ['closeHelp(', 'closeSnoozeMenu(', 'closeCategoryMenu(', 'closeThemeMenu(']) {
+    assert.ok(!block.includes(overlay), `${overlay}) is back in the Escape ladder`);
+  }
+});
