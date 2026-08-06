@@ -3955,3 +3955,86 @@ test('TIMETABLE: a failed catalogue load does not condemn every class', async (t
     restore();
   }
 });
+
+test('TIMETABLE: an unsaved change is visible, not silently pending', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * A PASS 3 NAMED CONDITION: "the visible schedule and stored schedule
+   * disagree."
+   *
+   * persist() surfaced write failures as a toast, which is right but not
+   * enough -- a toast is gone in three seconds and the panel then shows an
+   * edit that will vanish on the next reload. The user believes their room
+   * change is saved. It is not.
+   *
+   * The change is deliberately NOT rolled back. Discarding what someone just
+   * typed because storage was briefly full is its own data loss, and the
+   * write may well succeed next time. It is kept, shown, and marked unsaved
+   * so the disagreement is visible rather than silent.
+   */
+  const { doc, win, settle, restore, storage } = await boot({ timetableData: TT_DATA });
+  try {
+    await openTT(doc, win, settle);
+    const r = await ttSearch(doc, win, settle, 'CS F111');
+    r[0].querySelector('button').click();
+    await settle(4);
+    [...doc.querySelectorAll('.tt-chooser .tt-section')]
+      .find((b) => b.textContent.startsWith('L1')).click();
+    await settle(10);
+    assert.ok(storage.timetable, 'precondition: the build saved cleanly');
+    assert.ok(
+      !doc.querySelector('#tt-panel .tt-unsaved'),
+      'and nothing claims to be unsaved yet'
+    );
+
+    // Now make every write fail, the way a full quota does.
+    win.chrome.storage.local.set = () => Promise.reject(new Error('QUOTA_BYTES'));
+
+    const lock = [...doc.querySelectorAll('#tt-panel .tt-entry button')]
+      .find((b) => b.textContent === 'Lock');
+    assert.ok(lock, 'precondition: a lock control to act on');
+    lock.click();
+    await settle(10);
+
+    const warn = doc.querySelector('#tt-panel .tt-unsaved');
+    assert.ok(warn, 'the panel must show that changes are not saved');
+    assert.match(warn.textContent, /not saved|unsaved/i);
+  } finally {
+    restore();
+  }
+});
+
+test('TIMETABLE: the unsaved warning clears once a write succeeds', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // A warning that never clears is worse than none: it trains the user to
+  // ignore it. Recovery has to be visible too.
+  const { doc, win, settle, restore } = await boot({ timetableData: TT_DATA });
+  try {
+    await openTT(doc, win, settle);
+    const r = await ttSearch(doc, win, settle, 'CS F111');
+    r[0].querySelector('button').click();
+    await settle(4);
+    [...doc.querySelectorAll('.tt-chooser .tt-section')]
+      .find((b) => b.textContent.startsWith('L1')).click();
+    await settle(10);
+
+    const realSet = win.chrome.storage.local.set;
+    win.chrome.storage.local.set = () => Promise.reject(new Error('QUOTA_BYTES'));
+    [...doc.querySelectorAll('#tt-panel .tt-entry button')]
+      .find((b) => b.textContent === 'Lock').click();
+    await settle(10);
+    assert.ok(doc.querySelector('#tt-panel .tt-unsaved'), 'precondition: warned');
+
+    win.chrome.storage.local.set = realSet;
+    [...doc.querySelectorAll('#tt-panel .tt-entry button')]
+      .find((b) => b.textContent === 'Unlock').click();
+    await settle(10);
+
+    assert.ok(
+      !doc.querySelector('#tt-panel .tt-unsaved'),
+      'a successful write must clear the warning'
+    );
+  } finally {
+    restore();
+  }
+});

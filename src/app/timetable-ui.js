@@ -45,6 +45,7 @@ export function _resetTimetableUI() {
   state = emptyState();
   source = null;
   pending = [];
+  unsavedError = '';
   if (layer) { try { layer.close(); } catch { /* gone */ } }
   layer = null;
   ctxRef = null;
@@ -103,8 +104,23 @@ export async function initTimetable(ctx) {
   return state;
 }
 
+/*
+ * Whether the last write failed, and why.
+ *
+ * A toast alone was not enough. It disappears in a few seconds, and the panel
+ * then goes on showing an edit that will vanish on the next reload -- the
+ * "visible schedule and stored schedule disagree" failure, with the user
+ * believing their change is safe.
+ *
+ * The change is deliberately NOT rolled back on failure. Discarding what
+ * someone just typed because storage was briefly full is its own data loss,
+ * and the next write may well succeed. It is kept, shown, and marked.
+ */
+let unsavedError = '';
+
 async function persist() {
   const r = await saveTimetable(state);
+  unsavedError = r.ok ? '' : (r.error || 'unknown error');
   if (!r.ok && ctxRef?.toast) {
     ctxRef.toast(`Could not save the timetable: ${r.error}`, { kind: 'error' });
   }
@@ -594,6 +610,8 @@ function manageView() {
    * conflict set depend on whether an async fetch had landed yet -- so a
    * reload with a slow network would silently show fewer problems.
    */
+  if (unsavedError) b.appendChild(unsavedBanner());
+
   const stale = validateAgainstSource(state, source);
   const problems = [...state.conflicts, ...stale];
   if (problems.length) b.appendChild(conflictSection(problems));
@@ -710,6 +728,34 @@ function pendingSection() {
     row.append(what, why, act);
     s.appendChild(row);
   }
+  return s;
+}
+
+/**
+ * "Your last change was not saved."
+ *
+ * Persistent, unlike the toast, because the disagreement between what is on
+ * screen and what is on disk persists too. Names the underlying error, since
+ * a full quota and a revoked permission need different actions.
+ */
+function unsavedBanner() {
+  const s = el('section', 'tt-block tt-unsaved');
+  const msg = el('p', 'tt-unsaved-msg');
+  msg.textContent =
+    `Your last change is NOT saved (${unsavedError}). It is still shown here, ` +
+    'but it will be lost if you reload. Try again, or free up space.';
+
+  const retry = document.createElement('button');
+  retry.type = 'button';
+  retry.className = 'primary small';
+  retry.textContent = 'Try saving again';
+  retry.addEventListener('click', async () => {
+    const ok = await persist();
+    if (ok) ctxRef?.toast?.('Timetable saved');
+    render();
+  });
+
+  s.append(msg, retry);
   return s;
 }
 
