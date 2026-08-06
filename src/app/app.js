@@ -25,6 +25,7 @@
  */
 
 import { Store } from './store.js';
+import { loadCache, saveCache, clearCache, createSaver, CACHE_MAX } from './cache.js';
 import { classify } from '../classify/index.js';
 import {
   CATEGORY_LABELS,
@@ -163,6 +164,40 @@ function scheduleRender({ changed, structural } = { changed: new Set(), structur
 }
 
 store.subscribe(scheduleRender);
+
+/**
+ * Persist the newest headers so the next takeover paints from disk.
+ *
+ * Subscribed separately from rendering and deliberately AFTER it, so a write
+ * can never delay a frame. The saver defers to idle and coalesces, so a sync
+ * touching 200 messages still produces exactly one write.
+ */
+const saver = createSaver(() =>
+  store.idsFor('all').slice(0, CACHE_MAX).map((id) => store.get(id)).filter(Boolean)
+);
+store.subscribe(() => saver.schedule());
+
+/**
+ * Drop every message and every rendered node, synchronously.
+ *
+ * Clearing `renderedIds` and `nodeById` around a `store.clear()` is not enough
+ * on its own: the store notification only SCHEDULES a render, so a caller that
+ * reset those two immediately would have them repopulated by the queued frame
+ * using state from before the wipe. Sign-out did exactly that and left the
+ * previous account's rows on screen.
+ *
+ * Rendering synchronously here is correct rather than wasteful — the list is
+ * empty, so it is one `replaceChildren` with nothing in it.
+ */
+function resetView() {
+  store.clear();
+  closeReader();
+  el.list.replaceChildren();
+  nodeById.clear();
+  renderedIds = [];
+  renderList();
+  renderSidebar();
+}
 
 /** The ids the list should currently show. */
 function visibleIds() {
@@ -605,7 +640,15 @@ async function loadPage(pageToken = '') {
 }
 
 /** Delta refresh. Cheap; safe to call on demand. Never on a timer. */
-async function refresh() {
+/**
+ * Delta refresh.
+ *
+ * @param {{silent?:boolean}} opts  `silent` suppresses the "Up to date" toast,
+ *   used on the automatic refresh after a cache hydrate where the user did not
+ *   ask for anything and should not be told about it.
+ * @returns {Promise<'delta'|'resync'|'none'|'error'|undefined>}
+ */
+async function refresh({ silent = false } = {}) {
   if (state.loading) return;
   state.loading = true;
   setBusy(true);
@@ -616,12 +659,15 @@ async function refresh() {
       // The history cursor expired (Gmail keeps about a week) or we never had
       // one. Everything we hold may be stale, including messages archived
       // elsewhere, so start clean rather than merge.
-      store.clear();
-      renderedIds = [];
-      nodeById.clear();
-      closeReader();
+      // Same hazard as sign-out: the store notification only schedules a
+      // render, so the view must be reset synchronously before refilling.
+      resetView();
+      // The cache is stale in the same way the store was; drop it so a failed
+      // reload cannot resurrect archived mail on the next open.
+      await clearCache();
+      if (res.kind === 'none') return 'none';
       await fetchPage('');
-      return;
+      return 'resync';
     }
 
     // ONE batch for the whole delta: adds, removes and patches together
@@ -642,9 +688,12 @@ async function refresh() {
     if (state.selected && !store.get(state.selected)) closeReader();
 
     const n = res.added.length;
-    toast(n ? `${n} new message${n > 1 ? 's' : ''}` : 'Up to date');
+    if (n) toast(`${n} new message${n > 1 ? 's' : ''}`);
+    else if (!silent) toast('Up to date');
+    return 'delta';
   } catch (err) {
     reportError(err);
+    return 'error';
   } finally {
     state.loading = false;
     setBusy(false);
@@ -725,11 +774,16 @@ el.search.addEventListener('input', () => {
   });
 });
 
-$('btn-refresh').addEventListener('click', refresh);
+$('btn-refresh').addEventListener('click', () => refresh());
 $('btn-more').addEventListener('click', () => loadPage(state.nextPageToken));
 $('btn-gmail').addEventListener('click', release);
 $('btn-signout').addEventListener('click', async () => {
   await send('SIGN_OUT').catch(() => {});
+  // Signing out must leave nothing of this mailbox behind. Without this the
+  // next person to open the extension would see the previous account's inbox
+  // painted from cache before the sign-in gate appeared.
+  await clearCache();
+  resetView();
   state.signedIn = false;
   showGate('Signed out.');
 });
@@ -760,6 +814,9 @@ async function doSignIn() {
 
 /** Hand the page back to Gmail. The content script does the actual unwind. */
 function release() {
+  // Flush before the frame is destroyed, so triage done in this session is on
+  // disk for the next one.
+  saver.flush();
   parent.postMessage({ type: 'BMM_RELEASE' }, '*');
 }
 
@@ -826,6 +883,17 @@ window.addEventListener('message', (e) => {
 });
 
 /**
+ * A pending cache write must not be lost when the takeover closes.
+ *
+ * `pagehide` covers tab close and navigation; `release()` covers Esc and the
+ * Back-to-Gmail button, which tear the iframe down without either firing
+ * reliably.
+ */
+window.addEventListener('pagehide', () => {
+  saver.flush();
+});
+
+/**
  * Test seam.
  *
  * The render invariant -- one render per settled state, no matter how many
@@ -847,9 +915,34 @@ async function start() {
   } catch {
     /* not fatal; the list is what matters */
   }
+
+  // Cache-first.
+  //
+  // If we have headers on disk, show them immediately and then ask only for
+  // what changed. This is what makes the historyId cursor worth keeping: a
+  // delta is meaningless without local state to apply it to, and before this
+  // every open threw the messages away and full-synced regardless.
+  //
+  // The cache is populated inside a single store.batch(), so hydrating 500
+  // messages is one notification and one render.
+  const cached = await loadCache();
+  if (cached?.messages.length) {
+    store.batch(() => {
+      for (const m of cached.messages) store.upsert(m);
+    });
+    // Paint the cached list before touching the network.
+    renderList();
+    renderSidebar();
+
+    const delta = await refresh({ silent: true });
+    // `refresh` falls back to a full page load when the cursor has expired, so
+    // there is nothing more to do unless it reported no cursor at all.
+    if (delta !== 'none') return;
+  }
+
   await loadPage('');
   // Only after the inbox is on screen do we spend a request on a delta check.
-  if (store.size) refresh();
+  if (store.size) refresh({ silent: true });
 }
 
 async function boot() {

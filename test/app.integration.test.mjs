@@ -60,7 +60,7 @@ const MESSAGES = [
  * Boot app.html in jsdom.
  * Returns { win, doc, calls, settle } — `calls` records every worker message.
  */
-async function boot({ signedIn = true, messages = MESSAGES } = {}) {
+async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {} } = {}) {
   const html = readFileSync(join(ROOT, 'app.html'), 'utf8');
   const dom = new JSDOM(html, {
     url: 'chrome-extension://test/app.html',
@@ -69,7 +69,7 @@ async function boot({ signedIn = true, messages = MESSAGES } = {}) {
   });
   const { window: win } = dom;
   const calls = [];
-  const storage = {};
+  const storage = { ...storageSeed };
 
   win.chrome = {
     runtime: {
@@ -148,7 +148,7 @@ async function boot({ signedIn = true, messages = MESSAGES } = {}) {
   };
   await settle();
 
-  return { win, doc: win.document, calls, settle, restore: () => Object.assign(globalThis, prev) };
+  return { win, doc: win.document, calls, storage, settle, restore: () => Object.assign(globalThis, prev) };
 }
 
 const rows = (doc) => [...doc.querySelectorAll('#list .row')];
@@ -469,6 +469,107 @@ test('INVARIANT: one store notification and one render per sync', async (t) => {
     assert.equal(rows(doc).length, 200, 'all 200 must be rendered');
     assert.equal(notifications, 1, `store must notify once, got ${notifications}`);
     assert.equal(domWrites, 1, `list must be written once, got ${domWrites}`);
+  } finally {
+    restore();
+  }
+});
+
+// ------------------------------------------------------ cache-first boot ---
+
+/** Build the on-disk blob shape that cache.js writes. */
+function cacheBlob(msgs) {
+  return {
+    v: 1,
+    t: Date.now(),
+    m: msgs.map((m) => [
+      m.id, m.threadId, m.from, m.subject, m.snippet, m.date,
+      (m.unread ? 1 : 0) | (m.starred ? 2 : 0),
+      m.category || 'augsd', m.confidence ?? 0.9, m.source || 'sender', m.reason || '',
+    ]),
+  };
+}
+
+test('CACHE: a warm start paints from disk and asks only for a delta', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Before this, every takeover cold-fetched ~100 messages and the historyId
+  // cursor had no local state to be a delta against, which made the whole
+  // History API integration decorative.
+  const cached = bulk(40).map((m) => ({ ...m, category: 'augsd', confidence: 0.9 }));
+  const { doc, calls, restore } = await boot({
+    messages: [],
+    storageSeed: { msgCache: cacheBlob(cached), historyId: '12345' },
+  });
+  try {
+    assert.equal(rows(doc).length, 40, 'cached rows must be on screen');
+    assert.ok(calls.some((c) => c.type === 'SYNC_DELTA'), 'must ask for a delta');
+    assert.ok(
+      !calls.some((c) => c.type === 'SYNC_PAGE'),
+      'must NOT cold-fetch a full page when the cache served'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('CACHE: a cold start with no cache still full-syncs', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, calls, restore } = await boot({ messages: MESSAGES });
+  try {
+    assert.equal(rows(doc).length, 3);
+    assert.ok(calls.some((c) => c.type === 'SYNC_PAGE'), 'no cache means a full page');
+  } finally {
+    restore();
+  }
+});
+
+test('CACHE: a corrupt cache falls back to a full sync, not a blank inbox', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, calls, restore } = await boot({
+    messages: MESSAGES,
+    storageSeed: { msgCache: { v: 99, m: 'garbage' } },
+  });
+  try {
+    assert.equal(rows(doc).length, 3, 'must recover with a network sync');
+    assert.ok(calls.some((c) => c.type === 'SYNC_PAGE'));
+  } finally {
+    restore();
+  }
+});
+
+test('CACHE: the inbox is written to disk after a sync', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { win, storage, restore } = await boot({ messages: MESSAGES });
+  try {
+    // The saver defers to idle; give it room, then force the write the way
+    // closing the takeover does.
+    await new Promise((r) => win.setTimeout(r, 120));
+    const blob = storage.msgCache;
+    assert.ok(blob, 'a cache blob must exist after a sync');
+    assert.equal(blob.v, 1);
+    assert.equal(blob.m.length, 3);
+    assert.equal(blob.m[0][0], 'm1', 'newest first');
+  } finally {
+    restore();
+  }
+});
+
+test('CACHE: signing out erases the cached mailbox', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Otherwise the next person to open the extension sees the previous
+  // account's inbox painted from cache before the gate appears.
+  const { doc, win, storage, settle, restore } = await boot({
+    messages: [],
+    storageSeed: { msgCache: cacheBlob(bulk(10)) },
+  });
+  try {
+    assert.equal(rows(doc).length, 10);
+    doc.getElementById('btn-signout').click();
+    await settle();
+    await new Promise((r) => win.setTimeout(r, 50));
+
+    assert.equal(storage.msgCache, undefined, 'cache must be gone');
+    assert.equal(rows(doc).length, 0, 'and the list cleared');
+    assert.equal(doc.getElementById('gate').hidden, false);
   } finally {
     restore();
   }
