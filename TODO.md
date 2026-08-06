@@ -18,7 +18,7 @@ Legend — **S**evere · **M**oderate · **L**ow
 
 ### 1 · Run it in Chrome against a real inbox — **S**
 
-*Nothing below is trustworthy until this happens.* **749 tests pass and the
+*Nothing below is trustworthy until this happens.* **784 tests pass and the
 extension has never run in a browser.** Unverified: the OAuth consent screen,
 the takeover animation on live Gmail, how Gmail reacts to having its roots
 hidden, and whether `chrome.identity.getRedirectURL()` matches what you
@@ -70,7 +70,10 @@ stays empty and the user is asked.
 
 **Still worth doing:** open your own six courses in Chrome and compare against
 the printed timetable. Aggregate numbers cannot catch a value that parsed
-cleanly into the *wrong* field.
+cleanly into the wrong field — which is not hypothetical. Pass 2 found exactly
+that: eleven sections had their **compre date sitting in the midsem field**,
+including CS F111. Every count was correct; the meaning was not. Fixed via the
+legend, but it is the clearest argument for one careful human read-through.
 
 ---
 

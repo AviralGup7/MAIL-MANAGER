@@ -75,9 +75,22 @@ Every entry is a course section you are enrolled in, and carries:
 
 ```
 courseNo · comCode · title · section · kind (lecture|tutorial|practical)
-instructors · room · meetings · daysHours · semester
+instructors · inCharge · credits · room · meetings · daysHours
+midsem · compre · semester
 provenance · history · locked · unresolved
 ```
+
+Three of those come straight from the legend rather than from a guess:
+
+- **`credits`** — the five columns named: `{lecture, practical, tutorial,
+  selfStudy, units}`. A dash is the document *stating an absence* and becomes
+  `0`; anything unreadable becomes `null`. Collapsing both to `0` would invent
+  a fact, so they are kept apart.
+- **`inCharge`** — legend 6: *"Name in BLOCK LETTERS indicates
+  INSTRUCTOR-IN-CHARGE"*. This is who you email about a clash or a makeup.
+  673 of 1681 sections are marked; a section whose names are all mixed case
+  claims nobody.
+- **`midsem` / `compre`** — see *Exams*.
 
 `provenance` is per field. Each of `instructors`, `room`, `meetings` and
 `daysHours` records **where that value came from**, its reference, and when.
@@ -85,6 +98,32 @@ That is what makes every value explainable rather than merely present.
 
 `history` is append-only. Nothing is overwritten silently — the losing value is
 recorded, not discarded.
+
+---
+
+## Exams
+
+605 sections carry exam dates, and they are modelled as typed events
+(`examEvents`), not stored strings. Session times are transcribed from the
+legend:
+
+| Sessions | Times | Meaning |
+|---|---|---|
+| `FN1` `FN2` `AN1` `AN2` | 09:00–10:30 · 11:00–12:30 · 14:00–15:30 · 16:00–17:30 | mid-semester, 90 min |
+| `FN` `AN` | 09:00–12:00 · 14:00–17:00 | comprehensive, 3 hours |
+
+**That table also fixed a real bug.** Most rows print two dates, midsem then
+compre, and the parser took the first as the midsem unconditionally. Eleven
+sections list only *one* date and it is the compre — so **CS F111, a
+first-year core, displayed its final exam as a mid-semester test**. A numbered
+session is a midsem and a bare one is a compre wherever it appears in the row,
+so the session code decides and position is only a fallback.
+
+A session the legend does not describe keeps its date and shows *"time not
+stated"*. Two different courses examined in the same date and session raise a
+**blocking `exam-clash`** — the kind of thing you must report to AUGSD, and
+previously invisible until the day. A course's own sections never clash with
+each other.
 
 ---
 
@@ -116,6 +155,37 @@ The precedence rule is never bent to make a feature feel smoother.
 
 The email is still recorded as what prompted the edit. Accepting keeps a link
 back to the message (see *Traceability*).
+
+---
+
+## Change notices
+
+The notice is the **second-highest authority** — above the official timetable,
+below only you. The 119 rows parse into five kinds:
+
+| Kind | Rows | Applied automatically? |
+|---|---|---|
+| instructor | 63 | **No** — reported only |
+| new-section | 27 | No — informational |
+| room | 17 | Yes, when both columns are readable |
+| time | 9 | Yes |
+| compre | 3 | No — reported only |
+
+The document prints From and To as two columns
+(`151  L1  6156  6160 BIO G542`), so reading the second is not inference, it
+is the column the source labelled *To*. When a row wraps and only one value
+survives it is genuinely ambiguous — old or new? — so it stays report-only.
+
+Instructor changes are **never** applied automatically. Names wrap across
+lines in this document, and a half-read name written into a timetable is worse
+than a prompt.
+
+Two parsing traps worth knowing, both found while wiring this up:
+
+- `M W 2 T 9` is two groups. An earlier pattern stopped at the first hour and
+  silently dropped the Tuesday class.
+- `TThF 4 01/12` — the `01` of the exam date looks exactly like an hour, and
+  parsed as three phantom classes at slot 1. Dates are stripped first.
 
 ---
 
@@ -159,6 +229,23 @@ entry.
 
 ---
 
+## Switching, finishing, resetting
+
+- **Switch section** — the new section is a genuinely different class, so a
+  fresh entry is built from the source rather than fields being mutated;
+  otherwise provenance would claim the document said things about L2 that it
+  said about L1. The lock flag and the fact of the switch carry over. Offered
+  only where the source has another section of that kind.
+- **Mark complete** — a milestone, **not** a freeze. Official notices still
+  land afterwards, because AUGSD does not care that you pressed a button, and
+  freezing would turn a finalised timetable into a stale one. Refuses while
+  blocking conflicts remain.
+- **Reset** — the only sanctioned route back to a rebuild, so it confirms
+  first. Deliberately *not* `emptyState()`: `appliedMail` clears too, or the
+  rebuilt timetable is permanently deaf to every message it already handled.
+
+---
+
 ## Protecting your changes
 
 - **Lock** an entry and automatic updates stop touching it. They are still
@@ -174,8 +261,8 @@ entry.
 ## Conflicts
 
 Detected and surfaced, never silently resolved: `overlap` (two classes in one
-slot), `duplicate`, `missing-link`, `unresolved` (a section the document could
-not describe).
+slot), `exam-clash` (two courses examined in one session), `duplicate`,
+`missing-link`, `unresolved` (a section the document could not describe).
 
 Recomputed from scratch on every mutation. The list is at most a few dozen
 entries, and a conflict set that drifts out of sync with reality is worse than
@@ -212,7 +299,7 @@ inbox still works.
 
 ---
 
-## Two defects this feature found in itself
+## Defects this feature found in itself
 
 Recorded because both were invisible until a test was deliberately sabotaged.
 
@@ -228,19 +315,42 @@ Entries built with no stated source carry `ref: ''` on *every* field — without
 the check, a blank id links a message to the user's entire timetable. That case
 now has its own test with an explicit precondition.
 
+**Eleven sections showed their compre as a midsem** — see *Exams*. Eight audits
+and a full test suite had not noticed, because every test used fixtures and the
+fixtures copied the bug.
+
+**Change notices could report but never change.** `matchNotice` emitted
+`value: null, actionable: false`, so the second-highest authority in the system
+was inert for 31 real changes.
+
+**Three more worthless tests, each caught by sabotage rather than by review:**
+
+- *"a mixed-case section claims no in-charge"* used the hand-written fixture,
+  which never runs the parser — so a parser ignoring capitalisation entirely
+  still passed.
+- *"marking complete refuses while a clash remains"* assumed the shared fixture
+  overlapped. It does not, so the refusal path was never exercised.
+- *"one course's own sections do not clash"* used two different sessions, which
+  can never collide, instead of the real case: one course held as both a
+  lecture and a lab, sharing one exam.
+
+The pattern in all three: **a test that passes for a reason other than the one
+it claims.** Sabotage is the only thing that has reliably exposed them.
+
 ---
 
 ## Where the code lives
 
 ```
-tools/parse-timetable.mjs   offline parser: PDF text -> data.json
+tools/parse-timetable.mjs   offline parser: PDF text -> data.json (npm run timetable)
 src/timetable/data.json     688 courses, 119 change rows (generated)
 src/timetable/sources/      the two official documents, verbatim
-src/app/timetable.js        the model: entries, precedence, conflicts, trace
+src/app/timetable.js        the model: entries, precedence, conflicts, trace,
+                            exams, credits, day/hour grammar (shared with the tool)
 src/app/timetable-mail.js   deterministic mail patterns
 src/app/timetable-store.js  persistence and course search
 src/app/timetable-ui.js     the panel: wizard, manager, proposals
-test/timetable.test.mjs     54 tests
+test/timetable.test.mjs     81 tests
 ```
 
 Layering: `timetable.js` is **pure domain** — no DOM, no storage, no `chrome`.

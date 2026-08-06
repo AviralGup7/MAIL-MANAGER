@@ -3732,3 +3732,124 @@ test('TIMETABLE: reset asks first, then clears everything', async (t) => {
     restore();
   }
 });
+
+test('TIMETABLE: the Pass 2 verification checklist, end to end', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * ONE TEST THAT WALKS THE WHOLE SPEC.
+   *
+   * The individual behaviours each have focused tests. This exists because a
+   * checklist satisfied item-by-item can still fail as a sequence -- state
+   * carried between steps is exactly where this kind of system breaks. It
+   * runs the ten things Pass 2 says to verify, in order, against the REAL
+   * parsed catalogue rather than a fixture.
+   */
+  const { doc, win, settle, restore, storage } = await boot({ timetableData: 'real' });
+  const realConfirm = globalThis.confirm;
+  try {
+    const M = await import('../src/app/timetable-ui.js');
+
+    // 1. Build from official data, choosing course -> section.
+    await openTT(doc, win, settle);
+    const hits = await ttSearch(doc, win, settle, 'CS F111');
+    assert.ok(hits.length, '1. the official catalogue must be searchable');
+    hits[0].querySelector('button').click();
+    await settle(4);
+
+    // 2. Teacher/section choice is offered deterministically, not guessed.
+    const sections = [...doc.querySelectorAll('.tt-chooser .tt-section')];
+    assert.ok(sections.length > 1, '2. the real course has several sections');
+    sections.find((b) => b.textContent.startsWith('L1')).click();
+    await settle(10);
+
+    const held = () => M.getTimetableState().entries;
+    assert.ok(held().some((e) => e.section === 'L1'), 'the lecture is held');
+
+    /*
+     * 3. Day/hour notation converted. CS F111 L1 is "M W 3 Th 9".
+     *
+     * NOTE ON WHAT THIS DOES AND DOES NOT PROVE. It reads the SHIPPED data,
+     * so it verifies the conversion survived parse -> disk -> store -> UI. It
+     * does NOT exercise the grammar: sabotaging the day-group rule in
+     * parseDaysHours leaves this green, because data.json was generated
+     * before the sabotage. The grammar itself is covered by the PARSE suite,
+     * which does fail on that mutation. Recorded so nobody mistakes this
+     * assertion for parser coverage.
+     */
+    const l1 = held().find((e) => e.section === 'L1');
+    assert.deepEqual(
+      l1.meetings.map((m) => `${m.day}${m.hour}`), ['M3', 'W3', 'Th9'],
+      '3. Th 9 must not become Th 3'
+    );
+    assert.equal(l1.meetings[0].startMin, 600, 'slot 3 is 10:00 per the legend');
+
+    // 4. Credit structure and in-charge are modelled from the legend.
+    assert.equal(l1.credits.lecture, 3, '4. credits are named');
+    assert.equal(l1.inCharge, 'VINTI AGARWAL', '4. the in-charge is identified');
+
+    // Snapshot what was persisted, for the restart check at the end.
+    await settle(6);
+    const savedBlob = storage.timetable;
+    assert.ok(savedBlob, 'the build must persist immediately');
+
+    // 5. Exams are typed events with converted times.
+    const exams = doc.querySelectorAll('#tt-panel .tt-exam');
+    assert.ok(exams.length, '5. the compre must be listed');
+
+    // 6. A manual edit is respected and recorded.
+    const edited = M.getTimetableState();
+    const r = (await import('../src/app/timetable.js'))
+      .manualEdit(edited, l1.id, 'room', '9999');
+    assert.equal(r.applied, true, '6. the user may always edit');
+    assert.equal(r.entry.provenance.room.source, 'manual');
+
+    // 7. A lower source cannot overwrite that edit.
+    const mailTry = (await import('../src/app/timetable.js'))
+      .applyFieldChange(r.entry, 'room', '1111', { source: 'mail', ref: 'm1' });
+    assert.equal(mailTry.applied, false, '7. mail must not outrank the user');
+
+    // 8. Every field can name its source.
+    const lines = (await import('../src/app/timetable.js')).explainEntry(l1);
+    assert.ok(lines.length, '8. every entry explains itself');
+    assert.ok(lines.every((x) => x.sourceLabel), '8. with a readable source');
+
+    // 9. Reset is the only route back, and it is explicit.
+    globalThis.confirm = () => true;
+    // The panel is already open, so re-clicking the toolbar button is a no-op.
+    // Re-render it instead, which is what any state change would have done.
+    M.closeTimetable();
+    await settle(4);
+    M.openTimetable();
+    await settle(6);
+    const wipe = [...doc.querySelectorAll('#tt-panel button')]
+      .find((b) => b.textContent === 'Reset');
+    assert.ok(wipe, '9. reset must be reachable');
+    wipe.click();
+    await settle(8);
+    assert.equal(M.getTimetableState().entries.length, 0, '9. and must clear');
+
+    /*
+     * 10. Persistence survives a restart.
+     *
+     * LAST, deliberately. Booting a second app re-runs the shared module
+     * state teardown, so every assertion after it would be reading an empty
+     * timetable -- which is how this step originally made step 10 fail with a
+     * misleading "reset must be reachable".
+     */
+    assert.ok(savedBlob, '10. the timetable must have been written to disk');
+    const second = await boot({ timetableData: 'real', storageTimetable: savedBlob });
+    try {
+      await second.settle(10);
+      const M2 = await import('../src/app/timetable-ui.js');
+      assert.ok(
+        M2.getTimetableState().entries.some((e) => e.section === 'L1'),
+        '10. the timetable must survive a restart'
+      );
+    } finally {
+      second.restore();
+    }
+  } finally {
+    globalThis.confirm = realConfirm;
+    restore();
+  }
+});
