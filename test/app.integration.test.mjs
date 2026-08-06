@@ -60,7 +60,7 @@ const MESSAGES = [
  * Boot app.html in jsdom.
  * Returns { win, doc, calls, settle } — `calls` records every worker message.
  */
-async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bodyOverride = {} } = {}) {
+async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bodyOverride = {}, syncLatency = 0, perLabel = false } = {}) {
   const html = readFileSync(join(ROOT, 'app.html'), 'utf8');
   const dom = new JSDOM(html, {
     url: 'chrome-extension://test/app.html',
@@ -80,7 +80,10 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
         calls.push(msg);
         // Async, like the real thing — synchronous replies would hide
         // ordering bugs that only appear across a await boundary.
-        setTimeout(() => cb(respond(msg)), 0);
+        // `syncLatency` makes a slow mailbox fetch reproducible, which is what
+        // exposes ordering bugs between two concurrent loads.
+        const delay = msg.type === 'SYNC_PAGE' ? syncLatency : 0;
+        setTimeout(() => cb(respond(msg)), delay);
       },
     },
     storage: {
@@ -104,8 +107,21 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
     switch (msg.type) {
       case 'AUTH_STATUS': return { ok: true, data: { signedIn } };
       case 'PROFILE': return { ok: true, data: { emailAddress: 'f20240294@pilani.bits-pilani.ac.in' } };
-      case 'SYNC_PAGE':
-        return { ok: true, data: { messages: msg.opts?.pageToken ? [] : messages, nextPageToken: '' } };
+      case 'SYNC_PAGE': {
+        if (msg.opts?.pageToken) return { ok: true, data: { messages: [], nextPageToken: '' } };
+        if (!perLabel) return { ok: true, data: { messages, nextPageToken: '' } };
+        // Distinct messages per mailbox, so a cross-mailbox leak is visible.
+        const label = (msg.opts?.labelIds || [])[0] || msg.opts?.labelName || 'INBOX';
+        const tag = { INBOX: 'inbox', SENT: 'sent', TRASH: 'trash', SPAM: 'spam',
+          DRAFT: 'draft', STARRED: 'star' }[label] || 'other';
+        const out = Array.from({ length: 3 }, (_, i) => ({
+          id: `${tag}${i}`, threadId: `t${tag}${i}`,
+          from: `S${i} <s${i}@pilani.bits-pilani.ac.in>`,
+          subject: `${tag} message ${i}`, snippet: 's',
+          date: Date.now() - i * 60000, unread: false, starred: false, labels: ['INBOX'],
+        }));
+        return { ok: true, data: { messages: out, nextPageToken: '' } };
+      }
       case 'SYNC_DELTA':
         return { ok: true, data: { kind: 'delta', added: [], removed: [], patched: [] } };
       case 'GET_BODY':
@@ -1680,4 +1696,117 @@ test('PERF: a structural change still re-renders the list', async (t) => {
   } finally {
     restore();
   }
+});
+
+/* ========================================================================== *
+ * CONCURRENCY — per-mailbox load state
+ *
+ * `state.loading` was a single global boolean guarding work that is
+ * per-mailbox. Switching to Sent and then immediately to Trash while Sent was
+ * still in flight made Trash's load return early, and because selectMailbox
+ * only loads `if (!mbState(id).loaded)`, NOTHING ever retried it — the mailbox
+ * stayed permanently empty for the rest of the session, with no error and no
+ * spinner.
+ * ========================================================================== */
+
+const clickMailbox = (doc, id) => doc.querySelector(`.cat[data-mailbox="${id}"]`).click();
+const subjects = (doc) => [...doc.querySelectorAll('#list .r-subj')].map((e) => e.textContent);
+const currentMailbox = (doc) =>
+  doc.querySelector('.cat[data-mailbox][aria-current="true"]')?.dataset.mailbox;
+
+test('RACE: switching away mid-load still loads the second mailbox', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, settle, restore } = await boot({ syncLatency: 60, perLabel: true });
+  try {
+    clickMailbox(doc, 'sent');
+    await new Promise((r) => setTimeout(r, 10)); // before Sent responds
+    clickMailbox(doc, 'trash');
+    await new Promise((r) => setTimeout(r, 400));
+    await settle(12);
+
+    assert.equal(currentMailbox(doc), 'trash');
+    const rows = subjects(doc);
+    assert.ok(rows.length > 0, 'Trash never loaded — the global flag swallowed its fetch');
+    assert.ok(
+      rows.every((s) => s.startsWith('trash')),
+      `cross-mailbox leak: ${JSON.stringify(rows.slice(0, 3))}`
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('RACE: a mailbox skipped once can still be loaded later', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // The permanent half of the bug: `loaded` was never set, but nothing retried.
+  const { doc, settle, restore } = await boot({ syncLatency: 60, perLabel: true });
+  try {
+    clickMailbox(doc, 'sent');
+    await new Promise((r) => setTimeout(r, 10));
+    clickMailbox(doc, 'trash');
+    await new Promise((r) => setTimeout(r, 400));
+    await settle(10);
+
+    clickMailbox(doc, 'inbox');
+    await settle(6);
+    clickMailbox(doc, 'trash');
+    await new Promise((r) => setTimeout(r, 400));
+    await settle(10);
+
+    assert.ok(subjects(doc).length > 0, 'Trash is permanently empty after being skipped once');
+  } finally {
+    restore();
+  }
+});
+
+test('RACE: rapid switching across every mailbox ends consistent', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, settle, restore } = await boot({ syncLatency: 40, perLabel: true });
+  try {
+    for (const m of ['sent', 'spam', 'trash', 'drafts', 'starred', 'inbox']) {
+      clickMailbox(doc, m);
+      await new Promise((r) => setTimeout(r, 12));
+    }
+    await new Promise((r) => setTimeout(r, 600));
+    await settle(14);
+
+    assert.equal(currentMailbox(doc), 'inbox');
+    const rows = subjects(doc);
+    assert.ok(rows.length > 0, 'the final mailbox must be populated');
+    assert.ok(
+      rows.every((s) => s.startsWith('inbox')),
+      `stale rows from another mailbox: ${JSON.stringify(rows.slice(0, 3))}`
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('RACE: the busy indicator clears only when nothing is loading', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Derived from every mailbox's flag, so a fast mailbox finishing cannot
+  // switch off the spinner belonging to a slow one still in flight.
+  const { doc, settle, restore } = await boot({ syncLatency: 60, perLabel: true });
+  try {
+    clickMailbox(doc, 'sent');
+    await new Promise((r) => setTimeout(r, 10));
+    clickMailbox(doc, 'trash');
+    await new Promise((r) => setTimeout(r, 500));
+    await settle(12);
+    assert.equal(
+      doc.getElementById('shell').getAttribute('aria-busy'), 'false',
+      'the spinner must clear once every load has settled'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('RACE: loading state is derived, never assigned from two places', async () => {
+  // The root cause was one boolean standing for several independent
+  // operations. Assert there is exactly one writer.
+  const src = readFileSync(join(ROOT, 'src/app/app.js'), 'utf8');
+  const writes = [...src.matchAll(/state\.loading\s*=/g)].length;
+  assert.equal(writes, 1, `state.loading is assigned in ${writes} places; it must be derived once`);
+  assert.match(src, /state\.loading = \[\.\.\.mailboxState\.values\(\)\]\.some/);
 });

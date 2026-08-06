@@ -101,7 +101,7 @@ const LOW_CONFIDENCE = 0.7;
  */
 const stores = new Map([['inbox', new Store()]]);
 /** Per-mailbox pagination + load state, so switching back does not refetch. */
-const mailboxState = new Map([['inbox', { nextPageToken: '', loaded: false }]]);
+const mailboxState = new Map([['inbox', { nextPageToken: '', loaded: false, loading: false }]]);
 
 let store = stores.get('inbox');
 
@@ -111,7 +111,9 @@ function storeFor(id) {
 }
 
 function mbState(id) {
-  if (!mailboxState.has(id)) mailboxState.set(id, { nextPageToken: '', loaded: false });
+  if (!mailboxState.has(id)) {
+    mailboxState.set(id, { nextPageToken: '', loaded: false, loading: false });
+  }
   return mailboxState.get(id);
 }
 
@@ -1494,17 +1496,32 @@ async function fetchPage(pageToken) {
 }
 
 async function loadPage(pageToken = '') {
-  if (state.loading) return;
-  state.loading = true;
-  setBusy(true);
+  // Inbox-only path. Uses the same per-mailbox flag as loadMailboxPage so the
+  // two cannot deadlock each other; see the note there.
+  const ms = mbState('inbox');
+  if (ms.loading) return;
+  ms.loading = true;
+  syncBusy();
   try {
     await fetchPage(pageToken);
   } catch (err) {
     reportError(err);
   } finally {
-    state.loading = false;
-    setBusy(false);
+    ms.loading = false;
+    syncBusy();
   }
+}
+
+/**
+ * The busy indicator is a property of the WINDOW, not of any one mailbox.
+ *
+ * Derived from every mailbox's flag rather than assigned, so a fast mailbox
+ * finishing cannot switch off the spinner belonging to a slow one that is
+ * still in flight.
+ */
+function syncBusy() {
+  state.loading = [...mailboxState.values()].some((v) => v.loading);
+  setBusy(state.loading);
 }
 
 /** Delta refresh. Cheap; safe to call on demand. Never on a timer. */
@@ -1533,9 +1550,14 @@ async function refresh({ silent = false } = {}) {
     if (!silent) toast('Refreshed');
     return 'delta';
   }
-  if (state.loading) return;
-  state.loading = true;
-  setBusy(true);
+  // Delta refresh is an INBOX operation, so it shares the inbox's flag. Using
+  // the global one meant a slow Sent page load could block a refresh, and a
+  // refresh could block a mailbox load -- two unrelated operations
+  // deadlocking each other through one boolean.
+  const ims = mbState('inbox');
+  if (ims.loading) return;
+  ims.loading = true;
+  syncBusy();
   try {
     const res = await send('SYNC_DELTA');
 
@@ -1579,8 +1601,8 @@ async function refresh({ silent = false } = {}) {
     reportError(err);
     return 'error';
   } finally {
-    state.loading = false;
-    setBusy(false);
+    ims.loading = false;
+    syncBusy();
   }
 }
 
@@ -1777,9 +1799,27 @@ async function selectMailbox(id) {
 /** Fetch one page of a non-inbox mailbox. */
 async function loadMailboxPage(id, pageToken = '') {
   const mb = getMailbox(id);
-  if (state.loading) return;
-  state.loading = true;
-  setBusy(true);
+
+  /*
+   * LOADING IS PER-MAILBOX, NOT GLOBAL.
+   *
+   * THIS WAS A BUG, and a permanent one. The guard used to be the global
+   * `state.loading`, so switching to Sent and then immediately to Trash while
+   * Sent was still in flight made Trash's load return early. Nothing retried
+   * it, and because `selectMailbox` only loads `if (!mbState(id).loaded)`,
+   * re-clicking Trash later did nothing either: the mailbox stayed
+   * permanently empty for the rest of the session, with no error and no
+   * spinner. Reproduced with a 120ms response delay.
+   *
+   * The invariant that failed: "only one request may be in flight" was
+   * enforced with a flag whose scope did not match the thing being loaded.
+   * The flag is now per-mailbox, so two different mailboxes can load
+   * concurrently while the same mailbox still cannot be double-fetched.
+   */
+  const ms = mbState(id);
+  if (ms.loading) return;
+  ms.loading = true;
+  syncBusy();
   try {
     const opts = { pageToken, max: PAGE, anchorHistory: id === 'inbox' };
     // Our snoozed label is addressed by name; Gmail's own labels by id.
@@ -1799,8 +1839,8 @@ async function loadMailboxPage(id, pageToken = '') {
   } catch (err) {
     reportError(err);
   } finally {
-    state.loading = false;
-    setBusy(false);
+    ms.loading = false;
+    syncBusy();
   }
 }
 
