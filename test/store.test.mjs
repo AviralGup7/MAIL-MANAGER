@@ -367,3 +367,142 @@ test('re-upserting with an unchanged date does not touch the order array', () =>
   assert.deepEqual(s.idsFor('all'), before);
   assert.equal(s.get('m2').unread, true, 'the field still updated');
 });
+
+/* ========================================================================== *
+ * ORDERING INVARIANTS UNDER STRESS
+ *
+ * `order` is kept sorted and `_insertOrdered` BINARY SEARCHES it. That makes
+ * sortedness a load-bearing invariant, not a nicety: one out-of-place entry
+ * sends every subsequent insert to the wrong slot, and the list silently
+ * mis-orders itself for the rest of the session with no way to recover.
+ *
+ * `upsert` was fixed for a changed date. `patch` was not — the same
+ * corruption through a second door, found by stress testing. No caller
+ * patched `date` at the time, but "no caller does X" is a coincidence, not an
+ * invariant.
+ * ========================================================================== */
+
+const stressMsg = (i, extra = {}) => ({
+  id: `m${i}`, threadId: `t${i}`, from: `s${i}@x.com`, subject: `Subject ${i}`,
+  snippet: 'x', date: 1700000000000 + i * 1000,
+  unread: false, starred: false, category: 'other', confidence: 1, ...extra,
+});
+
+/** The invariant every test below shares. */
+function assertSorted(store, why) {
+  const ids = store.idsFor('all');
+  assert.equal(new Set(ids).size, ids.length, `${why}: duplicate ids in order`);
+  for (let i = 1; i < ids.length; i++) {
+    assert.ok(
+      store.get(ids[i - 1]).date >= store.get(ids[i]).date,
+      `${why}: order is not newest-first at index ${i}`
+    );
+  }
+}
+
+test('patch() repositions a message whose date moved', () => {
+  const s = new Store();
+  for (let i = 0; i < 50; i++) s.upsert(stressMsg(i));
+
+  s.patch('m10', { date: 1700000000000 + 99999 * 1000 }); // now the newest
+  s.patch('m20', { date: 1 });                            // now the oldest
+
+  const ids = s.idsFor('all');
+  assert.equal(ids[0], 'm10', 'the newest message must sort first');
+  assert.equal(ids[ids.length - 1], 'm20', 'the oldest must sort last');
+  assert.equal(s.size, 50, 'repositioning must not add or drop messages');
+  assertSorted(s, 'after patching dates');
+});
+
+test('a date patch does not corrupt LATER inserts', () => {
+  // The real damage: an unsorted array makes the binary search unsound, so
+  // the next message inserted lands in the wrong slot.
+  const s = new Store();
+  for (let i = 0; i < 20; i++) s.upsert(stressMsg(i));
+  s.patch('m10', { date: 1700000000000 + 99999 * 1000 });
+  s.upsert(stressMsg(500, { date: 1700000000000 + 50000 * 1000 }));
+  assertSorted(s, 'after inserting into a previously patched store');
+});
+
+test('a patch that does not touch the date leaves order untouched', () => {
+  const s = new Store();
+  for (let i = 0; i < 20; i++) s.upsert(stressMsg(i));
+  const before = s.idsFor('all').join(',');
+  s.patch('m5', { unread: true, starred: true });
+  assert.equal(s.get('m5').unread, true);
+  assert.equal(s.idsFor('all').join(','), before, 'a field patch must not reorder');
+});
+
+test('patching a date to its current value is a no-op', () => {
+  const s = new Store();
+  for (let i = 0; i < 10; i++) s.upsert(stressMsg(i));
+  const before = s.idsFor('all').join(',');
+  s.patch('m5', { date: s.get('m5').date });
+  assert.equal(s.idsFor('all').join(','), before);
+});
+
+test('a date patch keeps the search index consistent', () => {
+  const s = new Store();
+  s.upsert(stressMsg(1, { subject: 'Registration deadline' }));
+  s.patch('m1', { date: 1 });
+  assert.equal(s.search('registration', 'all').length, 1, 'reindexing lost the message');
+});
+
+test('ordering survives 2500 upserts past the cap', () => {
+  const s = new Store();
+  for (let i = 0; i < 2500; i++) s.upsert(stressMsg(i));
+  assert.ok(s.size <= 2000, `cap not enforced: ${s.size}`);
+  assert.equal(s.idsFor('all').length, s.size, 'order and byId disagree');
+  assertSorted(s, 'after exceeding the cap');
+});
+
+test('ordering survives heavy remove/re-add churn', () => {
+  const s = new Store();
+  for (let i = 0; i < 200; i++) s.upsert(stressMsg(i));
+  for (let i = 0; i < 200; i += 2) s.remove(`m${i}`);
+  for (let i = 0; i < 200; i += 2) s.upsert(stressMsg(i));
+  assert.equal(s.size, 200, 'churn lost or duplicated messages');
+  assertSorted(s, 'after churn');
+});
+
+test('messages sharing an identical date are all retained', () => {
+  // A tie-break bug here silently drops mail that arrived in the same second.
+  const s = new Store();
+  for (let i = 0; i < 100; i++) s.upsert(stressMsg(i, { date: 1700000000000 }));
+  assert.equal(s.size, 100);
+  assert.equal(new Set(s.idsFor('all')).size, 100, 'identical dates produced duplicates');
+});
+
+test('remove and patch of an unknown id are safe no-ops', () => {
+  const s = new Store();
+  s.upsert(stressMsg(1));
+  assert.doesNotThrow(() => s.remove('nope'));
+  assert.doesNotThrow(() => s.patch('nope', { unread: true }));
+  assert.doesNotThrow(() => s.patch('nope', { date: 123 }));
+  assert.equal(s.size, 1);
+});
+
+test('a randomised sequence of operations never breaks the invariant', () => {
+  /*
+   * Property-based: the specific sequences above were chosen by a human and
+   * therefore reflect what a human thought to try. This one does not.
+   */
+  const s = new Store();
+  let seed = 12345;
+  const rnd = (n) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % n; };
+
+  for (let step = 0; step < 3000; step++) {
+    const id = rnd(300);
+    switch (rnd(4)) {
+      case 0: s.upsert(stressMsg(id)); break;
+      case 1: s.remove(`m${id}`); break;
+      case 2: s.patch(`m${id}`, { unread: rnd(2) === 0 }); break;
+      case 3: s.patch(`m${id}`, { date: 1700000000000 + rnd(100000) * 1000 }); break;
+    }
+  }
+  assertSorted(s, 'after 3000 random operations');
+  assert.equal(s.idsFor('all').length, s.size, 'order and byId diverged');
+  for (const id of s.idsFor('all')) {
+    assert.ok(s.get(id), `order references ${id}, which byId does not have`);
+  }
+});

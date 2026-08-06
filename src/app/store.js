@@ -233,6 +233,27 @@ export class Store {
   patch(id, fields) {
     const msg = this.byId.get(id);
     if (!msg) return;
+
+    /*
+     * A CHANGED DATE MUST REPOSITION, exactly as in `upsert`.
+     *
+     * `upsert` was fixed for this and `patch` was not, so the same corruption
+     * was reachable through a second door: `order` is kept sorted and
+     * `_insertOrdered` binary-searches it, so one out-of-place entry makes
+     * every SUBSEQUENT insert land in the wrong slot. The list silently
+     * mis-orders and never repairs itself.
+     *
+     * No caller patches `date` today, so this was latent rather than live —
+     * but "no caller does X" is not an invariant, it is a coincidence, and
+     * the identical assumption has already cost this project once. Delegating
+     * to `upsert` means there is ONE implementation of "a date moved" instead
+     * of two that must agree.
+     */
+    if ('date' in fields && fields.date !== msg.date) {
+      this.upsert({ ...msg, ...fields });
+      return;
+    }
+
     // Only category and text changes affect the indexes.
     const reindex =
       ('category' in fields && fields.category !== msg.category) ||
