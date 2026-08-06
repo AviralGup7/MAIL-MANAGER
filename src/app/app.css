@@ -1822,6 +1822,44 @@ html[data-scheme='dark'] #thememenu {
     var(--shadow-lg);
 }
 
+/* ------------------------------------------------- contextual toolbar -- */
+
+#ctx-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  animation: ctx-in var(--dur-fast) var(--ease-spring) both;
+}
+@keyframes ctx-in {
+  from { opacity: 0; transform: translate3d(6px, 0, 0); }
+  to   { opacity: 1; transform: none; }
+}
+
+/*
+ * A separator, not a border on the buttons.
+ *
+ * Grouping by whitespace alone fails at this density -- five icon buttons in a
+ * row read as one undifferentiated strip. A hairline says "these belong
+ * together and those do not" without adding a box around anything.
+ */
+.tb-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--line);
+  margin: 0 var(--s-1);
+  flex: none;
+}
+
+#ctx-trash:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: var(--bg-raised);
+}
+#ctx-star[aria-pressed='true'] {
+  color: #eab308;
+  border-color: currentColor;
+}
+
 /*
  * `hidden` must actually hide.
  *

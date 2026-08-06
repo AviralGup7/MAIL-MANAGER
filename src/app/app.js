@@ -573,6 +573,7 @@ async function openMessage(id) {
   // not enough on its own -- without this the listbox has no notion of a
   // focused child, so selection was written to the DOM and never announced.
   el.list.setAttribute('aria-activedescendant', rowDomId(id));
+  syncContextActions(m);
 
   el.readerEmpty.hidden = true;
   el.reader.hidden = false;
@@ -717,6 +718,7 @@ function closeReader() {
   lastBody = null;
   if (prev) patchRow(prev);
   el.list.removeAttribute('aria-activedescendant');
+  syncContextActions(null);
   el.reader.hidden = true;
   el.readerEmpty.hidden = false;
   el.rBody.srcdoc = '';
@@ -735,6 +737,7 @@ async function act(action, id) {
     case 'star': {
       const on = !m.starred;
       store.patch(id, { starred: on });
+      if (id === state.selected) syncContextActions(store.get(id));
       send('STAR', { id, on }).catch(() => {
         store.patch(id, { starred: !on });
         toast('Could not update star');
@@ -1270,6 +1273,23 @@ window.addEventListener('message', (e) => {
   if (e.data?.type === 'BMM_SHOWN') el.list.focus({ preventScroll: true });
 });
 
+/**
+ * Reveal the contextual actions, and keep the star reflecting reality.
+ *
+ * The star has to show the CURRENT state of the open message, or the user
+ * cannot tell whether pressing it will star or unstar.
+ */
+function syncContextActions(m) {
+  const wrap = $('ctx-actions');
+  if (!wrap) return;
+  wrap.hidden = !m;
+  if (!m) return;
+  const star = $('ctx-star');
+  setIcon(star, 'star', { size: 15, filled: !!m.starred });
+  star.setAttribute('aria-label', m.starred ? 'Unstar' : 'Star');
+  star.setAttribute('aria-pressed', String(!!m.starred));
+}
+
 /** Prepend an icon to a labelled button, preserving its text. */
 function decorate(id, name) {
   const el = $(id);
@@ -1390,6 +1410,18 @@ async function boot() {
   decorate('btn-gmail', 'back');
   decorate('compose-min', 'minimise');
   decorate('compose-close', 'close');
+
+  // Contextual actions. Icon-only is acceptable HERE, unlike the toolbar
+  // labels, because each carries a title, an aria-label and a keyboard hint,
+  // and they mirror actions the user already met in the reader.
+  setIcon($('ctx-archive'), 'archive', { size: 15 });
+  setIcon($('ctx-star'), 'star', { size: 15 });
+  setIcon($('ctx-trash'), 'trash', { size: 15 });
+  $('ctx-actions').addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b || !state.selected) return;
+    act({ 'ctx-archive': 'archive', 'ctx-star': 'star', 'ctx-trash': 'trash' }[b.id], state.selected);
+  });
 
   wirePalette(ctx);
   wireCompose(ctx);

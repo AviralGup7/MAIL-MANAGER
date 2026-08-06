@@ -819,3 +819,70 @@ test('THEME: switching theme re-renders the open message body', async (t) => {
     restore();
   }
 });
+
+// ------------------------------------------------ contextual toolbar ------
+
+test('CTX: message actions appear only when a message is open', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Archive/star/delete belong to a MESSAGE. A permanently visible row of
+  // disabled buttons teaches nothing and occupies the most valuable strip of
+  // the window; actions that arrive with their subject teach themselves.
+  const { doc, settle, restore } = await boot();
+  try {
+    assert.equal(doc.getElementById('ctx-actions').hidden, true, 'hidden with nothing open');
+
+    rows(doc)[0].click();
+    await settle();
+    assert.equal(doc.getElementById('ctx-actions').hidden, false, 'shown when a message opens');
+    assert.equal(
+      doc.querySelectorAll('#ctx-actions button svg').length,
+      3,
+      'archive, star and delete, each a real icon'
+    );
+
+    doc.dispatchEvent(new (doc.defaultView.KeyboardEvent)('keydown', { key: 'Escape', bubbles: true }));
+    await settle();
+    assert.equal(doc.getElementById('ctx-actions').hidden, true, 'hidden again on close');
+  } finally {
+    restore();
+  }
+});
+
+test('CTX: the star reflects reality on BOTH surfaces', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // The same message is starrable from the row and from the toolbar. If the
+  // two disagree the user cannot tell whether pressing will star or unstar.
+  const { doc, settle, restore } = await boot();
+  try {
+    rows(doc)[0].click();
+    await settle();
+
+    doc.getElementById('ctx-star').click();
+    await settle();
+
+    const ctxStar = doc.getElementById('ctx-star');
+    const rowStar = doc.querySelector('.row[aria-selected="true"] .r-star');
+    assert.equal(ctxStar.getAttribute('aria-pressed'), 'true');
+    assert.equal(rowStar.getAttribute('aria-pressed'), 'true', 'the row must agree');
+    assert.equal(ctxStar.getAttribute('aria-label'), 'Unstar', 'the label must say what it will do');
+  } finally {
+    restore();
+  }
+});
+
+test('CTX: archive from the toolbar removes the row', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, settle, restore } = await boot();
+  try {
+    rows(doc)[0].click();
+    await settle();
+    const before = rows(doc).length;
+
+    doc.getElementById('ctx-archive').click();
+    await settle();
+
+    assert.equal(rows(doc).length, before - 1);
+  } finally {
+    restore();
+  }
+});
