@@ -282,10 +282,27 @@ export function buildReply(body, selfEmail, mode = 'reply') {
 function quoteBody(body, mode) {
   const text = (body.text || stripTags(body.html || '')).trim();
   if (!text) return '';
+  /*
+   * The attribution line.
+   *
+   * "On <sender> wrote:" was missing the date, which is half of what an
+   * attribution is for -- the recipient of a long thread needs to know WHEN
+   * the quoted part was said, not only by whom. Every mail client since 1985
+   * includes it, and its absence is one of those details that reads as
+   * amateur without the reader being able to say why.
+   */
+  const when = body.date
+    ? new Date(body.date).toLocaleString(undefined, {
+      weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
+      hour: 'numeric', minute: '2-digit',
+    })
+    : '';
   const head =
     mode === 'forward'
-      ? `\n\n---------- Forwarded message ----------\nFrom: ${body.from}\nSubject: ${body.subject}\n\n`
-      : `\n\nOn ${body.from} wrote:\n`;
+      ? `\n\n---------- Forwarded message ----------\nFrom: ${body.from}\n${
+        when ? `Date: ${when}\n` : ''
+      }Subject: ${body.subject}\nTo: ${body.to || ''}\n\n`
+      : `\n\n${when ? `On ${when}, ` : 'On '}${body.from} wrote:\n`;
   const quoted = text
     .split('\n')
     .slice(0, 200) // a 5000-line newsletter must not become the reply

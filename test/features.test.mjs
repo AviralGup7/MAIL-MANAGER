@@ -10,6 +10,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { extractDeadline, relativeLabel, urgency } from '../src/app/deadlines.js';
 import { parseQuery, describeQuery, buildReply } from '../src/app/query.js';
@@ -191,6 +192,51 @@ const BODY = {
   text: 'Please register by Friday.',
 };
 const ME = 'me@pilani.bits-pilani.ac.in';
+
+/*
+ * THE ATTRIBUTION LINE.
+ *
+ * "On <sender> wrote:" without a date is half an attribution. In a long thread
+ * the recipient needs to know WHEN the quoted text was written. This was
+ * missing and no test caught it, because nothing asserted on the quote header.
+ */
+test('a reply attributes the quote to a person AND a time', () => {
+  const at = Date.UTC(2026, 2, 10, 9, 30);
+  const r = buildReply({ ...BODY, date: at }, ME, 'reply');
+  assert.match(r.quoted, /^\n\nOn .+, AUGSD <augsd@[^>]+> wrote:\n/);
+  assert.ok(/2026/.test(r.quoted), 'the year must appear in the attribution');
+  assert.ok(r.quoted.includes('> Please register by Friday.'));
+});
+
+test('a reply with no date still produces a sane attribution', () => {
+  // A missing internalDate must not render "On , X wrote:".
+  const r = buildReply({ ...BODY, date: 0 }, ME, 'reply');
+  assert.ok(!r.quoted.includes('On ,'), `malformed attribution: ${r.quoted.slice(0, 60)}`);
+  assert.match(r.quoted, /On AUGSD/);
+});
+
+test('a forward carries the full original header block', () => {
+  // From/Date/Subject/To is what every client includes, and what the reader
+  // needs to judge whether the forward is relevant.
+  const r = buildReply({ ...BODY, date: Date.UTC(2026, 2, 10) }, ME, 'forward');
+  assert.match(r.quoted, /Forwarded message/);
+  assert.match(r.quoted, /From: AUGSD/);
+  assert.match(r.quoted, /Date: .+2026/);
+  assert.match(r.quoted, /Subject: Re: Course registration/);
+  assert.match(r.quoted, /To: /);
+  assert.ok(!r.quoted.includes('> Please'), 'a forward is not quoted with >');
+});
+
+test('the background actually supplies the date the attribution needs', () => {
+  // The attribution silently degrades if extractBody omits `date`, and that
+  // degradation is invisible in the app.
+  const bg = readFileSync(new URL('../src/background/index.js', import.meta.url), 'utf8');
+  const fn = bg.slice(bg.indexOf('function extractBody'));
+  assert.ok(
+    /date: Number\(full\.internalDate\)/.test(fn.slice(0, 1600)),
+    'extractBody must return a date for the reply attribution'
+  );
+});
 
 test('a reply stays in its thread', () => {
   // Missing In-Reply-To/References is the single most visible way a mail

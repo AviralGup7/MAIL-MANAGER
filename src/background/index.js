@@ -338,6 +338,9 @@ function extractBody(full) {
     cc: h.cc || '',
     replyTo: h['reply-to'] || '',
     subject: h.subject || '',
+    // internalDate is authoritative; the Date: header is sender-controlled and
+    // routinely wrong. Needed for the reply attribution line.
+    date: Number(full.internalDate) || Date.parse(h.date) || 0,
     listUnsubscribe: h['list-unsubscribe'] || '',
   };
   walk(full.payload);
