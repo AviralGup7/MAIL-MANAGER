@@ -2485,6 +2485,8 @@ $('btn-signout').addEventListener('click', async () => {
   await clearCache();
   resetView({ allMailboxes: true });
   state.signedIn = false;
+  // A signed-out app that keeps polling is a privacy problem, not just a bug.
+  stopAutoRefresh();
   showGate('Signed out.');
 });
 $('btn-signin').addEventListener('click', doSignIn);
@@ -3380,7 +3382,64 @@ window.addEventListener('pagehide', () => {
  * already-dispatched fetch a no-op when it resolves: clearing the timer alone
  * only stops requests that have not started yet.
  */
+
+/* ------------------------------------------------------------ auto-refresh -- */
+
+/*
+ * MAIL HAS TO ARRIVE ON ITS OWN.
+ *
+ * This file used to say "Delta refresh. Never on a timer." That made the
+ * product a mail VIEWER: new mail appeared only when the user pressed `r` or
+ * reopened the app. Audit 12 called it the single most disqualifying gap
+ * against Gmail, and it is.
+ *
+ * A repeating timeout rather than setInterval, re-armed only AFTER each
+ * refresh settles. setInterval on a network call stacks requests when the
+ * network is slow -- exactly when you least want a queue of them.
+ *
+ * `silent: true` because the user did not ask: a toast saying "Up to date"
+ * every two minutes is worse than no refresh at all. New mail announces
+ * itself by appearing, and the "Updated N min ago" line already says when we
+ * last spoke to Gmail.
+ */
+let autoRefreshTimer = 0;
+
+function stopAutoRefresh() {
+  clearTimeout(autoRefreshTimer);
+  autoRefreshTimer = 0;
+}
+
+function scheduleAutoRefresh() {
+  stopAutoRefresh();
+  const every = settings.get('autoRefreshMs');
+  // 0 disables it entirely, for anyone who wants manual control.
+  if (!every || !state.signedIn) return;
+  autoRefreshTimer = setTimeout(async () => {
+    /*
+     * Re-check BOTH conditions at fire time, not only at schedule time. A
+     * sign-out between the two would otherwise leave one last request in
+     * flight on behalf of an account that has left -- the same class of bug
+     * as the token renewal that used to undo a sign-out.
+     */
+    if (!state.signedIn) return;
+    if (document.hidden) {
+      // Nothing to paint into. Re-arm and try later rather than spend the
+      // request on a tab nobody is looking at.
+      scheduleAutoRefresh();
+      return;
+    }
+    try {
+      await refresh({ silent: true });
+    } catch {
+      // A failed poll is not worth reporting; the next one may well work and
+      // the freshness line already shows we have not heard from Gmail.
+    }
+    scheduleAutoRefresh();
+  }, every);
+}
+
 function cancelPendingWork() {
+  stopAutoRefresh();
   clearTimeout(serverSearchTimer);
   serverSearchTimer = 0;
   serverSearchToken++;
@@ -3456,6 +3515,13 @@ const ctx = {
   openMessage,
 };
 
+/*
+ * Test seam: is a poll actually scheduled? Needed because refresh() guards on
+ * signedIn too, so request counts alone cannot tell a cancelled timer from a
+ * live one that is being ignored -- and a live one is a wakeup every interval
+ * for the life of the tab.
+ */
+window.__bmmAutoRefreshPending = () => autoRefreshTimer !== 0;
 window.__bmmIngest = ingest;
 // Same live-binding hazard as ctx.store: defined as a getter so a harness
 // inspecting it after a mailbox switch sees the ACTIVE store, not the inbox.
@@ -3524,6 +3590,8 @@ async function start() {
   setSkeleton(false);
   // Only after the inbox is on screen do we spend a request on a delta check.
   if (store.size) refresh({ silent: true });
+  // From here on, mail arrives on its own.
+  scheduleAutoRefresh();
 }
 
 async function boot() {

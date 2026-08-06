@@ -71,6 +71,19 @@ export const SCHEMA = {
    * for it. 0 restores Gmail's behaviour for anyone who wants it.
    */
   markReadDelayMs: { type: 'int', def: 1200, min: 0, max: 10000 },
+  /*
+   * AUTO-REFRESH. How often to ask Gmail what changed, in ms.
+   *
+   * This product used to say "Delta refresh. Never on a timer", which made it
+   * a mail VIEWER: new mail appeared only when you pressed `r`. A mail client
+   * that does not receive mail on its own is not a mail client.
+   *
+   * 120s is a deliberate middle. A delta is one cheap request against a
+   * stored historyId, not a page fetch, so the cost is small -- but Gmail
+   * enforces per-user rate limits and a tab left open all day still adds up.
+   * 0 disables it, for anyone who genuinely wants manual control.
+   */
+  autoRefreshMs: { type: 'int', def: 120000, min: 0, max: 3600000 },
 
   // ---- composing ----
   signature: { type: 'string', def: '' },

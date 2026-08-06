@@ -115,6 +115,15 @@
         it unread. Set to 0 for Gmail's behaviour.
       </p>
 
+      <label for="autoRefreshMs">
+        Check for new mail every — <b id="autoRefreshLabel">2 min</b>
+      </label>
+      <input id="autoRefreshMs" type="range" min="0" max="600000" step="30000" />
+      <p class="hint">
+        A delta check is one small request, not a reload. Set to 0 to only ever
+        fetch when you press <kbd>r</kbd>.
+      </p>
+
       <label for="remoteImages">Images from the internet</label>
       <select id="remoteImages">
         <option value="ask">Ask each time (most private)</option>

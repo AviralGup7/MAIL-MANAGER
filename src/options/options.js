@@ -1,3 +1,10 @@
+/** "2 min", "30s", or "Never" for 0. */
+function fmtEvery(ms) {
+  if (!ms) return 'Never';
+  if (ms < 60000) return `${Math.round(ms / 1000)}s`;
+  return `${Math.round(ms / 60000)} min`;
+}
+
 /**
  * Options page.
  *
@@ -121,6 +128,8 @@ const fmtDelay = (ms) => (ms === 0 ? 'off' : `${(ms / 1000).toFixed(1)}s`);
   const delay = $('markReadDelayMs');
   const delayLabel = $('markReadDelayLabel');
   const images = $('remoteImages');
+  const auto = $('autoRefreshMs');
+  const autoLabel = $('autoRefreshLabel');
   if (!markRead || !delay || !images) return;
 
   // Reflect stored state.
@@ -128,6 +137,10 @@ const fmtDelay = (ms) => (ms === 0 ? 'off' : `${(ms / 1000).toFixed(1)}s`);
   delay.value = String(settings.get('markReadDelayMs'));
   delayLabel.textContent = fmtDelay(settings.get('markReadDelayMs'));
   images.value = settings.get('remoteImages');
+  if (auto) {
+    auto.value = String(settings.get('autoRefreshMs'));
+    autoLabel.textContent = fmtEvery(Number(auto.value));
+  }
 
   /*
    * The delay control is meaningless when marking-read is off, so it is
@@ -158,6 +171,14 @@ const fmtDelay = (ms) => (ms === 0 ? 'off' : `${(ms / 1000).toFixed(1)}s`);
 
   images.addEventListener('change', async () => {
     await settings.set('remoteImages', images.value);
+  });
+
+  // Same input/change split as the delay slider: live label, one write.
+  auto?.addEventListener('input', () => {
+    autoLabel.textContent = fmtEvery(Number(auto.value));
+  });
+  auto?.addEventListener('change', async () => {
+    await settings.set('autoRefreshMs', Number(auto.value));
   });
 })();
 

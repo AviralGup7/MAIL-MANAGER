@@ -4279,3 +4279,82 @@ test('MAIL: a recovered draft reveals the recipients it actually has', async (t)
     restore();
   }
 });
+
+test('MAIL: new mail arrives without the user asking for it', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * THE DEFINING BEHAVIOUR OF A MAIL CLIENT, and it was absent.
+   *
+   * app.js said outright "Delta refresh. Never on a timer." The only alarm in
+   * the worker is the snooze wake. So mail appeared solely when the user
+   * pressed `r` or reopened the app -- which makes this a mail VIEWER, not a
+   * mail client. Audit 12 C-1.
+   *
+   * The interval is deliberately short here via a settings override, so the
+   * test measures the mechanism rather than waiting two minutes.
+   */
+  const { doc, win, calls, settle, restore } = await boot({
+    storageSeed: { autoRefreshMs: 60 },
+  });
+  try {
+    await settle(8);
+    const before = calls.filter((c) => c.type === 'SYNC_DELTA').length;
+
+    // Let the timer fire without any user action at all.
+    await new Promise((r) => setTimeout(r, 220));
+    await settle(6);
+
+    const after = calls.filter((c) => c.type === 'SYNC_DELTA').length;
+    assert.ok(
+      after > before,
+      `the app must poll for new mail on its own (${before} -> ${after})`
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('MAIL: auto-refresh stops when the user signs out', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * A timer that keeps hitting Gmail after sign-out is both a bug and a
+   * privacy problem -- it is a signed-out app still talking about somebody's
+   * mailbox. It must also not fire while the takeover is closed.
+   */
+  const { doc, win, calls, settle, restore } = await boot({
+    storageSeed: { autoRefreshMs: 60 },
+  });
+  try {
+    await settle(8);
+    doc.getElementById('btn-signout').click();
+    await settle(12);
+
+    const atSignout = calls.filter((c) => c.type === 'SYNC_DELTA').length;
+    await new Promise((r) => setTimeout(r, 260));
+    await settle(6);
+
+    assert.equal(
+      calls.filter((c) => c.type === 'SYNC_DELTA').length, atSignout,
+      'a signed-out app must not keep polling Gmail'
+    );
+
+    /*
+     * ASSERT THE TIMER IS GONE, not merely that no request escaped.
+     *
+     * refresh() already returns early when signed out, so deleting
+     * stopAutoRefresh() changes no observable request count -- sabotage proved
+     * that, and the first version of this test passed against a timer that was
+     * still firing every 60ms forever.
+     *
+     * Defence in depth is the point: the guard inside refresh() is the second
+     * line, and this is the first. A live timer on a signed-out app is a
+     * wakeup every interval for the life of the tab.
+     */
+    assert.equal(
+      win.__bmmAutoRefreshPending?.(), false,
+      'the poll timer itself must be cancelled, not just neutered downstream'
+    );
+  } finally {
+    restore();
+  }
+});
