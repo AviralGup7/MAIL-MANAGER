@@ -1810,3 +1810,71 @@ test('RACE: loading state is derived, never assigned from two places', async () 
   assert.equal(writes, 1, `state.loading is assigned in ${writes} places; it must be derived once`);
   assert.match(src, /state\.loading = \[\.\.\.mailboxState\.values\(\)\]\.some/);
 });
+
+/* ========================================================================== *
+ * LONG SESSION — resource stability
+ *
+ * The takeover is a long-lived page: a user may keep it open all day. Menus,
+ * overlays and mailbox switches each build DOM, and anything that appends
+ * without replacing accumulates invisibly until the tab is slow.
+ * ========================================================================== */
+
+test('LEAK: 100 mixed interactions do not grow the DOM', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, win, settle, restore } = await boot({ perLabel: true });
+  try {
+    const nodes = () => doc.body.querySelectorAll('*').length;
+    const transient = () =>
+      doc.querySelectorAll('.snooze-menu, .cat-menu, .ac-list:not([hidden])').length;
+
+    // Warm every surface once, so one-time construction is not counted as growth.
+    doc.dispatchEvent(new win.KeyboardEvent('keydown', { key: '?', bubbles: true }));
+    await settle(2);
+    doc.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await settle(2);
+    const baseline = nodes();
+
+    for (let i = 0; i < 20; i++) {
+      for (const m of ['sent', 'trash', 'inbox']) {
+        doc.querySelector(`.cat[data-mailbox="${m}"]`).click();
+        await settle(1);
+      }
+      doc.dispatchEvent(new win.KeyboardEvent('keydown', { key: '?', bubbles: true }));
+      await settle(1);
+      doc.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await settle(1);
+    }
+
+    assert.equal(transient(), 0, 'a transient menu survived its dismissal');
+    assert.equal(
+      nodes(), baseline,
+      `DOM grew from ${baseline} to ${nodes()} across 100 interactions`
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('LEAK: reopening the help overlay replaces its content', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Appending instead of replacing is the classic version of this bug and is
+  // invisible until the overlay is opened dozens of times.
+  const { doc, win, settle, restore } = await boot();
+  try {
+    let previous = null;
+    for (const round of [1, 2, 3]) {
+      doc.dispatchEvent(new win.KeyboardEvent('keydown', { key: '?', bubbles: true }));
+      await settle(2);
+      const count = doc.querySelectorAll('#help-body dt').length;
+      if (previous !== null) {
+        assert.equal(count, previous, `help content grew on open ${round}`);
+      }
+      previous = count;
+      doc.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await settle(2);
+    }
+    assert.ok(previous > 10, 'the overlay should actually have content');
+  } finally {
+    restore();
+  }
+});
