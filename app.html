@@ -123,6 +123,28 @@
               <span id="listtitle">Inbox</span>
               <span id="listcount"></span>
             </div>
+
+            <!--
+              BULK ACTION BAR.
+
+              Replaces the list header rather than sitting beside it. A bar
+              that appears in addition to the header pushes the list down and
+              costs a reflow of everything below; swapping in place keeps the
+              rows exactly where the user's eye already is.
+            -->
+            <div id="bulkbar" hidden>
+              <label id="bulk-all-wrap">
+                <input id="bulk-all" type="checkbox" aria-label="Select all in this view" />
+              </label>
+              <span id="bulk-count" aria-live="polite">0 selected</span>
+              <div id="bulk-actions">
+                <button id="bulk-read" class="ghost small" type="button">Mark read</button>
+                <button id="bulk-star" class="ghost small" type="button">Star</button>
+                <button id="bulk-archive" class="ghost small" type="button">Archive</button>
+                <button id="bulk-trash" class="ghost small danger" type="button">Delete</button>
+              </div>
+              <button id="bulk-cancel" class="ghost icon" type="button" aria-label="Clear selection"></button>
+            </div>
             <!--
               The scroller is the only element with overflow. Row height is
               fixed in CSS so the browser never has to measure text to know

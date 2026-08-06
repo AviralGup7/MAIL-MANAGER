@@ -1000,3 +1000,131 @@ test('A11Y: truncated row text carries the full value in a title', async (t) => 
     restore();
   }
 });
+
+// ------------------------------------------------------- multi-select ----
+
+const pick = (row, win, opts = {}) =>
+  (opts.shiftKey || opts.ctrlKey ? row : row.querySelector('.r-pick'))
+    .dispatchEvent(new win.MouseEvent('click', { bubbles: true, ...opts }));
+
+test('BULK: ticking a row selects without opening it', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Conflating selection with the open message means ticking twelve boxes
+  // marks twelve messages read — the opposite of what a triage pass wants.
+  const { doc, win, settle, restore } = await boot();
+  try {
+    assert.equal(doc.getElementById('bulkbar').hidden, true, 'no bar at rest');
+
+    pick(rows(doc)[0], win);
+    await settle();
+
+    assert.equal(doc.getElementById('bulkbar').hidden, false);
+    assert.equal(doc.getElementById('listhead').hidden, true, 'the bar REPLACES the header');
+    assert.equal(doc.getElementById('bulk-count').textContent, '1 selected');
+    assert.equal(doc.getElementById('reader').hidden, true, 'must not open the message');
+  } finally {
+    restore();
+  }
+});
+
+test('BULK: shift-click selects a contiguous range', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Selecting 30 consecutive promotions one click at a time is the exact
+  // drudgery this feature exists to remove.
+  const { doc, win, settle, restore } = await boot({ messages: bulk(10) });
+  try {
+    pick(rows(doc)[1], win);
+    await settle();
+    pick(rows(doc)[5], win, { shiftKey: true });
+    await settle();
+
+    assert.equal(doc.getElementById('bulk-count').textContent, '5 selected');
+    assert.equal(doc.querySelectorAll('.row.picked').length, 5);
+  } finally {
+    restore();
+  }
+});
+
+test('BULK: select-all is tri-state and honest', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // A checkbox reading "checked" while half the list is selected is a lie.
+  const { doc, win, settle, restore } = await boot({ messages: bulk(6) });
+  try {
+    pick(rows(doc)[0], win);
+    await settle();
+    const all = doc.getElementById('bulk-all');
+    assert.equal(all.indeterminate, true, 'partial selection must be indeterminate');
+    assert.equal(all.checked, false);
+
+    all.checked = true;
+    all.dispatchEvent(new win.Event('change'));
+    await settle();
+    assert.equal(doc.getElementById('bulk-count').textContent, '6 selected');
+    assert.equal(doc.getElementById('bulk-all').indeterminate, false);
+  } finally {
+    restore();
+  }
+});
+
+test('BULK: archiving many undoes as ONE step', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Forty separate undos would be unusable. This is the whole reason
+  // UndoStack stores a thunk rather than a diff.
+  const { doc, win, settle, restore } = await boot({ messages: bulk(8) });
+  try {
+    for (const i of [0, 1, 2]) pick(rows(doc)[i], win);
+    await settle();
+
+    doc.getElementById('bulk-archive').click();
+    await settle();
+    await settle();
+    assert.equal(rows(doc).length, 5, 'three removed');
+    assert.match(doc.getElementById('toast').textContent, /Archived 3 messages/);
+
+    doc.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
+    await settle();
+    await settle();
+    assert.equal(rows(doc).length, 8, 'one undo restores all three');
+  } finally {
+    restore();
+  }
+});
+
+test('BULK: Escape clears the selection before anything else', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Selection is the innermost transient state, so it unwinds first —
+  // Escape must not release the takeover while a selection is pending.
+  const { doc, win, settle, restore } = await boot();
+  try {
+    doc.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'x', bubbles: true }));
+    await settle();
+    assert.equal(doc.getElementById('bulkbar').hidden, false, 'x ticks a row');
+
+    doc.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await settle();
+    assert.equal(doc.getElementById('bulkbar').hidden, true);
+  } finally {
+    restore();
+  }
+});
+
+test('BULK: selection survives a re-render', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Selection lives outside the store, so a delta arriving mid-triage must
+  // not silently drop the ticks the user has already placed.
+  const { doc, win, settle, restore } = await boot({ messages: bulk(6) });
+  try {
+    pick(rows(doc)[0], win);
+    pick(rows(doc)[1], win);
+    await settle();
+    assert.equal(doc.querySelectorAll('.row.picked').length, 2);
+
+    win.__bmmIngest(bulk(2).map((m) => ({ ...m, id: `new${m.id}`, subject: 'arrived later' })));
+    await settle();
+
+    assert.equal(doc.querySelectorAll('.row.picked').length, 2, 'ticks must survive');
+    assert.equal(doc.getElementById('bulk-count').textContent, '2 selected');
+  } finally {
+    restore();
+  }
+});

@@ -29,6 +29,7 @@ import { loadCache, saveCache, clearCache, createSaver, CACHE_MAX } from './cach
 import { sanitizeHtml, escapeHtml } from './sanitize.js';
 import { THEMES, applyTheme, getTheme, DEFAULT_THEME } from './themes.js';
 import { icon, setIcon } from './icons.js';
+import { Selection, selectionLabel } from './selection.js';
 import { extractDeadline, relativeLabel, urgency } from './deadlines.js';
 import { parseQuery, buildReply } from './query.js';
 import {
@@ -89,6 +90,15 @@ const state = {
 let renderedIds = [];
 /** Whether the list has ever been painted with content. */
 let firstPaint = false;
+
+/**
+ * Multi-select.
+ *
+ * Deliberately separate from `state.selected`, which is the OPEN message. A
+ * row can be checked without being read, and conflating the two means you
+ * cannot select the message you are looking at.
+ */
+const selection = new Selection();
 /** id -> <li>. Lets a delta patch one row without re-rendering the list. */
 const nodeById = new Map();
 
@@ -126,6 +136,10 @@ const el = {
   list: $('list'),
   scroller: $('scroller'),
   listpane: $('listpane'),
+  listhead: $('listhead'),
+  bulkbar: $('bulkbar'),
+  bulkCount: $('bulk-count'),
+  bulkAll: $('bulk-all'),
   empty: $('empty'),
   emptyTitle: $('empty-title'),
   emptySub: $('empty-sub'),
@@ -342,6 +356,10 @@ function renderList() {
 
   renderedIds = next;
   updateCounts(next.length);
+
+  // Selection lives outside the store, so a re-render must reapply it or the
+  // ticks silently vanish the moment a delta arrives mid-triage.
+  if (selection.active) renderSelection();
 }
 
 /**
@@ -441,7 +459,10 @@ function buildRow(id) {
   li.id = rowDomId(id);
   li.setAttribute('role', 'option');
   li.innerHTML =
+    '<span class="r-pick">' +
     '<span class="r-bar"></span>' +
+    '<input class="r-check" type="checkbox" tabindex="-1" aria-label="Select message" />' +
+    '</span>' +
     '<span class="r-mid">' +
     '<span class="r-line1"><span class="r-from"></span></span>' +
     '<div class="r-subj"></div>' +
@@ -993,11 +1014,38 @@ el.list.addEventListener('click', (e) => {
   const row = e.target.closest('.row');
   if (!row) return;
   const id = row.dataset.id;
+
   if (e.target.closest('.r-star')) {
     e.stopPropagation();
     act('star', id);
     return;
   }
+
+  // The checkbox, or its padding. Selecting must never also open the message:
+  // ticking twelve boxes would otherwise mark twelve messages read.
+  if (e.target.closest('.r-pick')) {
+    e.stopPropagation();
+    e.preventDefault();
+    selection.toggle(id);
+    renderSelection();
+    return;
+  }
+
+  // Shift extends a range; Ctrl/Cmd toggles one. Both are what a file manager
+  // has trained people to expect, so neither needs explaining.
+  if (e.shiftKey && selection.anchor) {
+    e.preventDefault();
+    selection.range(id, renderedIds);
+    renderSelection();
+    return;
+  }
+  if (e.ctrlKey || e.metaKey) {
+    e.preventDefault();
+    selection.toggle(id);
+    renderSelection();
+    return;
+  }
+
   openMessage(id);
 });
 
@@ -1230,6 +1278,12 @@ document.addEventListener('keydown', (e) => {
       $('compose-close').click();
       return;
     }
+    // Selection is the innermost transient state, so it unwinds first.
+    if (selection.active) {
+      selection.clear();
+      renderSelection();
+      return;
+    }
     if (typing) {
       el.search.blur();
       return;
@@ -1242,6 +1296,14 @@ document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'k') {
     e.preventDefault();
     openPalette(ctx);
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'a' && !typing) {
+    // Select-all inside the list only. Outside it, the browser's own
+    // select-all is what the user meant.
+    e.preventDefault();
+    selection.selectAll(renderedIds);
+    renderSelection();
     return;
   }
   if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
@@ -1296,6 +1358,17 @@ document.addEventListener('keydown', (e) => {
       e.preventDefault();
       openCompose(ctx);
       break;
+    case 'x': {
+      // Gmail's shortcut for "tick this row", and the keyboard path into bulk
+      // mode. Operates on the row under the cursor keys, not the mouse.
+      e.preventDefault();
+      const target = state.selected || renderedIds[0];
+      if (target) {
+        selection.toggle(target);
+        renderSelection();
+      }
+      break;
+    }
   }
 });
 
@@ -1345,6 +1418,98 @@ function syncContextActions(m) {
   setIcon(star, 'star', { size: 15, filled: !!m.starred });
   star.setAttribute('aria-label', m.starred ? 'Unstar' : 'Star');
   star.setAttribute('aria-pressed', String(!!m.starred));
+}
+
+/* ======================================================================== *
+ * BULK SELECTION
+ * ======================================================================== */
+
+/**
+ * Reflect selection into the DOM.
+ *
+ * Touches only the checkbox state and one class per row, so it is cheap enough
+ * to call on every selection change without going through the render loop --
+ * selection does not alter WHICH rows exist, only how they look.
+ */
+function renderSelection() {
+  const n = selection.size;
+  el.bulkbar.hidden = n === 0;
+  el.listhead.hidden = n > 0;
+
+  for (const [id, node] of nodeById) {
+    const on = selection.has(id);
+    if (node.classList.contains('picked') !== on) node.classList.toggle('picked', on);
+    const box = node.querySelector('.r-check');
+    if (box && box.checked !== on) box.checked = on;
+  }
+
+  if (n === 0) return;
+  el.bulkCount.textContent = selectionLabel(n);
+
+  // Tri-state "select all": checked when everything visible is picked,
+  // indeterminate when only some is. A plain checkbox that reads "checked"
+  // while half the list is selected is a lie.
+  const visible = renderedIds.length;
+  const picked = renderedIds.filter((id) => selection.has(id)).length;
+  el.bulkAll.checked = picked === visible && visible > 0;
+  el.bulkAll.indeterminate = picked > 0 && picked < visible;
+}
+
+/**
+ * Run one action across the whole selection.
+ *
+ * ONE Gmail request, ONE store batch, ONE undo entry. Archiving forty messages
+ * must undo as a single step -- forty separate undos would be unusable, and it
+ * is precisely why UndoStack stores a thunk rather than a diff.
+ */
+async function bulkAct(kind) {
+  const ids = selection.live(store, renderedIds);
+  if (ids.length === 0) return;
+
+  // Snapshot BEFORE mutating, for the undo.
+  const snapshots = ids.map((id) => ({ ...store.get(id) }));
+  const n = ids.length;
+  const noun = n === 1 ? 'message' : 'messages';
+
+  const removal = kind === 'archive' || kind === 'trash';
+  if (removal && state.selected && ids.includes(state.selected)) closeReader();
+
+  store.batch(() => {
+    for (const id of ids) {
+      if (kind === 'archive' || kind === 'trash') store.remove(id);
+      else if (kind === 'read') store.patch(id, { unread: false });
+      else if (kind === 'star') store.patch(id, { starred: true });
+    }
+  });
+  selection.clear();
+  renderSelection();
+
+  const verb = { archive: 'Archived', trash: 'Deleted', read: 'Marked read', star: 'Starred' }[kind];
+
+  try {
+    if (kind === 'archive') await send('BULK', { ids, remove: ['INBOX'] });
+    else if (kind === 'trash') await send('BULK', { ids, add: ['TRASH'], remove: ['INBOX'] });
+    else if (kind === 'read') await send('BULK', { ids, remove: ['UNREAD'] });
+    else if (kind === 'star') await send('BULK', { ids, add: ['STARRED'] });
+  } catch (err) {
+    // Roll the whole batch back. A partial apply would leave the list
+    // disagreeing with Gmail with no indication which half won.
+    store.batch(() => {
+      for (const m of snapshots) store.upsert(m);
+    });
+    toast(`Could not ${kind}: ${err.message}`);
+    return;
+  }
+
+  recordUndo(ctx, `${verb} ${n} ${noun}`, async () => {
+    store.batch(() => {
+      for (const m of snapshots) store.upsert(m);
+    });
+    if (kind === 'archive') await send('BULK', { ids, add: ['INBOX'] });
+    else if (kind === 'trash') await send('BULK', { ids, add: ['INBOX'], remove: ['TRASH'] });
+    else if (kind === 'read') await send('BULK', { ids, add: ['UNREAD'] });
+    else if (kind === 'star') await send('BULK', { ids, remove: ['STARRED'] });
+  });
 }
 
 /** Prepend an icon to a labelled button, preserving its text. */
@@ -1502,6 +1667,26 @@ async function boot() {
     },
     { passive: true }
   );
+
+  // Bulk bar.
+  setIcon($('bulk-cancel'), 'close', { size: 14 });
+  $('bulk-cancel').addEventListener('click', () => {
+    selection.clear();
+    renderSelection();
+  });
+  el.bulkAll.addEventListener('change', () => {
+    if (el.bulkAll.checked) selection.selectAll(renderedIds);
+    else selection.clear();
+    renderSelection();
+  });
+  for (const [id, kind] of [
+    ['bulk-read', 'read'],
+    ['bulk-star', 'star'],
+    ['bulk-archive', 'archive'],
+    ['bulk-trash', 'trash'],
+  ]) {
+    $(id).addEventListener('click', () => bulkAct(kind));
+  }
 
   wirePalette(ctx);
   wireCompose(ctx);

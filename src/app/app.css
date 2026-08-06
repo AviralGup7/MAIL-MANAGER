@@ -642,7 +642,9 @@ a.ghost {
   border-radius: var(--r-full);
   background: var(--c, transparent);
   justify-self: center;
-  transition: transform var(--dur-fast) var(--ease-spring);
+  transition:
+    transform var(--dur-fast) var(--ease-spring),
+    opacity var(--dur-fast) linear;
 }
 .row.unread .r-bar {
   transform: scale(1.6);
@@ -1985,6 +1987,115 @@ html[data-scheme='dark'] #thememenu {
 }
 #listpane {
   position: relative;
+}
+
+/* ------------------------------------------------------ multi-select -- */
+
+/*
+ * The checkbox occupies the SAME grid column as the category dot, so engaging
+ * selection mode does not shift the layout. The dot fades out as the box fades
+ * in — one is the resting state of that column, the other its active state.
+ */
+.r-pick {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--s-1);
+  height: 100%;
+}
+
+.r-check {
+  position: absolute;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--accent);
+  opacity: 0;
+  transform: scale(0.8);
+  transition:
+    opacity var(--dur-fast) linear,
+    transform var(--dur-fast) var(--ease-spring);
+}
+
+/* Revealed on row hover, on keyboard focus, and always while selection is
+   active — so a half-finished selection never hides its own controls. */
+.row:hover .r-check,
+.row:focus-within .r-check,
+.row.picked .r-check,
+#list.selecting .r-check {
+  opacity: 1;
+  transform: scale(1);
+}
+.row:hover .r-bar,
+.row.picked .r-bar,
+#list.selecting .r-bar {
+  opacity: 0;
+}
+
+.row.picked {
+  background: var(--accent-soft);
+}
+.row.picked::before {
+  transform: scaleX(1);
+  opacity: 0.5;
+}
+
+/* --------------------------------------------------------- bulk bar -- */
+
+/*
+ * Replaces the list header in place rather than stacking above it. A bar that
+ * appears IN ADDITION pushes every row down by its own height at the exact
+ * moment the user is aiming at one.
+ */
+#bulkbar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border-bottom: 1px solid var(--line);
+  background: var(--accent-soft);
+  animation: bulk-in var(--dur-fast) var(--ease-spring) both;
+}
+@keyframes bulk-in {
+  from { opacity: 0; transform: translate3d(0, -6px, 0); }
+  to   { opacity: 1; transform: none; }
+}
+
+#bulk-all-wrap {
+  display: grid;
+  place-items: center;
+  width: var(--s-6);
+  height: var(--s-6);
+  cursor: pointer;
+}
+#bulk-all {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
+#bulk-count {
+  font-size: var(--t-sm);
+  font-weight: var(--w-semi);
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+#bulk-actions {
+  display: flex;
+  gap: var(--s-1);
+  margin-left: auto;
+}
+#bulk-actions .ghost {
+  background: var(--bg-raised);
+}
+#bulk-trash:hover {
+  color: var(--danger);
+  border-color: var(--danger);
 }
 
 /*
