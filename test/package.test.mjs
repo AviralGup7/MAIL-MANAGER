@@ -1422,3 +1422,40 @@ test('every form field has a name that survives typing', async () => {
 
   assert.deepEqual(unlabelled, [], `fields with no accessible name: ${unlabelled}`);
 });
+
+test('entrance animations decelerate; only exits accelerate', () => {
+  /*
+   * MEASURED BY SAMPLING THE CURVES, not by taste.
+   *
+   *   --ease-in  cubic-bezier(0.4, 0, 1, 1)   32% complete at the halfway point
+   *   --ease-out cubic-bezier(0.22, 1, 0.36, 1) 96% complete at the halfway point
+   *
+   * ease-in loiters and then rushes to the finish. That is the correct shape
+   * for something LEAVING -- it accelerates away. For something arriving it
+   * reads as a hang followed by a lurch, and six entrance animations were
+   * using it: the palette, compose, the toast, the theme menu, the reader
+   * swap, and the timetable search panel.
+   *
+   * The snooze menu and the timetable panel already used --ease-out, so the
+   * SAME menu-in keyframe was played with opposite easing depending on which
+   * menu opened it. That inconsistency is what led me to sample the curves.
+   */
+  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+
+  const entrances = [...css.matchAll(/animation:\s*([\w-]+)\s+([^;]+);/g)]
+    .map(([, name, rest]) => ({ name, rest }))
+    // Infinite loops (sweep, shimmer) are ambient, not entrances.
+    .filter((a) => !/infinite/.test(a.rest))
+    .filter((a) => /-in\b/.test(a.name));
+
+  assert.ok(entrances.length >= 5, 'the entrance animations must still be found');
+
+  const wrong = entrances
+    .filter((a) => /var\(--ease-in\)/.test(a.rest))
+    .map((a) => a.name);
+
+  assert.deepEqual(
+    wrong, [],
+    `these entrances accelerate instead of settling: ${wrong.join(', ')}`
+  );
+});
