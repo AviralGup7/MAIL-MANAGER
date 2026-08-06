@@ -20,10 +20,17 @@ are retracted in place rather than deleted.
 | [07](07-GMAIL-COMPETITIVE.md) | Gmail competitive gap (v0.9) | 40+ | Remote and inline images are both silently broken; no Sent/Drafts/Trash; no threading |
 | [08](08-GMAIL-COMPETITIVE-V2.md) | Gmail competitive gap (v1.0) | 35+ | Four settings declared and never read; two verbs still unreachable; threading is the last true gap. **§10 third pass:** shift-range could not shrink; one-row updates re-walked 2000 rows (549ms → 8.1ms) |
 | [09](09-ARCHITECTURE-POST-CHANGE.md) | Post-change architecture | 4 | `ctx.store` frozen to the inbox; one domain concept with four implementations; `app.js` at 27% of the codebase |
+| [10](10-DELIGHT.md) | Product delight | 10 | Archiving — the most frequent action — had no motion; the rail count was honest but not glanceable; nothing marked a cleared inbox |
+| [11](11-DESIGN-SYSTEM.md) | UI/UX, motion, design system | 8 + 5 false | Toasts raised from the timetable panel rendered UNDER it and were never seen; the focus ring reshaped what it focused; six entrances used the exit curve; disabled buttons looked clickable |
 
 Actions are consolidated and prioritised in [`../TODO.md`](../TODO.md).
 
 ## Two notes on method
+
+**Audit 11 reports its own false alarms.** Three of eleven findings were
+wrong, plus a bug in one of its own tests and a flaw one of its own fixes
+introduced. All five are written up in §"What I got wrong". A design audit that
+reports only its hits is not evidence.
 
 **Disproved suspicions are recorded, not deleted.** `03-PERFORMANCE.md`
 documents two findings I raised and then measured away (`unreadCounts` per

@@ -343,7 +343,7 @@ src/
 timetable/data.json         GENERATED. 688 courses, 119 change rows.
 timetable/sources/          The two official documents, verbatim.
 tools/parse-timetable.mjs   Offline parser. Never runs in the extension.
-test/                       801 tests. `npm test` · `npm run test:ci` (fails on skips)
+test/                       812 tests. `npm test` · `npm run test:ci` (fails on skips)
   app.integration.test.mjs  Boots the real app.html in jsdom and drives it.
   resilience.test.mjs       Failure injection across every persistence module.
   package.test.mjs          Lints the manifest, tokens, motion rules, hit targets.
@@ -403,7 +403,7 @@ mis-file something the preview mis-files it too.
 
 ## Status
 
-**801 tests pass, 0 skipped.** 133 of them boot the real `app.html` in a real
+**812 tests pass, 0 skipped.** 133 of them boot the real `app.html` in a real
 DOM and drive it as a user would — click a row, type in search, press `j`/`k`,
 archive, snooze, sign out. All six themes pass WCAG AA in CI.
 
@@ -434,9 +434,10 @@ would produce a real corpus.
 
 ### Audited, then fixed
 
-Eight audits have run over this codebase: correctness, security, performance,
-accessibility, architecture, testing, and two competitive gap analyses against
-Gmail. See [`audits/README.md`](audits/README.md).
+Eleven audits have run over this codebase: correctness, security, performance,
+accessibility, architecture, testing, two competitive gap analyses against
+Gmail, product delight, and a UI/motion/design-system pass. See
+[`audits/README.md`](audits/README.md).
 
 Defects found and fixed by systematic hunting, each verified by sabotaging the
 fix before trusting it:
