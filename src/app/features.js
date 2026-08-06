@@ -475,6 +475,14 @@ export function openCompose(ctx, prefill = {}) {
   $('compose-title').textContent = prefill.title || 'New message';
   $('c-to').value = prefill.to || '';
   $('c-cc').value = prefill.cc || '';
+  $('c-bcc').value = prefill.bcc || '';
+  /*
+   * Reveal Cc/Bcc when a RESTORED draft has one. Recovering a crashed draft
+   * into a panel that hides half its recipients is worse than not recovering
+   * it: the user sends believing they addressed two people.
+   */
+  if ($('c-cc').value) $('c-cc-row').hidden = false;
+  if ($('c-bcc').value) $('c-bcc-row').hidden = false;
   $('c-subject').value = prefill.subject || '';
 
   /*
@@ -533,6 +541,7 @@ function collectDraft() {
   return {
     to: $('c-to').value.trim(),
     cc: $('c-cc').value.trim(),
+    bcc: $('c-bcc').value.trim(),
     subject: $('c-subject').value.trim(),
     body: $('c-text').value,
     threadId: composeMeta.threadId,
@@ -565,6 +574,9 @@ export async function restoreDraftIfAny(ctx) {
   openCompose(ctx, {
     to: d.to,
     cc: d.cc,
+    // Was dropped here, so a recovered draft silently lost its Bcc -- the
+    // user saw one addressee and sent believing that was the whole story.
+    bcc: d.bcc,
     subject: d.subject,
     title: d.title || 'Restored draft',
     threadId: d.threadId,
@@ -606,13 +618,21 @@ export function wireCompose(ctx) {
 
   wireAutocomplete('c-to', 'c-to-list');
   wireAutocomplete('c-cc', 'c-cc-list');
+  // Bcc gets the same contact autocomplete as To and Cc. A recipient field
+  // that cannot complete an address is a field people avoid.
+  wireAutocomplete('c-bcc', 'c-bcc-list');
 
   $('compose-min').addEventListener('click', () => panel.classList.toggle('minimised'));
-  $('c-cc-toggle').addEventListener('click', () => {
-    const row = $('c-cc-row');
-    row.hidden = !row.hidden;
-    if (!row.hidden) $('c-cc').focus();
-  });
+  for (const [toggleId, rowId, inputId] of [
+    ['c-cc-toggle', 'c-cc-row', 'c-cc'],
+    ['c-bcc-toggle', 'c-bcc-row', 'c-bcc'],
+  ]) {
+    $(toggleId)?.addEventListener('click', () => {
+      const row = $(rowId);
+      row.hidden = !row.hidden;
+      if (!row.hidden) $(inputId).focus();
+    });
+  }
 
   $('c-send').addEventListener('click', () => doSend(ctx));
   $('c-draft').addEventListener('click', () => doDraft(ctx));

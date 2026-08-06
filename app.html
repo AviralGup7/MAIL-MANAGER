@@ -385,6 +385,16 @@
                    role="combobox" aria-expanded="false" aria-autocomplete="list"
                    aria-controls="c-cc-list" /></label>
           <ul id="c-cc-list" class="ac-list" role="listbox" aria-label="Contact suggestions" hidden></ul>
+          <!--
+            Bcc. The MIME builder always emitted this header; the input was the
+            only missing piece. Hidden until asked for, like Cc -- most messages
+            need neither, and two empty rows on every compose is clutter.
+          -->
+          <label class="c-row" id="c-bcc-row" hidden><span>Bcc</span>
+            <input id="c-bcc" type="text" autocomplete="off" spellcheck="false"
+                   role="combobox" aria-expanded="false" aria-autocomplete="list"
+                   aria-controls="c-bcc-list" /></label>
+          <ul id="c-bcc-list" class="ac-list" role="listbox" aria-label="Contact suggestions" hidden></ul>
           <label class="c-row"><span>Subject</span>
             <input id="c-subject" type="text" autocomplete="off" /></label>
           <!--
@@ -398,6 +408,7 @@
         <footer id="compose-foot">
           <button id="c-send" class="primary" type="button">Send</button>
           <button id="c-cc-toggle" class="ghost small" type="button">Cc</button>
+          <button id="c-bcc-toggle" class="ghost small" type="button">Bcc</button>
           <button id="c-draft" class="ghost small" type="button">Save draft</button>
           <span id="c-status"></span>
         </footer>

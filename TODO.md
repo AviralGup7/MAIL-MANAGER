@@ -18,7 +18,7 @@ Legend — **S**evere · **M**oderate · **L**ow
 
 ### 1 · Run it in Chrome against a real inbox — **S**
 
-*Nothing below is trustworthy until this happens.* **819 tests pass and the
+*Nothing below is trustworthy until this happens.* **821 tests pass and the
 extension has never run in a browser.** Unverified: the OAuth consent screen,
 the takeover animation on live Gmail, how Gmail reacts to having its roots
 hidden, and whether `chrome.identity.getRedirectURL()` matches what you

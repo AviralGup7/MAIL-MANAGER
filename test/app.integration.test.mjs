@@ -233,6 +233,26 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
       // Never mask the real result.
     }
     Object.assign(globalThis, prev);
+
+    /*
+     * CLOSE THE WINDOW. This was missing, and it is why the suite eventually
+     * died with "Ineffective mark-compacts near heap limit".
+     *
+     * Every boot builds a full JSDOM document -- DOM tree, CSSOM, timers,
+     * listeners, an ES module graph -- and without close() all of them stayed
+     * reachable for the whole run. At 139 integration tests in one process
+     * that crossed the V8 heap ceiling and the file aborted with SIGABRT,
+     * which reports as a test FAILURE with no assertion attached and sends
+     * you looking for a logic bug that is not there.
+     *
+     * close() stops jsdom's timers and detaches the window, so each test's
+     * document becomes collectable as soon as it finishes.
+     */
+    try {
+      win.close();
+    } catch {
+      // Best-effort, like the teardown above.
+    }
   };
 
   return { win, doc: win.document, calls, storage, settle, restore };
@@ -4178,6 +4198,84 @@ test('MAIL: a batch of junk can be reported in one action', async (t) => {
     await settled(doc, settle);
     assert.equal(rows(doc).length, before, 'and undo must bring the batch back');
   } finally {
+    restore();
+  }
+});
+
+test('MAIL: compose can Bcc, and the address reaches the wire', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * The MIME builder already emitted a Bcc header and collectDraft never
+   * populated it -- the capability existed end to end except for the one
+   * input the user needed. Bcc is core mail: it is how you loop somebody in
+   * without exposing their address to the thread.
+   *
+   * Verified before building: grep for bcc across src/app returned nothing.
+   */
+  const { doc, win, calls, settle, restore } = await boot();
+  try {
+    press(doc, win, 'c');
+    await settle(6);
+
+    const toggle = doc.getElementById('c-bcc-toggle');
+    assert.ok(toggle, 'compose must offer a Bcc control');
+    assert.equal(
+      doc.getElementById('c-bcc-row').hidden, true,
+      'and must keep it out of the way until asked for'
+    );
+    toggle.click();
+    await settle(4);
+    assert.equal(doc.getElementById('c-bcc-row').hidden, false);
+
+    doc.getElementById('c-to').value = 'a@pilani.bits-pilani.ac.in';
+    doc.getElementById('c-bcc').value = 'quiet@pilani.bits-pilani.ac.in';
+    doc.getElementById('c-subject').value = 'Hello';
+    doc.getElementById('c-text').value = 'Body';
+    doc.getElementById('c-send').click();
+    await settle(10);
+
+    const sent = calls.find((c) => c.type === 'SEND');
+    assert.ok(sent, 'the message must be sent');
+    assert.equal(
+      sent.draft.bcc, 'quiet@pilani.bits-pilani.ac.in',
+      'the Bcc address must survive into the draft that goes to the worker'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('MAIL: a recovered draft reveals the recipients it actually has', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * Cc and Bcc are hidden until asked for. Restoring a crashed draft into a
+   * panel that hides half its recipients is worse than not restoring it: the
+   * user sees one addressee, believes that is the whole story, and sends.
+   */
+  const draft = {
+    to: 'a@pilani.bits-pilani.ac.in',
+    cc: 'b@pilani.bits-pilani.ac.in',
+    bcc: 'c@pilani.bits-pilani.ac.in',
+    subject: 'Recovered', body: 'text', title: 'New message',
+  };
+  // Restoring asks first; accept it. Restored in `finally`.
+  const realConfirm = globalThis.confirm;
+  globalThis.confirm = () => true;
+  const { doc, settle, restore } = await boot({ storageSeed: { composeDraft: draft } });
+  try {
+    await settle(10);
+    assert.equal(doc.getElementById('c-cc').value, draft.cc, 'Cc must be restored');
+    assert.equal(doc.getElementById('c-bcc').value, draft.bcc, 'Bcc must be restored');
+    assert.equal(
+      doc.getElementById('c-cc-row').hidden, false,
+      'a restored Cc must be visible, not hidden behind a toggle'
+    );
+    assert.equal(
+      doc.getElementById('c-bcc-row').hidden, false,
+      'and so must a restored Bcc'
+    );
+  } finally {
+    globalThis.confirm = realConfirm;
     restore();
   }
 });
