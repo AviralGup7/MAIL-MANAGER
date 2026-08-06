@@ -534,7 +534,40 @@ function renderList() {
   // path returned early and "Nothing here." was never revealed — a new user
   // with no mail, or any category with no messages, saw a blank pane and no
   // explanation.
-  updateEmptyState(next.length);
+  /*
+   * DID THE USER EMPTY THIS, OR WAS IT ALREADY EMPTY?
+   *
+   * Same distinction the departure loop below draws, but needed BEFORE the
+   * empty state is written. A view that just became empty because the last
+   * message was archived deserves a different sentence from one that was
+   * empty when you arrived — see updateEmptyState.
+   *
+   * The test is: something we were rendering is gone from `next` AND gone
+   * from the store. Gone-but-still-stored is a filter change, which is not an
+   * achievement. Computed only when the result is about to be empty, so the
+   * common case pays nothing.
+   */
+  /*
+   * The mailbox-switch case is ALREADY SAFE, and not by accident here.
+   *
+   * I suspected this detector would misfire on a mailbox switch: inbox ids are
+   * absent from the Sent store, so "gone from the store" is true of every row.
+   * It does not, because `selectMailbox` sets `renderedIds = []` before
+   * rendering, so `renderedIds.length > 0` is false on the first render of any
+   * new mailbox. I added a view-key guard, then removed it again: sabotaging
+   * it changed no test, and sabotaging `renderedIds.length > 0` changed no
+   * test either, because the reset makes both vacuous.
+   *
+   * Recording it because it is a LOAD-BEARING COINCIDENCE. If a future change
+   * stops clearing `renderedIds` on mailbox switch — a reasonable-looking
+   * optimisation — the empty Sent mailbox starts congratulating you for
+   * clearing an inbox you never touched. The test named
+   * "switching to an empty mailbox is not an achievement" is the tripwire.
+   */
+  const achieved = next.length === 0 && renderedIds.length > 0
+    && renderedIds.some((id) => !store.get(id));
+
+  updateEmptyState(next.length, achieved);
 
   // Fast path: identical id list, only content changed.
   if (sameOrder(next, renderedIds)) {
@@ -630,7 +663,7 @@ function renderList() {
  * situations needing three different next actions. A generic string makes the
  * user work out which one they are in.
  */
-function updateEmptyState(count) {
+function updateEmptyState(count, achieved = false) {
   const showing = count === 0 && !state.loading;
   el.empty.hidden = !showing;
   if (!showing) return;
@@ -673,6 +706,24 @@ function updateEmptyState(count) {
       renderList();
       renderSidebar();
     });
+  } else if (achieved) {
+    /*
+     * THE USER JUST FINISHED. Say so, once, and quietly.
+     *
+     * This branch sits above the two below because it is about how the view
+     * BECAME empty, not about what the view is. Triage is a chore whose only
+     * satisfaction is finishing, and the product used to decline to notice —
+     * an inbox you cleared read exactly like a category that was never used.
+     *
+     * Deliberately dry: no confetti, no illustration, no exclamation mark.
+     * This product's voice is flat and that is an asset. One sentence, and
+     * no action button, because there is nothing left to do here.
+     */
+    el.emptyTitle.textContent = 'That was the last one';
+    el.emptySub.textContent = state.mailbox === 'inbox'
+      ? 'Your inbox is clear.'
+      : `Nothing left in ${getMailbox(state.mailbox).label}.`;
+    el.emptyAction.hidden = true;
   } else if (store.size === 0) {
     // Each mailbox says something true about itself. "Inbox empty" while
     // looking at Trash is the kind of small wrongness that reads as a bug.

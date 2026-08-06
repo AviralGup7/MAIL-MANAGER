@@ -60,7 +60,7 @@ const MESSAGES = [
  * Boot app.html in jsdom.
  * Returns { win, doc, calls, settle } — `calls` records every worker message.
  */
-async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bodyOverride = {}, syncLatency = 0, perLabel = false } = {}) {
+async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bodyOverride = {}, syncLatency = 0, perLabel = false, emptyLabels = [] } = {}) {
   const html = readFileSync(join(ROOT, 'app.html'), 'utf8');
   const dom = new JSDOM(html, {
     url: 'chrome-extension://test/app.html',
@@ -112,6 +112,11 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
         if (!perLabel) return { ok: true, data: { messages, nextPageToken: '' } };
         // Distinct messages per mailbox, so a cross-mailbox leak is visible.
         const label = (msg.opts?.labelIds || [])[0] || msg.opts?.labelName || 'INBOX';
+        // Some tests need a mailbox that is genuinely empty rather than one
+        // holding three synthetic messages.
+        if (emptyLabels.includes(label)) {
+          return { ok: true, data: { messages: [], nextPageToken: '' } };
+        }
         const tag = { INBOX: 'inbox', SENT: 'sent', TRASH: 'trash', SPAM: 'spam',
           DRAFT: 'draft', STARRED: 'star' }[label] || 'other';
         const out = Array.from({ length: 3 }, (_, i) => ({
@@ -316,6 +321,81 @@ test('the sidebar count carries an explanatory title', async (t) => {
     const all = [...doc.querySelectorAll('#cats .cat')]
       .find((b) => b.dataset.cat === 'all').lastElementChild;
     assert.match(all.getAttribute('title') || '', /3 messages, 2 unread/);
+  } finally {
+    restore();
+  }
+});
+
+test('EMPTY: clearing the last message reads differently from arriving empty', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * D-10. Archiving the last message and opening a mailbox that was already
+   * empty produced the identical screen. The first is an achievement; the
+   * second is a description. They must not share a sentence.
+   */
+  const one = [MESSAGES[0]];
+  const { doc, win, settle, restore } = await boot({ messages: one });
+  try {
+    assert.equal(rows(doc).length, 1);
+    // Archive it with the keyboard, the way the shortcut users do.
+    doc.querySelector('#list .row').click();
+    await settle(4);
+    doc.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'e', bubbles: true }));
+    // The row animates out, so it lingers in the DOM after the store drops it.
+    assert.equal((await settled(doc, settle)).length, 0, 'the row should be gone');
+    const title = doc.getElementById('empty-title').textContent;
+    assert.equal(title, 'That was the last one', `achieved-empty said: ${title}`);
+    assert.ok(
+      doc.getElementById('empty-action').hidden,
+      'there is nothing left to do, so offer no button'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('EMPTY: a mailbox that was always empty is merely described', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // The control for the test above: with no action taken, the wording must
+  // stay descriptive. Without this, "That was the last one" could greet a
+  // brand-new user who has never archived anything.
+  const { doc, restore } = await boot({ messages: [] });
+  try {
+    const title = doc.getElementById('empty-title').textContent;
+    assert.notEqual(title, 'That was the last one', 'nothing was achieved here');
+    assert.equal(title, 'Inbox empty');
+  } finally {
+    restore();
+  }
+});
+
+test('EMPTY: switching to an empty mailbox is not an achievement', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * THE CASE THAT BROKE THE FIRST IMPLEMENTATION.
+   *
+   * "Achieved" was detected as "an id we were rendering is no longer in the
+   * store". On a mailbox switch that is trivially true for every row -- the
+   * inbox ids are absent from the Sent store because they were never in it.
+   * So opening an empty Sent congratulated you for clearing an inbox you had
+   * not touched. The detector must be scoped to one view.
+   */
+  // Inbox has mail; the sync stub returns nothing for any other label, so
+  // Sent is genuinely empty and the switch crosses from populated to empty.
+  const { doc, settle, restore } = await boot({
+    perLabel: true,
+    messages: MESSAGES,
+    emptyLabels: ['SENT'],
+  });
+  try {
+    doc.querySelector('.cat[data-mailbox="sent"]').click();
+    await settled(doc, settle);
+
+    assert.equal(rows(doc).length, 0);
+    assert.notEqual(
+      doc.getElementById('empty-title').textContent, 'That was the last one',
+      'switching mailboxes is not clearing one'
+    );
   } finally {
     restore();
   }
