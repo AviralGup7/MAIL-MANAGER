@@ -481,6 +481,51 @@ export async function createLabel(name) {
   });
 }
 
+/**
+ * Find a label by name, creating it if it does not exist.
+ *
+ * Gmail returns 409 for a duplicate name, and two callers racing (a snooze and
+ * a wake at the same moment) will do exactly that. So a failed create falls
+ * back to a re-list rather than propagating: by definition the label now
+ * exists, which is all the caller wanted.
+ *
+ * The id is cached because this is on the path of every snooze, and the id of
+ * a label never changes.
+ */
+const labelIdCache = new Map();
+
+export async function ensureLabel(name) {
+  if (labelIdCache.has(name)) return labelIdCache.get(name);
+
+  const existing = (await api('/labels')).labels || [];
+  const hit = existing.find((l) => l.name === name);
+  if (hit) {
+    labelIdCache.set(name, hit.id);
+    return hit.id;
+  }
+
+  try {
+    const made = await createLabel(name);
+    if (made?.id) {
+      labelIdCache.set(name, made.id);
+      return made.id;
+    }
+  } catch {
+    // Fall through: most likely a race, and the re-list below settles it.
+  }
+
+  const after = (await api('/labels')).labels || [];
+  const found = after.find((l) => l.name === name);
+  if (!found) throw new Error(`Could not create the "${name}" label`);
+  labelIdCache.set(name, found.id);
+  return found.id;
+}
+
+/** Test seam. */
+export function _clearLabelCache() {
+  labelIdCache.clear();
+}
+
 // ============================================================================
 // ATTACHMENTS
 // ============================================================================

@@ -34,6 +34,11 @@ import { loadViews, saveView, removeView } from './views.js';
 import { extractDeadline, relativeLabel, urgency } from './deadlines.js';
 import { parseQuery, buildReply } from './query.js';
 import * as settings from './settings.js';
+import { renderShortcuts } from './shortcuts.js';
+import {
+  presets as snoozePresets, addSnooze, removeSnooze,
+  loadSnoozed, pending as pendingSnoozes, wakeLabel,
+} from './snooze.js';
 import {
   undoStack, recordUndo, performUndo,
   renderRadar, wireRadar,
@@ -162,6 +167,9 @@ const el = {
   rTags: $('r-tags'),
   rBody: $('r-body'),
   rAttachments: $('r-attachments'),
+  help: $('help'),
+  helpBody: $('help-body'),
+  helpClose: $('help-close'),
   rImages: $('r-images'),
   rImagesText: $('r-images-text'),
   rImagesShow: $('r-images-show'),
@@ -1050,6 +1058,39 @@ async function act(action, id) {
   }
 }
 
+/**
+ * Snooze one message until `wakeAt`.
+ *
+ * Local state is written BEFORE the network call, and rolled back if the call
+ * fails. Doing it the other way round leaves the row on screen for the length
+ * of a round trip after the user has already moved on.
+ */
+async function snoozeMessage(id, wakeAt, label) {
+  const m = store.get(id);
+  if (!m) return;
+  const snapshot = { ...m };
+
+  selectNeighbourThen(id);
+  store.remove(id);
+  await addSnooze(id, wakeAt, chrome.storage.local);
+  renderList();
+
+  send('SNOOZE', { id }).catch(async () => {
+    await removeSnooze(id, chrome.storage.local);
+    store.upsert(snapshot);
+    renderList();
+    toast('Could not snooze');
+  });
+
+  toast(`Snoozed ${label ? label.toLowerCase() : ''}`.trim());
+  recordUndo(ctx, 'Snoozed', async () => {
+    await removeSnooze(id, chrome.storage.local);
+    store.upsert(snapshot);
+    await send('UNSNOOZE', { id });
+    renderList();
+  });
+}
+
 /** Keep the reading pane useful after a destructive action. */
 function selectNeighbourThen(id) {
   if (state.selected !== id) return;
@@ -1326,6 +1367,12 @@ el.rAttachments.addEventListener('click', (e) => {
 $('r-actions').addEventListener('click', (e) => {
   const b = e.target.closest('button[data-act]');
   if (!b || !state.selected) return;
+  // Snooze opens a picker instead of acting immediately, so it is not an
+  // `act()` verb.
+  if (b.dataset.act === 'snooze') {
+    openSnoozeMenu(state.selected, b);
+    return;
+  }
   act(b.dataset.act, state.selected);
 });
 
@@ -1379,6 +1426,11 @@ function updateSaveAffordance() {
 }
 
 $('btn-refresh').addEventListener('click', () => refresh());
+el.helpClose?.addEventListener('click', closeHelp);
+// Clicking the backdrop closes, clicking the panel does not.
+el.help?.addEventListener('mousedown', (e) => {
+  if (e.target === el.help) closeHelp();
+});
 $('btn-more').addEventListener('click', () => loadPage(state.nextPageToken));
 $('btn-gmail').addEventListener('click', release);
 $('btn-signout').addEventListener('click', async () => {
@@ -1513,6 +1565,130 @@ async function doSignIn() {
   }
 }
 
+// ----------------------------------------------------------------- snooze --
+
+/**
+ * The snooze picker.
+ *
+ * A small menu rather than a date-time control. Snoozing is a fast, frequent,
+ * low-precision decision -- "not now, later" -- and a calendar widget turns a
+ * one-keystroke action into a form. Gmail reached the same conclusion.
+ *
+ * Rendered on demand and torn down on dismiss, so there is no persistent menu
+ * in the DOM listening for clicks.
+ */
+let snoozeMenu = null;
+
+function closeSnoozeMenu() {
+  if (!snoozeMenu) return;
+  const returnTo = snoozeMenu.returnFocus;
+  snoozeMenu.node.remove();
+  document.removeEventListener('mousedown', snoozeMenu.onDocDown, true);
+  snoozeMenu = null;
+  if (returnTo?.isConnected) returnTo.focus?.();
+}
+
+function openSnoozeMenu(id, anchor) {
+  closeSnoozeMenu();
+  const m = store.get(id);
+  if (!m) return;
+
+  // The deadline the radar already parsed feeds an option Gmail cannot offer.
+  let deadline;
+  try {
+    deadline = extractDeadline(m)?.at;
+  } catch {
+    deadline = undefined;
+  }
+
+  const options = snoozePresets(Date.now(), { deadline });
+  const node = document.createElement('div');
+  node.className = 'snooze-menu';
+  node.setAttribute('role', 'menu');
+  node.setAttribute('aria-label', 'Snooze until');
+
+  for (const opt of options) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'snooze-opt';
+    b.setAttribute('role', 'menuitem');
+
+    const name = document.createElement('span');
+    name.textContent = opt.label;
+    const when = document.createElement('span');
+    when.className = 'snooze-when';
+    when.textContent = new Date(opt.at).toLocaleString(undefined, {
+      weekday: 'short', hour: 'numeric', minute: '2-digit',
+    });
+
+    b.append(name, when);
+    b.addEventListener('click', () => {
+      closeSnoozeMenu();
+      snoozeMessage(id, opt.at, opt.label);
+    });
+    node.appendChild(b);
+  }
+
+  // Keyboard: arrows move, Escape dismisses. Same contract as the palette.
+  node.addEventListener('keydown', (e) => {
+    const items = [...node.querySelectorAll('.snooze-opt')];
+    const i = items.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      items[(i + 1) % items.length]?.focus();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      items[(i - 1 + items.length) % items.length]?.focus();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation(); // do not also close the reader
+      closeSnoozeMenu();
+    }
+  });
+
+  const onDocDown = (e) => {
+    if (!node.contains(e.target)) closeSnoozeMenu();
+  };
+  document.addEventListener('mousedown', onDocDown, true);
+
+  snoozeMenu = { node, onDocDown, returnFocus: anchor || document.activeElement };
+  (anchor?.closest('#r-actions') || el.reader || document.body).appendChild(node);
+  node.querySelector('.snooze-opt')?.focus();
+}
+
+// ------------------------------------------------------------------- help --
+
+/**
+ * Keyboard help overlay.
+ *
+ * Focus is moved INTO the dialog and restored to wherever it came from on
+ * close. Skipping the restore is the classic modal bug: the user presses `?`,
+ * reads, presses Escape, and their next `j` goes nowhere because focus is on
+ * `<body>`.
+ */
+let helpReturnFocus = null;
+
+/** Pending `g` prefix for the two-key category jump. Expires; see the handler. */
+let goPending = null;
+
+function openHelp() {
+  if (!el.help || !el.help.hidden) return;
+  renderShortcuts(el.helpBody, document);
+  helpReturnFocus = document.activeElement;
+  el.help.hidden = false;
+  el.helpClose.focus();
+}
+
+function closeHelp() {
+  if (!el.help || el.help.hidden) return;
+  el.help.hidden = true;
+  // Restore focus, but only if the old node is still in the document.
+  const back = helpReturnFocus;
+  helpReturnFocus = null;
+  if (back && back.isConnected && typeof back.focus === 'function') back.focus();
+  else el.list?.focus?.();
+}
+
 /** Hand the page back to Gmail. The content script does the actual unwind. */
 function release() {
   // Flush before the frame is destroyed, so triage done in this session is on
@@ -1528,6 +1704,17 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     // Layered: innermost surface first. Releasing the takeover while a compose
     // panel is open would discard a half-written message.
+    //
+    // Help is checked FIRST because it can be opened on top of anything else,
+    // including the palette and compose.
+    if (el.help && !el.help.hidden) {
+      closeHelp();
+      return;
+    }
+    if (snoozeMenu) {
+      closeSnoozeMenu();
+      return;
+    }
     if (!$('palette').hidden) {
       closePalette();
       return;
@@ -1572,6 +1759,51 @@ document.addEventListener('keydown', (e) => {
 
   if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
 
+  /*
+   * `?` is Shift+/ on most layouts, so it must be handled BEFORE the shift
+   * block below returns early. Checking `e.key` rather than the physical key
+   * means it also works on layouts where ? is unshifted.
+   */
+  if (e.key === '?') {
+    e.preventDefault();
+    if (el.help && el.help.hidden) openHelp();
+    else closeHelp();
+    return;
+  }
+
+  // While help is open, swallow the single-letter shortcuts. Acting on a
+  // message the user cannot see is the worst kind of surprise.
+  if (el.help && !el.help.hidden) return;
+
+  /*
+   * `g` then a digit jumps to a category — Gmail's two-key "go to" idiom.
+   *
+   * The pending state EXPIRES. Without a timeout, a `g` pressed and abandoned
+   * turns the next unrelated keystroke into a navigation, which feels like
+   * the app acting on its own. Gmail uses roughly a second; so do we.
+   */
+  if (goPending) {
+    clearTimeout(goPending.timer);
+    goPending = null;
+    const n = Number(e.key);
+    if (Number.isInteger(n)) {
+      e.preventDefault();
+      // 0 is "all", then the sidebar order as displayed.
+      const key = n === 0 ? 'all' : SIDEBAR_ORDER[n - 1];
+      if (key) {
+        selectCategory(key);
+        toast(`${key === 'all' ? 'All mail' : CATEGORY_LABELS[key] || key}`);
+      }
+      return;
+    }
+    // Not a digit: fall through and treat it as a normal shortcut.
+  }
+  if (e.key === 'g') {
+    e.preventDefault();
+    goPending = { timer: setTimeout(() => { goPending = null; }, 1200) };
+    return;
+  }
+
   // Shift shortcuts for reply. Checked before the plain-key switch so that
   // Shift+R is not swallowed by the `r` = refresh case.
   if (e.shiftKey) {
@@ -1611,6 +1843,13 @@ document.addEventListener('keydown', (e) => {
       break;
     case 'r':
       refresh();
+      break;
+    case 'z':
+      // Gmail's snooze key. Opens the picker rather than choosing for you.
+      if (state.selected) {
+        e.preventDefault();
+        openSnoozeMenu(state.selected, document.querySelector('[data-act="snooze"]'));
+      }
       break;
     case 'c':
       e.preventDefault();

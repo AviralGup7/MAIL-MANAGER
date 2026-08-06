@@ -12,8 +12,9 @@ import { signIn, signOut, isSignedIn } from './auth.js';
 import {
   getFull, modify, batchModify, trash, profile,
   buildMime, sendMessage, saveDraft,
-  listLabels, createLabel, getAttachment,
+  listLabels, createLabel, getAttachment, ensureLabel,
 } from './gmail.js';
+import { SNOOZE_LABEL, loadSnoozed, removeSnooze, due } from '../app/snooze.js';
 import { syncPage, syncDelta } from './sync.js';
 import { api } from './gmail.js';
 
@@ -223,6 +224,28 @@ async function handle(msg) {
     case 'CREATE_LABEL':
       return createLabel(msg.name);
 
+    // ---- snooze ----------------------------------------------------------
+    /*
+     * Snoozing is two Gmail mutations in one step: out of the inbox, into the
+     * snoozed label. Doing them as one `modify` call means there is no window
+     * where the message is in neither place.
+     */
+    case 'SNOOZE': {
+      const labelId = await ensureLabel(SNOOZE_LABEL);
+      await modify(msg.id, [labelId], ['INBOX']);
+      await scheduleWake();
+      return { ok: true };
+    }
+    case 'UNSNOOZE': {
+      const labelId = await ensureLabel(SNOOZE_LABEL);
+      // Back to the inbox and unread, because a message that reappears
+      // already-read will be scrolled past and never seen.
+      await modify(msg.id, ['INBOX', 'UNREAD'], [labelId]);
+      return { ok: true };
+    }
+    case 'WAKE_DUE':
+      return { woke: await wakeDue() };
+
     // ---- attachments -----------------------------------------------------
     case 'GET_ATTACHMENT':
       return { dataUrl: await getAttachment(msg.messageId, msg.attachmentId, msg.mimeType) };
@@ -366,3 +389,91 @@ function b64url(data) {
     return '';
   }
 }
+
+// ============================================================================
+// SNOOZE WAKE
+// ============================================================================
+
+/**
+ * Waking snoozed mail.
+ *
+ * MV3 SERVICE WORKERS ARE KILLED AGGRESSIVELY, so a `setTimeout` for
+ * "tomorrow at 8am" does not survive: the worker is gone within seconds of
+ * going idle. `chrome.alarms` is the only timer that persists, and its
+ * minimum granularity is one minute.
+ *
+ * The alarm is therefore a NUDGE, not a guarantee. The real correctness comes
+ * from `wakeDue()` being run on startup and on install as well: anything
+ * overdue is delivered late rather than lost. A snooze that silently eats
+ * mail is worse than no snooze at all.
+ */
+const WAKE_ALARM = 'bmm-wake';
+
+async function wakeDue(now = Date.now()) {
+  let all;
+  try {
+    all = await loadSnoozed(chrome.storage.local);
+  } catch {
+    return 0;
+  }
+
+  const ready = due(all, now);
+  if (!ready.length) return 0;
+
+  let labelId;
+  try {
+    labelId = await ensureLabel(SNOOZE_LABEL);
+  } catch {
+    // Not signed in, or offline. Leave the entries alone so the next sweep
+    // retries; dropping them here is how mail goes missing.
+    return 0;
+  }
+
+  let woke = 0;
+  for (const id of ready) {
+    try {
+      await modify(id, ['INBOX', 'UNREAD'], [labelId]);
+      await removeSnooze(id, chrome.storage.local);
+      woke++;
+    } catch {
+      // One failure must not stop the rest, and the entry stays put so the
+      // next sweep tries again.
+    }
+  }
+  return woke;
+}
+
+/**
+ * Point the alarm at the NEXT wake time.
+ *
+ * One alarm, re-aimed, rather than one alarm per snoozed message: alarms are a
+ * shared, limited resource and a hundred snoozed messages should not mean a
+ * hundred registrations.
+ */
+async function scheduleWake() {
+  if (!chrome.alarms) return;
+  const all = await loadSnoozed(chrome.storage.local);
+  const times = Object.values(all)
+    .map((v) => v?.at)
+    .filter((t) => typeof t === 'number');
+  if (!times.length) {
+    await chrome.alarms.clear(WAKE_ALARM);
+    return;
+  }
+  const next = Math.min(...times);
+  // Never schedule in the past; Chrome fires those immediately and repeatedly.
+  await chrome.alarms.create(WAKE_ALARM, { when: Math.max(next, Date.now() + 5000) });
+}
+
+if (chrome.alarms?.onAlarm) {
+  chrome.alarms.onAlarm.addListener(async (alarm) => {
+    if (alarm.name !== WAKE_ALARM) return;
+    await wakeDue();
+    await scheduleWake(); // re-aim at whatever is next
+  });
+}
+
+// The catch-up sweep. Both hooks, because onStartup does not fire when the
+// extension is enabled mid-session or reloaded during development.
+chrome.runtime.onStartup?.addListener(() => { wakeDue().then(scheduleWake); });
+chrome.runtime.onInstalled?.addListener(() => { wakeDue().then(scheduleWake); });

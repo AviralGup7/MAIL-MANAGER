@@ -11,6 +11,7 @@
     "128": "icons/icon128.png"
   },
   "permissions": [
+    "alarms",
     "identity",
     "scripting",
     "storage"

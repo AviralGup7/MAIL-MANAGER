@@ -232,6 +232,7 @@
                 <div id="r-actions">
                   <button data-act="star" class="ghost" type="button">Star</button>
                   <button data-act="unread" class="ghost" type="button">Mark unread</button>
+                  <button data-act="snooze" class="ghost" type="button" title="Snooze (z)">Snooze</button>
                   <button data-act="archive" class="ghost" type="button">Archive</button>
                   <button data-act="trash" class="ghost danger" type="button">Delete</button>
                   <a id="r-open" class="ghost" target="_blank" rel="noopener">Open in Gmail</a>
@@ -339,7 +340,29 @@
                  autocomplete="off" spellcheck="false"
                  role="combobox" aria-expanded="true" aria-controls="palette-list" />
           <ul id="palette-list" role="listbox" aria-label="Commands"></ul>
-          <div id="palette-hint">↑↓ navigate · ↵ run · esc close</div>
+          <div id="palette-hint">↑↓ navigate · ↵ run · esc close · ? shortcuts</div>
+        </div>
+      </div>
+
+      <!--
+        KEYBOARD HELP.
+
+        Thirteen shortcuts existed with nothing in the UI naming most of them.
+        The content is rendered from src/app/shortcuts.js so the help cannot
+        drift away from the bindings; a test enforces it.
+      -->
+      <div id="help" role="dialog" aria-modal="true" aria-labelledby="help-title" hidden>
+        <div id="help-box">
+          <header id="help-head">
+            <h2 id="help-title">Keyboard shortcuts</h2>
+            <button id="help-close" class="ghost icon" type="button" aria-label="Close"></button>
+          </header>
+          <div id="help-body"><!-- built by shortcuts.js --></div>
+          <footer id="help-foot">
+            Every action here is also in the command palette
+            <kbd>Ctrl</kbd><kbd>K</kbd> — and every action can be undone with
+            <kbd>Ctrl</kbd><kbd>Z</kbd>, not just sending.
+          </footer>
         </div>
       </div>
 

@@ -2286,6 +2286,171 @@ html[data-scheme='dark'] #thememenu {
   margin-left: auto;
 }
 
+/* -------------------------------------------------------------- snooze --- */
+
+/*
+ * Anchored to the reader's action bar rather than to the pointer. A menu that
+ * appears under the cursor is fine for a right-click, but this opens from a
+ * button AND from the `z` key, and the keyboard case has no cursor position.
+ */
+.snooze-menu {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + var(--s-2));
+  left: 0;
+  min-width: 248px;
+  padding: var(--s-2);
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  animation: menu-in var(--dur-fast) var(--ease-out) both;
+}
+
+.snooze-opt {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-4);
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  font-size: var(--t-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.snooze-opt:hover,
+.snooze-opt:focus-visible {
+  background: var(--accent-soft);
+}
+
+.snooze-when {
+  color: var(--fg-dim);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+}
+
+/* The action bar is the positioning context for the menu above. */
+#r-actions {
+  position: relative;
+}
+
+/* ------------------------------------------------------- keyboard help --- */
+
+#help {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: var(--s-6);
+  background: rgba(0, 0, 0, 0.42);
+}
+
+#help-box {
+  width: min(760px, 100%);
+  max-height: 84vh;
+  overflow: auto;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-lg);
+  /* Reuses the palette's entrance: same interaction class, same motion. */
+  animation: palette-in var(--dur-base) var(--ease-in) both;
+}
+
+#help-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  padding: var(--s-5) var(--s-6);
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  background: var(--bg-raised);
+}
+
+#help-title {
+  margin: 0;
+  font-size: var(--t-xl);
+  font-weight: var(--w-semi);
+}
+
+#help-body {
+  padding: var(--s-5) var(--s-6);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--s-6) var(--s-8);
+  align-items: start;
+}
+
+.sc-group h3 {
+  margin: 0 0 var(--s-3);
+  font-size: var(--t-xs);
+  font-weight: var(--w-semi);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--fg-dim);
+}
+
+/*
+ * A definition list, laid out as two columns. `dt` carries the keys and `dd`
+ * the description, which is the correct semantic pairing and means a screen
+ * reader announces "j, next message" rather than reading two disconnected
+ * lists.
+ */
+.sc-group dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--s-2) var(--s-4);
+  align-items: baseline;
+}
+
+.sc-group dt {
+  display: flex;
+  gap: var(--s-1);
+  justify-content: flex-end;
+}
+
+.sc-group dd {
+  margin: 0;
+  font-size: var(--t-sm);
+  color: var(--fg);
+}
+
+.sc-when {
+  display: block;
+  font-size: var(--t-xs);
+  color: var(--fg-dim);
+}
+
+#help-foot {
+  padding: var(--s-4) var(--s-6);
+  border-top: 1px solid var(--line);
+  font-size: var(--t-sm);
+  color: var(--fg-dim);
+}
+
+kbd {
+  display: inline-block;
+  min-width: 20px;
+  padding: var(--s-1) var(--s-2);
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  font: var(--w-medium) var(--t-xs) / 1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--fg);
+  text-align: center;
+}
+
 /*
  * `hidden` must actually hide.
  *
