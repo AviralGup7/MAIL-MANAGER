@@ -208,6 +208,47 @@ popup again.
 smaller prize than a refresh token granting `gmail.modify` indefinitely, which
 is what the PKCE design would have written to disk.
 
+## Signed in but still looking at the sign-in screen
+
+Auth was fine — the popup completed, the token was stored, the code correctly
+decided you were signed in and called `hideGate()`. The gate just refused to go
+away.
+
+`hidden` is not special. The browser implements it as a plain stylesheet rule:
+
+```css
+[hidden] { display: none }
+```
+
+…at the **lowest** author-overridable precedence. So this, in our own CSS:
+
+```css
+#gate { position: fixed; inset: 0; display: grid; }
+```
+
+beat it outright. `el.gate.hidden = true` set the attribute and changed nothing
+you could see.
+
+Three elements had the same flaw:
+
+| Element | Rule | Symptom |
+|---|---|---|
+| `#gate` | `display: grid` | sign-in screen never dismissed |
+| `#reader` | `display: flex` | reading pane would not close on `Esc` |
+| `#r-loading` | `display: grid` | stale "Loading…" over a rendered message |
+
+Fixed with `[hidden] { display: none !important }`.
+
+### Why 241 tests didn't catch it
+
+Every test asserted the **property** — `assert.equal(gate.hidden, true)` —
+which was always correct. Not one asked whether the element was actually
+*painted*. The new test sets `hidden` on every element the app toggles and
+asserts computed `display` is `none`.
+
+That is the difference between testing what the code did and testing what the
+user sees, and it is the third bug in this run that only a real browser found.
+
 ## Still to check once it loads
 
 - Does the takeover animate in over Gmail?
