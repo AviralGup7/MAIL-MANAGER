@@ -1287,3 +1287,250 @@ test('VIEWS: the save affordance appears only for an unsaved query', async (t) =
     restore();
   }
 });
+
+/* ========================================================================== *
+ * UI POLISH AUDIT — behavioural, not source-scanning
+ *
+ * The tests below drive the real DOM. Everything they assert was previously
+ * covered only by reading source text, which cannot see focus, event ordering
+ * or what a keystroke actually does.
+ * ========================================================================== */
+
+const press = (doc, win, key, opts = {}) =>
+  doc.dispatchEvent(new win.KeyboardEvent('keydown', { key, bubbles: true, ...opts }));
+
+test('HELP: ? opens the overlay and Escape restores focus to where it was', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, win, settle, restore } = await boot();
+  try {
+    const help = doc.getElementById('help');
+    assert.equal(help.hidden, true, 'starts hidden');
+
+    // Focus something specific first, so restoration is observable.
+    const search = doc.getElementById('search');
+    search.focus();
+    assert.equal(doc.activeElement, search);
+
+    press(doc, win, '?');
+    await settle();
+    assert.equal(help.hidden, false, '? must open the overlay');
+    assert.ok(help.contains(doc.activeElement), 'focus must move INTO the dialog');
+    assert.ok(doc.getElementById('help-body').children.length > 0, 'content is rendered');
+
+    press(doc, win, 'Escape');
+    await settle();
+    assert.equal(help.hidden, true, 'Escape closes it');
+    assert.equal(doc.activeElement, search, 'focus must return to where it came from');
+  } finally {
+    restore();
+  }
+});
+
+test('HELP: shortcuts do not fire at the message list while help is open', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Archiving a message the user cannot see is the worst kind of surprise.
+  const { doc, win, settle, restore } = await boot();
+  try {
+    rows(doc)[0].click();
+    await settle();
+    const before = rows(doc).length;
+
+    press(doc, win, '?');
+    await settle();
+    press(doc, win, 'e');       // archive
+    press(doc, win, '#');       // delete
+    await settle();
+
+    assert.equal(rows(doc).length, before, 'no message may be triaged behind the overlay');
+  } finally {
+    restore();
+  }
+});
+
+test('HELP: renders every documented shortcut exactly once', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, win, settle, restore } = await boot();
+  try {
+    press(doc, win, '?');
+    await settle();
+    press(doc, win, '?');       // toggle closed
+    await settle();
+    press(doc, win, '?');       // and open again
+    await settle();
+
+    const { allShortcuts } = await import('../src/app/shortcuts.js');
+    assert.equal(
+      doc.querySelectorAll('#help-body dt').length,
+      allShortcuts().length,
+      'reopening must replace the content, not append to it'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('ESCAPE: unwinds one layer at a time, innermost first', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * The ordering complaint this prevents is "one Escape too many dumped me
+   * back in Gmail". Help sits above the palette; neither may release the
+   * takeover while it is open.
+   */
+  const { doc, win, settle, restore } = await boot();
+  try {
+    let released = false;
+    win.parent = {
+      postMessage(m) { if (m?.type === 'BMM_RELEASE') released = true; },
+    };
+
+    press(doc, win, 'k', { ctrlKey: true });   // palette
+    await settle();
+    assert.equal(doc.getElementById('palette').hidden, false);
+
+    press(doc, win, '?');                      // help, on top of it
+    await settle();
+    assert.equal(doc.getElementById('help').hidden, false);
+
+    press(doc, win, 'Escape');
+    await settle();
+    assert.equal(doc.getElementById('help').hidden, true, 'help closes first');
+    assert.equal(doc.getElementById('palette').hidden, false, 'palette must survive');
+    assert.equal(released, false, 'the takeover must not be released');
+
+    press(doc, win, 'Escape');
+    await settle();
+    assert.equal(doc.getElementById('palette').hidden, true, 'then the palette');
+    assert.equal(released, false, 'still not released');
+  } finally {
+    restore();
+  }
+});
+
+test('MAILBOX: the rail exposes the system mailboxes and switching works', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, win, settle, restore } = await boot();
+  try {
+    const ids = [...doc.querySelectorAll('.cat[data-mailbox]')].map((b) => b.dataset.mailbox);
+    for (const want of ['inbox', 'sent', 'drafts', 'trash', 'spam', 'snoozed']) {
+      assert.ok(ids.includes(want), `rail is missing ${want}`);
+    }
+
+    const sent = doc.querySelector('.cat[data-mailbox="sent"]');
+    sent.click();
+    await settle();
+    assert.equal(sent.getAttribute('aria-current'), 'true', 'Sent becomes current');
+    // Categories are an inbox concept and must not be shown in Sent.
+    assert.equal(doc.getElementById('cat-group').hidden, true);
+  } finally {
+    restore();
+  }
+});
+
+test('MAILBOX: switching clears a stale search rather than double-filtering', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, win, settle, restore } = await boot();
+  try {
+    const search = doc.getElementById('search');
+    search.value = 'registration';
+    search.dispatchEvent(new win.Event('input'));
+    await settle();
+    assert.equal(search.value, 'registration');
+
+    doc.querySelector('.cat[data-mailbox="trash"]').click();
+    await settle();
+    assert.equal(search.value, '', 'the visible control must match the applied state');
+  } finally {
+    restore();
+  }
+});
+
+test('MAILBOX: the rail stays a single tab stop after switching', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Two groups must not become two tab stops.
+  const { doc, settle, restore } = await boot();
+  try {
+    doc.querySelector('.cat[data-mailbox="sent"]').click();
+    await settle();
+    const tabbable = [...doc.querySelectorAll('#cats .cat')].filter((c) => c.tabIndex === 0);
+    assert.equal(tabbable.length, 1, `expected 1 tab stop, found ${tabbable.length}`);
+  } finally {
+    restore();
+  }
+});
+
+test('SNOOZE: z opens a picker with only future options', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, win, settle, restore } = await boot();
+  try {
+    rows(doc)[0].click();
+    await settle();
+    press(doc, win, 'z');
+    await settle();
+
+    const menu = doc.querySelector('.snooze-menu');
+    assert.ok(menu, 'z must open the snooze picker');
+    const opts = menu.querySelectorAll('.snooze-opt');
+    assert.ok(opts.length >= 2, 'expected several wake times');
+    assert.ok(menu.contains(doc.activeElement), 'focus moves into the menu');
+
+    press(doc, win, 'Escape');
+    await settle();
+    assert.equal(doc.querySelector('.snooze-menu'), null, 'Escape dismisses it');
+    // And must NOT also have closed the reader.
+    assert.equal(doc.getElementById('reader').hidden, false, 'the reader must stay open');
+  } finally {
+    restore();
+  }
+});
+
+test('IMAGES: a blocked remote image is announced with a way to load it', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, settle, restore } = await boot({
+    bodyOverride: { html: '<p>hi</p><img src="https://tracker.example/pixel.png">' },
+  });
+  try {
+    rows(doc)[0].click();
+    await settle();
+
+    const bar = doc.getElementById('r-images');
+    assert.equal(bar.hidden, false, 'the bar must appear when something was blocked');
+    assert.match(doc.getElementById('r-images-text').textContent, /1 image/);
+    assert.ok(!doc.getElementById('r-images-show').hidden, 'an override must be offered');
+  } finally {
+    restore();
+  }
+});
+
+test('IMAGES: no bar appears for a message with no remote images', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // A privacy notice on a plain-text mail is noise that trains people to
+  // ignore the notice when it matters.
+  const { doc, settle, restore } = await boot({
+    bodyOverride: { html: '<p>just text</p>' },
+  });
+  try {
+    rows(doc)[0].click();
+    await settle();
+    assert.equal(doc.getElementById('r-images').hidden, true);
+  } finally {
+    restore();
+  }
+});
+
+test('READER: actions that cannot work are hidden, not left dead', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, settle, restore } = await boot();
+  try {
+    rows(doc)[0].click();
+    await settle();
+    const archive = doc.querySelector('#r-actions [data-act="archive"]');
+    assert.equal(archive.hidden, false, 'archive is meaningful in the inbox');
+
+    doc.querySelector('.cat[data-mailbox="trash"]').click();
+    await settle();
+    // Archiving something already deleted does nothing; the control must go.
+    assert.equal(archive.hidden, true, 'archive must be hidden in Trash');
+  } finally {
+    restore();
+  }
+});

@@ -2502,6 +2502,17 @@ window.addEventListener('message', (e) => {
  * cannot tell whether pressing it will star or unstar.
  */
 function syncContextActions(m) {
+  /*
+   * The action bar depends on the MAILBOX, not only on the message, so it is
+   * refreshed before the early return below.
+   *
+   * This was a real bug: `syncReaderActions()` sat after `if (!m) return`, so
+   * switching to Trash -- which deselects -- never re-evaluated which actions
+   * apply. "Archive" stayed visible on a deleted message until something else
+   * happened to select a row.
+   */
+  syncReaderActions();
+
   const wrap = $('ctx-actions');
   if (!wrap) return;
   wrap.hidden = !m;
@@ -2510,7 +2521,6 @@ function syncContextActions(m) {
   setIcon(star, 'star', { size: 15, filled: !!m.starred });
   star.setAttribute('aria-label', m.starred ? 'Unstar' : 'Star');
   star.setAttribute('aria-pressed', String(!!m.starred));
-  syncReaderActions();
 }
 
 /**
