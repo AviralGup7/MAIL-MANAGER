@@ -126,8 +126,18 @@ export function hasFollowup(list, threadId) {
  */
 export function isAnswered(f, store, self) {
   const me = String(self || '').toLowerCase();
-  if (typeof store?.threadIds !== 'function') return false;
-  for (const id of store.threadIds(f.threadId)) {
+  /*
+   * BOTH methods are checked, not just the first.
+   *
+   * The original guard tested `threadIds` and then called `store.get(id)`
+   * inside the loop. A store double -- or a partially-constructed real store
+   * during boot -- with one method and not the other threw a TypeError out of
+   * a function whose whole contract is to return a boolean. `dueFollowups`
+   * runs on the radar render path, so that is a render crash, not a bad
+   * answer.
+   */
+  if (typeof store?.threadIds !== 'function' || typeof store?.get !== 'function') return false;
+  for (const id of store.threadIds(f.threadId) || []) {
     const m = store.get(id);
     if (!m) continue;
     if (m.date <= f.createdAt) continue;
@@ -167,8 +177,15 @@ export function openFollowups(list, store, self) {
  */
 export function pruneFollowups(list, store, self) {
   return list.filter((f) => {
-    const ids = typeof store?.threadIds === 'function' ? store.threadIds(f.threadId) : [];
-    if (!ids || ids.length === 0) return false; // thread is gone
+    const ids = typeof store?.threadIds === 'function' ? store.threadIds(f.threadId) : null;
+    /*
+     * `null` means we could not ask -- an empty array means we asked and the
+     * thread is gone. Collapsing the two would DELETE every follow-up the
+     * first time this ran against a store that was not ready, which is silent,
+     * permanent data loss for the one feature whose value is remembering.
+     */
+    if (ids === null) return true;
+    if (ids.length === 0) return false; // thread really has left the mailbox
     return !isAnswered(f, store, self);
   });
 }

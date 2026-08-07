@@ -84,8 +84,8 @@ const TAIL_MARKERS = [
 const QUOTE_MARKERS = [
   /\bon\s+\w{3},?\s+\d{1,2}\s+\w{3,9},?\s+\d{4}.{0,80}?\bwrote\s*:/i,
   /\bon\s+.{0,60}?\bwrote\s*:/i,
-  /-{2,}\s*original\s+message\s*-{2,}/i,
-  /-{2,}\s*forwarded\s+message\s*-{2,}/i,
+  /-{2,80}\s*original\s+message\s*-{0,80}/i,
+  /-{2,80}\s*forwarded\s+message\s*-{0,80}/i,
   /\bfrom\s*:\s*.{0,80}?\bsent\s*:\s*/i,
   /^>+\s?/m,
 ];
@@ -173,7 +173,29 @@ function dropOpeners(text) {
  * @returns {string} cleaned text, possibly empty
  */
 export function cleanSnippet(raw, { max = 140 } = {}) {
+  /*
+   * BOUND THE WORKING WINDOW BEFORE ANY REGEX TOUCHES IT.
+   *
+   * Two reasons, one of which was a measured bug.
+   *
+   * 1. COST. This runs once per row on every render. Gmail's snippet is ~200
+   *    characters, but `rowSnippet` is also called with body text, and a body
+   *    can be 50KB. Running fifteen patterns over 50KB to produce 140
+   *    characters is work thrown away.
+   *
+   * 2. BACKTRACKING. The forwarded/original-message markers contain `-{2,}`,
+   *    and a long run of dashes -- an ASCII separator line, which real mail is
+   *    full of -- made the match quadratic. Measured: 500 dashes 10ms, 8000
+   *    dashes 267ms. On the render path that is a visible stall, caused by a
+   *    message the user cannot see is different.
+   *
+   * The dash quantifiers are now bounded too, so this cap is defence in depth
+   * rather than the only guard. 2000 characters is far more than any
+   * boilerplate prefix and leaves plenty of room for the real first sentence.
+   */
+  const WINDOW = 2000;
   let t = normalise(raw);
+  if (t.length > WINDOW) t = t.slice(0, WINDOW);
   if (!t.trim()) return '';
 
   t = dropQuoted(t);

@@ -200,3 +200,42 @@ test('the presets are ordered and distinct', () => {
   assert.deepEqual(ms, [...ms].sort((a, b) => a - b));
   assert.equal(new Set(ms).size, ms.length);
 });
+
+
+/* ==========================================================================
+ * STORE-SHAPE ROBUSTNESS
+ *
+ * Both found in the per-file audit. `dueFollowups` runs on the radar render
+ * path, so a TypeError here is a render crash rather than a wrong answer.
+ * ========================================================================== */
+
+test('a store with threadIds but no get does not crash the radar', () => {
+  const list = setFollowup([], { threadId: 't1', messageId: 'm1', dueAt: NOW }, NOW - 1000);
+  assert.doesNotThrow(() => dueFollowups(list, { threadIds: () => ['m1'] }, ME, NOW + 1000));
+});
+
+test('threadIds returning null is tolerated', () => {
+  const list = setFollowup([], { threadId: 't1', messageId: 'm1', dueAt: NOW }, NOW - 1000);
+  assert.doesNotThrow(() => dueFollowups(list, { threadIds: () => null, get: () => undefined }, ME, NOW + 1000));
+});
+
+test('A STORE THAT CANNOT ANSWER DOES NOT CAUSE MASS DELETION', () => {
+  /*
+   * `pruneFollowups` drops entries whose thread has left the mailbox. The
+   * original code turned "I could not ask" into an empty array, which is
+   * indistinguishable from "the thread is gone" -- so running a prune against
+   * a store that was not ready would have silently deleted EVERY follow-up.
+   *
+   * Silent permanent data loss, for the one feature whose entire value is
+   * remembering something on the user's behalf.
+   */
+  let list = setFollowup([], { threadId: 't1', messageId: 'm1', dueAt: NOW }, NOW);
+  list = setFollowup(list, { threadId: 't2', messageId: 'm2', dueAt: NOW }, NOW);
+
+  assert.equal(pruneFollowups(list, {}, ME).length, 2, 'no store: keep everything');
+  assert.equal(pruneFollowups(list, null, ME).length, 2, 'null store: keep everything');
+
+  // And the real behaviour is unchanged: a genuinely absent thread is dropped.
+  const realStore = { threadIds: (t) => (t === 't1' ? ['m1'] : []), get: () => ({ id: 'm1', from: ME, date: NOW - 1 }) };
+  assert.deepEqual(pruneFollowups(list, realStore, ME).map((f) => f.threadId), ['t1']);
+});

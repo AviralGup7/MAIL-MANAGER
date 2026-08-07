@@ -202,7 +202,20 @@ export function statusOf(item, now = Date.now()) {
   }
   if (item.state === 'sending') return 'Sending…';
   if (isStuck(item)) return `Could not send — ${item.error || 'unknown error'}`;
-  const wait = Math.max(0, Math.ceil((item.nextAttempt - now) / 1000));
+
+  /*
+   * A `failed` record whose `nextAttempt` is absent or in the past is due NOW,
+   * not "in 0s". `normaliseOutbox` defaults `nextAttempt` to 0 for a corrupt or
+   * older blob, and an interrupted `sending` record is demoted to `failed` with
+   * whatever it had -- so this is reachable on any restart after a crash, not
+   * just from hand-built input.
+   *
+   * "Retrying in 0s" is the kind of string that sits there unchanged and makes
+   * the queue look stuck, which is precisely the impression the outbox exists
+   * to prevent.
+   */
+  const wait = Math.ceil(((Number.isFinite(item.nextAttempt) ? item.nextAttempt : 0) - now) / 1000);
+  if (wait <= 0) return `Retrying now (attempt ${item.attempts + 1} of ${MAX_ATTEMPTS})`;
   return `Retrying in ${wait}s (attempt ${item.attempts + 1} of ${MAX_ATTEMPTS})`;
 }
 

@@ -103,9 +103,41 @@ test('empty and nullish input never throw', () => {
   }
 });
 
-test('a very long repeated salutation terminates (no infinite loop)', () => {
-  const s = cleanSnippet('Dear all, '.repeat(400) + 'the end.');
+test('a long stack of salutations terminates and still finds the content', () => {
+  // 150 * 10 chars = 1500, inside the 2000-character working window.
+  const s = cleanSnippet('Dear all, '.repeat(150) + 'the end.');
   assert.match(s, /the end/);
+});
+
+test('content past the working window is dropped, deliberately', () => {
+  /*
+   * cleanSnippet caps its input at 2000 characters before any regex runs,
+   * because the forwarded-message markers contain `-{2,}` and a long run of
+   * dashes made the match quadratic -- 8000 dashes took 267ms on the render
+   * path, once per row.
+   *
+   * The trade-off is real and is asserted here rather than left implicit: a
+   * message whose first genuine sentence sits after 2000 characters of
+   * boilerplate yields an empty snippet. No institutional mail does that --
+   * the longest real prefix measured is under 300 characters -- and an empty
+   * second line is a safe failure, unlike a stalled list.
+   */
+  const s = cleanSnippet('Dear all, '.repeat(400) + 'the end.');
+  assert.equal(s, '', 'beyond the window there is nothing to show');
+});
+
+test('A LONG DASH RUN DOES NOT STALL THE RENDER PATH', () => {
+  // The measured bug: ASCII separator lines are common in forwarded mail.
+  const t0 = performance.now();
+  cleanSnippet('-'.repeat(8000) + ' Fees due Friday.');
+  const ms = performance.now() - t0;
+  assert.ok(ms < 25, `took ${ms.toFixed(0)}ms — quadratic backtracking is back`);
+});
+
+test('a real forwarded-message separator is still recognised', () => {
+  // The dash quantifiers were bounded, not removed.
+  const s = cleanSnippet('Please see below. ---------- Forwarded message --------- From: AUGSD');
+  assert.equal(s, 'Please see below.');
 });
 
 test('truncation lands on a word boundary and marks itself', () => {

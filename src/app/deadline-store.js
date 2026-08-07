@@ -171,7 +171,22 @@ export function effectiveDeadline(msg, map = {}) {
       ...(o.note ? { text: o.note } : {}),
     };
   }
-  if (msg && typeof msg.dueAt === 'number') {
+  /*
+   * `Number.isFinite`, not `typeof === 'number'`.
+   *
+   * NaN is a number. A record carrying `dueAt: NaN` would be reported as a
+   * real extracted deadline, and every downstream comparison against it
+   * (`dueAt < now`, the radar sort, the lane cascade) silently returns false --
+   * so the message would claim a deadline that can never be due, overdue, or
+   * ordered.
+   *
+   * I could not reach this from `extractDeadline`, which returns null for
+   * every malformed date I probed it with, so this is not a fix for an
+   * observed failure. It is a one-word guard on a public function that other
+   * code will pass records to, and the failure mode it prevents is invisible
+   * rather than loud.
+   */
+  if (msg && Number.isFinite(msg.dueAt)) {
     return { at: msg.dueAt, source: 'extracted', ...(msg.dueText ? { text: msg.dueText } : {}) };
   }
   return { at: null, source: 'none' };

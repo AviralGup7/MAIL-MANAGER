@@ -68,6 +68,32 @@ export const CACHE_MAX = 500;
  *
  * Flags byte: 1 = unread, 2 = starred, 4 = hasAttachment.
  */
+/*
+ * THE AUDIENCE HAS TO BE PERSISTED, AND THIS WAS A REAL BUG.
+ *
+ * `audience` ('direct' | 'cc' | 'broadcast') is computed once at ingest, in
+ * `ingestInto`, where the recipient headers and the signed-in address are both
+ * in hand. The cache stored neither the stamp nor the headers it is derived
+ * from -- so on a cache-first boot, which is the COMMON path, every hydrated
+ * message came back with `audience === undefined`.
+ *
+ * Everything downstream reads that as "not broadcast", because the whole
+ * module is deliberately biased toward never hiding mail. The result:
+ *
+ *   - `is:direct` matched every cached message
+ *   - the "Just for me" smart view showed the entire inbox
+ *   - a mailing-list blast landed in `needsReply`, the one lane that must
+ *     never be wrong
+ *
+ * Verified rather than reasoned about: the same record scored 'announcements'
+ * live and 'needsReply' after a cache round trip.
+ *
+ * Stored as a single character to keep the packed row small -- this array is
+ * repeated 500 times in one storage value and the quota is real.
+ */
+const AUD_CODE = { direct: 'd', cc: 'c', broadcast: 'b' };
+const AUD_NAME = { d: 'direct', c: 'cc', b: 'broadcast' };
+
 function pack(m) {
   return [
     m.id,
@@ -81,6 +107,7 @@ function pack(m) {
     m.confidence,
     m.source || '',
     m.reason || '',
+    AUD_CODE[m.audience] || '',
   ];
 }
 
@@ -102,6 +129,14 @@ function unpack(a) {
     confidence: a[8],
     source: a[9],
     reason: a[10],
+    /*
+     * Index 11 is new. An OLD blob has nothing there, which yields `undefined`
+     * -- exactly the pre-fix behaviour, and it self-corrects on the next sync
+     * when `ingestInto` re-stamps the record. So no VERSION bump is needed: the
+     * widened row degrades to the old behaviour instead of failing to parse,
+     * the same reasoning the flags byte used when `hasAttachment` was added.
+     */
+    ...(AUD_NAME[a[11]] ? { audience: AUD_NAME[a[11]] } : {}),
   };
 }
 

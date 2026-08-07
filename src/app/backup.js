@@ -45,7 +45,44 @@ export const BACKUP_VERSION = 1;
  * means adding it here deliberately, which is the point.
  */
 export const EXPORTED_KEYS = [
-  'settings',
+  /*
+   * EVERY SETTINGS KEY IS LISTED INDIVIDUALLY, and that is not a style choice.
+   *
+   * This list originally contained a single entry, `'settings'`. No such
+   * storage key exists and never has: `settings.js` stores each preference as
+   * a FLAT TOP-LEVEL KEY -- `loadSettings` does
+   * `storage.get(Object.keys(SCHEMA))`, not `storage.get('settings')`.
+   *
+   * So the backup exported a key that is always absent and captured ZERO
+   * preferences, silently. `exportBackup` skips missing keys by design (a
+   * partial backup beats none), which is exactly what hid it: the file looked
+   * valid, validated cleanly, imported without error, and restored nothing.
+   *
+   * The unit tests did not catch it because they seeded the same fictional
+   * shape the exporter was looking for -- a fake agreeing with the code under
+   * test rather than with the system. Found by exporting from a double built
+   * from `settings.js`'s ACTUAL contract.
+   *
+   * Spelling them out means a new preference must be added here deliberately.
+   * There is a test that walks SCHEMA and fails if one is missing, so the list
+   * cannot silently fall behind.
+   */
+  'theme',
+  'density',
+  'remoteImages',
+  'markReadOnOpen',
+  'threaded',
+  'markReadDelayMs',
+  'autoRefreshMs',
+  'signature',
+  /*
+   * `clientId` is IN the schema and deliberately NOT here. It is the user's
+   * own Google Cloud OAuth client id -- not a secret in the way a token is,
+   * but it is per-installation credentials-adjacent configuration, and a
+   * backup file is something people mail to themselves. Restoring it onto
+   * another machine is also rarely what is wanted.
+   */
+
   'categoryRules',      // mute, auto-archive, corrections, thread mutes
   'automationRules',    // the rule engine
   'savedViews',

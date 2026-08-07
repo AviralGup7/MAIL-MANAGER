@@ -239,3 +239,35 @@ test('the status line says something true in every state', () => {
   assert.match(statusOf(f, NOW), /Could not send/);
   assert.match(statusOf(f, NOW), /offline/, 'the reason is shown, not hidden');
 });
+
+
+test('a failed item with no scheduled retry says "now", not "in 0s"', () => {
+  /*
+   * Found in the per-file audit. `normaliseOutbox` defaults `nextAttempt` to 0
+   * for a corrupt or older blob, and an interrupted `sending` record is demoted
+   * to `failed` carrying whatever it had -- so this is reachable on any restart
+   * after a crash.
+   *
+   * "Retrying in 0s" sits there unchanged and makes the queue look stuck, which
+   * is exactly the impression the outbox exists to prevent.
+   */
+  const [it] = normaliseOutbox([{ id: 'x', state: 'failed', draft: { to: 'a' }, attempts: 1 }]);
+  const line = statusOf(it, NOW);
+  assert.doesNotMatch(line, /in 0s/);
+  assert.match(line, /now/i);
+});
+
+test('a status line never contains NaN in any reachable state', () => {
+  const states = [
+    { state: 'held', releaseAt: NOW + 5000, attempts: 0, nextAttempt: 0 },
+    { state: 'held', releaseAt: 0, attempts: 0, nextAttempt: 0 },
+    { state: 'sending', attempts: 0, nextAttempt: 0 },
+    { state: 'failed', attempts: 1, nextAttempt: NOW + 15000 },
+    { state: 'failed', attempts: 1, nextAttempt: 0 },
+    { state: 'failed', attempts: MAX_ATTEMPTS, nextAttempt: 0, error: 'offline' },
+  ];
+  for (const s of states) {
+    const line = statusOf({ draft: {}, ...s }, NOW);
+    assert.doesNotMatch(line, /NaN|undefined/, `${s.state}/${s.attempts}: "${line}"`);
+  }
+});

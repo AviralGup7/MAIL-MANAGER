@@ -16,7 +16,12 @@ const {
 
 const seeded = () =>
   fakeStorage({
-    settings: { theme: 'nord' },
+    // Settings are FLAT TOP-LEVEL KEYS. An earlier version of this fake used
+    // `{settings: {theme}}`, a shape that has never existed in storage -- and
+    // because the exporter looked for the same fictional key, the tests agreed
+    // with the bug instead of with the system. See the note in backup.js.
+    theme: 'nord',
+    density: 'compact',
     categoryRules: { muted: ['clubs'], corrections: { 'a@b.com': 'academics' } },
     automationRules: [{ id: 'r1', query: 'from:x', actions: [{ type: 'archive' }] }],
     myCourses: [{ courseNo: 'CS F111' }],
@@ -64,7 +69,8 @@ test('everything on the never-export list is genuinely absent', async () => {
 
 test('what the user configured IS exported', async () => {
   const backup = await exportBackup(seeded());
-  assert.equal(backup.data.settings.theme, 'nord');
+  assert.equal(backup.data.theme, 'nord');
+  assert.equal(backup.data.density, 'compact');
   assert.deepEqual(backup.data.categoryRules.muted, ['clubs']);
   assert.equal(backup.data.automationRules.length, 1);
 });
@@ -90,7 +96,7 @@ test('ONE UNREADABLE KEY DOES NOT FAIL THE WHOLE EXPORT', async () => {
     return realGet(k);
   };
   const backup = await exportBackup(s);
-  assert.ok(backup.data.settings, 'the rest still came through');
+  assert.ok(backup.data.theme, 'the rest still came through');
 });
 
 test('the filename carries the date so backups do not overwrite', () => {
@@ -124,11 +130,11 @@ test('a valid backup passes, from an object or a string', async () => {
 
 test('the preview says what would change BEFORE anything is written', async () => {
   const backup = await exportBackup(seeded());
-  const target = fakeStorage({ settings: { theme: 'daylight' } });
+  const target = fakeStorage({ theme: 'daylight' });
   const p = await previewImport(backup, target);
   assert.equal(p.ok, true);
-  const settings = p.changes.find((c) => c.key === 'settings');
-  assert.equal(settings.action, 'replace');
+  const themeChange = p.changes.find((c) => c.key === 'theme');
+  assert.equal(themeChange.action, 'replace');
   const courses = p.changes.find((c) => c.key === 'myCourses');
   assert.equal(courses.action, 'add');
   assert.equal(target.writes, 0, 'a preview writes nothing');
@@ -150,7 +156,7 @@ test('a backup round-trips into an empty profile', async () => {
   const target = fakeStorage();
   const out = await importBackup(backup, target);
   assert.equal(out.ok, true);
-  assert.equal((await target.get('settings')).settings.theme, 'nord');
+  assert.equal((await target.get('theme')).theme, 'nord');
   assert.equal((await target.get('myCourses')).myCourses.length, 1);
 });
 
@@ -188,7 +194,7 @@ test('A FAILING KEY DOES NOT ABORT THE WHOLE IMPORT', async () => {
   const out = await importBackup(backup, target);
   assert.equal(out.ok, false);
   assert.deepEqual(out.failed, ['automationRules']);
-  assert.ok(out.applied.includes('settings'), 'the others still landed');
+  assert.ok(out.applied.includes('theme'), 'the others still landed');
 });
 
 test('importing junk changes nothing', async () => {
@@ -196,4 +202,55 @@ test('importing junk changes nothing', async () => {
   const out = await importBackup('not a backup', target);
   assert.equal(out.ok, false);
   assert.equal(target.writes, 0);
+});
+
+
+/* ==========================================================================
+ * THE BUG THIS FILE EXISTED TO PREVENT AND DID NOT
+ * ========================================================================== */
+
+test('EVERY SETTING IN THE SCHEMA IS EXPORTED (or deliberately withheld)', async () => {
+  /*
+   * The allow-list originally held one entry, `'settings'` -- a storage key
+   * that has never existed, because settings are stored flat. The backup
+   * therefore captured ZERO preferences and said nothing, because a missing
+   * key is skipped by design.
+   *
+   * This walks the real schema so the list cannot silently fall behind when a
+   * preference is added.
+   */
+  const { SCHEMA } = await import('../src/app/settings.js');
+
+  // Withheld on purpose, with the reason, so this is a decision and not a gap.
+  const WITHHELD = { clientId: 'per-installation OAuth client id' };
+
+  const missing = Object.keys(SCHEMA).filter(
+    (k) => !EXPORTED_KEYS.includes(k) && !(k in WITHHELD)
+  );
+  assert.deepEqual(missing, [], 'settings absent from the backup allow-list');
+});
+
+test('a real settings profile round-trips end to end', async () => {
+  // Built from settings.js's ACTUAL storage contract, not from a shape the
+  // exporter was hoping for.
+  const { SCHEMA } = await import('../src/app/settings.js');
+  const source = fakeStorage({ theme: 'nord', density: 'compact', threaded: false, signature: 'Aviral' });
+
+  const backup = await exportBackup(source);
+  assert.ok(Object.keys(backup.data).length > 0, 'the export captured something at all');
+
+  const target = fakeStorage();
+  await importBackup(backup, target);
+
+  for (const key of ['theme', 'density', 'threaded', 'signature']) {
+    assert.equal((await target.get(key))[key], (await source.get(key))[key], `${key} survived`);
+  }
+  assert.ok('theme' in SCHEMA, 'sanity: the probe used real schema keys');
+});
+
+test('the OAuth client id is never written to a backup file', async () => {
+  const s = fakeStorage({ clientId: '123-abc.apps.googleusercontent.com', theme: 'nord' });
+  const json = toJson(await exportBackup(s));
+  assert.doesNotMatch(json, /googleusercontent/, 'client id must not travel');
+  assert.match(json, /nord/, 'but real preferences still do');
 });

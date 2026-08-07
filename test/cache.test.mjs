@@ -397,3 +397,53 @@ test('scheduling falls back to a timer when requestIdleCallback is absent', asyn
   await saver.flush();
   assert.equal((await loadCache(s)).messages.length, 2);
 });
+
+
+/* ==========================================================================
+ * THE AUDIENCE STAMP MUST SURVIVE THE CACHE
+ *
+ * Found in the per-file audit. `audience` is computed once at ingest, where
+ * the recipient headers and the signed-in address are both available. The
+ * cache stored neither the stamp nor the headers, so on a cache-first boot --
+ * the common path -- every message came back unstamped, which everything
+ * downstream reads as "not broadcast".
+ *
+ * Consequence: `is:direct` matched everything, the "Just for me" view showed
+ * the whole inbox, and a mailing-list blast landed in `needsReply`.
+ * ========================================================================== */
+
+test('the audience stamp survives a cache round trip', async () => {
+  const s = fakeStorage();
+  await saveCache([
+    { id: 'b', threadId: 't1', from: 'a@b', subject: 's', snippet: 'x', date: 3, category: 'admin', confidence: 1, audience: 'broadcast' },
+    { id: 'd', threadId: 't2', from: 'a@b', subject: 's', snippet: 'x', date: 2, category: 'admin', confidence: 1, audience: 'direct' },
+    { id: 'c', threadId: 't3', from: 'a@b', subject: 's', snippet: 'x', date: 1, category: 'admin', confidence: 1, audience: 'cc' },
+  ], s);
+
+  const back = await loadCache(s);
+  const by = Object.fromEntries(back.messages.map((m) => [m.id, m.audience]));
+  assert.equal(by.b, 'broadcast', 'a list blast must not come back as direct');
+  assert.equal(by.d, 'direct');
+  assert.equal(by.c, 'cc');
+});
+
+test('a message cached before the stamp existed degrades, it does not corrupt', async () => {
+  // An old blob has nothing at index 11. That must read as "unknown", which
+  // self-corrects on the next sync -- not as a wrong concrete value.
+  const s = fakeStorage();
+  await saveCache([
+    { id: 'old', threadId: 't', from: 'a@b', subject: 's', snippet: 'x', date: 1, category: 'admin', confidence: 1 },
+  ], s);
+  const [m] = (await loadCache(s)).messages;
+  assert.equal(m.audience, undefined);
+  assert.equal(m.id, 'old', 'the rest of the record is intact');
+});
+
+test('an unknown audience code does not survive as garbage', async () => {
+  const s = fakeStorage();
+  await saveCache([
+    { id: 'x', threadId: 't', from: 'a@b', subject: 's', snippet: 'x', date: 1, category: 'admin', confidence: 1, audience: 'nonsense' },
+  ], s);
+  const [m] = (await loadCache(s)).messages;
+  assert.equal(m.audience, undefined, 'an unmappable value is dropped, not stored');
+});
