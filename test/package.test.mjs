@@ -619,6 +619,16 @@ test('every infinite animation is gated on a state that ends', () => {
   // Selectors permitted to loop, each with the reason it terminates.
   const GATED = [
     { sel: '.sk-bar::after', why: 'skeleton, removed on first paint' },
+    /*
+     * The reader's body skeleton. Terminates the same way the list's does:
+     * `#r-loading` is hidden the instant the body arrives (loadBody sets
+     * `el.rLoading.hidden = true`), and `[hidden] { display: none }` removes
+     * the element from the layout tree, which stops the animation.
+     *
+     * Added deliberately rather than by loosening the pattern -- the point of
+     * this list is that every looping animation is named and justified.
+     */
+    { sel: '.rsk-line::after', why: 'reader skeleton, hidden when the body lands' },
     { sel: "#shell[aria-busy='true']", why: 'progress sweep, cleared when loading ends' },
   ];
 
@@ -647,6 +657,10 @@ test('the gated loading animations still exist', () => {
   const css = read('src/app/app.css');
   assert.match(css, /animation:\s*sk-shimmer[^;]*infinite/, 'skeleton shimmer missing');
   assert.match(css, /animation:\s*sweep[^;]*infinite/, 'topbar progress sweep missing');
+  // The reader skeleton reuses sk-shimmer rather than defining a second
+  // keyframe; assert the consumer exists, not just the keyframe.
+  assert.match(css, /\.rsk-line::after \{[\s\S]*?animation:\s*sk-shimmer/,
+    'reader body skeleton missing');
 });
 
 /*

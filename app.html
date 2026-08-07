@@ -366,7 +366,32 @@
               <div id="r-thread" role="list" aria-label="Messages in this conversation" hidden></div>
 
               <div id="r-bodywrap">
-                <div id="r-loading">Loading…</div>
+                <!--
+                  A BODY-SHAPED PLACEHOLDER, not the word "Loading".
+
+                  The list gets a skeleton whose rows match the real geometry,
+                  so nothing shifts when content lands. The reader -- the
+                  larger surface, and the one you stare at -- got centred grey
+                  text. Same wait, two different levels of care.
+
+                  The lines mirror a message body: a few full-width runs and a
+                  short last line. `aria-hidden` because it carries no
+                  information; the live region that announces loading is the
+                  shell's aria-busy, and a screen reader should not be read a
+                  list of empty bars.
+                -->
+                <div id="r-loading">
+                  <div class="rsk" aria-hidden="true">
+                    <div class="rsk-line"></div>
+                    <div class="rsk-line"></div>
+                    <div class="rsk-line"></div>
+                    <div class="rsk-line rsk-short"></div>
+                    <div class="rsk-gap"></div>
+                    <div class="rsk-line"></div>
+                    <div class="rsk-line rsk-short"></div>
+                  </div>
+                  <span class="sr-only">Loading message…</span>
+                </div>
                 <!--
                   sandbox has NO allow-scripts and NO allow-same-origin. The
                   body is therefore inert and origin-less: it cannot read this

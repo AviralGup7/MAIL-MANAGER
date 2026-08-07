@@ -1256,15 +1256,67 @@ a.ghost {
   position: relative;
 }
 
+/*
+ * READER SKELETON.
+ *
+ * Was the centred word "Loading…". The list has always had a skeleton whose
+ * rows match the real geometry so nothing jumps when content lands; the
+ * reader, which is the bigger surface and the one being stared at, got grey
+ * text. Same wait, two different levels of care.
+ *
+ * Top-aligned and padded to match #reader-head's rhythm, so the lines occupy
+ * roughly where the real body will be.
+ */
 #r-loading {
   position: absolute;
   inset: 0;
-  display: grid;
-  place-items: center;
-  color: var(--fg-faint);
-  font-size: var(--t-sm);
+  padding: var(--s-5) var(--s-6);
   background: var(--bg-raised);
+  overflow: hidden;
 }
+
+.rsk {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  max-width: 62ch; /* the same measure #r-subject uses */
+}
+
+.rsk-line {
+  position: relative;
+  height: 10px;
+  border-radius: var(--r-full);
+  background: var(--bg-sunken);
+  overflow: hidden;
+}
+/* A short last line is what makes a block read as a paragraph of prose. */
+.rsk-short {
+  width: 52%;
+}
+/* Paragraph break: the gap is the point, so it has no fill of its own. */
+.rsk-gap {
+  height: var(--s-2);
+}
+
+/*
+ * Reuses `sk-shimmer` -- the list skeleton's keyframe -- rather than defining
+ * a second one. One loading language for the whole product, and the motion
+ * rules only permit an infinite animation while it reports live work, which
+ * this does: the element is removed the moment the body arrives.
+ */
+.rsk-line::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, var(--line), transparent);
+  transform: translateX(-100%);
+  animation: sk-shimmer 1.35s var(--ease-out) infinite;
+}
+.rsk-line:nth-child(2)::after { animation-delay: 70ms; }
+.rsk-line:nth-child(3)::after { animation-delay: 140ms; }
+.rsk-line:nth-child(4)::after { animation-delay: 210ms; }
+.rsk-line:nth-child(6)::after { animation-delay: 280ms; }
+.rsk-line:nth-child(7)::after { animation-delay: 350ms; }
 
 #r-body {
   width: 100%;
@@ -1819,11 +1871,28 @@ html[data-theme='contrast'] .row[aria-selected='true'] {
   cursor: pointer;
   font-size: var(--t-md);
   color: var(--fg-dim);
+  /*
+   * The palette had no transition, so its highlight snapped while every other
+   * list surface in the app eased. Colour only: a row that moves under the
+   * cursor turns the item you are aiming at into a moving target.
+   */
+  transition:
+    background-color var(--dur-instant) linear,
+    color var(--dur-instant) linear;
 }
 .palette-item.active {
   background: var(--accent-soft);
   color: var(--accent);
   font-weight: var(--w-semi);
+}
+/*
+ * The palette is driven by the keyboard, so the ACTIVE row -- not the hovered
+ * one -- is the source of truth. Hover still responds, quietly, so the mouse
+ * is not left feeling dead.
+ */
+.palette-item:hover:not(.active) {
+  background: var(--bg-sunken);
+  color: var(--fg);
 }
 .palette-label {
   flex: 1;
@@ -2978,11 +3047,20 @@ html[data-scheme='dark'] .snooze-menu {
   font-size: var(--t-sm);
   text-align: left;
   cursor: pointer;
+  /*
+   * Menu rows had NO transition: the highlight snapped on and off, while every
+   * other list surface (rail, saved views, radar, autocomplete) eased. Menus
+   * were the one place the hover felt like a different product.
+   */
+  transition:
+    background-color var(--dur-instant) linear,
+    color var(--dur-instant) linear;
 }
 
 .snooze-opt:hover,
 .snooze-opt:focus-visible {
   background: var(--accent-soft);
+  color: var(--fg);
 }
 
 .snooze-when {
@@ -3330,10 +3408,24 @@ kbd {
   color: var(--fg);
   font-size: var(--t-sm);
   cursor: pointer;
+  /*
+   * Timetable controls were the last interactive surfaces with no transition.
+   * The panel is a dense grid of choices, so a chip that changes state
+   * instantly gives no confirmation the click landed where you meant.
+   */
+  transition:
+    background-color var(--dur-instant) linear,
+    border-color var(--dur-instant) linear,
+    color var(--dur-instant) linear;
+}
+.tt-chip:hover {
+  border-color: var(--line-strong);
+  background: var(--bg-sunken);
 }
 .tt-chip[aria-pressed='true'] {
   border-color: var(--accent);
   color: var(--accent);
+  background: var(--accent-soft);
 }
 .tt-chip:active {
   transform: translateY(1px);
@@ -3351,9 +3443,13 @@ kbd {
   color: var(--fg);
   cursor: pointer;
   min-width: 260px;
+  transition:
+    border-color var(--dur-instant) linear,
+    background-color var(--dur-instant) linear;
 }
 .tt-section:hover {
   border-color: var(--accent);
+  background: var(--bg-sunken);
 }
 .tt-section:active {
   transform: translateY(1px);
