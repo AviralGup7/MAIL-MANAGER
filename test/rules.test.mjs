@@ -8,6 +8,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { fakeStorage } from './helpers/storage.mjs';
 
 const {
   emptyRules, normaliseRules, loadRules, saveRules,
@@ -18,14 +19,6 @@ const {
 
 const app = readFileSync(new URL('../src/app/app.js', import.meta.url), 'utf8');
 
-function fakeStorage(initial = {}) {
-  let data = { ...initial };
-  return {
-    async get(k) { return typeof k === 'string' ? { [k]: data[k] } : { ...data }; },
-    async set(o) { data = { ...data, ...o }; },
-    _data: () => data,
-  };
-}
 
 // ------------------------------------------------------------ normalising ---
 

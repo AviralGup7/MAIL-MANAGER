@@ -1752,6 +1752,113 @@ test('AUTO-ARCHIVE: leaves already-read mail alone', async (t) => {
   }
 });
 
+test('CONSISTENCY: the gate takes focus on open, like every other dialog', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * Every other dialog in the product moves focus into itself when it opens:
+   * help focuses its close button, the palette focuses its input, compose
+   * focuses the first empty field. The gate focused nothing -- so a keyboard
+   * or screen-reader user arriving at a signed-out app had focus parked on
+   * <body>, behind a modal surface, with no way to discover the one button
+   * that does anything.
+   *
+   * It is the FIRST thing a new user meets, which makes it the worst place in
+   * the product to drop focus.
+   */
+  const { doc, restore } = await boot({ signedIn: false });
+  try {
+    assert.equal(doc.getElementById('gate').hidden, false, 'precondition: the gate shows');
+    assert.equal(
+      doc.activeElement.id, 'btn-signin',
+      'focus must land on the primary action, not on <body>'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('CONSISTENCY: star and mark-unread are undoable one at a time, as they are in bulk', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * DRIFT, found by comparing siblings rather than by looking for a bug.
+   *
+   * Every single-message action routes through `optimistic()` and records an
+   * undo -- archive, trash, spam, restore, unsnooze. Two do not: `star` and
+   * `unread`. They were written earlier, as plain patch-and-send blocks, and
+   * were never migrated when the helper arrived.
+   *
+   * The result is that the SAME INTENT has different recovery depending on how
+   * many messages you picked:
+   *
+   *   select two rows, press Star  -> "Starred 2 messages", Undo button
+   *   open one message, press `s`  -> nothing, no toast, no undo entry
+   *
+   * `bulkAct` has recorded undo for `star` and `read` all along, so this is
+   * not a product decision that starring is too trivial to reverse -- the
+   * product already decided it is not, in the other path.
+   *
+   * These assert the single-message path now matches.
+   */
+  const { doc, win, settle, restore } = await boot();
+  try {
+    rows(doc)[0].click();
+    await settle();
+    const id = win.__bmmStore.get(MESSAGES[0].id).id;
+    assert.equal(win.__bmmStore.get(id).starred, false, 'precondition: unstarred');
+
+    press(doc, win, 's');
+    await settle();
+    assert.equal(win.__bmmStore.get(id).starred, true, 'it stars');
+
+    // The same affordance every other action gives.
+    const toastEl = doc.getElementById('toast');
+    assert.equal(toastEl.hidden, false, 'starring must report itself');
+    assert.match(toastEl.textContent, /Undo/, 'and offer the way back');
+
+    press(doc, win, 'z', { ctrlKey: true });
+    await settle();
+    await settle();
+    assert.equal(win.__bmmStore.get(id).starred, false, 'undo unstars');
+  } finally {
+    restore();
+  }
+});
+
+test('CONSISTENCY: marking unread is undoable too', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * `markReadOnOpen` is off so the grace-period timer cannot race this. The
+   * first draft of this test opened m1 -- which SEEDS UNREAD -- and asserted
+   * `u` made it unread; `u` is a toggle, so it correctly made it read and the
+   * test failed. The test was wrong, not the product. Starting from a known
+   * read state makes the toggle direction unambiguous.
+   */
+  const { doc, win, settle, restore } = await boot({
+    storageSeed: { markReadOnOpen: false },
+  });
+  try {
+    const id = MESSAGES[2].id; // seeded read
+    const row = rows(doc).find((r) => r.dataset.id === id) || rows(doc)[2];
+    row.click();
+    await settle(8);
+    assert.equal(win.__bmmStore.get(id).unread, false, 'precondition: read');
+
+    press(doc, win, 'u');
+    await settle();
+    assert.equal(win.__bmmStore.get(id).unread, true, 'it marks unread');
+
+    const toastEl = doc.getElementById('toast');
+    assert.match(toastEl.textContent, /Undo/, 'offers undo like its siblings');
+
+    press(doc, win, 'z', { ctrlKey: true });
+    await settle();
+    await settle();
+    assert.equal(win.__bmmStore.get(id).unread, false, 'undo restores read state');
+  } finally {
+    restore();
+  }
+});
+
 test('BULK: every action undoes by exactly reversing its own label delta', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');
   /*

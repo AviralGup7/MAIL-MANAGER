@@ -7,21 +7,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { fakeStorage } from './helpers/storage.mjs';
 
 const {
   createDraftSaver, saveDraft, loadDraft, clearDraft, isMeaningful, AUTOSAVE_MS,
 } = await import('../src/app/draft-store.js');
 
-function fakeStorage(initial = {}) {
-  let data = { ...initial };
-  return {
-    writes: 0,
-    async get(k) { return typeof k === 'string' ? { [k]: data[k] } : { ...data }; },
-    async set(obj) { this.writes++; data = { ...data, ...obj }; },
-    async remove(k) { delete data[k]; },
-    _data: () => data,
-  };
-}
 
 /** A controllable clock so nothing here sleeps. */
 function fakeTimers() {

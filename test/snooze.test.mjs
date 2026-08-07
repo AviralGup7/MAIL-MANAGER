@@ -8,24 +8,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { fakeStorage } from './helpers/storage.mjs';
 
 const {
   presets, loadSnoozed, addSnooze, removeSnooze, due, pending, wakeLabel, SNOOZE_LABEL,
 } = await import('../src/app/snooze.js');
 
 /** An in-memory stand-in for chrome.storage.local. */
-function fakeStorage(initial = {}) {
-  let data = { ...initial };
-  return {
-    get: async (k) => (typeof k === 'string' ? { [k]: data[k] } : { ...data }),
-    set: async (obj) => { data = { ...data, ...obj }; },
-    _data: () => data,
-    _fail() {
-      this.set = async () => { throw new Error('quota'); };
-      return this;
-    },
-  };
-}
 
 // --------------------------------------------------------------- presets ---
 

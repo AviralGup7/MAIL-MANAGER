@@ -9,6 +9,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { fakeStorage } from './helpers/storage.mjs';
 
 const {
   loadCache,
@@ -19,22 +20,6 @@ const {
 } = await import('../src/app/cache.js');
 
 /** In-memory stand-in for chrome.storage.local. */
-function fakeStorage(initial = {}) {
-  const data = { ...initial };
-  return {
-    data,
-    async get(k) {
-      if (typeof k === 'string') return k in data ? { [k]: data[k] } : {};
-      return { ...data };
-    },
-    async set(o) {
-      Object.assign(data, o);
-    },
-    async remove(k) {
-      for (const key of [].concat(k)) delete data[key];
-    },
-  };
-}
 
 const msg = (i, over = {}) => ({
   id: `m${i}`,

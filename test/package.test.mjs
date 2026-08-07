@@ -1232,6 +1232,113 @@ test('ARCH: a bulk label delta is stated once, not once per direction', () => {
   );
 });
 
+test('CONSISTENCY: every text channel that reports failure announces it', () => {
+  /*
+   * DRIFT IN ACCESSIBILITY SEMANTICS, found by comparing the three surfaces
+   * that tell a user something went wrong:
+   *
+   *   #toast       role="status" aria-live="polite"   -> announced
+   *   #gate-error  (nothing)                          -> silent
+   *   #c-status    (nothing)                          -> silent
+   *
+   * All three carry the same KIND of message. The toast says "Could not
+   * archive"; #c-status says "Add a recipient", "Check the address", and
+   * whatever a failed send returned; #gate-error carries every auth failure,
+   * including the multi-line one with the FIX: paragraph.
+   *
+   * A sighted user sees all three. A screen-reader user hears one. Pressing
+   * Send and having nothing happen, with no announcement, is the worst version
+   * of this -- the message was not sent and the app appears to have ignored
+   * the keypress.
+   *
+   * These are not decorative regions, so they get role="alert" (assertive):
+   * unlike the toast, which narrates routine success, these only ever appear
+   * when the user is blocked and needs to know immediately.
+   */
+  const html = read('app.html');
+
+  for (const id of ['gate-error', 'c-status']) {
+    const tag = html.match(new RegExp(`<[^>]*id="${id}"[^>]*>`));
+    assert.ok(tag, `#${id} must exist`);
+    assert.match(
+      tag[0], /role="alert"/,
+      `#${id} reports failures but is not announced to assistive technology`
+    );
+  }
+
+  // And the toast keeps its politer role: it narrates success too, so
+  // assertive would interrupt the user constantly.
+  const toast = html.match(/<[^>]*id="toast"[^>]*>/);
+  assert.match(toast[0], /role="status"/, 'the toast stays polite');
+});
+
+test('CONSISTENCY: a reader action with a shortcut advertises it', () => {
+  /*
+   * DRIFT IN DISCOVERABILITY, and the fix is derived from the registry rather
+   * than from a hand-written list.
+   *
+   * The reader action bar had six buttons whose verbs have keyboard
+   * shortcuts. Two of them said so:
+   *
+   *   Snooze       title="Snooze (z)"          <- advertises
+   *   Report spam  title="Report spam (!)"     <- advertises
+   *   Star         (no title)                  <- silent
+   *   Mark unread  (no title)                  <- silent
+   *   Archive      (no title)                  <- silent
+   *   Delete       (no title)                  <- silent
+   *
+   * The keys all work. The ctx toolbar above even shows them -- "Archive (e)",
+   * "Star (s)", "Delete (#)" -- so the SAME VERB advertises its key on one
+   * toolbar and hides it on another, two inches apart.
+   *
+   * That is exactly how a keyboard-first product fails to teach itself: the
+   * shortcuts exist, the help overlay lists them, and the control the user is
+   * actually looking at says nothing.
+   *
+   * `when: 'reader'` in the registry is what makes this checkable: those are
+   * precisely the shortcuts that act on the open message, which is what this
+   * bar is for.
+   */
+  const html = read('app.html');
+  const bar = html.slice(html.indexOf('<div id="r-actions">'), html.indexOf('</div>', html.indexOf('<div id="r-actions">')) + 6);
+
+  // data-act -> the shortcut key that triggers it, taken from app.js's switch.
+  const KEY_FOR = { star: 's', unread: 'u', archive: 'e', trash: '#', spam: '!', snooze: 'z' };
+
+  const missing = [];
+  for (const [act, key] of Object.entries(KEY_FOR)) {
+    const btn = bar.match(new RegExp(`<button[^>]*data-act="${act}"[\\s\\S]*?>`));
+    if (!btn) continue; // not every act has a button in this bar
+    const title = (btn[0].match(/title="([^"]*)"/) || [, ''])[1];
+    if (!title.includes(`(${key})`)) missing.push(`${act} (expected "(${key})", got "${title}")`);
+  }
+  assert.deepEqual(
+    missing, [],
+    'these reader actions have a shortcut but do not advertise it'
+  );
+});
+
+test('CONSISTENCY: the gate is a dialog, like every other blocking surface', () => {
+  /*
+   * Four overlays declare themselves dialogs: compose, the palette, help and
+   * the timetable panel. The GATE -- the one surface that covers the entire
+   * application and blocks all of it until you sign in -- declared nothing.
+   *
+   * It is the most modal thing in the product and had the least semantics of
+   * any of them. To a screen reader it was an unlabelled div that happened to
+   * contain a button.
+   */
+  const html = read('app.html');
+  const gate = html.match(/<div id="gate"[^>]*>/);
+  assert.ok(gate, 'the gate must exist');
+  assert.match(gate[0], /role="dialog"/, 'the gate blocks the app; say so');
+  assert.match(gate[0], /aria-modal="true"/, 'and it is genuinely modal');
+  assert.match(
+    gate[0], /aria-labelledby="[^"]+"/,
+    'a dialog needs an accessible name'
+  );
+});
+
 test('ARCH: the Escape handler has no per-overlay branches', () => {
   // The ladder is what the stack replaced. If overlay-specific `close*()`
   // calls reappear here, the ordering fragility is back.

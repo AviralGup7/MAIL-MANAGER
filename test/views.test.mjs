@@ -10,22 +10,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { loadViews, saveView, removeView, restoreBuiltins, BUILTIN_VIEWS } from '../src/app/views.js';
+import { fakeStorage } from './helpers/storage.mjs';
 
-function fakeStorage(init = {}) {
-  const d = { ...init };
-  return {
-    d,
-    async get(k) {
-      return typeof k === 'string' ? (k in d ? { [k]: d[k] } : {}) : { ...d };
-    },
-    async set(o) {
-      Object.assign(d, o);
-    },
-    async remove(k) {
-      for (const key of [].concat(k)) delete d[key];
-    },
-  };
-}
 
 test('ships with built-in views that double as syntax examples', () => {
   // An empty saved-view list teaches nothing, and nobody discovers

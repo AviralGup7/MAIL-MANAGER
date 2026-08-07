@@ -1892,6 +1892,56 @@ function closeReader() {
  * @param {(id:string)=>Promise<void>} [o.rollback] undo `before` when the request fails
  * @param {(id:string)=>Promise<void>} [o.undoBefore] undo `before` on user undo
  */
+/**
+ * Apply a FLAG change optimistically, with rollback and undo.
+ *
+ * The sibling of `optimistic()`, for actions that change a property rather
+ * than remove the message. `optimistic()` snapshots, moves the selection to a
+ * neighbour and calls `store.remove` -- all wrong for starring, where the row
+ * must stay exactly where it is and keep its place in the list.
+ *
+ * What the two DO share, and what this exists to guarantee, is the recovery
+ * contract: mutate locally now, tell Gmail after, put it back if the request
+ * fails, and record a reversal the user can reach. Star and unread had the
+ * first three and not the fourth, which meant the same gesture was undoable in
+ * bulk and not one at a time.
+ *
+ * @param {Object}   o
+ * @param {string}   o.id
+ * @param {Object}   o.patch       fields to write now
+ * @param {Object}   o.undoPatch   fields that restore the previous state
+ * @param {string}   o.verb        background verb
+ * @param {string}  [o.undoVerb]   its inverse; defaults to `verb`
+ * @param {Object}  [o.payload]    extra payload for the verb
+ * @param {Object}  [o.undoPayload] extra payload for the inverse
+ * @param {string}   o.past        undo label, e.g. "Starred"
+ * @param {string}   o.failed      error toast
+ */
+function flagAction({
+  id, patch, undoPatch, verb, undoVerb, payload = {}, undoPayload = {}, past, failed,
+}) {
+  const m = store.get(id);
+  if (!m) return Promise.resolve();
+
+  store.patch(id, patch);
+  // The reader's toolbar mirrors these flags, so it has to follow the store.
+  if (id === state.selected) syncContextActions(store.get(id));
+
+  const sent = send(verb, { id, ...payload }).catch(() => {
+    store.patch(id, undoPatch);
+    if (id === state.selected) syncContextActions(store.get(id));
+    toast(failed, { kind: 'error' });
+  });
+
+  recordUndo(ctx, past, async () => {
+    store.patch(id, undoPatch);
+    if (id === state.selected) syncContextActions(store.get(id));
+    await send(undoVerb || verb, { id, ...undoPayload });
+  });
+
+  return sent;
+}
+
 function optimistic({
   id, verb, undoVerb, past, failed, done, before, rollback: undoLocal, undoBefore,
 }) {
@@ -1964,22 +2014,48 @@ async function act(action, id) {
   }
 
   switch (action) {
+    /*
+     * STAR AND UNREAD ARE *FLAGS*, NOT REMOVALS.
+     *
+     * They cannot use `optimistic()`, which is built around taking the message
+     * OUT of the list: it snapshots, moves the selection to a neighbour, and
+     * calls `store.remove`. A starred message stays exactly where it is.
+     *
+     * But they must still behave like their siblings in the one way the user
+     * can feel, which is RECOVERY. Both were plain patch-and-send blocks with
+     * no undo, while `bulkAct` has recorded undo for the same two verbs all
+     * along -- so starring two messages was reversible and starring one was
+     * not. That is drift, not a decision: the product had already ruled that
+     * these are worth undoing.
+     *
+     * `flagAction` is the flag-shaped counterpart to `optimistic`: patch now,
+     * send after, roll back on failure, record the reversal. Stated once so
+     * the two cannot drift apart again.
+     */
     case 'star': {
       const on = !m.starred;
-      store.patch(id, { starred: on });
-      if (id === state.selected) syncContextActions(store.get(id));
-      send('STAR', { id, on }).catch(() => {
-        store.patch(id, { starred: !on });
-        toast('Could not update star', { kind: 'error' });
+      flagAction({
+        id,
+        patch: { starred: on },
+        undoPatch: { starred: !on },
+        verb: 'STAR',
+        payload: { on },
+        undoPayload: { on: !on },
+        past: on ? 'Starred' : 'Unstarred',
+        failed: 'Could not update star',
       });
       break;
     }
     case 'unread': {
       const on = !m.unread;
-      store.patch(id, { unread: on });
-      send(on ? 'MARK_UNREAD' : 'MARK_READ', { id }).catch(() => {
-        store.patch(id, { unread: !on });
-        toast('Could not update', { kind: 'error' });
+      flagAction({
+        id,
+        patch: { unread: on },
+        undoPatch: { unread: !on },
+        verb: on ? 'MARK_UNREAD' : 'MARK_READ',
+        undoVerb: on ? 'MARK_READ' : 'MARK_UNREAD',
+        past: on ? 'Marked unread' : 'Marked read',
+        failed: 'Could not update',
       });
       break;
     }
@@ -2415,6 +2491,20 @@ function showGate(message) {
   el.gate.hidden = false;
   el.gateError.hidden = !message;
   el.gateError.textContent = message || '';
+  /*
+   * MOVE FOCUS IN, like every other dialog.
+   *
+   * Help focuses its close button, the palette its input, compose the first
+   * empty field. The gate focused nothing, so a keyboard or screen-reader user
+   * met a modal surface with focus still parked on <body> behind it and no
+   * way to discover the only button that does anything.
+   *
+   * It is the first screen a new user sees, which makes it the worst place in
+   * the product to drop focus. Guarded because `showGate` is also called for
+   * an expired session while the user may be mid-keystroke elsewhere -- but
+   * the gate has just covered the app, so taking focus is correct there too.
+   */
+  $('btn-signin')?.focus();
 }
 
 function hideGate() {
