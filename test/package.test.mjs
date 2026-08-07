@@ -11,7 +11,7 @@
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, rmSync, existsSync, readdirSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
@@ -1528,6 +1528,57 @@ test('LOAD: no optional chrome.* namespace can kill the service worker', () => {
     unguarded, [],
     'these run at top level and abort the whole worker if the namespace is absent; use ?.'
   );
+});
+
+test('LOAD: the doctor catches markdown mangling EMBEDDED in a longer string', () => {
+  /*
+   * A GAP IN MY OWN CHECKER, found by the user's fourth paste.
+   *
+   * The markdown-link test was anchored `^\[.*\]\(.*\)$`, so it only matched a
+   * value that is ENTIRELY a link. It caught the mangled host_permissions
+   * entries and walked straight past this:
+   *
+   *   "script-src 'self'; ... connect-src 'self'
+   *    [https://gmail.googleapis.com](https://gmail.googleapis.com) ..."
+   *
+   * That is the worst place to miss it. A CSP is PARSED by Chrome rather than
+   * merely read; an unparseable one can reject the extension before the
+   * service worker is ever attempted, which presents as "Service worker
+   * registration failed. Status code: 2" — a message pointing at the worker
+   * when the worker is entirely innocent.
+   *
+   * And the checker said "No load-time problems found" the whole time, which
+   * is worse than having no checker: it actively argued the files were fine.
+   */
+  const mangled = JSON.parse(read('manifest.json'));
+  mangled.content_security_policy.extension_pages =
+    "script-src 'self'; connect-src 'self' "
+    + '[https://gmail.googleapis.com](https://gmail.googleapis.com)';
+
+  const tmp = join(ROOT, 'tools', '.doctor-fixture.json');
+  writeFileSync(tmp, JSON.stringify(mangled, null, 2));
+  try {
+    const src = read('tools/doctor.mjs');
+
+    // The pattern must not be anchored, or embedded mangling escapes it.
+    assert.ok(
+      !/\/\^\\\[\.\*\\\]\\\(\.\*\\\)\$\//.test(src),
+      'the markdown check must not be anchored to the whole value'
+    );
+
+    // And it must actually fire on a CSP-shaped string.
+    const re = /\[(https?:\/\/[^\]]*)\]\((https?:\/\/[^)]*)\)/;
+    assert.ok(
+      re.test(mangled.content_security_policy.extension_pages),
+      'the fixture must genuinely contain embedded markdown'
+    );
+    assert.match(
+      src, /\\\[\(https\?:/,
+      'doctor.mjs must scan for an embedded markdown link, not an exact match'
+    );
+  } finally {
+    rmSync(tmp, { force: true });
+  }
 });
 
 test('LOAD: the extension passes the load-time doctor', () => {

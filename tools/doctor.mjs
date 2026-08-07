@@ -111,11 +111,29 @@ if (manifest) {
    */
   const walk = (node, path = '') => {
     if (typeof node === 'string') {
-      if (/^\[.*\]\(.*\)$/.test(node)) {
+      /*
+       * UNANCHORED, and that matters.
+       *
+       * This test used `^\[.*\]\(.*\)$`, which only matches a value that is
+       * ENTIRELY a markdown link. It therefore caught the mangled
+       * host_permissions entries and sailed straight past
+       *
+       *   "script-src 'self'; ... connect-src 'self'
+       *    [https://gmail.googleapis.com](https://gmail.googleapis.com) ..."
+       *
+       * where the mangling is embedded inside a longer policy string. That is
+       * the worst possible miss: a CSP is PARSED by Chrome rather than merely
+       * read, an unparseable one can reject the extension outright, and the
+       * checker reported "no problems found".
+       */
+      const md = /\[(https?:\/\/[^\]]*)\]\((https?:\/\/[^)]*)\)/.exec(node);
+      if (md) {
         fail(`markdown link syntax in ${path}`,
-          `The value is "${node.slice(0, 60)}…" — that is a markdown link, not a URL.`,
+          `The value contains "${md[0].slice(0, 60)}…" — that is a markdown link, `
+          + 'not a URL. It is inside a longer string, so the JSON still parses '
+          + 'and the damage is invisible until Chrome rejects it.',
           'This usually means the file was pasted through a chat or editor that '
-          + 'auto-linkified it. Rewrite the value as a bare URL.');
+          + 'auto-linkified it. Restore with: git checkout manifest.json');
       }
       return;
     }
