@@ -506,3 +506,146 @@ test('a randomised sequence of operations never breaks the invariant', () => {
     assert.ok(s.get(id), `order references ${id}, which byId does not have`);
   }
 });
+
+/* ================================================================ threading == */
+
+test('THREAD: messages sharing a threadId form one conversation', () => {
+  /*
+   * The index is maintained INCREMENTALLY, like byCategory and searchIndex.
+   * Rebuilding a thread map on every render was the obvious implementation and
+   * is O(n) per keystroke; this store's whole design is that nothing is
+   * recomputed wholesale.
+   */
+  const s = new Store();
+  s.upsertMany([
+    { id: 'a', threadId: 'T1', from: 'X <x@b.c>', subject: 'Schedule', snippet: '1', date: 30, unread: true, category: 'augsd' },
+    { id: 'b', threadId: 'T1', from: 'Y <y@b.c>', subject: 'Re: Schedule', snippet: '2', date: 20, unread: false, category: 'augsd' },
+    { id: 'c', threadId: 'T2', from: 'Z <z@b.c>', subject: 'Other', snippet: '3', date: 10, unread: false, category: 'other' },
+  ]);
+
+  assert.deepEqual(s.threadIds('T1'), ['a', 'b'], 'newest first, like every other order here');
+  assert.deepEqual(s.threadIds('T2'), ['c']);
+  assert.deepEqual(s.threadIds('nope'), [], 'an unknown thread is empty, not undefined');
+});
+
+test('THREAD: the roots list collapses a conversation to one entry', () => {
+  // What the list renders. Three messages in one conversation must occupy one
+  // row, and that row must sit at the position of the NEWEST message -- a
+  // conversation is as recent as its latest reply.
+  const s = new Store();
+  s.upsertMany([
+    { id: 'old', threadId: 'T1', from: 'X <x@b.c>', subject: 'S', snippet: '', date: 5, unread: false, category: 'augsd' },
+    { id: 'mid', threadId: 'T2', from: 'Y <y@b.c>', subject: 'Other', snippet: '', date: 50, unread: false, category: 'other' },
+    { id: 'new', threadId: 'T1', from: 'Z <z@b.c>', subject: 'Re: S', snippet: '', date: 90, unread: false, category: 'augsd' },
+  ]);
+
+  assert.deepEqual(
+    s.rootIds(), ['new', 'mid'],
+    'one row per conversation, ordered by its most recent message'
+  );
+});
+
+test('THREAD: a conversation summarises its own state', () => {
+  /*
+   * A thread is a first-class object, not a bag of ids. The row needs to show
+   * unread state, participant count and attachment presence without the
+   * renderer walking the messages itself on every paint.
+   */
+  const s = new Store();
+  s.upsertMany([
+    { id: 'a', threadId: 'T1', from: 'Ann <a@b.c>', subject: 'Schedule', snippet: 'first', date: 10, unread: false, category: 'augsd' },
+    { id: 'b', threadId: 'T1', from: 'Bob <b@b.c>', subject: 'Re: Schedule', snippet: 'second', date: 20, unread: true, category: 'augsd', hasAttachment: true },
+    { id: 'c', threadId: 'T1', from: 'Ann <a@b.c>', subject: 'Re: Schedule', snippet: 'third', date: 30, unread: true, category: 'augsd' },
+  ]);
+
+  const t = s.thread('T1');
+  assert.equal(t.count, 3);
+  assert.equal(t.unread, 2, 'unread is a COUNT, not a boolean');
+  assert.equal(t.latestId, 'c', 'the newest message drives the row');
+  assert.equal(t.hasAttachment, true, 'true if ANY message carries one');
+  assert.deepEqual(t.participants, ['Ann', 'Bob'], 'deduplicated, in first-seen order');
+  assert.equal(t.subject, 'Schedule', 'the ORIGINAL subject, without the Re:');
+});
+
+test('THREAD: removing the last message removes the conversation', () => {
+  // The index must not leak empty threads. An empty Set left behind would
+  // render a row for a conversation with nothing in it.
+  const s = new Store();
+  s.upsertMany([
+    { id: 'a', threadId: 'T1', from: 'X <x@b.c>', subject: 'S', snippet: '', date: 10, unread: false, category: 'augsd' },
+    { id: 'b', threadId: 'T1', from: 'Y <y@b.c>', subject: 'S', snippet: '', date: 20, unread: false, category: 'augsd' },
+  ]);
+  s.remove('b');
+  assert.deepEqual(s.threadIds('T1'), ['a'], 'the survivor remains');
+  assert.equal(s.thread('T1').count, 1);
+
+  s.remove('a');
+  assert.deepEqual(s.threadIds('T1'), [], 'and the thread is gone entirely');
+  assert.equal(s.thread('T1'), null);
+  assert.deepEqual(s.rootIds(), [], 'with no phantom row left behind');
+});
+
+test('THREAD: a message that changes thread moves between conversations', () => {
+  /*
+   * THE MERGE/SPLIT CASE. Gmail reassigns threadId when it decides two
+   * conversations are one -- a delta sync then re-upserts the same id with a
+   * different threadId. Without handling it, the message appears in BOTH
+   * threads forever, because the old Set was never cleaned.
+   */
+  const s = new Store();
+  s.upsert({ id: 'a', threadId: 'T1', from: 'X <x@b.c>', subject: 'S', snippet: '', date: 10, unread: false, category: 'augsd' });
+  s.upsert({ id: 'b', threadId: 'T2', from: 'Y <y@b.c>', subject: 'S', snippet: '', date: 20, unread: false, category: 'augsd' });
+
+  // Gmail merges them: 'a' now belongs to T2.
+  s.upsert({ id: 'a', threadId: 'T2', from: 'X <x@b.c>', subject: 'S', snippet: '', date: 10, unread: false, category: 'augsd' });
+
+  assert.deepEqual(s.threadIds('T1'), [], 'the old conversation must not keep it');
+  assert.deepEqual(s.threadIds('T2'), ['b', 'a'], 'the new one gains it, in date order');
+  assert.equal(s.thread('T1'), null, 'and the emptied thread disappears');
+});
+
+test('THREAD: a message with no threadId is its own conversation', () => {
+  // Locally-built records and older cache entries may lack one. Falling back
+  // to the message id keeps them renderable rather than collapsing every
+  // unthreaded message into one giant bogus conversation.
+  const s = new Store();
+  s.upsertMany([
+    { id: 'a', from: 'X <x@b.c>', subject: 'One', snippet: '', date: 10, unread: false, category: 'augsd' },
+    { id: 'b', from: 'Y <y@b.c>', subject: 'Two', snippet: '', date: 20, unread: false, category: 'augsd' },
+  ]);
+  assert.deepEqual(s.rootIds(), ['b', 'a'], 'two separate rows, not one');
+  assert.equal(s.thread('a').count, 1);
+});
+
+test('THREAD: emptied conversations do not accumulate in the index', () => {
+  /*
+   * SABOTAGE EXPOSED THIS TEST AS MISSING.
+   *
+   * Deleting the `byThread.delete(tid)` line changed NO observable behaviour:
+   * threadIds() and thread() both guard on `size === 0`, so an empty Set reads
+   * exactly like an absent one. Every behavioural test still passed.
+   *
+   * The cost is memory, not correctness. A long-lived tab archives thousands
+   * of conversations, and each one would leave a permanent empty Set keyed by
+   * a threadId that no longer exists -- an unbounded leak in the one structure
+   * that is never rebuilt. The store's whole design is incremental indexes, so
+   * an index that only ever grows is a real defect.
+   *
+   * This asserts on the index itself, which is the only place it is visible.
+   */
+  const s = new Store();
+  for (let i = 0; i < 50; i++) {
+    s.upsert({
+      id: `m${i}`, threadId: `T${i}`, from: 'X <x@b.c>',
+      subject: 'S', snippet: '', date: i, unread: false, category: 'augsd',
+    });
+  }
+  assert.equal(s.byThread.size, 50, 'precondition: fifty conversations');
+
+  for (let i = 0; i < 50; i++) s.remove(`m${i}`);
+
+  assert.equal(
+    s.byThread.size, 0,
+    'archiving every conversation must not leave 50 empty Sets behind'
+  );
+});

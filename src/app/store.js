@@ -54,6 +54,17 @@ export class Store {
     /** @type {Map<string, Set<string>>} */
     this.searchIndex = new Map();
 
+    /**
+     * threadId -> Set<id>. The conversation index.
+     *
+     * Maintained INCREMENTALLY, like byCategory and searchIndex. Rebuilding a
+     * thread map per render is the obvious implementation and is O(n) on every
+     * keystroke; nothing in this store is recomputed wholesale.
+     *
+     * @type {Map<string, Set<string>>}
+     */
+    this.byThread = new Map();
+
     this.subscribers = new Set();
 
     // Batch state.
@@ -126,6 +137,14 @@ export class Store {
   }
 
   _index(msg) {
+    const tid = Store.threadOf(msg);
+    let tset = this.byThread.get(tid);
+    if (!tset) {
+      tset = new Set();
+      this.byThread.set(tid, tset);
+    }
+    tset.add(msg.id);
+
     let set = this.byCategory.get(msg.category);
     if (!set) {
       set = new Set();
@@ -144,6 +163,15 @@ export class Store {
   }
 
   _deindex(msg) {
+    const tid = Store.threadOf(msg);
+    const tset = this.byThread.get(tid);
+    if (tset) {
+      tset.delete(msg.id);
+      // Drop the entry entirely when it empties. A leftover empty Set would
+      // render a row for a conversation containing nothing.
+      if (tset.size === 0) this.byThread.delete(tid);
+    }
+
     this.byCategory.get(msg.category)?.delete(msg.id);
     for (const tok of Store.tokenize(msg)) {
       const ids = this.searchIndex.get(tok);
@@ -295,6 +323,7 @@ export class Store {
     this.order.length = 0;
     this.byCategory.clear();
     this.searchIndex.clear();
+    this.byThread.clear();
     this._touch('*', true);
   }
 
@@ -328,6 +357,121 @@ export class Store {
     const out = [];
     for (const id of this.order) if (set.has(id)) out.push(id);
     return out;
+  }
+
+  /* ------------------------------------------------------------ threading -- */
+
+  /**
+   * Which conversation a message belongs to.
+   *
+   * Falls back to the message id when Gmail gave us no threadId -- locally
+   * built records and older cache entries lack one. Without the fallback every
+   * unthreaded message would collapse into a single bogus conversation keyed
+   * on `undefined`.
+   */
+  static threadOf(msg) {
+    return msg.threadId || msg.id;
+  }
+
+  /** Message ids in a conversation, newest first. */
+  threadIds(threadId) {
+    const set = this.byThread.get(threadId);
+    if (!set || set.size === 0) return [];
+    // Walk `order` so the result is newest-first without a sort, the same way
+    // idsFor does. Threads are small, so the cost is the Set lookup.
+    const out = [];
+    for (const id of this.order) if (set.has(id)) out.push(id);
+    return out;
+  }
+
+  /**
+   * A conversation as a first-class object.
+   *
+   * Computed on demand rather than cached: a thread is a handful of messages,
+   * and a cached summary is one more thing that can drift out of step with
+   * the messages it describes. The expensive part -- finding the members --
+   * is the index, which IS maintained.
+   *
+   * @returns {{id:string, latestId:string, count:number, unread:number,
+   *   subject:string, participants:string[], hasAttachment:boolean,
+   *   date:number, ids:string[]} | null}
+   */
+  thread(threadId) {
+    const ids = this.threadIds(threadId);
+    if (!ids.length) return null;
+
+    const latest = this.byId.get(ids[0]);
+    let unread = 0;
+    let hasAttachment = false;
+    const seen = new Set();
+    const participants = [];
+
+    // Oldest first for participants: a conversation reads as the people who
+    // joined it in the order they joined.
+    for (let i = ids.length - 1; i >= 0; i--) {
+      const m = this.byId.get(ids[i]);
+      if (!m) continue;
+      if (m.unread) unread++;
+      if (m.hasAttachment) hasAttachment = true;
+      const who = Store.displayName(m.from);
+      if (who && !seen.has(who)) {
+        seen.add(who);
+        participants.push(who);
+      }
+    }
+
+    // The ORIGINAL subject. The newest message is usually "Re: ...", and a
+    // conversation is named for what it is about, not for the last reply.
+    const oldest = this.byId.get(ids[ids.length - 1]);
+    const subject = Store.baseSubject(oldest?.subject || latest?.subject || '');
+
+    return {
+      id: threadId,
+      latestId: ids[0],
+      ids,
+      count: ids.length,
+      unread,
+      subject,
+      participants,
+      hasAttachment,
+      date: latest?.date ?? 0,
+    };
+  }
+
+  /**
+   * One id per conversation -- the newest message in each -- newest first.
+   *
+   * This is what the list renders. Walking `order` once and skipping threads
+   * already seen keeps it O(n) with no sort, and preserves the existing
+   * ordering rule: a conversation is as recent as its most recent message.
+   */
+  rootIds(ids = this.order) {
+    const seen = new Set();
+    const out = [];
+    for (const id of ids) {
+      const m = this.byId.get(id);
+      if (!m) continue;
+      const tid = Store.threadOf(m);
+      if (seen.has(tid)) continue;
+      seen.add(tid);
+      out.push(id);
+    }
+    return out;
+  }
+
+  /** "Ann Example <a@b.c>" -> "Ann Example"; a bare address keeps its local part. */
+  static displayName(from) {
+    const raw = String(from || '').trim();
+    if (!raw) return '';
+    const named = raw.match(/^\s*"?([^"<]+?)"?\s*</);
+    if (named) return named[1].trim();
+    const bare = raw.replace(/[<>]/g, '').trim();
+    return bare.includes('@') ? bare.split('@')[0] : bare;
+  }
+
+  /** Strip any run of Re:/Fwd:/Fw: prefixes. */
+  static baseSubject(subject) {
+    return String(subject || '').replace(/^\s*((re|fwd|fw)\s*:\s*)+/i, '').trim();
   }
 
   counts() {
