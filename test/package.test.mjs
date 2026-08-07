@@ -334,20 +334,37 @@ test('prefers-reduced-motion is the LAST rule in app.css', () => {
   assert.equal(after.trim(), '', 'no rules may follow the reduced-motion block');
 });
 
-test('the manifest key is present and pins the extension ID', async () => {
-  // WHY THIS MATTERS MORE THAN IT LOOKS
-  //
-  // Chrome derives the extension ID by hashing the public key. With no "key"
-  // field it invents a new keypair per unpacked load, so the ID -- and
-  // therefore the OAuth redirect URI https://<id>.chromiumapp.org/ -- changes
-  // every time. Google then rejects the sign-in with redirect_uri_mismatch,
-  // and the only fix is re-registering the URI after every single reload.
-  //
-  // v1 carried this key. Dropping it in the rewrite is why auth could never
-  // have worked on a fresh load.
+test('if a manifest key is present it is a valid public key with the pinned ID', async () => {
+  /*
+   * THE KEY IS NOW OPTIONAL, and that is a deliberate reversal.
+   *
+   * It was added (1f9600c) so the extension ID -- and therefore the OAuth
+   * redirect URI https://<id>.chromiumapp.org/ -- stays constant across
+   * unpacked reloads. Without it Chrome mints a new keypair each load, the ID
+   * changes, and Google rejects sign-in with redirect_uri_mismatch until the
+   * new URI is re-registered. That reasoning still holds.
+   *
+   * But the key also PINS the ID, and a pinned ID is refused outright if
+   * anything else in the profile already owns it -- a previous install, a
+   * leftover registration, a second copy of the folder. That failure looks
+   * exactly like "Service worker registration failed. Status code: 2", which
+   * is what the user hit, on a build that had worked before the key existed.
+   *
+   * The tradeoff is asymmetric. Without the key you re-register a redirect URI
+   * after a reload: annoying, recoverable, and nothing else is affected.
+   * With a colliding key the extension does not load AT ALL and every feature
+   * is gone. So the key is no longer required.
+   *
+   * Nothing in the code depends on it: auth calls
+   * chrome.identity.getRedirectURL() at runtime, and options.js only shows a
+   * warning when the ID differs from the expected one. Verified, not assumed.
+   *
+   * If a key IS present it must still be a genuine public key deriving the
+   * documented ID -- a malformed one is a load failure with no message.
+   */
   const { createHash } = await import('node:crypto');
 
-  assert.ok(manifest.key, 'manifest.key is required to keep the ID stable');
+  if (!manifest.key) return; // legitimately absent; Chrome assigns an ID
 
   const der = Buffer.from(manifest.key, 'base64');
   assert.equal(
