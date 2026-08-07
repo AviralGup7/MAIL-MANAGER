@@ -142,8 +142,19 @@ if (!swRel) {
 
   try {
     await import(pathToFileURL(swAbs).href + `?t=${Date.now()}`);
-    console.log('   ✓ the graph evaluates with no exception');
-    console.log('     (so a top-level throw is NOT the cause)');
+    console.log('   ✓ the graph evaluates with no exception under NODE');
+    console.log();
+    console.log('     READ THIS CAREFULLY. It means the JavaScript is valid and');
+    console.log('     nothing throws at the top level. It does NOT mean Chrome');
+    console.log('     will register it: Chrome never ran. This is Node, with a');
+    console.log('     hand-written `chrome` object standing in for the real one.');
+    console.log();
+    console.log('     Any "[BMM] ..." line printed above came from THIS process,');
+    console.log('     not from your browser. It is not evidence of registration.');
+    console.log();
+    console.log('     Chrome validates the manifest and loads the extension in');
+    console.log('     ways nothing here reproduces. If Chrome still refuses, the');
+    console.log('     cause is in that layer, and step 3 below is how to see it.');
   } catch (err) {
     console.log('\n   ✗ THE WORKER THREW DURING EVALUATION:\n');
     console.log(`     ${err.constructor.name}: ${err.message}\n`);
@@ -213,6 +224,9 @@ console.log('     or just open the options page and press F12');
 console.log();
 console.log('   It prints the genuine exception. That is the thing that has');
 console.log('   been missing from every round of this so far.');
+console.log();
+console.log('   Until that runs, "the repo is clean" and "Chrome can load it"');
+console.log('   are two different claims and only the first has been tested.');
 console.log();
 line();
 console.log();
