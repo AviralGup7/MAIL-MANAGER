@@ -8,6 +8,7 @@
  * you at load time, and only for some of them.
  */
 
+import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
@@ -1336,6 +1337,34 @@ test('CONSISTENCY: the gate is a dialog, like every other blocking surface', () 
   assert.match(
     gate[0], /aria-labelledby="[^"]+"/,
     'a dialog needs an accessible name'
+  );
+});
+
+test('LOAD: the extension passes the load-time doctor', () => {
+  /*
+   * THE LAYER 890 TESTS COULD NOT SEE.
+   *
+   * The extension failed in Chrome with "Service worker registration failed.
+   * Status code: 2" while the entire suite was green. Every test here runs in
+   * jsdom or Node: none of them loads a manifest, validates a match pattern,
+   * resolves a chrome-extension:// URL or registers a worker. The suite was
+   * not wrong, it was aimed somewhere else.
+   *
+   * tools/doctor.mjs checks what Chrome checks at LOAD time. Running it from
+   * the suite means a mangled manifest or an unresolvable import in the worker
+   * graph fails here, at the cost of a second, rather than in the browser with
+   * an error message that names nothing.
+   *
+   * Sabotage-verified against three real failure modes: markdown-linkified
+   * URLs (the one that actually happened), `document` in the worker graph, and
+   * an extensionless import that Node forgives and the browser does not.
+   */
+  const res = spawnSync(process.execPath, ['tools/doctor.mjs'], {
+    cwd: ROOT, encoding: 'utf8',
+  });
+  assert.equal(
+    res.status, 0,
+    `the extension would not load in Chrome:\n${res.stdout}${res.stderr}`
   );
 });
 
