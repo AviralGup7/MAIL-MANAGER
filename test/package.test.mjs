@@ -1180,6 +1180,58 @@ test('ARCH: no menu is hand-rolled beside the primitive', () => {
   );
 });
 
+test('ARCH: a bulk label delta is stated once, not once per direction', () => {
+  /*
+   * `bulkAct` carried TWO five-branch ladders -- a forward chain and a
+   * hand-written inverse chain inside recordUndo -- plus two more literals in
+   * `autoArchive`. Twelve label lists for five actions.
+   *
+   * Every inverse happened to be correct, verified by hand before the merge.
+   * The danger was never that they were wrong; it was that nothing MADE them
+   * right, and a wrong one is close to invisible: the list is restored from
+   * the local snapshot whatever goes to the server, so a broken undo looks
+   * perfect on screen. The pre-existing row-counting test passed with trash's
+   * inverse deliberately sabotaged.
+   *
+   * The delta now lives in BULK_ACTIONS and the undo is {add: remove,
+   * remove: add}. This counts the literals: only the table may name a Gmail
+   * label in a BULK payload.
+   */
+  const shell = read('src/app/app.js')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/\/\/[^\n]*/g, ' ');
+
+  // No `send('BULK', ...)` call may carry a literal label array.
+  const literalPayloads = [...shell.matchAll(/send\('BULK',\s*\{[^}]*\[\s*'[A-Z]/g)];
+  assert.deepEqual(
+    literalPayloads.map((m) => m[0].slice(0, 60)), [],
+    'a BULK payload names a label directly; BULK_ACTIONS owns that'
+  );
+
+  // The table must exist and be the only place these labels are listed.
+  assert.match(shell, /const BULK_ACTIONS = \{/, 'the table must exist');
+
+  const table = shell.slice(shell.indexOf('const BULK_ACTIONS = {'));
+  const tableEnd = table.indexOf('\n};');
+  const tableBody = table.slice(0, tableEnd);
+  for (const label of ['INBOX', 'TRASH', 'UNREAD', 'STARRED', 'SPAM']) {
+    assert.ok(
+      tableBody.includes(`'${label}'`),
+      `${label} must be declared in the table`
+    );
+  }
+
+  /*
+   * And the inverse must be DERIVED. If `add: remove, remove: add` disappears,
+   * someone has gone back to typing inverses by hand.
+   */
+  const derived = (shell.match(/add: remove, remove: add/g) || []).length;
+  assert.ok(
+    derived >= 2,
+    `both undo paths must derive the inverse, found ${derived}`
+  );
+});
+
 test('ARCH: the Escape handler has no per-overlay branches', () => {
   // The ladder is what the stack replaced. If overlay-specific `close*()`
   // calls reappear here, the ordering fragility is back.

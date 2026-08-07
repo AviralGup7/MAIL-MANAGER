@@ -2207,7 +2207,22 @@ function autoArchive(records) {
   const snapshots = hits.map((m) => ({ ...m }));
   for (const id of ids) store.remove(id);
 
-  send('BULK', { ids, remove: ['INBOX'] }).catch(() => {
+  /*
+   * The archive delta comes from BULK_ACTIONS, not from a literal.
+   *
+   * This function is deliberately NOT routed through `bulkAct` -- it fires
+   * without awaiting, it must not clear the user's ticks or close their
+   * reader, and it says "Auto-archived" rather than "Archived" because the
+   * user did not do it. Those differences are real and forcing them into one
+   * function would mean three flags.
+   *
+   * But "what archiving does to labels" is not one of the differences, and it
+   * was written out twice more here -- a third and fourth copy of a delta that
+   * now has one home. The inverse is derived the same way it is in `bulkAct`.
+   */
+  const { add = [], remove = [] } = BULK_ACTIONS.archive;
+
+  send('BULK', { ids, add, remove }).catch(() => {
     for (const s of snapshots) store.upsert(s);
     toast('Could not auto-archive', { kind: 'error' });
   });
@@ -2215,7 +2230,7 @@ function autoArchive(records) {
   toast(`Auto-archived ${ids.length} message${ids.length === 1 ? '' : 's'}`);
   recordUndo(ctx, `Auto-archived ${ids.length}`, async () => {
     for (const s of snapshots) store.upsert(s);
-    await send('BULK', { ids, add: ['INBOX'] });
+    await send('BULK', { ids, add: remove, remove: add });
   });
 }
 
@@ -3416,6 +3431,38 @@ function renderSelection() {
  * is precisely why UndoStack stores a thunk rather than a diff.
  */
 /**
+ * What each bulk action does to Gmail's labels, stated ONCE.
+ *
+ * WHY THIS IS A TABLE
+ * -------------------
+ * `bulkAct` used to carry TWO five-branch ladders: a forward chain of
+ * `if (kind === 'archive') send({remove: ['INBOX']}) else if ...`, and a
+ * second chain inside `recordUndo` that hand-wrote each inverse. Ten
+ * statements for five actions, with nothing connecting a delta to its
+ * reversal except that someone typed both correctly.
+ *
+ * Every inverse was in fact correct when this was written -- checked, not
+ * assumed. The problem is that nothing MADE them correct. Adding a sixth
+ * action means remembering to edit two ladders in two places, and getting an
+ * inverse wrong is close to invisible: the list on screen is restored from the
+ * local snapshot regardless of what goes to the server, so a broken undo looks
+ * perfect locally and only diverges in Gmail, where the test suite cannot see.
+ * A row-counting test passed happily with `trash`'s undo sabotaged.
+ *
+ * Now the delta is written once and the undo is `{add: remove, remove: add}`.
+ * An inverse cannot drift from its action because it is no longer stored.
+ */
+const BULK_ACTIONS = {
+  archive: { verb: 'Archived', remove: ['INBOX'] },
+  trash: { verb: 'Deleted', add: ['TRASH'], remove: ['INBOX'] },
+  read: { verb: 'Marked read', remove: ['UNREAD'] },
+  star: { verb: 'Starred', add: ['STARRED'] },
+  // Junk arrives in batches, so reporting it one message at a time is
+  // exactly the friction this product exists to remove.
+  spam: { verb: 'Reported', add: ['SPAM'], remove: ['INBOX'] },
+};
+
+/**
  * Apply one action to many messages.
  *
  * `explicitIds` lets a single-row action on a collapsed conversation reuse
@@ -3448,19 +3495,10 @@ async function bulkAct(kind, explicitIds = null) {
     renderSelection();
   }
 
-  const verb = {
-    archive: 'Archived', trash: 'Deleted', read: 'Marked read',
-    star: 'Starred', spam: 'Reported',
-  }[kind];
+  const { verb, add = [], remove = [] } = BULK_ACTIONS[kind];
 
   try {
-    if (kind === 'archive') await send('BULK', { ids, remove: ['INBOX'] });
-    else if (kind === 'trash') await send('BULK', { ids, add: ['TRASH'], remove: ['INBOX'] });
-    else if (kind === 'read') await send('BULK', { ids, remove: ['UNREAD'] });
-    else if (kind === 'star') await send('BULK', { ids, add: ['STARRED'] });
-    // Junk arrives in batches, so reporting it one message at a time is
-    // exactly the friction this product exists to remove.
-    else if (kind === 'spam') await send('BULK', { ids, add: ['SPAM'], remove: ['INBOX'] });
+    await send('BULK', { ids, add, remove });
   } catch (err) {
     // Roll the whole batch back. A partial apply would leave the list
     // disagreeing with Gmail with no indication which half won.
@@ -3475,11 +3513,8 @@ async function bulkAct(kind, explicitIds = null) {
     store.batch(() => {
       for (const m of snapshots) store.upsert(m);
     });
-    if (kind === 'archive') await send('BULK', { ids, add: ['INBOX'] });
-    else if (kind === 'trash') await send('BULK', { ids, add: ['INBOX'], remove: ['TRASH'] });
-    else if (kind === 'read') await send('BULK', { ids, add: ['UNREAD'] });
-    else if (kind === 'star') await send('BULK', { ids, remove: ['STARRED'] });
-    else if (kind === 'spam') await send('BULK', { ids, add: ['INBOX'], remove: ['SPAM'] });
+    // The inverse is DERIVED, never typed: swap add and remove.
+    await send('BULK', { ids, add: remove, remove: add });
   });
 }
 

@@ -1665,6 +1665,167 @@ test('BULK: archiving many undoes as ONE step', async (t) => {
   }
 });
 
+test('AUTO-ARCHIVE: files new mail, says so, and undoes to the inbox', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * THIS BEHAVIOUR HAD NO INTEGRATION COVERAGE AT ALL.
+   *
+   * `rules.js` is well tested -- toggling, persistence, the mute/auto-archive
+   * contradiction. But `autoArchive()` in app.js, the function that actually
+   * removes a user's mail from their inbox on arrival, was never exercised
+   * end to end. The rule engine was proven; the thing acting on it was not.
+   *
+   * It is also the most destructive-adjacent thing the app does without being
+   * asked, which is exactly why the product reports it and offers an undo
+   * rather than acting silently: mail that vanishes with no announcement is
+   * indistinguishable from mail going missing.
+   */
+  const { doc, win, calls, settle, restore } = await boot({
+    messages: [],
+    storageSeed: { categoryRules: { muted: [], autoArchive: ['augsd'], corrections: {} } },
+  });
+  try {
+    calls.length = 0;
+    // Arriving mail, unread, in the auto-archived category.
+    win.__bmmIngest(bulk(3, { unread: true }));
+    await settled(doc, settle);
+
+    // It leaves the inbox locally...
+    assert.equal(rows(doc).length, 0, 'auto-archived mail does not sit in the inbox');
+
+    // ...and exactly one BULK call carries the archive delta.
+    const forward = calls.filter((c) => c.type === 'BULK');
+    assert.equal(forward.length, 1, 'one request for the batch, not three');
+    assert.deepEqual([...(forward[0].remove || [])], ['INBOX'], 'archiving removes INBOX');
+    assert.deepEqual([...(forward[0].add || [])], [], 'and adds nothing');
+
+    // It ANNOUNCES itself. A silent rule is a bug report waiting to happen.
+    const toastEl = doc.getElementById('toast');
+    assert.equal(toastEl.hidden, false, 'the toast must actually be showing');
+    assert.match(
+      toastEl.textContent, /Auto-archived 3/,
+      'the user must be told what the rule did'
+    );
+    assert.match(toastEl.textContent, /Undo/, 'and offered a way back');
+
+    // And it is reversible, by the derived inverse.
+    calls.length = 0;
+    doc.dispatchEvent(
+      new win.KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true })
+    );
+    await settle();
+    await settle();
+
+    const back = calls.filter((c) => c.type === 'BULK');
+    assert.equal(back.length, 1, 'undo sends one BULK');
+    assert.deepEqual([...(back[0].add || [])], ['INBOX'], 'undo puts INBOX back');
+    assert.deepEqual([...(back[0].remove || [])], [], 'and removes nothing');
+    assert.equal(rows(doc).length, 3, 'the mail returns to the list');
+  } finally {
+    restore();
+  }
+});
+
+test('AUTO-ARCHIVE: leaves already-read mail alone', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * The rule fires on ARRIVAL, so it must only touch unread mail. Re-archiving
+   * something the user has already opened and chosen to keep in the inbox
+   * would be the app fighting them -- and it would do so on every sync.
+   */
+  const { doc, win, calls, settle, restore } = await boot({
+    messages: [],
+    storageSeed: { categoryRules: { muted: [], autoArchive: ['augsd'], corrections: {} } },
+  });
+  try {
+    calls.length = 0;
+    win.__bmmIngest(bulk(3, { unread: false }));
+    await settled(doc, settle);
+
+    assert.equal(
+      calls.filter((c) => c.type === 'BULK').length, 0,
+      'read mail must not be auto-archived'
+    );
+    assert.equal(rows(doc).length, 3, 'and it stays in the list');
+  } finally {
+    restore();
+  }
+});
+
+test('BULK: every action undoes by exactly reversing its own label delta', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * THE BULK LADDER STATES EACH DELTA TWICE.
+   *
+   * `bulkAct` has a forward chain of five `if (kind === ...)` branches and a
+   * second, separate chain inside `recordUndo` that hand-writes the inverse.
+   * Nothing ties the two together: the undo for `trash` is correct only
+   * because someone typed `add: ['INBOX'], remove: ['TRASH']` correctly, and a
+   * sixth action added to one chain and not the other, or an inverse typed
+   * with add/remove the right way round but the wrong LABEL, fails silently.
+   *
+   * The existing coverage could not see this. "archiving many undoes as ONE
+   * step" counts ROWS, and rows come back from the local snapshot regardless
+   * of what is sent to Gmail -- so a completely wrong inverse payload still
+   * restores the list on screen and only diverges on the server, where this
+   * test suite cannot look.
+   *
+   * This asserts the round trip at the wire: for each action, whatever labels
+   * the forward call ADDS the undo must REMOVE, and vice versa. Verified
+   * against the real payloads rather than against the source text.
+   */
+  const cases = [
+    { button: 'bulk-archive', kind: 'archive' },
+    { button: 'bulk-trash', kind: 'trash' },
+    { button: 'bulk-read', kind: 'read' },
+    { button: 'bulk-star', kind: 'star' },
+    { button: 'bulk-spam', kind: 'spam' },
+  ];
+
+  for (const { button, kind } of cases) {
+    const { doc, win, calls, settle, restore } = await boot({ messages: bulk(6) });
+    try {
+      pick(rows(doc)[0], win);
+      pick(rows(doc)[1], win);
+      await settle();
+
+      calls.length = 0;
+      doc.getElementById(button).click();
+      await settled(doc, settle);
+
+      const forward = calls.filter((c) => c.type === 'BULK');
+      assert.equal(forward.length, 1, `${kind}: one BULK call goes out, not N`);
+
+      calls.length = 0;
+      doc.dispatchEvent(
+        new win.KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true })
+      );
+      await settle();
+      await settle();
+
+      const back = calls.filter((c) => c.type === 'BULK');
+      assert.equal(back.length, 1, `${kind}: undo also sends exactly one BULK`);
+
+      const f = forward[0];
+      const u = back[0];
+      const norm = (v) => [...(v || [])].sort();
+
+      assert.deepEqual(
+        norm(u.remove), norm(f.add),
+        `${kind}: undo must REMOVE every label the action ADDED`
+      );
+      assert.deepEqual(
+        norm(u.add), norm(f.remove),
+        `${kind}: undo must ADD BACK every label the action REMOVED`
+      );
+      // And it must act on the same messages, not a re-derived selection.
+      assert.deepEqual(norm(u.ids), norm(f.ids), `${kind}: same ids both ways`);
+    } finally {
+      restore();
+    }
+  }
+});
+
 test('BULK: Escape clears the selection before anything else', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');
   // Selection is the innermost transient state, so it unwinds first —

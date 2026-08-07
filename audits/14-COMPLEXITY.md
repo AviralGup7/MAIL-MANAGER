@@ -360,3 +360,89 @@ strings survived in a CSS selector and an index expression. They now match the
 role expression and the branch condition. A source-scanning assertion that
 matches a bare string is worth very little; this is the third time that has
 been true in this project.
+
+---
+
+## Addendum 2 — the bulk ladder, and a blind spot in the coverage
+
+A third pass over the same brief. The four named criteria all measured as
+already met:
+
+```
+hand-rolled menu containers in app.js:   0
+`const snapshot = {...m}` copies:        1  (inside the helper)
+openMenu call sites:                     4
+server-search.js / saved-views.js:       extracted
+```
+
+Menus really are done. The three remaining arrow-key handlers — the sidebar
+rail, the palette and the autocomplete — are a roving-tabindex tree and two
+comboboxes. They are different interaction patterns, not menus, and forcing
+them through `openMenu` would be abstraction for its own sake.
+
+But the optimistic-mutation criterion had been measured with the wrong
+instrument. `const snapshot = { ...m }` is the fingerprint of the *single
+message* path, and counting it found one copy and reported success. The
+**bulk** family was never part of that merge.
+
+### What was actually there
+
+`bulkAct` carried two five-branch ladders — a forward chain and a separately
+hand-written inverse chain inside `recordUndo` — and `autoArchive` added two
+more literals. Twelve label lists describing five actions.
+
+**Every inverse was correct.** That was checked before touching anything, by
+extracting both ladders and asserting each undo exactly swapped its forward
+delta. The finding is not a bug; it is that nothing *made* them correct.
+
+### Why a wrong inverse would have been nearly invisible
+
+This is the part worth recording. The list on screen is restored from the
+**local snapshot**, whatever payload goes to the server. So a completely wrong
+undo payload still repaints the inbox perfectly and diverges only in Gmail —
+where this suite cannot look.
+
+Demonstrated rather than argued: with `trash`'s inverse sabotaged to omit
+`remove: ['TRASH']`, the pre-existing test *"BULK: archiving many undoes as ONE
+step"* **still passed**. It counts rows. Rows are local.
+
+The new test asserts the round trip at the wire — for each of the five
+actions, whatever the forward call adds the undo must remove, and vice versa —
+and was verified to fail under two separate sabotages.
+
+### A function with no coverage at all
+
+`autoArchive()` turned out to have **no integration test whatsoever**.
+`rules.js` is thoroughly tested — toggling, persistence, the mute/auto-archive
+contradiction — so the rule engine was proven while the code that acts on it,
+and silently removes mail from the user's inbox on arrival, was not.
+
+Two tests added before refactoring it: that it files new mail, announces
+itself, and undoes to the inbox; and that it leaves already-read mail alone.
+Both sabotage-verified. Writing them also corrected an assumption of mine — I
+asserted the toast read "Auto-archived 3 messages" and it reads "Auto-archived
+3" plus an Undo affordance. The test was wrong, not the product.
+
+### Result
+
+```
+BULK label literals outside the table:  12 → 0
+hand-written inverse chains:             2 → 0   (both derived)
+app.js:                               3937 → 3972 lines
+tests:                                 874 → 878
+```
+
+`app.js` grew by 35 lines, and that is the right outcome. The ladders shrank;
+the documentation of why the table exists is longer than the code it replaced.
+**Fewer places to be wrong matters more than fewer lines.**
+
+`autoArchive` was deliberately **not** routed through `bulkAct`. It fires
+without awaiting, must not clear the user's ticks or close their reader, and
+says "Auto-archived" rather than "Archived" because the user did not do it.
+Those are real differences and merging them would have meant three flags. Only
+the label delta — which was never one of the differences — is now shared.
+
+### Where this stops
+
+Unchanged from the previous pass: the render/list/selection core stays welded.
+Nothing in this addendum went near it.
