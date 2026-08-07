@@ -39,6 +39,9 @@ import { renderShortcuts } from './shortcuts.js';
 import { openLayer, closeTopLayer, hasLayers, closeAllLayers } from './layers.js';
 import { openMenu, closeMenu } from './menu.js';
 import {
+  scheduleServerSearch, wireServerSearch, _resetServerSearch,
+} from './server-search.js';
+import {
   MAILBOXES, DEFAULT_MAILBOX, getMailbox, isMailbox, showsCategories, actionsFor,
 } from './mailboxes.js';
 import {
@@ -2659,87 +2662,11 @@ el.search.addEventListener('input', () => {
  * SERVER SEARCH FALLBACK
  * ========================================================================== */
 
-/**
- * The local index covers SUBJECT AND SENDER ONLY (`store.js` tokenize).
- *
- * That is a deliberate size trade, but it means a search for a phrase the user
- * remembers from the BODY returns nothing and they conclude the mail is gone.
- * A confidently wrong answer is worse than a slow one.
- *
- * So: local results appear instantly, and if the query looks under-served we
- * ask Gmail the same question and merge what comes back, labelled as such.
- * This is FASTER than Gmail on the common path and equal on the rare one.
- *
- * The debounce is a timer rather than a frame: this one costs a network round
- * trip, so it waits until the user has actually stopped typing.
+/*
+ * Server search lives in server-search.js -- it was the least-coupled tenant
+ * in this file: three functions, one entry point, and the only shell state it
+ * needs is the current query and mailbox.
  */
-const SERVER_SEARCH_MS = 420;
-const SERVER_SEARCH_MIN = 3;
-let serverSearchTimer = 0;
-let serverSearchToken = 0;
-
-function scheduleServerSearch() {
-  clearTimeout(serverSearchTimer);
-  const q = state.query.trim();
-
-  // Nothing typed, or too short to be worth a round trip.
-  if (q.length < SERVER_SEARCH_MIN) {
-    serverSearchToken++; // cancel anything in flight
-    setSearchNote('');
-    return;
-  }
-  // Only the inbox has a local index worth supplementing; other mailboxes are
-  // already fetched in full.
-  if (state.mailbox !== 'inbox') return;
-
-  serverSearchTimer = setTimeout(runServerSearch, SERVER_SEARCH_MS);
-}
-
-async function runServerSearch() {
-  const q = state.query.trim();
-  const token = ++serverSearchToken;
-  const before = new Set(visibleIds());
-
-  setSearchNote('Searching all mail…');
-  try {
-    const { messages } = await send('SYNC_PAGE', {
-      // `q` goes to Gmail verbatim: its operator syntax is a superset of ours,
-      // so `from:x report` means the same thing on both sides.
-      opts: { q, max: 40, anchorHistory: false },
-    });
-
-    // A newer keystroke has superseded this request. Dropping the response is
-    // what stops results from an old query flashing over a newer one.
-    if (token !== serverSearchToken) return;
-
-    const fresh = messages.filter((m) => !before.has(m.id));
-    if (!fresh.length) {
-      setSearchNote(before.size ? '' : 'No matches in your mail.');
-      return;
-    }
-
-    // Merged into the inbox store so they render, sort and open exactly like
-    // any other message. They carry `fromSearch` so a later refresh can tell
-    // them apart from genuine inbox mail.
-    ingest(fresh.map((m) => ({ ...m, fromSearch: true })));
-    setSearchNote(
-      `${fresh.length} more found by searching message bodies in Gmail.`
-    );
-  } catch (err) {
-    if (token !== serverSearchToken) return;
-    // A failed fallback must never look like "no results": the local results
-    // are still valid and still on screen.
-    setSearchNote('Could not search Gmail. Showing local results only.');
-  }
-}
-
-/** The one-line note under the search box. */
-function setSearchNote(text) {
-  const note = $('search-note');
-  if (!note) return;
-  setText(note, text);
-  note.hidden = !text;
-}
 
 /**
  * Offer to keep the current search.
@@ -3776,9 +3703,8 @@ function scheduleAutoRefresh() {
 
 function cancelPendingWork() {
   stopAutoRefresh();
-  clearTimeout(serverSearchTimer);
-  serverSearchTimer = 0;
-  serverSearchToken++;
+  // Server search owns its own timer and token, and resets them itself.
+  _resetServerSearch();
   clearTimeout(markReadTimer);
   markReadTimer = 0;
   if (searchFrame) {
@@ -3841,6 +3767,10 @@ const ctx = {
    * it -- a reply must answer that one.
    */
   openMessageId: () => openPart || state.selected,
+  // Server search needs to know what is already on screen (so it only reports
+  // genuinely new hits) and how to merge what Gmail returns.
+  visibleIds: () => visibleIds(),
+  ingest: (msgs) => ingest(msgs),
   runQuery: (q) => {
     el.search.value = q;
     state.query = q;
@@ -4059,6 +3989,7 @@ async function boot() {
   wirePalette(ctx);
   wireCompose(ctx);
   wireRadar(ctx);
+  wireServerSearch(ctx);
   $('btn-compose').addEventListener('click', () => openCompose(ctx));
   $('btn-timetable')?.addEventListener('click', () => openTimetable(ctx));
   // Render the (empty) list once up front. The store only notifies when it

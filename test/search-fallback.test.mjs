@@ -13,7 +13,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const app = readFileSync(new URL('../src/app/app.js', import.meta.url), 'utf8');
+/*
+ * The server-search fallback moved out of app.js into its own module -- it was
+ * the least-coupled tenant in that file. Both are read: the fallback lives in
+ * server-search.js, and the shell still owns the search input that triggers it.
+ */
+const app = readFileSync(new URL('../src/app/server-search.js', import.meta.url), 'utf8')
+  + readFileSync(new URL('../src/app/app.js', import.meta.url), 'utf8');
 const html = readFileSync(new URL('../app.html', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../src/app/app.css', import.meta.url), 'utf8');
 
@@ -89,11 +95,27 @@ test('a superseded response is dropped', () => {
 });
 
 test('cancelling bumps the token, not just the timer', () => {
-  // Clearing the timer only stops requests that have not started yet.
-  const fn = app.slice(app.indexOf('function cancelPendingWork'));
-  const body = fn.slice(0, 400);
-  assert.ok(body.includes('clearTimeout(serverSearchTimer)'));
-  assert.ok(body.includes('serverSearchToken++'), 'in-flight responses must be neutralised');
+  /*
+   * Clearing the timer only stops requests that have not started yet; an
+   * in-flight response must also be neutralised or a stale result paints over
+   * a newer one.
+   *
+   * The teardown now DELEGATES: cancelPendingWork calls _resetServerSearch,
+   * which owns the timer and the token. Asserting on the delegation and on
+   * the seam separately is what keeps this honest -- checking only that the
+   * shell mentions a timer would pass on a seam that did nothing.
+   */
+  const shell = app.slice(app.indexOf('function cancelPendingWork'), 
+    app.indexOf('function cancelPendingWork') + 400);
+  assert.ok(
+    shell.includes('_resetServerSearch()'),
+    'teardown must reach the server-search module'
+  );
+
+  const seam = app.slice(app.indexOf('export function _resetServerSearch'),
+    app.indexOf('export function _resetServerSearch') + 400);
+  assert.ok(seam.includes('clearTimeout(serverSearchTimer)'));
+  assert.ok(seam.includes('serverSearchToken++'), 'in-flight responses must be neutralised');
 });
 
 test('teardown runs on pagehide AND on release', () => {
