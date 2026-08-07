@@ -4933,3 +4933,113 @@ test('THREAD: replying from a conversation threads the reply correctly', async (
     restore();
   }
 });
+
+test('THREAD: threading survives a reload from cache', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * The cache stores threadId (field 2 of the packed record), so a warm start
+   * must rebuild the same conversations. If it did not, the list would look
+   * different for the first few hundred milliseconds of every session -- the
+   * exact kind of flicker that makes a client feel unreliable.
+   */
+  const blob = {
+    v: 1, t: Date.now(),
+    m: THREADED.map((x) => [
+      x.id, x.threadId, x.from, x.subject, x.snippet, x.date,
+      (x.unread ? 1 : 0) | (x.starred ? 2 : 0), 'augsd', 0.9, 'sender', '',
+    ]),
+  };
+  const { doc, settle, restore } = await boot({
+    messages: THREADED,
+    storageSeed: { msgCache: blob, historyId: '12345' },
+  });
+  try {
+    await settle(12);
+    assert.equal(
+      rows(doc).length, 3,
+      'a warm start must collapse exactly as a cold one does'
+    );
+    const conv = rows(doc).find((r) => r.dataset.id === 'c3');
+    assert.equal(conv.querySelector('.r-count').textContent, '3');
+  } finally {
+    restore();
+  }
+});
+
+test('THREAD: the strip is reachable and announced by keyboard', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * The strip is the only route to the older messages in a conversation, so a
+   * keyboard user who cannot reach it cannot read half their mail. Real
+   * buttons in a labelled list, with the current one pressed rather than
+   * selected -- selected would collide with the message list's listbox.
+   */
+  const { doc, settle, restore } = await boot({ messages: THREADED });
+  try {
+    await settle(8);
+    rows(doc).find((x) => x.dataset.id === 'c3').click();
+    await settle(10);
+
+    const strip = doc.getElementById('r-thread');
+    assert.equal(strip.getAttribute('role'), 'list');
+    assert.ok(strip.getAttribute('aria-label'), 'the strip must name itself');
+
+    const parts = [...strip.querySelectorAll('.r-msg')];
+    for (const p of parts) {
+      assert.equal(p.tagName, 'BUTTON', 'each part must be focusable natively');
+      assert.equal(p.getAttribute('role'), 'listitem');
+      assert.ok(p.hasAttribute('aria-pressed'), 'and report whether it is current');
+    }
+    assert.equal(
+      parts.filter((p) => p.getAttribute('aria-pressed') === 'true').length, 1,
+      'exactly one message is current'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('THREAD: a conversation spanning a category shows under one of them', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * EDGE CASE. The classifier runs per message, so a reply can land in a
+   * different category from the message it answers. Filtering by category
+   * then asks for a conversation that only partly belongs there.
+   *
+   * The rule that falls out of collapsing after filtering: the conversation
+   * appears under a category if ANY of its messages is filed there, and the
+   * row is the newest message that qualifies. That keeps the mail findable
+   * where the user expects it rather than hiding it under a sibling's label.
+   */
+  const mixed = [
+    { ...THREADED[0], id: 'x1', threadId: 'MIX', subject: 'Fee payment',
+      from: 'AUGSD <augsd@pilani.bits-pilani.ac.in>', date: Date.now() - 8000_000 },
+    { ...THREADED[1], id: 'x2', threadId: 'MIX', subject: 'Re: Fee payment',
+      from: 'Library <library@pilani.bits-pilani.ac.in>', date: Date.now() - 2000_000 },
+  ];
+  const { doc, settle, restore } = await boot({ messages: mixed });
+  try {
+    await settle(8);
+    assert.equal(rows(doc).length, 1, 'one conversation in All mail');
+
+    const cats = [...doc.querySelectorAll('#cats .cat[data-cat]')]
+      .filter((b) => {
+        const c = b.lastElementChild;
+        return c && (c.textContent || '').trim() !== '';
+      })
+      .map((b) => b.dataset.cat);
+
+    // Whichever categories the two messages landed in, clicking each must
+    // show the conversation rather than nothing.
+    for (const cat of cats.filter((c) => c !== 'all')) {
+      doc.querySelector(`#cats .cat[data-cat="${cat}"]`).click();
+      await settle(6);
+      assert.ok(
+        rows(doc).length >= 1,
+        `category ${cat} counts a message but shows no row`
+      );
+    }
+  } finally {
+    restore();
+  }
+});

@@ -108,6 +108,25 @@ separate question — and blocking on it would have deferred this indefinitely.
 
 ---
 
+## Edge cases covered
+
+- **Thread merge/split.** Gmail reassigns `threadId` when it decides two
+  conversations are one; a delta then re-upserts the same id with a new
+  thread. Without cleaning the old Set the message lives in both forever.
+- **A conversation spanning two categories.** The classifier runs per message,
+  so a reply can be filed differently from the message it answers. Collapsing
+  happens *after* filtering, so the conversation appears under any category
+  holding one of its messages, rooted at the newest that qualifies — findable
+  where you expect rather than hidden under a sibling's label.
+- **A reply arriving into a ticked conversation.** The tick follows.
+- **Warm start from cache.** `threadId` is field 2 of the packed record, so a
+  cached start collapses identically — no flicker on the first paint.
+- **A message with no `threadId`.** Falls back to its own id, so locally-built
+  and older cached records stay separate rather than collapsing into one bogus
+  conversation keyed on `undefined`.
+
+---
+
 ## Turning it off
 
 `threaded` in settings, on by default, with a control in Options. The store
