@@ -265,6 +265,46 @@ const el = {
  */
 let workerDown = false;
 
+/*
+ * HOW LONG A VERB MAY TAKE BEFORE WE CALL THE WORKER DEAD.
+ *
+ * This used to be a single 4000ms deadline for everything, and it produced a
+ * false positive on a real inbox: the amber "Background service unavailable"
+ * banner appeared while mail was loading perfectly. The worker was not dead,
+ * it was slow.
+ *
+ * AUTH_STATUS answers in milliseconds. SYNC_PAGE fetches a hundred messages,
+ * batches their metadata and classifies them; on a cold start over a busy
+ * campus network that passes four seconds without anything being wrong. The
+ * app then declared the worker dead and routed the whole session through the
+ * in-page fallback -- which works, so nothing looked broken, but the banner
+ * was a lie and snooze timers were disabled for no reason.
+ *
+ * A timeout is a claim about what "too slow" means, and that claim cannot be
+ * the same for a status ping and a bulk fetch. These are deliberately
+ * generous: the cost of waiting too long is a slow action, and the cost of
+ * giving up too early is a session spent in a degraded mode nobody asked for.
+ */
+const VERB_TIMEOUT_MS = {
+  // Bulk network work: many round trips, then classification.
+  SYNC_PAGE: 45000,
+  SYNC_DELTA: 45000,
+  // One message, but a large body or many inline parts.
+  GET_BODY: 20000,
+  GET_INLINE: 30000,
+  GET_ATTACHMENT: 60000,
+  // Outbound, possibly with attachments.
+  SEND: 60000,
+  SAVE_DRAFT: 30000,
+  // A batch modify over up to a hundred ids.
+  BULK: 30000,
+  // Interactive OAuth: the user has to actually sign in.
+  SIGN_IN: 120000,
+};
+
+/** Everything else is a small request that should answer quickly. */
+const DEFAULT_TIMEOUT_MS = 10000;
+
 function send(type, extra = {}) {
   if (workerDown) return runInPage(type, extra);
 
@@ -280,7 +320,7 @@ function send(type, extra = {}) {
       settled = true;
       degradeToFallback('the background worker stopped responding');
       runInPage(type, extra).then(resolve, reject);
-    }, 4000);
+    }, VERB_TIMEOUT_MS[type] ?? DEFAULT_TIMEOUT_MS);
 
     try {
       chrome.runtime.sendMessage({ type, ...extra }, (res) => {
@@ -1264,7 +1304,20 @@ function renderSidebar() {
       let total = null;
       if (id === state.mailbox || loaded) {
         un = s ? sumUnread(s) : 0;
-        total = s ? s.size : 0;
+        /*
+         * COUNT WHAT THE USER CAN SEE, not what the store holds.
+         *
+         * `s.size` is the raw message count. With threading on, the list
+         * shows one row per CONVERSATION -- so a real inbox displayed
+         * "Inbox 32 48" in the rail beside "All mail 44" in the list header.
+         * Both numbers were correct and they measured different things,
+         * which reads as an arithmetic bug in the product.
+         *
+         * The rail sits next to the list, so it must agree with the list.
+         */
+        total = s
+          ? (settings.get('threaded') ? s.rootIds().length : s.size)
+          : 0;
       }
       setCount(countEl, un, total);
       b.setAttribute('aria-current', String(state.mailbox === id));
@@ -1273,7 +1326,15 @@ function renderSidebar() {
 
     const key = b.dataset.cat;
     const u = key === 'all' ? totalUnread : unread[key] || 0;
-    const t = key === 'all' ? store.size : counts[key] || 0;
+    /*
+     * Same rule as the mailboxes above: count CONVERSATIONS when the list is
+     * showing conversations, or the rail disagrees with the header beside it.
+     * `collapseThreads` is the one place that decision is made, so it is the
+     * one place to ask.
+     */
+    const t = collapseThreads(
+      key === 'all' ? store.idsFor('all') : store.idsFor(key)
+    ).length;
     /*
      * SHOW BOTH COUNTS, not just the unread one.
      *

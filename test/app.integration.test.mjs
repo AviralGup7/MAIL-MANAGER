@@ -2188,6 +2188,90 @@ test('UNDO: a failed auto-archive leaves no undo entry', async (t) => {
   }
 });
 
+test('FALLBACK: a slow but healthy worker is not declared dead', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * REPORTED FROM A REAL INBOX. The amber "Background service unavailable"
+   * banner appeared while mail was loading perfectly -- because the worker
+   * was not dead at all, it was merely slow.
+   *
+   * send() applied ONE 4000ms deadline to EVERY verb. AUTH_STATUS answers
+   * instantly, but SYNC_PAGE fetches 100 messages plus batched metadata and
+   * then classifies them; on a cold start over campus wifi that passes four
+   * seconds easily. The app then declared the worker dead, showed the banner,
+   * and routed everything through the in-page fallback FOR THE REST OF THE
+   * SESSION, because the switch is deliberately sticky.
+   *
+   * Nothing appeared broken -- the fallback is real, which is why the
+   * screenshot showed a working inbox -- but the banner was a lie, snooze
+   * timers were disabled for no reason, and two paths were racing.
+   *
+   * The deadline must fit the verb.
+   */
+  const { doc, settle, restore } = await boot({ syncLatency: 4200 });
+  try {
+    // Long enough for a 4.2s sync to finish, which the old 4s cap would not
+    // have waited for.
+    for (let i = 0; i < 60; i++) await settle(4);
+
+    assert.equal(
+      doc.getElementById('sw-warn'), null,
+      'a slow sync must not be mistaken for a dead worker'
+    );
+    assert.ok(rows(doc).length > 0, 'and the mail must still arrive');
+  } finally {
+    restore();
+  }
+});
+
+test('CONSISTENCY: the rail count agrees with the list header', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * SEEN IN A REAL INBOX. The sidebar read "Inbox 32 48" while the list
+   * header two inches away read "All mail 44".
+   *
+   * Both numbers were right and they measured different things. The rail
+   * used `store.size` -- raw messages -- and the header used the rendered
+   * row count, which with threading on is one row per CONVERSATION. Four
+   * messages were replies collapsed into their threads.
+   *
+   * To a user that is simply arithmetic that does not add up, in the two
+   * places they look most often. The rail sits beside the list, so it has to
+   * count what the list shows.
+   */
+  const conv = [
+    { id: 'x1', threadId: 'T', from: 'A <a@x.com>', subject: 'Root',
+      snippet: 'a', date: Date.now() - 4000, unread: false, starred: false, labels: ['INBOX'] },
+    { id: 'x2', threadId: 'T', from: 'B <b@x.com>', subject: 'Re: Root',
+      snippet: 'b', date: Date.now() - 3000, unread: false, starred: false, labels: ['INBOX'] },
+    { id: 'x3', threadId: 'T', from: 'C <c@x.com>', subject: 'Re: Root',
+      snippet: 'c', date: Date.now() - 2000, unread: false, starred: false, labels: ['INBOX'] },
+    { id: 'x4', threadId: 'U', from: 'D <d@x.com>', subject: 'Alone',
+      snippet: 'd', date: Date.now() - 1000, unread: false, starred: false, labels: ['INBOX'] },
+  ];
+  const { doc, settle, restore } = await boot({
+    messages: conv, storageSeed: { threaded: true },
+  });
+  try {
+    await settle(8);
+
+    const rendered = rows(doc).length;
+    assert.equal(rendered, 2, 'precondition: 4 messages collapse to 2 conversations');
+
+    const header = doc.getElementById('listcount').textContent.trim();
+    assert.equal(header, String(rendered), 'the header counts rendered rows');
+
+    const inbox = doc.querySelector('.cat[data-mailbox="inbox"]');
+    const railTotal = inbox.querySelector('.c-total').textContent.trim();
+    assert.equal(
+      railTotal, String(rendered),
+      `the rail says ${railTotal} while the list shows ${rendered} — same view, two numbers`
+    );
+  } finally {
+    restore();
+  }
+});
+
 test('CONSISTENCY: the gate takes focus on open, like every other dialog', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');
   /*
