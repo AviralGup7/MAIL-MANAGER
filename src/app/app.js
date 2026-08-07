@@ -42,7 +42,8 @@ import {
 } from './mailboxes.js';
 import {
   emptyRules, loadRules, saveRules, toggleMute, toggleAutoArchive,
-  isMuted, isAutoArchived, applyCorrection, correctSender, mutedCount,
+  isMuted, isAutoArchived, applyCorrection, correctSender, clearCorrection,
+  mutedCount,
 } from './rules.js';
 import {
   presets as snoozePresets, addSnooze, removeSnooze,
@@ -1486,12 +1487,31 @@ async function openMessage(id) {
    * subject line.
    */
   const confident = (m.confidence ?? 1) >= LOW_CONFIDENCE && m.source !== 'you';
+  /*
+   * The category tag doubles as the correction affordance.
+   *
+   * Putting "wrong category?" next to the category itself is the only place a
+   * user looks when the category is wrong. A separate control elsewhere in the
+   * toolbar would be a second thing to find.
+   */
+  const recat = document.createElement('button');
+  recat.id = 'r-recat';
+  recat.type = 'button';
+  recat.className = 'ghost small';
+  recat.textContent = 'Wrong category?';
+  recat.title = `File mail from ${displayName(m.from)} somewhere else`;
+  recat.addEventListener('click', () => {
+    const msg = store.get(state.selected);
+    if (msg) openRecategoriseMenu(msg, recat);
+  });
+
   el.rTags.replaceChildren(
     tagNode(CATEGORY_LABELS[m.category] || m.category, CAT_COLOR[m.category]),
     ...(confident
       ? []
       : [tagNode(`${Math.round((m.confidence ?? 1) * 100)}% · ${m.source || 'rule'}`)]),
-    ...(m.reason && !confident ? [tagNode(m.reason)] : [])
+    ...(m.reason && !confident ? [tagNode(m.reason)] : []),
+    recat
   );
 
   renderTimetableEffects(id);
@@ -1920,6 +1940,46 @@ async function act(action, id) {
      * Undo matters more here than for archive: reporting the wrong sender
      * trains Gmail against a correspondent you actually want.
      */
+    /*
+     * RESTORE FROM TRASH. UNTRASH existed and was reachable only from the undo
+     * stack, so "I deleted the wrong thing" was recoverable for five minutes
+     * and never again. Gmail's Trash is a recovery surface; this one was a
+     * viewing gallery.
+     */
+    case 'restore': {
+      const snapshot = { ...m };
+      selectNeighbourThen(id);
+      store.remove(id);
+      send('UNTRASH', { id }).catch(() => {
+        store.upsert(snapshot);
+        toast('Could not restore', { kind: 'error' });
+      });
+      recordUndo(ctx, 'Restored', async () => {
+        store.upsert(snapshot);
+        await send('TRASH', { id });
+      });
+      toast('Moved back to the inbox');
+      break;
+    }
+    /*
+     * WAKE A SNOOZED MESSAGE NOW. Snooze is a promise about the future, and a
+     * promise you cannot change your mind about is worse than none. The local
+     * schedule and the Gmail label are both cleared, in that order, so a
+     * failed network call cannot leave a message snoozed locally but not
+     * remotely.
+     */
+    case 'unsnooze': {
+      const snapshot = { ...m };
+      selectNeighbourThen(id);
+      store.remove(id);
+      await removeSnooze(id, chrome.storage.local);
+      send('UNSNOOZE', { id }).catch(() => {
+        store.upsert(snapshot);
+        toast('Could not wake this message', { kind: 'error' });
+      });
+      toast('Back in your inbox');
+      break;
+    }
     case 'spam': {
       const rescuing = state.mailbox === 'spam';
       const snapshot = { ...m };
@@ -2874,6 +2934,136 @@ function closeCategoryMenu() {
  * clients is vague; here it means "hide from the inbox list", and saying so
  * is the difference between a feature people use and one they are scared of.
  */
+
+/**
+ * "This is in the wrong category."
+ *
+ * THE WRITE SIDE OF THE CLASSIFIER, which did not exist. `correctSender` and
+ * `clearCorrection` were both implemented, both tested, and called from
+ * nowhere -- while `applyCorrection` ran on every ingest. The product
+ * faithfully applied a correction store no user could write to.
+ *
+ * The correction is keyed by SENDER, not by message. One wrong bucket is
+ * almost always a whole mailing list in the wrong bucket, and asking the user
+ * to fix each message individually is asking them to do the classifier's job.
+ * That is also why the rest of the product picks it up immediately: the
+ * corrections map is consulted on ingest, so re-ingesting what is in memory
+ * re-files everything from that sender at once.
+ */
+function openRecategoriseMenu(msg, anchor) {
+  closeCategoryMenu();
+
+  const node = document.createElement('div');
+  node.className = 'snooze-menu cat-menu';
+  node.setAttribute('role', 'menu');
+  node.setAttribute('aria-label', 'Move to a different category');
+
+  const current = msg.category;
+  const taught = Object.prototype.hasOwnProperty.call(
+    rules.corrections || {}, addressOf(msg.from)
+  );
+
+  const mk = (text, sub, on, run) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'snooze-opt';
+    b.setAttribute('role', 'menuitemradio');
+    b.setAttribute('aria-checked', String(on));
+    const left = document.createElement('span');
+    const name = document.createElement('span');
+    name.textContent = text;
+    const hint = document.createElement('span');
+    hint.className = 'sc-when';
+    hint.textContent = sub;
+    left.append(name, hint);
+    const mark = document.createElement('span');
+    mark.className = 'snooze-when';
+    mark.textContent = on ? 'Now' : '';
+    b.append(left, mark);
+    b.addEventListener('click', async () => {
+      closeCategoryMenu();
+      await run();
+    });
+    node.appendChild(b);
+  };
+
+  /*
+   * Offered FIRST when a correction exists, because undoing a mistake is more
+   * urgent than making another one. clearCorrection was referenced zero times
+   * anywhere in the app -- teaching a classifier something wrong and being
+   * unable to un-teach it is worse than not teaching it at all.
+   */
+  if (taught) {
+    mk(
+      'Use the automatic category',
+      'Forget what I taught you about this sender.',
+      false,
+      async () => {
+        rules = clearCorrection(rules, msg.from);
+        await saveRules(rules);
+        reclassifyAll();
+        toast('Back to the automatic category');
+      }
+    );
+  }
+
+  for (const cat of SIDEBAR_ORDER) {
+    if (cat === current) continue;
+    mk(
+      CATEGORY_LABELS[cat] || cat,
+      `File mail from ${displayName(msg.from)} here.`,
+      false,
+      async () => {
+        rules = correctSender(rules, msg.from, cat);
+        await saveRules(rules);
+        reclassifyAll();
+        toast(`${displayName(msg.from)} now files under ${CATEGORY_LABELS[cat] || cat}`);
+      }
+    );
+  }
+
+  node.addEventListener('keydown', (e) => {
+    const items = [...node.querySelectorAll('.snooze-opt')];
+    const i = items.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1) % items.length]?.focus(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); items[(i - 1 + items.length) % items.length]?.focus(); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeCategoryMenu(); }
+  });
+
+  const layer = openLayer({
+    name: 'category-menu',
+    node,
+    dismissOnOutsideClick: true,
+    restoreFocusTo: anchor || document.activeElement,
+    onClose: () => {
+      node.remove();
+      catMenu = null;
+    },
+  });
+  catMenu = { node, layer };
+
+  anchor.style.position = anchor.style.position || 'relative';
+  anchor.appendChild(node);
+  node.querySelector('.snooze-opt')?.focus();
+}
+
+/**
+ * Re-file everything already in memory against the current corrections.
+ *
+ * A correction is about a SENDER, so it must apply to the mail already on
+ * screen -- not only to whatever arrives next. Re-ingesting is cheap (the
+ * classifier is 10.7ms for 2000 messages) and it reuses the one code path
+ * that knows how corrections, categories and deadlines fit together.
+ */
+function reclassifyAll() {
+  const all = store.idsFor('all').map((id) => store.get(id)).filter(Boolean);
+  if (all.length) ingest(all);
+  renderList();
+  renderSidebar();
+  const open = state.selected && store.get(state.selected);
+  if (open) syncContextActions(open);
+}
+
 function openCategoryMenu(category, anchor) {
   closeCategoryMenu();
   const label = CATEGORY_LABELS[category] || category;

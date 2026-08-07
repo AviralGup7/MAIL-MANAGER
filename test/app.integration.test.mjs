@@ -5043,3 +5043,188 @@ test('THREAD: a conversation spanning a category shows under one of them', async
     restore();
   }
 });
+
+/* ========================================================== incompleteness == */
+
+test('TRASH: a deleted message can be restored', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * AUDIT 13 I-1. A message in Trash had ZERO available actions -- every flag
+   * in actionsFor('trash') is false and nothing consumed `restore`. UNTRASH
+   * existed in the worker and was reachable only from the undo stack, so
+   * "I deleted the wrong thing" was recoverable for five minutes and never
+   * again.
+   *
+   * Gmail's Trash is a recovery surface. This one was a viewing gallery.
+   */
+  const { doc, calls, settle, restore: teardown } = await boot({ perLabel: true });
+  try {
+    doc.querySelector('.cat[data-mailbox="trash"]').click();
+    await settle(10);
+    assert.ok(rows(doc).length, 'precondition: trash has messages');
+
+    rows(doc)[0].click();
+    await settle(8);
+
+    const btn = doc.querySelector('#r-actions button[data-act="restore"]');
+    assert.ok(btn, 'Trash must offer a way out');
+    assert.equal(btn.hidden, false, 'and it must be visible in this mailbox');
+
+    const id = rows(doc)[0].dataset.id;
+    btn.click();
+    await settled(doc, settle);
+
+    assert.equal(
+      calls.filter((c) => c.type === 'UNTRASH' && c.id === id).length, 1,
+      'restoring must reach Gmail'
+    );
+    assert.ok(
+      !rows(doc).some((r) => r.dataset.id === id),
+      'and the message must leave the Trash list'
+    );
+  } finally {
+    teardown();
+  }
+});
+
+test('TRASH: restore is offered only where it means something', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // A control that does nothing is how a UI teaches people not to trust it.
+  // "Restore" on an inbox message is meaningless.
+  const { doc, settle, restore } = await boot({ perLabel: true });
+  try {
+    rows(doc)[0].click();
+    await settle(8);
+    const btn = doc.querySelector('#r-actions button[data-act="restore"]');
+    assert.ok(btn, 'the control exists in the toolbar');
+    assert.equal(btn.hidden, true, 'but is hidden outside Trash');
+  } finally {
+    restore();
+  }
+});
+
+test('SNOOZE: a snoozed message says when it wakes, and can be woken now', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * AUDIT 13 I-4. Every piece existed -- UNSNOOZE in the worker, removeSnooze
+   * in the domain, `unsnooze` in the action matrix, and wakeLabel() imported
+   * into app.js and never called. Nothing was wired.
+   *
+   * Snooze is a promise about the future. A list of messages that will return
+   * at unstated times, with no way to change your mind, is worse than not
+   * snoozing them at all.
+   */
+  const wakeAt = Date.now() + 86_400_000;
+  const { doc, calls, settle, restore } = await boot({
+    perLabel: true,
+    storageSeed: { snoozed: { sent0: wakeAt } },
+  });
+  try {
+    doc.querySelector('.cat[data-mailbox="snoozed"]').click();
+    await settle(10);
+    assert.ok(rows(doc).length, 'precondition: something is snoozed');
+
+    rows(doc)[0].click();
+    await settle(8);
+
+    const btn = doc.querySelector('#r-actions button[data-act="unsnooze"]');
+    assert.ok(btn, 'a snoozed message must be wakeable');
+    assert.equal(btn.hidden, false);
+
+    const id = rows(doc)[0].dataset.id;
+    btn.click();
+    await settled(doc, settle);
+
+    assert.equal(
+      calls.filter((c) => c.type === 'UNSNOOZE' && c.id === id).length, 1,
+      'waking must reach Gmail'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('CLASSIFY: a miscategorised message can be corrected from the reader', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * AUDIT 13 I-3, and the most serious finding in it.
+   *
+   * correctSender() and clearCorrection() are both implemented and tested.
+   * NEITHER WAS CALLED FROM ANYWHERE. applyCorrection() -- the read side --
+   * runs on every ingest, so the product faithfully applied a correction store
+   * that no user could write to.
+   *
+   * This is the headline differentiator: fifteen BITS categories, ~1000 rules,
+   * and when it filed something wrong the user's only option was to live with
+   * it. The README describes correcting the classifier as a feature.
+   */
+  const { doc, settle, restore, storage } = await boot();
+  try {
+    await settle(8);
+    rows(doc)[0].click();
+    await settle(8);
+
+    const btn = doc.getElementById('r-recat');
+    assert.ok(btn, 'the reader must offer a way to say "wrong category"');
+    btn.click();
+    await settle(6);
+
+    const menu = doc.querySelector('.cat-menu');
+    assert.ok(menu, 'and offer the categories to move it to');
+    const target = [...menu.querySelectorAll('button')]
+      .find((b) => /Library/i.test(b.textContent));
+    assert.ok(target, 'every real category must be offered');
+    target.click();
+    await settle(10);
+
+    const saved = storage.categoryRules?.corrections || {};
+    assert.deepEqual(
+      Object.values(saved), ['library'],
+      'the correction must persist, keyed by sender'
+    );
+    assert.equal(
+      doc.querySelector('#list .row[aria-selected="true"] .tag').textContent,
+      'Library',
+      'and the message must move immediately, not on next sync'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('CLASSIFY: a correction can be undone', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * clearCorrection() existed and was referenced NOWHERE -- zero times, not
+   * even an unused import. Teaching a classifier something wrong and being
+   * unable to un-teach it is worse than not being able to teach it.
+   */
+  const { doc, settle, restore, storage } = await boot();
+  try {
+    await settle(8);
+    rows(doc)[0].click();
+    await settle(8);
+    doc.getElementById('r-recat').click();
+    await settle(6);
+    [...doc.querySelectorAll('.cat-menu button')]
+      .find((b) => /Library/i.test(b.textContent)).click();
+    await settle(10);
+    assert.equal(Object.keys(storage.categoryRules.corrections).length, 1);
+
+    // Re-open the menu: it must now offer to undo what was just taught.
+    doc.getElementById('r-recat').click();
+    await settle(6);
+    const undo = [...doc.querySelectorAll('.cat-menu button')]
+      .find((b) => /use the automatic|clear/i.test(b.textContent));
+    assert.ok(undo, 'a taught sender must be un-teachable');
+    undo.click();
+    await settle(10);
+
+    assert.deepEqual(
+      storage.categoryRules.corrections, {},
+      'the correction must be gone, not merely overwritten'
+    );
+  } finally {
+    restore();
+  }
+});

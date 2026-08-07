@@ -133,16 +133,22 @@ export function showsCategories(id) {
 export function actionsFor(id) {
   switch (id) {
     case 'trash':
-      return { star: false, archive: false, trash: false, snooze: false, spam: false, restore: true };
+      return { star: false, archive: false, trash: false, snooze: false, spam: false,
+        restore: true, unsnooze: false, edit: false };
     case 'spam':
-      return { star: false, archive: false, trash: true, snooze: false, spam: true, notSpam: true };
+      return { star: false, archive: false, trash: true, snooze: false, spam: true,
+        notSpam: true, restore: false, unsnooze: false, edit: false };
     case 'drafts':
-      return { star: false, archive: false, trash: true, snooze: false, spam: false, edit: true };
+      return { star: false, archive: false, trash: true, snooze: false, spam: false,
+        edit: true, restore: false, unsnooze: false };
     case 'sent':
-      return { star: true, archive: false, trash: true, snooze: false, spam: false };
+      return { star: true, archive: false, trash: true, snooze: false, spam: false,
+        restore: false, unsnooze: false, edit: false };
     case 'snoozed':
-      return { star: true, archive: true, trash: true, snooze: false, unsnooze: true, spam: true };
+      return { star: true, archive: true, trash: true, snooze: false, spam: true,
+        unsnooze: true, restore: false, edit: false };
     default:
-      return { star: true, archive: true, trash: true, snooze: true, spam: true };
+      return { star: true, archive: true, trash: true, snooze: true, spam: true,
+        restore: false, unsnooze: false, edit: false };
   }
 }

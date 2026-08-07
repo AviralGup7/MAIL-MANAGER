@@ -23,6 +23,7 @@ are retracted in place rather than deleted.
 | [10](10-DELIGHT.md) | Product delight | 10 | Archiving — the most frequent action — had no motion; the rail count was honest but not glanceable; nothing marked a cleared inbox |
 | [11](11-DESIGN-SYSTEM.md) | UI/UX, motion, design system | 8 + 5 false | Toasts raised from the timetable panel rendered UNDER it and were never seen; the focus ring reshaped what it focused; six entrances used the exit curve; disabled buttons looked clickable |
 | [12](12-MAIL-LIFECYCLE.md) | Core mail lifecycle | 3 core + 3 important, 2 false | Mail never arrived on its own (fixed); no outbound attachments (fixed); no conversation threading |
+| [13](13-INCOMPLETENESS.md) | Severe incompleteness | 6 | Trash had ZERO usable actions; the classifier could be taught but never corrected — both write paths existed and were called from nowhere |
 
 Actions are consolidated and prioritised in [`../TODO.md`](../TODO.md).
 

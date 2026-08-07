@@ -289,6 +289,16 @@
                   -->
                   <button data-act="spam" class="ghost" type="button"
                           title="Report spam (!)">Report spam</button>
+                  <!--
+                    Restore, and Wake now. Both were declared in actionsFor and
+                    had no control, so Trash had zero available actions and a
+                    snoozed message could not be recalled. Hidden outside the
+                    mailbox where each means something -- syncReaderActions.
+                  -->
+                  <button data-act="restore" class="ghost" type="button"
+                          title="Move back to the inbox">Restore</button>
+                  <button data-act="unsnooze" class="ghost" type="button"
+                          title="Bring this back now">Wake now</button>
                   <button data-act="trash" class="ghost danger" type="button">Delete</button>
                   <a id="r-open" class="ghost" target="_blank" rel="noopener">Open in Gmail</a>
                 </div>
