@@ -141,6 +141,34 @@ const cases = [];
     + 'browser.']);
 }
 
+/* 6 ──────────── the decisive one: a DIFFERENT extension ID ─────────── */
+{
+  const dir = join(OUT, '6-fresh-id');
+  mkdirSync(dir, { recursive: true });
+  const m = { ...manifest, name: 'BMM bisect 6 - fresh extension ID' };
+  /*
+   * No key => Chrome mints a new ID => a CLEAN service-worker registration
+   * slot in the profile.
+   *
+   * This is the decisive test. A profile that holds an UNREGISTERED slot for
+   * an extension ID will not re-create it on reload, and a pinned key means
+   * remove + load-unpacked hands you the same ID and the same poisoned slot
+   * every time -- which is exactly why reinstalling never helped here.
+   *
+   * If this variant registers while the real extension does not, the fault
+   * is the profile's registration slot, not one line of our code.
+   */
+  delete m.key;
+  writeFileSync(join(dir, 'manifest.json'), JSON.stringify(m, null, 2) + '\n');
+  copyPayload(dir);
+  cases.push(['6-fresh-id',
+    'The complete extension with "key" removed, so Chrome assigns a NEW id '
+    + 'and therefore a clean registration slot.',
+    'LOADS -> the profile\'s slot for the pinned ID is poisoned. That is the '
+    + 'bug, and no code change fixes it: use the popup\'s Repair button, or '
+    + 'ship without the key.']);
+}
+
 console.log('\nBisect folders written to tools/bisect/\n');
 console.log('Load each with "Load unpacked", in order, and note which is the');
 console.log('FIRST to fail. Remove the previous one before loading the next.\n');

@@ -55,69 +55,76 @@ source. So rotating this breaks nothing here — it only closes the old hole.
 
 ---
 
-## 2 · The service worker will not register — SOLVED, and it is not our code
+## 2 · The service worker will not register — the likely cause, at last
 
-### What it actually is
+### Status code 2 is not a cause
 
-`Status code: 2` is `kErrorAbort` — Chromium's generic "operation aborted".
-Google engineers confirm on the issue tracker that it is a grab bag, not a
-specific cause. That is why nine rounds of static analysis found nothing:
-there was nothing in the files to find.
+It is `kErrorAbort`, Chromium's generic "operation aborted". A Google
+engineer on the issue tracker calls it *"a general grab bag of 'something bad
+happened'"*. That is why ten rounds of static analysis found nothing: there
+was nothing in the files to find.
 
-Research turned up a **known Chromium bug that matches exactly**:
+### What actually fits every observation
 
-> **[Issue 394523691](https://issues.chromium.org/issues/394523691)** —
-> *Service worker fails to register on first launch of new profile*
->
-> Another installed extension holding `webRequest` or
-> `declarativeNetRequest` causes Chrome to reset the URL loader factories
-> **while our extension is registering**, interrupting it. The registration
-> fails with `kErrorStartWorkerFailed`.
->
-> **Fixed in Chrome 137.0.7115.0** (April 2025).
+From `woxxOm` (75k reputation, the standing authority on chromium-extensions):
 
-The reporters found the same thing we did: the file is fine, the manifest is
-fine, and it fails anyway — depending on *what else is installed* and the
-order things load.
+> *"You've unregistered the service worker… reinstall the extension or run
+> `navigator.serviceWorker.register(chrome.runtime.getManifest().background.service_worker, {scope:'/', type: …})`"*
 
-### What to do, in order
+**Once a profile holds an unregistered slot for an extension ID, Chrome does
+not re-create it when the extension reloads.** The extension loads, the card
+shows the error, and the worker never starts.
 
-1. **Check your Chrome version** at `chrome://version`.
-   If it is **below 137**, you are hitting the bug above. Update Chrome.
+That state is reached by "Clear site data" in the extension's own DevTools, by
+privacy/cleaner tools, and by the interrupted-registration bug
+[crbug 394523691](https://issues.chromium.org/issues/394523691).
 
-2. **Click the toolbar button.** It now opens a popup that works with no
-   service worker at all, tells you whether the background is running, and
-   has a **Retry background service** button. Retrying is the documented
-   workaround: the first attempt was interrupted by another extension
-   loading, and a second attempt usually lands because nothing else is in
-   flight.
+Why this fits when nothing else did:
 
-3. **Reload the extension a second time.** Same reasoning. Several reporters
-   note it registers on the second attempt.
+| Observation | Explained |
+|---|---|
+| `sw.js` always fetched **200 OK** | the file was never the problem |
+| Moving it to the root changed nothing | scope was never the problem |
+| Remove + Load unpacked never helped | **`manifest.key` pins the ID, so you get the same poisoned slot every time** |
+| "It worked before the timetable" | a profile event unregistered it; no code change caused this |
 
-4. **Unregister a stale worker.** Go to `chrome://serviceworker-internals`,
-   find any entry for this extension, click **Unregister**, then reload the
-   extension.
+That fourth row is the one that matters. Reinstalling *felt* like it should
+work, and it could never have worked.
 
-5. **Disable other extensions temporarily** — particularly ad blockers and
-   privacy tools, which is what holds `webRequest`/`declarativeNetRequest`.
-   If ours registers with those off, that confirms the bug.
+### The fix — try these in order
 
-6. **Try a fresh or guest profile.** Also widely reported as a fix.
+**1. Open the toolbar popup.** It now detects a dead worker and **repairs it
+automatically**: it unregisters the stale slot and registers again from the
+manifest. That is the documented recovery, done for you. If the silent
+attempt does not take, a **Repair** button appears.
 
-### You are not blocked while this is unresolved
+**2. Load `tools/bisect/6-fresh-id`.** Run `node tools/make-bisect.mjs` first.
+This is the complete extension with the `key` removed, so Chrome mints a
+**new ID and a clean registration slot**.
 
-The extension is built to work without the worker:
+> **If that one loads and the real one does not, the diagnosis is confirmed** —
+> the profile's slot for `dgeanijfllibcphbblkhacjcbdehihcp` is poisoned, and
+> no change to this repository can fix it.
 
-- **Toolbar button** → the popup, rendered by the browser, no worker needed.
+**3. If 6-fresh-id works, ship without the key.** `tools/manifest-key.txt`
+keeps it, and `docs/EXTENSION-KEY.md` explains the trade (you re-register the
+OAuth redirect URI after reloads).
+
+**4. `chrome://version`** — if below **137**, update. That is where crbug
+394523691 is fixed.
+
+**5. Untick "unregister service worker"** in DevTools → Application → Clear
+storage, if you have ever used it on this extension.
+
+### You are not blocked meanwhile
+
+- **Toolbar button** → the popup, rendered by the browser, needs no worker.
 - **<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd> on Gmail** → the content
-  script handles this itself.
+  script handles it directly.
 - **Reading, searching, archiving, sending** → the app falls back to running
-  the Gmail layer in the page and shows an amber banner saying so.
+  the Gmail layer in the page, with an amber banner saying so.
 
-What is genuinely lost until the worker starts: **snooze does not wake on a
-timer** (it catches up when you next open the app), and the `chrome.commands`
-shortcut registration.
+Only **snooze wake-on-timer** genuinely needs the worker.
 
 ---
 

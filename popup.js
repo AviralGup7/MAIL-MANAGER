@@ -82,11 +82,63 @@ async function refresh() {
     return;
   }
 
+  /*
+   * SELF-HEAL ONCE, SILENTLY, BEFORE BOTHERING THE USER.
+   *
+   * The common cause is a stale/unregistered slot in the profile, and the
+   * fix is deterministic. Asking someone to click "Repair" for a problem the
+   * page can fix itself is passing our bug to them.
+   *
+   * Once only, and only on the first open: if it does not take, the banner
+   * appears and the button is there for a manual retry. Looping would be
+   * worse than the fault.
+   */
+  if (!autoRepairTried) {
+    autoRepairTried = true;
+    setState('busy', 'Restarting background service...');
+    if (await tryRepair()) {
+      const again = await probe();
+      if (again.alive && !again.data?.error) {
+        setState('ok', 'Background service running.');
+        $('repair').hidden = true;
+        return;
+      }
+    }
+  }
+
   setState('warn',
-    'Background service is not running. Mail still works — it runs in the tab. '
+    'Background service is not running. Mail still works - it runs in the tab. '
     + 'Snooze timers are paused.',
     r.why);
   $('repair').hidden = false;
+}
+
+/** Has the silent repair already run this session? */
+let autoRepairTried = false;
+
+/**
+ * Clear the stale registration and register again from the manifest.
+ * @returns {Promise<boolean>} whether the attempt completed without throwing
+ */
+async function tryRepair() {
+  const mf = chrome.runtime.getManifest();
+  const script = mf.background?.service_worker;
+  const type = mf.background?.type;
+  if (!script) return false;
+  try {
+    const regs = await navigator.serviceWorker.getRegistrations();
+    for (const r of regs) {
+      try { await r.unregister(); } catch { /* best effort */ }
+    }
+    await navigator.serviceWorker.register(
+      chrome.runtime.getURL(script),
+      type === 'module' ? { type: 'module', scope: '/' } : { scope: '/' }
+    );
+    await new Promise((r) => setTimeout(r, 600));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -99,17 +151,12 @@ async function refresh() {
  * more than Chrome's own UI offers.
  */
 $('repair').addEventListener('click', async () => {
-  setState('busy', 'Retrying…');
-  const url = chrome.runtime.getURL('sw.js');
-  try {
-    const reg = await navigator.serviceWorker.register(url, { type: 'module', scope: '/' });
-    // Give it a moment to evaluate before asking whether it answers.
-    await new Promise((r) => setTimeout(r, 400));
-    void reg;
+  setState('busy', 'Repairing...');
+  if (await tryRepair()) {
     await refresh();
-  } catch (e) {
-    setState('warn', 'Could not start the background service.',
-      `${e.name}: ${e.message}`);
+  } else {
+    setState('warn',
+      'Could not restart it. Reloading the extension usually clears this.');
   }
 });
 
