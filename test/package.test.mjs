@@ -727,7 +727,11 @@ test('iconography is one coherent set, not mixed glyphs', () => {
   // glyph renders in whatever font the platform picks, so it never optically
   // matches a stroked icon beside it and is never quite centred in its button.
   const html = read('app.html');
-  const js = read('src/app/app.js') + read('src/app/features.js');
+  // features.js is a barrel now; the code lives in the five modules it
+  // re-exports, so a glyph could hide in any of them.
+  const js = ['app.js', 'features.js', 'undo-actions.js', 'radar.js',
+    'palette.js', 'compose.js', 'autocomplete.js']
+    .map((f) => read(`src/app/${f}`)).join('\n');
 
   for (const glyph of ['★', '×', '✓', '📎', '◐']) {
     assert.ok(
@@ -893,6 +897,8 @@ test('every declared setting is actually read by something', () => {
   // Consumers: anything under src/ other than the schema itself.
   const sources = [
     'src/app/app.js', 'src/app/features.js', 'src/app/query.js',
+    'src/app/undo-actions.js', 'src/app/radar.js',
+    'src/app/palette.js', 'src/app/compose.js', 'src/app/autocomplete.js',
     'src/app/themes.js', 'src/app/rules.js', 'src/app/draft-store.js',
     'src/options/options.js', 'src/background/index.js',
     'src/background/auth.js', 'src/background/gmail.js',
@@ -964,6 +970,8 @@ test('the From-header address regex is defined in exactly one module', () => {
   const files = [
     'src/app/app.js', 'src/app/rules.js', 'src/app/query.js',
     'src/app/contacts.js', 'src/app/features.js', 'src/app/store.js',
+    'src/app/undo-actions.js', 'src/app/radar.js',
+    'src/app/palette.js', 'src/app/compose.js', 'src/app/autocomplete.js',
   ];
   const owners = [];
   for (const f of files) {
@@ -1001,7 +1009,11 @@ test('contacts.js exports both the lenient and the strict parser', () => {
 const LAYER = {
   shell: ['src/app/app.js'],
   features: ['src/app/features.js', 'src/app/layers.js', 'src/app/icons.js',
-    'src/app/shortcuts.js', 'src/app/themes.js'],
+    'src/app/shortcuts.js', 'src/app/themes.js',
+    // The five modules features.js was split into. Same layer, same rules:
+    // they may import domain and platform, never the shell.
+    'src/app/undo-actions.js', 'src/app/radar.js',
+    'src/app/palette.js', 'src/app/compose.js', 'src/app/autocomplete.js'],
   domain: ['src/app/store.js', 'src/app/query.js', 'src/app/deadlines.js',
     'src/app/rules.js', 'src/app/snooze.js', 'src/app/contacts.js',
     'src/app/selection.js', 'src/app/undo.js', 'src/app/mailboxes.js'],

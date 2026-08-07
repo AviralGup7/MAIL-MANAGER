@@ -363,6 +363,12 @@ src/
   app/timetable-store.js    Timetable persistence + course search.
   app/timetable-ui.js       The panel: build wizard, manager, proposals.
   app/undo.js               Universal undo. 20 entries, 5-minute TTL.
+  app/features.js           Barrel: re-exports the five modules below.
+  app/undo-actions.js       Recording and replaying a reversible action.
+  app/radar.js              The "what is due" rail panel.
+  app/palette.js            The command palette (Ctrl+K).
+  app/compose.js            Compose, recipients, attachments, drafts, sending.
+  app/autocomplete.js       Contact suggestions for the recipient fields.
   app/themes.js             Six themes as DATA, so contrast can be audited.
   app/sanitize.js           DOMParser allow-list for untrusted mail bodies.
   app/icons.js              14 icons, one 20x20 grid, 1.6 stroke.

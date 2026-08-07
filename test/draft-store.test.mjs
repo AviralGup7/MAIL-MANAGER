@@ -206,7 +206,12 @@ test('after discard, the same content saves again', async () => {
 
 // --------------------------------------------------------- wiring checks ---
 
-const feat = readFileSync(new URL('../src/app/features.js', import.meta.url), 'utf8');
+/*
+ * features.js is now a barrel; compose and the rest live in their own modules.
+ * Scanning only the barrel would find nothing and pass vacuously.
+ */
+const feat = ['features.js','undo-actions.js','radar.js','palette.js','compose.js','autocomplete.js']
+  .map((f) => readFileSync(new URL(`../src/app/${f}`, import.meta.url), 'utf8')).join('\n');
 const app = readFileSync(new URL('../src/app/app.js', import.meta.url), 'utf8');
 
 test('the recovery copy is cleared only AFTER a send succeeds', () => {

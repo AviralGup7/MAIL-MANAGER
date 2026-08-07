@@ -16,7 +16,7 @@ Size alone proves nothing. The test applied throughout: *is this file large
 | File | Code lines | Verdict |
 |---|---|---|
 | `app/app.js` | **2460** | **Oversized and genuinely mixed** — split, in stages |
-| `app/features.js` | 663 | **Five unrelated modules in one file** — the cleanest split available |
+| `app/features.js` | 663 → **18** | ✅ Split into five modules + a barrel |
 | `app/timetable-ui.js` | 810 | Large, cohesive. Leave alone |
 | `app/timetable.js` | 618 | Large, **pure**, zero mutable state. Leave alone |
 | `background/gmail.js` | 388 | One job: the Gmail wire format. Healthy |
@@ -87,7 +87,7 @@ separated in state. That is what makes the file hard to read.
 
 ---
 
-## 🔴 F-1 · `features.js` is five modules in one file — **split now**
+## 🔴 F-1 · `features.js` is five modules in one file — ✅ **DONE**
 
 **What's mixed:** undo, deadline radar, command palette, compose, contact
 autocomplete. Five things with nothing in common but the word "feature".
@@ -110,6 +110,21 @@ being findable.
 `autocomplete.js`. `features.js` becomes a re-export barrel or disappears.
 
 **When:** now.
+
+**Outcome.** Split into `undo-actions.js` (21), `radar.js` (69),
+`palette.js` (191), `compose.js` (292) and `autocomplete.js` (101), with
+`features.js` reduced to an 18-line barrel that re-exports them. No importer
+changed. Radar has zero mutable state; every other module owns only its own.
+
+`_resetFeatureState` now calls three per-module seams instead of reaching into
+four files' internals — which is the clearest sign the boundary is real.
+
+**One bug came out of it, caught by the suite:** `setStatus()` sat physically
+below the autocomplete section, so splitting on section boundaries carried it
+into `autocomplete.js` — where it had one caller while compose had eight.
+*Proximity in a file is not ownership.* That is the failure mode of every
+boundary-based refactor and it is worth expecting rather than being surprised
+by.
 
 ---
 
@@ -198,7 +213,7 @@ existing is the right one:
 
 ## Order of work
 
-1. **F-1 `features.js` → five modules.** Zero shared state; mechanical.
+1. ~~**F-1 `features.js` → five modules.**~~ Done.
 2. **F-3/F-4 the two duplicated patterns.** Small, and they shrink `app.js`
    before it is carved.
 3. **F-2 `app.js`, one group per change**, easiest first: search → views →

@@ -1,0 +1,295 @@
+/**
+ * The command palette (Ctrl+K).
+ *
+ * Split out of features.js -- see radar.js for the measurement that justified
+ * it. Depends on compose and undo (it offers "Compose" and "Undo" as
+ * commands) but nothing depends on the palette, so the edge is one-way and
+ * there is no cycle.
+ */
+
+import { icon } from './icons.js';
+import { openLayer } from './layers.js';
+import { openCompose } from './compose.js';
+import { performUndo } from './undo-actions.js';
+
+const $ = (id) => document.getElementById(id);
+
+/* ========================================================================== *
+ * COMMAND PALETTE
+ * ========================================================================== */
+
+let paletteCommands = [];
+let paletteFiltered = [];
+let paletteIndex = 0;
+
+/**
+ * Build the command list.
+ *
+ * Commands are rebuilt on open rather than cached, because half of them depend
+ * on current state -- there is no "Archive" if nothing is selected, and
+ * offering a command that then does nothing is worse than not offering it.
+ */
+function buildCommands(ctx) {
+  const sel = ctx.state.selected;
+  const cmds = [
+    { id: 'compose', icon: 'compose', label: 'Compose new message', hint: 'c', run: () => openCompose(ctx) },
+    { id: 'refresh', icon: 'refresh', label: 'Refresh inbox', hint: 'r', run: () => ctx.refresh() },
+    { id: 'undo', icon: 'back', label: 'Undo last action', hint: 'ctrl+z', run: () => performUndo(ctx) },
+    { id: 'search', icon: 'search', label: 'Search mail', hint: '/', run: () => $('search')?.focus() },
+    { id: 'gmail', icon: 'back', label: 'Back to Gmail', hint: 'esc', run: () => ctx.release() },
+  ];
+
+  if (sel) {
+    cmds.unshift(
+      { id: 'reply', icon: 'reply', label: 'Reply', hint: 'shift+r', run: () => startReply(ctx, 'reply') },
+      { id: 'replyAll', icon: 'reply', label: 'Reply all', hint: 'shift+a', run: () => startReply(ctx, 'replyAll') },
+      { id: 'forward', icon: 'reply', label: 'Forward', hint: 'shift+f', run: () => startReply(ctx, 'forward') },
+      { id: 'archive', icon: 'archive', label: 'Archive this message', hint: 'e', run: () => ctx.act('archive', sel) },
+      { id: 'star', icon: 'star', label: 'Star / unstar', hint: 's', run: () => ctx.act('star', sel) },
+      { id: 'unread', icon: 'mail', label: 'Mark unread', hint: 'u', run: () => ctx.act('unread', sel) }
+    );
+  }
+
+  // Jumping to a category is the most common navigation and deserves to be
+  // in the palette rather than only in the sidebar.
+  for (const [key, label] of ctx.categoryList()) {
+    cmds.push({
+      id: `cat:${key}`,
+      icon: 'mail',
+      label: `Go to ${label}`,
+      hint: 'category',
+      run: () => ctx.selectCategory(key),
+    });
+  }
+
+  for (const t of ctx.themes()) {
+    cmds.push({ id: `theme:${t.id}`, icon: 'palette', label: `Theme: ${t.name}`, hint: 'theme', run: () => ctx.setTheme(t.id) });
+  }
+
+  // Search shortcuts, so the operator syntax is discoverable instead of
+  // something you have to already know exists.
+  for (const [q, label] of [
+    ['is:unread', 'Filter: unread only'],
+    ['is:starred', 'Filter: starred'],
+    ['has:deadline', 'Filter: has a deadline'],
+    ['is:overdue', 'Filter: overdue'],
+    ['has:attachment', 'Filter: has attachment'],
+  ]) {
+    cmds.push({ id: `q:${q}`, icon: 'search', label, hint: q, run: () => ctx.runQuery(q) });
+  }
+
+  /*
+   * THE USER'S OWN GMAIL LABELS, AS JUMP TARGETS.
+   *
+   * This is what finally makes `LIST_LABELS` reachable. The verb has existed
+   * and been called by nothing across three audits, which is the worst of both
+   * worlds -- maintained code, dead to the user, and a `label:` operator that
+   * you could only use if you already knew your labels by heart.
+   *
+   * Read from a cache that a background refresh fills (see refreshLabels), NOT
+   * fetched here: buildCommands runs synchronously on every keystroke-open,
+   * and a palette that waits on the network is a palette that feels broken.
+   * An empty cache simply contributes no commands, which degrades to exactly
+   * the behaviour that existed before.
+   */
+  for (const l of knownLabels) {
+    cmds.push({
+      id: `label:${l.id}`,
+      icon: 'mail',
+      label: `Go to label: ${l.name}`,
+      hint: 'label',
+      run: () => ctx.runQuery(`label:${l.name}`),
+    });
+  }
+
+  return cmds;
+}
+
+/*
+ * The user's Gmail labels, newest fetch wins. Empty until the first refresh
+ * succeeds, and left alone on failure -- a transient network error should not
+ * make the commands vanish from under someone mid-session.
+ */
+let knownLabels = [];
+
+/** Test seam: seed the label cache directly, bypassing the network. */
+export function _setLabels(list) {
+  knownLabels = Array.isArray(list) ? list : [];
+}
+
+/**
+ * Refresh the label cache in the background.
+ *
+ * Deliberately fire-and-forget and deliberately silent. Labels are a
+ * convenience in the palette, so a failure here must not raise a toast, block
+ * boot, or leave a spinner running -- the palette just carries five fewer
+ * commands, which nobody will notice.
+ */
+export async function refreshLabels(ctx) {
+  try {
+    const list = await ctx.send('LIST_LABELS');
+    if (Array.isArray(list)) knownLabels = list.filter((l) => l && l.name);
+  } catch {
+    // Keep whatever we already had.
+  }
+}
+
+/** Subsequence match, the behaviour every command palette has trained users on. */
+function fuzzyScore(needle, hay) {
+  if (!needle) return 1;
+  const n = needle.toLowerCase();
+  const h = hay.toLowerCase();
+  if (h.includes(n)) return 100 - h.indexOf(n); // contiguous beats scattered
+  let i = 0;
+  let score = 0;
+  for (const ch of h) {
+    if (ch === n[i]) {
+      i++;
+      score += 1;
+      if (i === n.length) return score;
+    }
+  }
+  return 0;
+}
+
+function renderPalette() {
+  const list = $('palette-list');
+  if (!list) return;
+  const frag = document.createDocumentFragment();
+  paletteFiltered.forEach((c, i) => {
+    const li = document.createElement('li');
+    li.className = 'palette-item' + (i === paletteIndex ? ' active' : '');
+    li.setAttribute('role', 'option');
+    li.setAttribute('aria-selected', String(i === paletteIndex));
+    li.dataset.index = String(i);
+
+    // An icon per command turns a wall of text into something scannable --
+    // the eye finds a shape far faster than it reads a word.
+    const ico = document.createElement('span');
+    ico.className = 'palette-icon';
+    ico.appendChild(icon(c.icon || 'palette', { size: 15 }));
+
+    const label = document.createElement('span');
+    label.className = 'palette-label';
+    label.textContent = c.label;
+
+    const hint = document.createElement('kbd');
+    hint.className = 'palette-hint-key';
+    hint.textContent = c.hint || '';
+
+    li.append(ico, label, hint);
+    frag.appendChild(li);
+  });
+  list.replaceChildren(frag);
+}
+
+function filterPalette(q) {
+  paletteFiltered = paletteCommands
+    .map((c) => ({ c, s: fuzzyScore(q, c.label) }))
+    .filter((x) => x.s > 0)
+    .sort((a, b) => b.s - a.s)
+    .slice(0, 12)
+    .map((x) => x.c);
+  paletteIndex = 0;
+  renderPalette();
+}
+
+/** The open palette layer, or null. */
+let paletteLayer = null;
+
+export function openPalette(ctx) {
+  const box = $('palette');
+  const input = $('palette-input');
+  if (!box || !input || paletteLayer) return;
+  paletteCommands = buildCommands(ctx);
+  input.value = '';
+  filterPalette('');
+  box.hidden = false;
+  /*
+   * The palette is a dismissable overlay, so it belongs on the layer stack
+   * like the other four. It was initially left off, which broke the Escape
+   * chain: the global handler popped the stack, found nothing, and fell
+   * through to the surfaces BELOW the palette.
+   */
+  paletteLayer = openLayer({
+    name: 'palette',
+    node: box,
+    onClose: () => {
+      box.hidden = true;
+      paletteLayer = null;
+    },
+  });
+  input.focus();
+}
+
+export function closePalette() {
+  // Idempotent, and safe to call when the palette was never opened (the
+  // shell's Escape path and several command handlers both call it).
+  if (paletteLayer) paletteLayer.close();
+  else {
+    const box = $('palette');
+    if (box) box.hidden = true;
+  }
+}
+
+export function wirePalette(ctx) {
+  const box = $('palette');
+  const input = $('palette-input');
+  const list = $('palette-list');
+  if (!box || !input || !list) return;
+
+  input.addEventListener('input', () => filterPalette(input.value));
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!paletteFiltered.length) return;
+      paletteIndex =
+        (paletteIndex + (e.key === 'ArrowDown' ? 1 : -1) + paletteFiltered.length) %
+        paletteFiltered.length;
+      renderPalette();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const cmd = paletteFiltered[paletteIndex];
+      closePalette();
+      cmd?.run();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      closePalette();
+    }
+  });
+
+  list.addEventListener('click', (e) => {
+    const li = e.target.closest('.palette-item');
+    if (!li) return;
+    const cmd = paletteFiltered[Number(li.dataset.index)];
+    closePalette();
+    cmd?.run();
+  });
+
+  // Clicking the backdrop closes; clicking the box must not.
+  box.addEventListener('click', (e) => {
+    if (e.target === box) closePalette();
+  });
+}
+
+/**
+ * Test seam: drop this module's state (palette command list, filter and layer).
+ *
+ * Module state outlives a jsdom boot -- only app.js is re-imported with a
+ * cache-busting URL -- so it would otherwise point at a torn-down document.
+ * Each module resets its OWN state rather than one function reaching into
+ * four files' internals.
+ */
+export function _resetPalette() {
+  paletteCommands = [];
+  paletteFiltered = [];
+  paletteIndex = 0;
+  knownLabels = [];
+  // Close through the layer, not by nulling: the layer stack holds its own
+  // reference, and an orphan there breaks the Escape chain.
+  if (paletteLayer) {
+    try { paletteLayer.close(); } catch { /* already gone */ }
+  }
+  paletteLayer = null;
+}

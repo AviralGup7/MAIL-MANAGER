@@ -206,8 +206,13 @@ test('a display-name recipient is not reported as invalid', () => {
  * file. Both are read here: the wiring lives in autocomplete.js, and compose
  * (which calls it) still lives in features.js.
  */
-const feat = readFileSync(new URL('../src/app/autocomplete.js', import.meta.url), 'utf8')
-  + readFileSync(new URL('../src/app/features.js', import.meta.url), 'utf8');
+/*
+ * features.js is now a BARREL. The five things it used to hold live in their
+ * own modules, so a scan for wiring must read them all -- reading only the
+ * barrel would find nothing and pass vacuously.
+ */
+const feat = ['features.js','undo-actions.js','radar.js','palette.js','compose.js','autocomplete.js']
+  .map((f) => readFileSync(new URL(`../src/app/${f}`, import.meta.url), 'utf8')).join('\n');
 const html = readFileSync(new URL('../app.html', import.meta.url), 'utf8');
 
 test('the recipient fields are real comboboxes', () => {
