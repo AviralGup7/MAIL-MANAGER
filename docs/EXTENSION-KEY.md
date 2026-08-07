@@ -1,3 +1,22 @@
+# The manifest `key` — RETRACTED as a suspect
+
+> **This document's original conclusion was wrong and the key has been
+> restored.** The reasoning below about ID collisions is still accurate as
+> *background*, but it did not apply here.
+>
+> I removed the key believing it post-dated the last working build. It did
+> not: `manifest.json` at commit `e8fd607` — the last version the user
+> confirmed working in Chrome — **already contained this exact key, byte for
+> byte**. The user said so directly ("key was never a problem") and the diff
+> proves it. Removing it was a wrong call on a mis-read timeline, and it cost
+> a round trip.
+>
+> Kept rather than deleted, because a disproved suspicion is worth recording:
+> the next person to see "Status code: 2" will suspect the key too, and this
+> says why that is a dead end here.
+
+---
+
 # The manifest `key`, and why it is currently removed
 
 ## What happened
