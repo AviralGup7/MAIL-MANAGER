@@ -26,6 +26,7 @@ are retracted in place rather than deleted.
 | [13](13-INCOMPLETENESS.md) | Severe incompleteness | 6 | Trash had ZERO usable actions; the classifier could be taught but never corrected — both write paths existed and were called from nowhere |
 | [14](14-COMPLEXITY.md) | Complexity, file size, boundaries | 4 | Only 4 of app.js's 24 bindings span 3+ domains — it is a control tower with extractable tenants, not a god object. features.js was five unrelated modules sharing a filename |
 | [15](15-CONSISTENCY.md) | Product consistency | 6 + 1 retracted | Star/unread undoable in bulk but not one at a time; Options settings never reached the running app |
+| [16](16-FEATURE-DISCOVERY.md) | Feature discovery (no elimination) | 100 ideas | Three verbs implemented and unreachable; five features are waiting on one popover primitive and one multi-source radar |
 
 Actions are consolidated and prioritised in [`../TODO.md`](../TODO.md).
 
