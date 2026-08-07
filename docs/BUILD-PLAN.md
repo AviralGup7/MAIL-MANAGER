@@ -46,7 +46,7 @@ observed to fail. This project has found 15+ worthless tests that way.
 | 38 | Multi-select gestures | `selection.js` | ⬜ |
 | 75 | Create rule from message | `rule-engine.js` + UI | ⬜ UI |
 | 68 | Category correction UI | `rules.js` (logic exists) | ⬜ UI |
-| 60 | Deadline correction | `deadline-store.js` | ✅ logic built |
+| 60 | Deadline correction | `src/app/deadline-store.js` | ✅ built + tested |
 | 92 | Sync transparency | `app.js` | ⬜ |
 | 93/95 | Notifications / badge | `background/` | ⬜ |
 
