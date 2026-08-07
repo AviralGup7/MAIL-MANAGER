@@ -545,7 +545,18 @@ export function closeCompose() {
 
 /** Open compose pre-filled as a reply / reply-all / forward. */
 export async function startReply(ctx, mode) {
-  const id = ctx.state.selected;
+  /*
+   * REPLY TO THE MESSAGE ON SCREEN, not to the conversation's newest.
+   *
+   * With threading, `state.selected` is the ROW -- the conversation -- while
+   * the reader may be showing an earlier message the user chose from the
+   * strip. Replying to the root would attach the reply to the wrong point in
+   * the exchange and quote the wrong text.
+   *
+   * `openMessageId()` falls back to the selection, so the untreaded and
+   * single-message cases are unchanged.
+   */
+  const id = ctx.openMessageId?.() || ctx.state.selected;
   if (!id) return;
   try {
     const body = await ctx.send('GET_BODY', { id });

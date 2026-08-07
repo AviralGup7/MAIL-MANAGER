@@ -18,7 +18,7 @@ Legend — **S**evere · **M**oderate · **L**ow
 
 ### 1 · Run it in Chrome against a real inbox — **S**
 
-*Nothing below is trustworthy until this happens.* **828 tests pass and the
+*Nothing below is trustworthy until this happens.* **849 tests pass and the
 extension has never run in a browser.** Unverified: the OAuth consent screen,
 the takeover animation on live Gmail, how Gmail reacts to having its roots
 hidden, and whether `chrome.identity.getRedirectURL()` matches what you
@@ -77,21 +77,17 @@ legend, but it is the clearest argument for one careful human read-through.
 
 ---
 
-### 3 · Conversation threading — **S**
+### 3 · Conversation threading — **DONE**
 
-The largest remaining feature gap. Messages are listed individually, so a
-five-part exchange is five rows that scatter as new mail arrives between them.
-For BITS mail this is the common case: "Revised schedule" → "Corrigendum" →
-"Final revised schedule".
+Shipped in three steps: the store index, then the list and reader, then the
+remaining subsystems. `docs/THREADING.md` records the rules and the two
+regressions that shaped them.
 
-Harder than it was in v0.9 because the store is now per-mailbox: threading must
-work across six independent `Store` instances, and interact correctly with
-selection, category rules and the mark-read grace period.
+The IndexedDB migration was NOT a prerequisite after all. Threading needed an
+index over messages already in memory, not more of them on disk — the
+migration matters for how MANY messages can be held, which is a separate
+question.
 
-**Do the IndexedDB migration (item 4) first.** Specified in
-[`audits/08-GMAIL-COMPETITIVE-V2.md`](audits/08-GMAIL-COMPETITIVE-V2.md) §C-1.
-
----
 
 ### 4 · Migrate the cache to IndexedDB — **M**
 

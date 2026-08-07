@@ -33,6 +33,11 @@ faster, and it stays out of the way when it has nothing to add.
 - **Read and triage:** open, search, star, archive, delete, report spam (and rescue
   from it), mark read/unread,
   snooze, multi-select with bulk actions, attachment download, inline images.
+- **Conversation threading.** A five-part exchange is one row showing who is
+  in it and how many messages; opening it gives a strip of every message,
+  oldest first. Actions apply to the conversation, read state stays per
+  message, and search deliberately shows the matching message rather than
+  hiding it behind a newer reply.
 - **Compose, reply, reply-all and forward**, with file attachments, Cc/Bcc,
   correct RFC 2822 threading,
   contact autocomplete drawn from mail you already have, and drafts that
@@ -367,7 +372,7 @@ src/
 timetable/data.json         GENERATED. 688 courses, 119 change rows.
 timetable/sources/          The two official documents, verbatim.
 tools/parse-timetable.mjs   Offline parser. Never runs in the extension.
-test/                       828 tests. `npm test` · `npm run test:ci` (fails on skips)
+test/                       849 tests. `npm test` · `npm run test:ci` (fails on skips)
   app.integration.test.mjs  Boots the real app.html in jsdom and drives it.
   resilience.test.mjs       Failure injection across every persistence module.
   package.test.mjs          Lints the manifest, tokens, motion rules, hit targets.
@@ -427,7 +432,7 @@ mis-file something the preview mis-files it too.
 
 ## Status
 
-**828 tests pass, 0 skipped.** 143 of them boot the real `app.html` in a real
+**849 tests pass, 0 skipped.** 157 of them boot the real `app.html` in a real
 DOM and drive it as a user would — click a row, type in search, press `j`/`k`,
 archive, snooze, sign out. All six themes pass WCAG AA in CI.
 
@@ -446,9 +451,6 @@ would produce a real corpus.
 
 ### Known gaps
 
-- **No conversation threading.** Messages are listed individually, so a
-  five-part exchange is five rows. This is now the largest remaining gap
-  against Gmail — see [`audits/12-MAIL-LIFECYCLE.md`](audits/12-MAIL-LIFECYCLE.md).
 - **Gmail labels are searchable, not manageable.** Your labels appear in the
   command palette and `label:Thesis` filters by them, but you cannot apply,
   create or remove a label from the UI.

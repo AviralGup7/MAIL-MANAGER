@@ -4786,3 +4786,150 @@ test('THREAD: a tick survives a reply arriving in the same conversation', async 
     restore();
   }
 });
+
+test('THREAD: archiving from the reader archives the whole conversation', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * `e` on a collapsed row must behave like the tick does. Archiving only the
+   * newest message would leave the conversation on screen -- the row simply
+   * re-renders showing the next message down, which reads as the action having
+   * failed.
+   */
+  const { doc, win, calls, settle, restore } = await boot({ messages: THREADED });
+  try {
+    await settle(8);
+    rows(doc).find((x) => x.dataset.id === 'c3').click();
+    await settle(8);
+    press(doc, win, 'e');
+    await settled(doc, settle);
+
+    const archived = calls.filter((c) => c.type === 'ARCHIVE').map((c) => c.id);
+    const bulked = calls.filter((c) => c.type === 'BULK' && (c.remove || []).includes('INBOX'));
+    const all = [...archived, ...bulked.flatMap((c) => c.ids)].sort();
+    assert.deepEqual(
+      all, ['c1', 'c2', 'c3'],
+      'the exchange goes, not just its newest message'
+    );
+    assert.ok(
+      !rows(doc).some((r) => ['c1', 'c2', 'c3'].includes(r.dataset.id)),
+      'and the row leaves the list'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('THREAD: undo restores the whole conversation', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // An action that takes three messages must give three back. Restoring only
+  // the root would silently lose two replies.
+  const { doc, win, settle, restore } = await boot({ messages: THREADED });
+  try {
+    await settle(8);
+    const before = rows(doc).length;
+    rows(doc).find((x) => x.dataset.id === 'c3').click();
+    await settle(8);
+    press(doc, win, 'e');
+    await settled(doc, settle);
+    assert.equal(rows(doc).length, before - 1);
+
+    press(doc, win, 'z', { ctrlKey: true });
+    await settled(doc, settle);
+
+    assert.equal(rows(doc).length, before, 'the conversation row returns');
+    const { getStore } = { getStore: () => win.__bmmStore };
+    assert.equal(
+      getStore().thread('CONV').count, 3,
+      'with all three messages, not just the one that was showing'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('THREAD: search shows the matching message, not its conversation root', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * The deliberate exception. Searching for text that appears only in the
+   * middle of a conversation must surface THAT message -- collapsing would
+   * show the newest reply instead, which does not contain what you searched
+   * for. Gmail does collapse here and it is its most complained-about search
+   * behaviour.
+   */
+  const { doc, win, settle, restore } = await boot({ messages: THREADED });
+  try {
+    await settle(8);
+    /*
+     * `from:registrar` matches ONLY the middle message of the conversation.
+     * The local index covers subject and sender, not snippets, so the query
+     * targets a sender -- what matters here is that a match inside a
+     * conversation surfaces as itself rather than as its newest sibling.
+     */
+    const search = doc.getElementById('search');
+    search.value = 'from:registrar';
+    search.dispatchEvent(new win.Event('input'));
+    await settle(10);
+
+    const ids = rows(doc).map((r) => r.dataset.id);
+    assert.deepEqual(ids, ['c2'], `expected the matching message, got ${ids}`);
+    assert.equal(
+      rows(doc)[0].querySelector('.r-subj').textContent, 'Re: Revised schedule',
+      'and its own subject, not the conversation title'
+    );
+    assert.equal(
+      rows(doc)[0].querySelector('.r-count')?.hidden !== false, true,
+      'a search hit is a message, so it carries no conversation count'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('THREAD: j/k steps between conversations, not messages', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Keyboard navigation walks renderedIds, which is now the collapsed list.
+  // Three presses of j must reach three different conversations rather than
+  // crawling through the replies of the first.
+  const { doc, win, settle, restore } = await boot({ messages: THREADED });
+  try {
+    await settle(8);
+    const seen = [];
+    for (let i = 0; i < 3; i++) {
+      press(doc, win, 'j');
+      await settle(6);
+      seen.push(doc.querySelector('#list .row[aria-selected="true"]')?.dataset.id);
+    }
+    assert.deepEqual(seen, ['c3', 's2', 's1'], 'one stop per conversation');
+  } finally {
+    restore();
+  }
+});
+
+test('THREAD: replying from a conversation threads the reply correctly', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * A reply must continue the conversation, not start a new one. It replies to
+   * the message being READ, which is the one whose headers make In-Reply-To
+   * correct -- replying to the root while reading a later message would attach
+   * the reply to the wrong point in the exchange.
+   */
+  const { doc, win, calls, settle, restore } = await boot({ messages: THREADED });
+  try {
+    await settle(8);
+    rows(doc).find((x) => x.dataset.id === 'c3').click();
+    await settle(8);
+    doc.querySelector('#r-thread .r-msg[data-id="c2"]').click();
+    await settle(10);
+
+    press(doc, win, 'R', { shiftKey: true });
+    await settle(10);
+
+    const bodies = calls.filter((c) => c.type === 'GET_BODY').map((c) => c.id);
+    assert.equal(
+      bodies[bodies.length - 1], 'c2',
+      'the reply is built from the message actually on screen'
+    );
+  } finally {
+    restore();
+  }
+});

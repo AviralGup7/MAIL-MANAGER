@@ -911,7 +911,19 @@ function fillRow(li, m) {
    * for anything with a single message, so the common case takes the original
    * path unchanged.
    */
-  const conv = settings.get('threaded') ? store.thread(Store.threadOf(m)) : null;
+  /*
+   * A SEARCH HIT IS A MESSAGE, NOT A CONVERSATION.
+   *
+   * visibleIds() deliberately does not collapse while a query is active -- you
+   * searched for a message and hiding it behind a newer sibling is the wrong
+   * answer. The ROW has to agree: dressing a search hit in its conversation's
+   * subject, participants and count showed "Revised schedule" for a row found
+   * by matching the corrigendum, so the result did not contain what was
+   * searched for.
+   */
+  const conv = settings.get('threaded') && !state.query
+    ? store.thread(Store.threadOf(m))
+    : null;
   const isConv = !!conv && conv.count > 1;
 
   const fromEl = q('.r-from');
@@ -1821,6 +1833,32 @@ function closeReader() {
 async function act(action, id) {
   const m = store.get(id);
   if (!m) return;
+
+  /*
+   * AN ACTION ON A COLLAPSED ROW APPLIES TO THE CONVERSATION.
+   *
+   * Archiving only the newest message leaves the row on screen showing the
+   * next message down, which reads as the action having failed. Same rule the
+   * tick already follows.
+   *
+   * Routed through bulkAct rather than reimplemented: that path already does
+   * one batched request, one rollback on failure and one undo entry for the
+   * whole set. A second implementation of that is how two paths drift.
+   *
+   * `star` and `unread` are excluded on purpose -- both are per-message
+   * judgements. Starring a conversation because you starred one reply, or
+   * marking three messages unread because you un-read one, throws away
+   * information the user deliberately created.
+   */
+  const SPANS_THREAD = new Set(['archive', 'trash', 'spam']);
+  if (settings.get('threaded') && SPANS_THREAD.has(action) && !state.query) {
+    const ids = store.threadIds(Store.threadOf(m));
+    if (ids.length > 1) {
+      await bulkAct(action, ids);
+      return;
+    }
+  }
+
   switch (action) {
     case 'star': {
       const on = !m.starred;
@@ -3484,8 +3522,15 @@ function renderSelection() {
  * must undo as a single step -- forty separate undos would be unusable, and it
  * is precisely why UndoStack stores a thunk rather than a diff.
  */
-async function bulkAct(kind) {
-  const ids = selectedMessageIds();
+/**
+ * Apply one action to many messages.
+ *
+ * `explicitIds` lets a single-row action on a collapsed conversation reuse
+ * this path rather than reimplementing batching, rollback and undo. Defaults
+ * to the current selection, which is every other caller.
+ */
+async function bulkAct(kind, explicitIds = null) {
+  const ids = explicitIds || selectedMessageIds();
   if (ids.length === 0) return;
 
   // Snapshot BEFORE mutating, for the undo.
@@ -3503,8 +3548,12 @@ async function bulkAct(kind) {
       else if (kind === 'star') store.patch(id, { starred: true });
     }
   });
-  selection.clear();
-  renderSelection();
+  // Only when acting on a selection: a conversation action from the reader
+  // has not touched the ticks and must not silently discard them.
+  if (!explicitIds) {
+    selection.clear();
+    renderSelection();
+  }
 
   const verb = {
     archive: 'Archived', trash: 'Deleted', read: 'Marked read',
@@ -3690,6 +3739,12 @@ const ctx = {
   themes: () => THEMES,
   categoryList: () => [['all', 'All mail'], ...SIDEBAR_ORDER.map((c) => [c, CATEGORY_LABELS[c] || c])],
   selectCategory,
+  /*
+   * Which MESSAGE the reader is showing. With threading the selected row is a
+   * conversation, and the user may have stepped to an earlier message inside
+   * it -- a reply must answer that one.
+   */
+  openMessageId: () => openPart || state.selected,
   runQuery: (q) => {
     el.search.value = q;
     state.query = q;
