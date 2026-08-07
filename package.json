@@ -15,7 +15,8 @@
     "push": "bash tools/push.sh",
     "mutate": "node tools/mutate.mjs",
     "timetable": "node tools/parse-timetable.mjs",
-    "doctor": "node tools/doctor.mjs"
+    "doctor": "node tools/doctor.mjs",
+    "verify": "node tools/verify-here.mjs"
   },
   "devDependencies": {
     "jsdom": "^24.0.0"
