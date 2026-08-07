@@ -274,3 +274,89 @@ render core, which is a much better position than the line count suggests.
 **The most valuable single change is not to `app.js` at all** — it is
 `features.js`, where five unrelated modules share a file and **not one binding
 crosses between them**.
+
+---
+
+## Addendum — the fourth menu
+
+The cleanup pass above unified **three** hand-rolled menus and declared the
+duplication gone. It had missed one.
+
+The theme picker in `app.js` built its own container, wired its own
+`role="menu"`, called `openLayer` itself, and carried its own arrow-key
+handler. It was not found by the original scan because that scan looked at the
+three menus that sat near each other; the theme picker lives 1,300 lines away
+in the header section and reads as unrelated code. **Proximity is not
+ownership — and neither is distance evidence of independence.**
+
+### The copies had already drifted
+
+This is the part worth recording. By the time the fourth menu was found:
+
+| | `menu.js` | theme picker |
+|---|---|---|
+| Arrow wrap | yes | yes |
+| Escape + `stopPropagation` | yes | yes |
+| **Home / End** | **no** | **yes** |
+| **Opens on the current item** | **no** | **yes** |
+| Item role | checkbox / plain | **radio** |
+
+Two capabilities existed in one copy and not the other, and a third — the
+radio role — was a genuine semantic difference the primitive could not express.
+That is the copy-paste failure mode the primitive was created to prevent,
+observed inside the very pass that created it, one step late.
+
+Absorbing the fourth menu therefore **added** behaviour to the primitive rather
+than removing it: Home/End and open-on-current now apply to all four menus, and
+`menuitemradio` joins the two roles already supported. No menu can lose them
+individually any more.
+
+### A layout bug the tests could not see
+
+Moving the picker onto the primitive broke the colour swatches. The primitive
+wraps a label in a plain inline `<span>`, and `width`/`height` do not apply to
+an inline non-replaced element — so every 14px dot collapsed to nothing, in the
+one menu whose entire justification for existing (rather than being a
+`<select>`) is that it shows colour.
+
+**All 873 tests passed while it was broken.** jsdom reports a computed width
+for a collapsed inline element quite happily. It was found by rendering the
+menu to HTML and looking at it. The wrapper now carries `.menu-label` and the
+label `.menu-name`, and a test pins the hook — but the finding is that a
+DOM-assertion suite cannot see a layout regression, and rendering remains the
+only way to catch this class of defect.
+
+A second, quieter version of the same problem: `.theme-item` and `.snooze-opt`
+have equal specificity, and `.theme-item` is declared ~1,500 lines **earlier**.
+Every property where they disagreed — alignment, font size, padding — silently
+resolved to the primitive's value on source order. Fixed by writing the theme
+rules as `.snooze-opt.theme-item`, which wins on specificity and therefore does
+not depend on where in the file either block happens to sit.
+
+### An intermittent test, root-caused
+
+`UNDO: a rolled-back action restores the message as it was` failed roughly one
+run in four under load. Not a flake to be re-run away: opening a message arms
+the 1200ms mark-read timer, and when the machine is busy the test's own waits
+exceed that window, so the timer fires *after* undo has restored the snapshot
+and flips `unread`. The test then fails on a field it is not about. It now
+boots with `markReadOnOpen: false`, which removes the clock from the
+measurement and leaves only the snapshot ordering under test — verified still
+to fail when the snapshot is taken late.
+
+### Result
+
+```
+app.js:                3977 → 3937 lines
+menu.js:                165 →  219 lines  (absorbed capability, not just code)
+hand-rolled menus:        1 →    0
+tests:                  869 →  874
+```
+
+Four assertions in the new boundary guard were **sabotage-verified**, and two
+of them failed that check on the first attempt: `/menuitemradio/` and
+`/'Home'/` both still matched after the behaviour was deleted, because the
+strings survived in a CSS selector and an index expression. They now match the
+role expression and the branch condition. A source-scanning assertion that
+matches a bare string is worth very little; this is the third time that has
+been true in this project.

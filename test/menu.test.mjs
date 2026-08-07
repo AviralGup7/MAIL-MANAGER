@@ -288,3 +288,157 @@ test('MENU: an empty item list opens nothing', async (t) => {
     restore();
   }
 });
+
+/* ========================================================================== *
+ * THE FOURTH MENU
+ *
+ * The first cleanup pass unified three menus and declared the job done. It
+ * missed a fourth: the theme picker in app.js, which built its own container,
+ * its own `role="menu"`, its own openLayer call and its own arrow handler.
+ *
+ * The two implementations had ALREADY DRIFTED by the time it was found --
+ * the theme menu supported Home/End, the primitive did not. That is not a
+ * hypothetical risk of copy-paste; it is the drift, measured, in the same
+ * codebase, within one pass. These tests pin the capabilities the theme menu
+ * needs so the primitive can absorb it without losing behaviour.
+ * ========================================================================== */
+
+test('MENU: Home and End jump to the ends of the list', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * The theme picker had these; the primitive did not. Absorbing the fourth
+   * menu must not cost the user two keys that already worked -- a refactor
+   * that quietly removes behaviour is a regression wearing a tidy hat.
+   */
+  const { doc, dom, restore } = setup();
+  try {
+    const { openMenu } = await load();
+    openMenu({
+      name: 'test-menu',
+      label: 'Menu',
+      anchor: doc.getElementById('anchor'),
+      items: [
+        { text: 'One', run() {} },
+        { text: 'Two', run() {} },
+        { text: 'Three', run() {} },
+      ],
+    });
+
+    const node = doc.querySelector('.snooze-menu');
+    const opts = [...node.querySelectorAll('.snooze-opt')];
+    const key = (k) => node.dispatchEvent(
+      new dom.window.KeyboardEvent('keydown', { key: k, bubbles: true })
+    );
+
+    key('End');
+    assert.equal(doc.activeElement, opts[2], 'End must land on the last item');
+    key('Home');
+    assert.equal(doc.activeElement, opts[0], 'Home must land on the first item');
+  } finally {
+    restore();
+  }
+});
+
+test('MENU: a radio item reports one-of-many, not on-or-off', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * Six themes are a one-of-many choice, so the theme picker used
+   * `menuitemradio`. A checkbox says "this can be on or off independently";
+   * a radio says "exactly one of these is current". Screen readers announce
+   * them differently and the difference is the whole meaning of the menu, so
+   * the primitive must carry all three roles, not two.
+   */
+  const { doc, restore } = setup();
+  try {
+    const { openMenu } = await load();
+    openMenu({
+      name: 'test-menu',
+      label: 'Theme',
+      anchor: doc.getElementById('anchor'),
+      items: [
+        { text: 'Daylight', selected: true, run() {} },
+        { text: 'Midnight', selected: false, run() {} },
+      ],
+    });
+
+    const opts = [...doc.querySelectorAll('.snooze-opt')];
+    assert.equal(opts[0].getAttribute('role'), 'menuitemradio');
+    assert.equal(opts[0].getAttribute('aria-checked'), 'true');
+    assert.equal(opts[1].getAttribute('aria-checked'), 'false');
+    assert.equal(
+      opts[0].getAttribute('role') === 'menuitemcheckbox', false,
+      'a one-of-many choice must not be announced as a checkbox'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('MENU: focus opens on the current item, not always the first', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * The theme picker focused the CURRENT theme on open, so the menu opens
+   * where you already are. The primitive focused the first item always.
+   * Absorbing the fourth menu without this would move the user's starting
+   * point every time they opened the picker.
+   */
+  const { doc, restore } = setup();
+  try {
+    const { openMenu } = await load();
+    openMenu({
+      name: 'test-menu',
+      label: 'Theme',
+      anchor: doc.getElementById('anchor'),
+      items: [
+        { text: 'Daylight', selected: false, run() {} },
+        { text: 'Nord', selected: true, run() {} },
+        { text: 'Midnight', selected: false, run() {} },
+      ],
+    });
+
+    const opts = [...doc.querySelectorAll('.snooze-opt')];
+    assert.equal(doc.activeElement, opts[1], 'the current item takes focus on open');
+  } finally {
+    restore();
+  }
+});
+
+test('MENU: a prefix node keeps its box', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * FOUND BY RENDERING THE MENU, NOT BY A TEST.
+   *
+   * The theme picker puts a 14px round swatch before each name. The primitive
+   * wrapped the label in a plain inline <span>, and width/height do not apply
+   * to an inline non-replaced element -- so every swatch collapsed and the
+   * menu lost the colour that is the entire reason it is a menu rather than a
+   * <select>. All 873 tests passed while it was broken.
+   *
+   * The wrapper now carries `.menu-label` so a caller can lay it out. This
+   * pins the hook: without a class there is nothing for CSS to target and the
+   * bug returns silently.
+   */
+  const { doc, restore } = setup();
+  try {
+    const { openMenu } = await load();
+    const dot = doc.createElement('span');
+    dot.className = 'theme-dot';
+
+    openMenu({
+      name: 'test-menu',
+      label: 'Theme',
+      anchor: doc.getElementById('anchor'),
+      items: [{ text: 'Daylight', selected: true, prefix: dot, run() {} }],
+    });
+
+    const label = doc.querySelector('.snooze-opt .menu-label');
+    assert.ok(label, 'the label wrapper must be addressable from CSS');
+    assert.equal(label.firstElementChild, dot, 'the prefix leads the label');
+    assert.equal(
+      label.textContent, 'Daylight',
+      'and the name still follows it'
+    );
+  } finally {
+    restore();
+  }
+});

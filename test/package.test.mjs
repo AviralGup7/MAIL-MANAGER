@@ -403,7 +403,7 @@ test('every element the app hides with [hidden] actually disappears', async () =
   assert.ok(toggled.size >= 5, `expected several hidden-toggled elements, found ${toggled.size}`);
 
   const stillVisible = [];
-  for (const el of win.document.querySelectorAll('#gate, #reader, #r-loading, #thememenu, #empty, #toast, #reader-empty')) {
+  for (const el of win.document.querySelectorAll('#gate, #reader, #r-loading, #empty, #toast, #reader-empty')) {
     el.hidden = true;
     if (win.getComputedStyle(el).display !== 'none') {
       stillVisible.push(`#${el.id} (${win.getComputedStyle(el).display})`);
@@ -1099,6 +1099,85 @@ test('ARCH: overlays use the layer primitive rather than hand-rolled teardown', 
   const layers = read('src/app/layers.js');
   assert.match(layers, /addEventListener\('mousedown'/,
     'the primitive should own outside-click dismissal');
+});
+
+test('ARCH: no menu is hand-rolled beside the primitive', () => {
+  /*
+   * THE FOURTH MENU.
+   *
+   * The first cleanup pass unified three menus -- category rules,
+   * recategorise, snooze -- and declared the duplication gone. It had missed
+   * the theme picker, which sat in the header section rather than beside the
+   * other three and so read as unrelated code.
+   *
+   * By the time it was found the copies had ALREADY DRIFTED: the theme menu
+   * handled Home/End and the shared primitive did not. That is not a
+   * hypothetical argument for deduplication, it is the drift itself, measured
+   * inside one pass. A fifth menu would drift the same way.
+   *
+   * Two fingerprints of a hand-rolled menu, both of which the theme picker
+   * had:
+   *
+   *   - wiring `role="menu"` onto a node directly. The primitive does this
+   *     once; a call site doing it is building its own container.
+   *   - its own arrow-key wrap, `(i + ... + len) % len`, over menu items.
+   *
+   * The rail (`el.cats`) is deliberately NOT covered: it is a roving-tabindex
+   * TREE, not an anchored popup menu, and forcing it through this primitive
+   * would be abstraction for its own sake. It is excluded by name below
+   * rather than by loosening the pattern, so the guard stays sharp.
+   */
+  const shell = read('src/app/app.js')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/\/\/[^\n]*/g, ' ');
+
+  assert.ok(
+    !/setAttribute\(\s*'role',\s*'menu'\s*\)/.test(shell),
+    'the shell builds a menu container by hand; menu.js owns that'
+  );
+  assert.ok(
+    !/setAttribute\(\s*'role',\s*'menuitem(checkbox|radio)?'\s*\)/.test(shell),
+    'the shell wires menu-item roles by hand; menu.js owns that'
+  );
+
+  /*
+   * One arrow-key HANDLER may remain: the sidebar rail's roving tabindex.
+   * Count handlers, not lines -- the rail spends two lines on its wrap (one
+   * per direction), and an earlier version of this test counted those as two
+   * offenders and failed on healthy code. Anchoring on the listener is what
+   * makes the number mean "menus with their own keyboard logic".
+   */
+  const handlers = (shell.match(/addEventListener\('keydown'/g) || []).length;
+  const wrapSites = shell
+    .split(/addEventListener\('keydown'/)
+    .slice(1)
+    .filter((block) => /%\s*items\.length/.test(block.slice(0, 1200))).length;
+  assert.ok(handlers >= 1, 'precondition: the shell still wires keydown somewhere');
+  assert.equal(
+    wrapSites, 1,
+    `expected only the rail's arrow handler to wrap, found ${wrapSites}`
+  );
+
+  /*
+   * And the primitive must actually carry what the fourth menu brought.
+   *
+   * SABOTAGE NOTE: the first version of this asserted `/menuitemradio/`
+   * against the whole file. That passed even with the role wiring removed,
+   * because the string still appeared in a CSS selector inside the
+   * open-focus query -- a test that could not fail for the reason it named.
+   * These match the ROLE EXPRESSION and the KEY COMPARISON instead. The
+   * behavioural proof lives in test/menu.test.mjs; this only guards against
+   * the capability being deleted wholesale.
+   */
+  const menu = read('src/app/menu.js');
+  assert.match(
+    menu, /e\.key === 'Home' \|\| e\.key === 'End'/,
+    'Home/End came from the theme menu and must survive the merge'
+  );
+  assert.match(
+    menu, /\?\s*'menuitemradio'\s*:/,
+    'the one-of-many role must be wired, not merely mentioned'
+  );
 });
 
 test('ARCH: the Escape handler has no per-overlay branches', () => {

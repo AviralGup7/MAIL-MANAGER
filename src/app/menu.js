@@ -55,6 +55,12 @@ export function _resetMenu() {
  * @property {string}  [hint]     secondary line under the label
  * @property {string}  [trailing] right-aligned text (a time, "On")
  * @property {boolean} [checked]  present ⇒ renders as a checkbox item
+ * @property {boolean} [selected] present ⇒ renders as a RADIO item, and the
+ *                                selected one takes focus when the menu opens
+ * @property {Element} [prefix]   a node rendered before the label (a swatch)
+ * @property {Element} [suffix]   a node rendered after the label (a tick)
+ * @property {string}  [className] extra classes on the item button
+ * @property {Object}  [data]     dataset entries to hang off the item
  * @property {() => void | Promise<void>} run
  */
 
@@ -68,9 +74,15 @@ export function _resetMenu() {
  * @param {MenuItem[]}  opts.items
  * @param {string}     [opts.className] extra classes on the container
  * @param {Element}    [opts.mountTo]   override the mount point
+ * @param {() => void} [opts.onClose]   run when the menu goes away, however it
+ *                                      goes away — chosen, Escaped or clicked
+ *                                      past. A trigger with `aria-expanded`
+ *                                      needs exactly one place to unset it.
  * @returns {{node: Element, layer: object} | null}
  */
-export function openMenu({ name, label, anchor, items, className = '', mountTo }) {
+export function openMenu({
+  name, label, anchor, items, className = '', mountTo, onClose,
+}) {
   closeMenu();
 
   /*
@@ -87,15 +99,40 @@ export function openMenu({ name, label, anchor, items, className = '', mountTo }
   for (const item of items) {
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = 'snooze-opt';
+    b.className = `snooze-opt${item.className ? ` ${item.className}` : ''}`;
+    if (item.data) Object.assign(b.dataset, item.data);
 
-    // `checked` present at all — including false — means this is a toggle.
+    /*
+     * Three roles, because the menus mean three different things.
+     *
+     *   `checked`  present ⇒ menuitemcheckbox. Independent on/off (mute a
+     *              category, auto-archive it). Several may be on at once.
+     *   `selected` present ⇒ menuitemradio. One-of-many (which theme).
+     *              Exactly one is current and choosing another unsets it.
+     *   neither    ⇒ menuitem. A command (snooze until tomorrow).
+     *
+     * Collapsing radio into checkbox would announce "six independent
+     * switches" to a screen reader when the truth is "one choice of six".
+     */
     const checkable = Object.prototype.hasOwnProperty.call(item, 'checked');
-    b.setAttribute('role', checkable ? 'menuitemcheckbox' : 'menuitem');
+    const selectable = Object.prototype.hasOwnProperty.call(item, 'selected');
+    b.setAttribute(
+      'role',
+      checkable ? 'menuitemcheckbox' : selectable ? 'menuitemradio' : 'menuitem'
+    );
     if (checkable) b.setAttribute('aria-checked', String(!!item.checked));
+    if (selectable) b.setAttribute('aria-checked', String(!!item.selected));
 
     const left = document.createElement('span');
+    /*
+     * Named, so a caller that supplies a `prefix` can lay this out. It stays a
+     * plain inline span by default -- the snooze and category menus stack a
+     * hint under the label and would break if this became a flex row.
+     */
+    left.className = 'menu-label';
+    if (item.prefix) left.appendChild(item.prefix);
     const name_ = document.createElement('span');
+    name_.className = 'menu-name';
     name_.textContent = item.text;
     left.appendChild(name_);
     if (item.hint) {
@@ -108,6 +145,7 @@ export function openMenu({ name, label, anchor, items, className = '', mountTo }
     const right = document.createElement('span');
     right.className = 'snooze-when';
     right.textContent = item.trailing || '';
+    if (item.suffix) right.appendChild(item.suffix);
 
     b.append(left, right);
     b.addEventListener('click', async () => {
@@ -134,6 +172,14 @@ export function openMenu({ name, label, anchor, items, className = '', mountTo }
       // `+ opts.length` so ArrowUp from the first item wraps to the last
       // rather than indexing -1. This is the part a re-implementation drops.
       opts[(i - 1 + opts.length) % opts.length]?.focus();
+    } else if (e.key === 'Home' || e.key === 'End') {
+      /*
+       * The theme picker had these and the primitive did not — the drift was
+       * already there when the fourth menu was found. Stated once, all four
+       * menus get them and none can lose them separately.
+       */
+      e.preventDefault();
+      opts[e.key === 'Home' ? 0 : opts.length - 1]?.focus();
     } else if (e.key === 'Escape') {
       e.preventDefault();
       // Without this, one Escape closes the menu AND the reader behind it,
@@ -151,6 +197,7 @@ export function openMenu({ name, label, anchor, items, className = '', mountTo }
     onClose: () => {
       node.remove();
       current = null;
+      onClose?.();
     },
   });
   current = { node, layer };
@@ -159,7 +206,14 @@ export function openMenu({ name, label, anchor, items, className = '', mountTo }
   // Anchored menus position against their host, which needs a containing block.
   if (host !== document.body && !host.style.position) host.style.position = 'relative';
   host.appendChild(node);
-  node.querySelector('.snooze-opt')?.focus();
+  /*
+   * Open ON the current choice when there is one, so a one-of-many menu opens
+   * where the user already is rather than resetting them to the top of the
+   * list. Command menus have no "current" and fall back to the first item.
+   */
+  const start = node.querySelector('[role="menuitemradio"][aria-checked="true"]')
+    || node.querySelector('.snooze-opt');
+  start?.focus();
 
   return current;
 }

@@ -163,11 +163,13 @@
                 </svg>
               </button>
               <!--
-                A real menu, not a select. The swatch has to be visible next to
-                the name for the choice to mean anything, and a <select> cannot
-                render one.
+                No empty <div id="thememenu"> here any more. A real menu, not a
+                select -- the swatch has to be visible next to the name for the
+                choice to mean anything, and a <select> cannot render one -- but
+                it is now built by the shared menu primitive and mounted into
+                this wrapper on open, so there is no permanently-hidden shell in
+                the document waiting to fall out of sync with it.
               -->
-              <div id="thememenu" role="menu" aria-label="Theme" hidden></div>
             </div>
           </div>
         </header>

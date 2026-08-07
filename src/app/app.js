@@ -37,7 +37,7 @@ import * as settings from './settings.js';
 import { addressOf } from './contacts.js';
 import { renderShortcuts } from './shortcuts.js';
 import { openLayer, closeTopLayer, hasLayers, closeAllLayers } from './layers.js';
-import { openMenu, closeMenu } from './menu.js';
+import { openMenu, closeMenu, menuIsOpen } from './menu.js';
 import {
   scheduleServerSearch, wireServerSearch, _resetServerSearch,
 } from './server-search.js';
@@ -242,7 +242,6 @@ const el = {
   toastText: $('toast-text'),
   toastAction: $('toast-action'),
   toastDrain: $('toast-drain'),
-  themeMenu: $('thememenu'),
 };
 
 // ------------------------------------------------------------------ plumbing --
@@ -2719,39 +2718,36 @@ $('btn-options').addEventListener('click', () => chrome.runtime.openOptionsPage(
  * show the swatch beside the name -- which is why this is a real menu and not
  * a <select>, which cannot render one.
  *
- * Built once, on first open, rather than at boot: most sessions never touch it.
+ * WHY THIS IS NOW SIX LINES OF DATA
+ * ---------------------------------
+ * This was the FOURTH hand-rolled menu. The first cleanup pass unified three
+ * -- category rules, recategorise, snooze -- and missed this one, because it
+ * lives in the header section rather than beside the others. By the time it
+ * was found the two implementations had already drifted: this menu supported
+ * Home/End and the shared primitive did not. That is the copy-paste failure
+ * the primitive exists to prevent, caught in its own codebase, one pass late.
+ *
+ * So the container, the role wiring, the arrow/Home/End/Escape handler, the
+ * layer registration, the outside-click dismissal and the focus restore are
+ * all gone from here. What is left is the only part that was ever about
+ * themes: which items exist, what each looks like, and what choosing one does.
  */
-let themeMenuBuilt = false;
 
-function buildThemeMenu() {
-  if (themeMenuBuilt) return;
-  themeMenuBuilt = true;
-  const frag = document.createDocumentFragment();
-  for (const t of THEMES) {
-    const item = document.createElement('button');
-    item.type = 'button';
-    item.className = 'theme-item';
-    item.dataset.theme = t.id;
-    item.setAttribute('role', 'menuitemradio');
-    item.setAttribute('aria-checked', String(state.theme === t.id));
+/** The swatch dot that makes a theme name mean something. */
+function themeDot(swatch) {
+  const dot = document.createElement('span');
+  dot.className = 'theme-dot';
+  dot.style.background = swatch;
+  return dot;
+}
 
-    const dot = document.createElement('span');
-    dot.className = 'theme-dot';
-    dot.style.background = t.swatch;
-
-    const name = document.createElement('span');
-    name.className = 'theme-name';
-    name.textContent = t.name;
-
-    const tick = document.createElement('span');
-    tick.className = 'theme-tick';
-    tick.setAttribute('aria-hidden', 'true');
-    tick.appendChild(icon('check', { size: 14 }));
-
-    item.append(dot, name, tick);
-    frag.appendChild(item);
-  }
-  el.themeMenu.replaceChildren(frag);
+/** The tick on the current theme. CSS reveals it via [aria-checked='true']. */
+function themeTick() {
+  const tick = document.createElement('span');
+  tick.className = 'theme-tick';
+  tick.setAttribute('aria-hidden', 'true');
+  tick.appendChild(icon('check', { size: 14 }));
+  return tick;
 }
 
 function setTheme(id) {
@@ -2767,89 +2763,53 @@ function setTheme(id) {
    * this key.
    */
   settings.set('theme', theme.id);
-  for (const item of el.themeMenu.children) {
-    item.setAttribute('aria-checked', String(item.dataset.theme === theme.id));
-  }
+  /*
+   * No loop over menu children to re-tick. The menu is rebuilt from
+   * `state.theme` on every open and destroyed on every close, so there is no
+   * stale DOM to keep in sync -- one of the four things the hand-rolled
+   * version had to remember and this one cannot forget.
+   */
   // Re-render the open message. The body iframe is a separate document with
   // its own colours baked into srcdoc, so it cannot follow a variable change.
   // Cheap: the body is already in memory, no refetch.
   if (state.selected && lastBody) el.rBody.srcdoc = renderBody(lastBody);
 }
 
-/** The open theme-menu layer, or null. */
-let themeLayer = null;
-
 function openThemeMenu() {
-  if (themeLayer) return;
-  buildThemeMenu();
-  el.themeMenu.hidden = false;
-  $('btn-theme').setAttribute('aria-expanded', 'true');
-  themeLayer = openLayer({
+  const btn = $('btn-theme');
+  btn.setAttribute('aria-expanded', 'true');
+  openMenu({
     name: 'theme',
-    node: el.themeMenu,
-    dismissOnOutsideClick: true,
-    // Focus returns to the button that opened it, which is what a menu should
-    // do and what the old `restoreFocus` flag did by hand at each call site.
-    restoreFocusTo: $('btn-theme'),
-    onClose: () => {
-      el.themeMenu.hidden = true;
-      $('btn-theme').setAttribute('aria-expanded', 'false');
-      themeLayer = null;
-    },
+    label: 'Theme',
+    anchor: btn,
+    className: 'theme-menu',
+    // The header wrapper is the positioning context, so the menu hangs under
+    // the button rather than being clipped by it.
+    mountTo: $('themewrap'),
+    items: THEMES.map((t) => ({
+      text: t.name,
+      // `selected`, not `checked`: six themes are one-of-many, and a screen
+      // reader should say so.
+      selected: state.theme === t.id,
+      className: 'theme-item',
+      data: { theme: t.id },
+      prefix: themeDot(t.swatch),
+      suffix: themeTick(),
+      run: () => setTheme(t.id),
+    })),
+    // One place unsets aria-expanded, whichever way the menu went away.
+    onClose: () => btn.setAttribute('aria-expanded', 'false'),
   });
-  const current =
-    el.themeMenu.querySelector('[aria-checked="true"]') || el.themeMenu.firstElementChild;
-  current?.focus();
 }
 
-/*
- * `restoreFocus` is gone: the layer always restores to the trigger. The flag
- * existed because focus handling was the caller's job; now it is not, and
- * every call site wanted `true` anyway except the outside-click path, which
- * the primitive handles.
- */
 function closeThemeMenu() {
-  themeLayer?.close();
+  closeMenu();
 }
 
 $('btn-theme').addEventListener('click', (e) => {
   e.stopPropagation();
-  themeLayer ? closeThemeMenu() : openThemeMenu();
+  menuIsOpen() ? closeMenu() : openThemeMenu();
 });
-
-el.themeMenu.addEventListener('click', (e) => {
-  const item = e.target.closest('.theme-item');
-  if (!item) return;
-  setTheme(item.dataset.theme);
-  closeThemeMenu();
-});
-
-// Arrow keys inside the menu, as a menu is expected to behave.
-el.themeMenu.addEventListener('keydown', (e) => {
-  const items = [...el.themeMenu.children];
-  const i = items.indexOf(document.activeElement);
-  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-    e.preventDefault();
-    const next = (i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
-    items[next].focus();
-  } else if (e.key === 'Home' || e.key === 'End') {
-    e.preventDefault();
-    items[e.key === 'Home' ? 0 : items.length - 1].focus();
-  } else if (e.key === 'Escape') {
-    e.preventDefault();
-    closeThemeMenu();
-  }
-});
-
-/*
- * Outside-click dismissal is the layer primitive's job now.
- *
- * This document-level `click` listener was the theme menu's own copy of a
- * mechanism two other overlays also hand-rolled. Keeping it would mean two
- * dismissal paths for one menu, firing on different events (`click` here,
- * `mousedown` in the primitive) — which is how a menu ends up closing before
- * the click that was meant to land inside it.
- */
 
 async function doSignIn() {
   const btn = $('btn-signin');

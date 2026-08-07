@@ -209,6 +209,8 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
   // that outlives a single boot.
   ({ _resetFeatureState: featureState } = await import('../src/app/features.js'));
   ({ _resetTimetableUI: timetableState } = await import('../src/app/timetable-ui.js'));
+  // menu.js holds the single open menu in module state, for the same reason.
+  ({ _resetMenu: menuState } = await import('../src/app/menu.js'));
   const ttStore = await import('../src/app/timetable-store.js');
   ttStore._resetSourceData(); // the catalogue is memoised per module, not per boot
 
@@ -249,6 +251,17 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
     } catch {
       // Never mask the real result.
     }
+    /*
+     * menu.js holds the ONE open menu in module state. A test that leaves the
+     * theme picker open would otherwise hand the next boot a live layer
+     * pointing at a closed document -- and the next `openMenu` would try to
+     * close it.
+     */
+    try {
+      menuState?.();
+    } catch {
+      // Never mask the real result.
+    }
     Object.assign(globalThis, prev);
 
     /*
@@ -279,6 +292,8 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
 let featureState = null;
 /** timetable-ui.js reset, same reasoning. */
 let timetableState = null;
+/** @type {null | (() => void)} */
+let menuState = null;
 
 const rows = (doc) => [...doc.querySelectorAll('#list .row')];
 
@@ -1279,7 +1294,12 @@ test('THEME: choosing one applies it and persists the choice', async (t) => {
     assert.equal(root.dataset.scheme, 'dark', 'scheme drives native controls');
     assert.equal(storage.theme, 'pilani', 'the choice must survive a reload');
     assert.ok(root.style.getPropertyValue('--bg'), 'custom properties are written');
-    assert.equal(doc.getElementById('thememenu').hidden, true, 'menu closes after choosing');
+    /*
+     * The menu is built on open and REMOVED on close, so "closed" is now the
+     * absence of the node rather than a hidden shell. Asserting on the node
+     * is what catches a menu left attached after the choice was made.
+     */
+    assert.equal(doc.querySelector('.theme-menu'), null, 'menu closes after choosing');
   } finally {
     restore();
   }
@@ -1314,9 +1334,10 @@ test('THEME: the menu is keyboard operable and Escape closes it', async (t) => {
   const { doc, win, settle, restore } = await boot();
   try {
     const btn = doc.getElementById('btn-theme');
-    const menu = doc.getElementById('thememenu');
     btn.click();
     await settle();
+    const menu = doc.querySelector('.theme-menu');
+    assert.ok(menu, 'the menu is built on open');
 
     // Focus lands on the current theme, not the top of the list.
     assert.equal(doc.activeElement.getAttribute('aria-checked'), 'true');
@@ -1325,9 +1346,20 @@ test('THEME: the menu is keyboard operable and Escape closes it', async (t) => {
     await settle();
     assert.ok(doc.activeElement.classList.contains('theme-item'));
 
+    // Home and End came from this menu's own hand-rolled handler. Absorbing
+    // it into the primitive must not have cost the user two working keys.
+    menu.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+    await settle();
+    const items = [...doc.querySelectorAll('.theme-item')];
+    assert.equal(doc.activeElement, items[items.length - 1], 'End reaches the last theme');
+    menu.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    await settle();
+    assert.equal(doc.activeElement, items[0], 'Home reaches the first');
+
     menu.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await settle();
-    assert.equal(menu.hidden, true);
+    assert.equal(doc.querySelector('.theme-menu'), null);
+    assert.equal(btn.getAttribute('aria-expanded'), 'false', 'the trigger is un-expanded');
     assert.equal(doc.activeElement.id, 'btn-theme', 'focus returns to the trigger');
   } finally {
     restore();
@@ -5323,11 +5355,30 @@ test('UNDO: a rolled-back action restores the message as it was', async (t) => {
    * This asserts the restored message equals the original field for field,
    * which is the only way the ordering is visible from outside.
    */
-  const { doc, win, settle, restore } = await boot();
+  /*
+   * `markReadOnOpen` is DISABLED here, and that is not incidental.
+   *
+   * This test opens a message, archives it and undoes that. Opening also arms
+   * the 1200ms mark-read timer. The test's own waits -- 260ms in `settled()`
+   * twice, plus frames -- normally finish well inside that window, so the
+   * timer is cancelled by teardown and never fires. Under load they do not:
+   * the timer fires AFTER the undo has restored the snapshot, flips `unread`
+   * back to false, and the field-by-field comparison fails on `unread`.
+   *
+   * That was a real intermittent failure (roughly one run in four on a busy
+   * machine), and it failed for a reason that has nothing to do with what
+   * this test is about. Turning the setting off removes the clock from the
+   * measurement: what is left is purely whether the snapshot was taken
+   * before or after the mutation, which is the thing under test.
+   */
+  const { doc, win, settle, restore } = await boot({
+    storageSeed: { markReadOnOpen: false },
+  });
   try {
     await settle(8);
     const before = win.__bmmStore.get(MESSAGES[0].id);
     assert.ok(before, 'precondition: the message is in the store');
+    assert.equal(before.unread, true, 'precondition: it starts unread, so undo has something to restore');
     const original = { ...before };
 
     rows(doc)[0].click();

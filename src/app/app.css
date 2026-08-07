@@ -1362,18 +1362,18 @@ a.ghost {
   position: relative;
 }
 
-#thememenu {
-  position: absolute;
+/*
+ * The theme menu is now built by the shared primitive, so it arrives with
+ * `.snooze-menu` on it and only needs the handful of things that differ:
+ * it hangs from the RIGHT edge of the header button rather than the left,
+ * and it is narrower because a theme name is short.
+ */
+.snooze-menu.theme-menu {
   top: calc(100% + 6px);
   right: 0;
-  z-index: var(--z-menu);
+  left: auto;
   min-width: 190px;
   padding: var(--s-1);
-  background: var(--bg-raised);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow-lg);
-  animation: menu-in var(--dur-fast) var(--ease-out) both;
 }
 
 @keyframes menu-in {
@@ -1387,7 +1387,20 @@ a.ghost {
   }
 }
 
-.theme-item {
+/*
+ * `.theme-item` also carries `.snooze-opt` now that the primitive builds this
+ * menu, and the two disagree about alignment: `.snooze-opt` uses `baseline`,
+ * which is right for a label beside a timestamp but wrong for a label beside
+ * a 14px round swatch -- on a shared baseline the dot sits low and the row
+ * looks broken.
+ *
+ * The compound selector is deliberate. `.theme-item` alone has the same
+ * specificity as `.snooze-opt` and is declared ~1500 lines EARLIER, so the
+ * primitive's rule would win on source order and silently undo this. Written
+ * as `.snooze-opt.theme-item` it wins on specificity instead, which does not
+ * depend on where in the file either block happens to live.
+ */
+.snooze-opt.theme-item {
   display: flex;
   align-items: center;
   gap: var(--s-3);
@@ -1403,13 +1416,29 @@ a.ghost {
   cursor: pointer;
   transition: background-color var(--dur-fast) linear, color var(--dur-fast) linear;
 }
-.theme-item:hover {
+.snooze-opt.theme-item:hover {
   background: var(--bg-sunken);
   color: var(--fg);
 }
 .theme-item[aria-checked='true'] {
   color: var(--fg);
   font-weight: var(--w-semi);
+}
+
+/*
+ * The label side of a theme row: swatch, then name, laid out as a row.
+ *
+ * FOUND BY RENDERING IT, not by a test. The primitive wraps the label in a
+ * plain inline <span>, and `width`/`height` do not apply to an inline
+ * non-replaced element -- so the 14px swatch collapsed to nothing and every
+ * theme row lost its colour dot. jsdom reports the computed width happily and
+ * the 873 tests all passed; only looking at the thing showed it.
+ */
+.theme-item .menu-label {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-width: 0;
 }
 
 .theme-dot {
@@ -1421,8 +1450,18 @@ a.ghost {
   box-shadow: inset 0 0 0 1px rgba(128, 128, 128, 0.35);
 }
 
+/*
+ * The primitive names the label span `.menu-name`; `.theme-name` is kept as
+ * an alias so nothing that already targets it breaks. Both mean "take the
+ * space between the swatch and the tick".
+ */
+.theme-item .menu-name,
 .theme-name {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .theme-tick {
@@ -2140,7 +2179,7 @@ html[data-scheme='dark'] #listpane {
 html[data-scheme='dark'] #compose,
 html[data-scheme='dark'] #palette-box,
 html[data-scheme='dark'] #gate-card,
-html[data-scheme='dark'] #thememenu {
+html[data-scheme='dark'] .snooze-menu {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.05),
     var(--shadow-lg);
