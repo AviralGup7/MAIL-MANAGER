@@ -1713,3 +1713,76 @@ test('SEMESTER: a full semester of updates leaves the timetable coherent', async
     'a timetable built from this catalogue must not read as stale'
   );
 });
+
+
+/* ==========================================================================
+ * COURSE DETECTION MUST NOT FIRE ON NON-COURSES
+ *
+ * Harmless while nothing displayed the result. Feature 55 puts a course chip
+ * on the message row, so a false positive is a visible lie on a row the user
+ * is scanning -- and the standing rule for academic detection is that a wrong
+ * badge is worse than no badge.
+ * ========================================================================== */
+
+const { courseNumbersIn: courseNums } = await import('../src/app/timetable-mail.js');
+
+test('real course numbers are found in every spelling used in mail', () => {
+  const cases = {
+    'Regarding CS F111 lab': 'CS F111',
+    'CSF111 tomorrow': 'CS F111',
+    'cs-f111 lab': 'CS F111',
+    'MATH F211 quiz': 'MATH F211',
+    'BIO G542 notice': 'BIO G542',
+  };
+  for (const [text, expected] of Object.entries(cases)) {
+    assert.deepEqual(courseNums(text), [expected], text);
+  }
+});
+
+test('a department that is a prefix of another resolves to the right one', () => {
+  /*
+   * I originally justified this by ordering -- BIOT listed before BIO so the
+   * alternation cannot pick the shorter branch -- and asserted that swapping
+   * them would break it. SABOTAGE PROVED ME WRONG: swapping the order changes
+   * nothing, because after the department the pattern demands one letter and
+   * three DIGITS, and "TF11" is not that.
+   *
+   * The property is still worth pinning down; the explanation was the part
+   * that was wrong. Both spellings are checked, since the unspaced alternative
+   * is the one the ordering theory was really about.
+   */
+  for (const [text, expected] of [
+    ['BIOT F110 practical', 'BIOT F110'],
+    ['BIOTF110', 'BIOT F110'],
+    ['CHEMF111', 'CHEM F111'],
+    ['ECONF211', 'ECON F211'],
+  ]) {
+    assert.deepEqual(courseNums(text), [expected], text);
+  }
+  assert.deepEqual(courseNums('CHEM F111 and CHE F211'), ['CHEM F111', 'CHE F211']);
+});
+
+test('THINGS THAT LOOK LIKE COURSES BUT ARE NOT', () => {
+  const notCourses = [
+    'Flight AI 202 delayed',
+    'ISBN 978 3 16 148410 0',
+    'Room 5105 booking confirmed',
+    'Invoice INV 2024 pending',
+    'IEEE 802 11 wifi standard',
+    'Call me at 555 123',
+  ];
+  for (const text of notCourses) {
+    assert.deepEqual(courseNums(text), [], `false positive in: ${text}`);
+  }
+});
+
+test('the department list matches the shipped timetable', async () => {
+  // A cheap in-suite mirror of tools/check-departments.mjs, so a regenerated
+  // timetable cannot silently outrun the detector.
+  const { readFileSync } = await import('node:fs');
+  const data = JSON.parse(readFileSync(new URL('../src/timetable/data.json', import.meta.url), 'utf8'));
+  const src = readFileSync(new URL('../src/app/timetable-mail.js', import.meta.url), 'utf8');
+  const declared = new Set(src.match(/const DEPTS = '([^']+)'/)[1].split('|'));
+  const actual = new Set(data.courses.map((c) => c.courseNo.split(/\s+/)[0]));
+  assert.deepEqual([...actual].filter((d) => !declared.has(d)), [], 'departments the detector cannot see');
+});

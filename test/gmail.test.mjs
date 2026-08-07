@@ -486,3 +486,190 @@ test('MIME: a filename with a quote or newline cannot break the headers', () => 
     `exactly one quoted filename, got: ${line}`
   );
 });
+
+
+/* ==========================================================================
+ * EMAIL HEADER INJECTION
+ *
+ * The most serious defect found in this project. `safeHeaderValue` and
+ * `safeFilename` existed and were applied to ATTACHMENT metadata only; To, Cc,
+ * Bcc, From, In-Reply-To and References were interpolated raw.
+ *
+ * The reachable attack is not "a user types CRLF into their own message". It
+ * is that `buildReply()` fills To from the INBOUND Reply-To header, which the
+ * sender controls completely -- so hitting Reply on a crafted message silently
+ * added a Bcc.
+ * ========================================================================== */
+
+const INJECTION = 'victim@x.com\r\nBcc: attacker@evil.com';
+
+function headersOf(mime) {
+  return mime.split('\r\n\r\n')[0];
+}
+
+test('every address header resists CRLF injection', () => {
+  for (const field of ['to', 'cc', 'bcc', 'from', 'inReplyTo', 'references']) {
+    const mime = buildMime({ to: 'a@b.com', subject: 's', body: 'b', [field]: INJECTION });
+    assert.doesNotMatch(
+      headersOf(mime),
+      /^Bcc: attacker@evil\.com/mi,
+      `${field} allowed an injected Bcc`
+    );
+  }
+});
+
+test('a bare LF also cannot inject a header', () => {
+  // Some MTAs accept a lone \n as a separator, so stripping only \r\n is not
+  // enough.
+  const mime = buildMime({ to: 'a@b.com\nBcc: attacker@evil.com', subject: 's', body: 'b' });
+  assert.doesNotMatch(headersOf(mime), /Bcc: attacker/i);
+});
+
+test('unicode line separators are split, not merely rejected', () => {
+  /*
+   * This test was worthless as first written. It only asserted that no Bcc
+   * appeared -- which held even with U+2028/U+2029 removed from the splitter,
+   * because the whole unsplit token then fails the ADDRESS pattern and is
+   * dropped.
+   *
+   * Safe, but WRONG: dropping the token throws away the legitimate recipient
+   * along with the payload, so the user's reply silently goes to nobody. The
+   * assertion has to check that the real address SURVIVES as well as that the
+   * attacker's does not.
+   */
+  for (const sep of ['\u2028', '\u2029']) {
+    const mime = buildMime({ to: `a@b.com${sep}Bcc: attacker@evil.com`, subject: 's', body: 'b' });
+    const head = headersOf(mime);
+    assert.doesNotMatch(head, /attacker@evil\.com/, `${JSON.stringify(sep)} leaked the payload`);
+    assert.match(head, /^To: a@b\.com$/m, `${JSON.stringify(sep)} destroyed the real recipient`);
+  }
+});
+
+test('THE REPLY PATH IS THE REACHABLE ATTACK, AND IT IS CLOSED', async () => {
+  const { buildReply } = await import('../src/app/query.js');
+  // A hostile inbound message. Reply-To is entirely sender-controlled.
+  const hostile = {
+    from: 'Prof <prof@bits.ac.in>',
+    replyTo: 'prof@bits.ac.in\r\nBcc: harvest@evil.com',
+    subject: 'Notice',
+    to: 'me@pilani.bits-pilani.ac.in',
+    cc: '',
+  };
+  const reply = buildReply(hostile, 'me@pilani.bits-pilani.ac.in', 'reply');
+  const mime = buildMime({ to: reply.to, subject: reply.subject, body: 'ok' });
+  assert.doesNotMatch(headersOf(mime), /harvest@evil\.com/, 'a crafted Reply-To reached the wire');
+});
+
+test('A LARGE REPLY-ALL IS NOT SILENTLY TRUNCATED', () => {
+  /*
+   * The first version of the fix reused `safeHeaderValue`, which caps at 200
+   * characters, then a 2000-character variant. Both dropped recipients from a
+   * real reply-all -- 60 addresses is ~2500 characters, and twelve of them
+   * vanished. The message sends, looks correct in Sent, and a third of the
+   * recipients never receive it.
+   *
+   * Length was never the attack. CRLF is, and that is stripped regardless.
+   */
+  const many = Array.from({ length: 60 }, (_, i) => `student${i}.f2024@pilani.bits-pilani.ac.in`).join(', ');
+  const toLine = buildMime({ to: many, subject: 's', body: 'b' })
+    .split('\r\n')
+    .find((l) => l.startsWith('To: '));
+  assert.equal(toLine.split(',').length, 60, 'recipients were dropped');
+});
+
+test('scrubbing does not damage an ordinary display-name recipient', () => {
+  const mime = buildMime({ to: 'Vinti Agarwal <vinti@pilani.bits-pilani.ac.in>', subject: 's', body: 'b' });
+  assert.match(headersOf(mime), /^To: Vinti Agarwal <vinti@pilani\.bits-pilani\.ac\.in>$/m);
+});
+
+
+/* ==========================================================================
+ * MIME TREE DEPTH: A CRAFTED MESSAGE COULD KILL THE SERVICE WORKER
+ * ========================================================================== */
+
+test('a deeply nested MIME tree does not overflow the stack', async () => {
+  /*
+   * `walk()` recursed with no bound. extractBody runs in the SERVICE WORKER
+   * handling GET_BODY, so one crafted message killed the worker -- taking
+   * snooze wake-ups and the toolbar shortcut with it until Chrome restarted
+   * it. The body is entirely sender-controlled: the trigger is "someone mails
+   * you and you open it".
+   *
+   * Measured before the fix: fine at 2000, RangeError at 5000. Real mail nests
+   * three to five deep.
+   */
+  const { extractBody } = await import('../src/background/mime.js');
+
+  let root = { mimeType: 'multipart/mixed', parts: [] };
+  let cur = root;
+  for (let i = 0; i < 20000; i++) {
+    const next = { mimeType: 'multipart/mixed', parts: [] };
+    cur.parts.push(next);
+    cur = next;
+  }
+  assert.doesNotThrow(() => extractBody({ id: 'x', payload: root }));
+});
+
+test('a cyclic MIME tree terminates', async () => {
+  const { extractBody } = await import('../src/background/mime.js');
+  const cyclic = { mimeType: 'multipart/mixed', parts: [] };
+  cyclic.parts.push(cyclic);
+  assert.doesNotThrow(() => extractBody({ id: 'y', payload: cyclic }));
+});
+
+test('a very wide MIME tree walks in linear time, uncapped', async () => {
+  /*
+   * A 500-part breadth cap was added alongside the depth bound and then
+   * REMOVED, because sabotage showed no test could tell it was there and
+   * measurement showed it was not earning its cost: a million-part tree walks
+   * in ~90ms. Meanwhile the cap would have silently dropped attachments from a
+   * legitimate 600-part message.
+   *
+   * This test pins the measurement so the reasoning stays checkable, and so a
+   * future change that makes the walk super-linear is caught.
+   */
+  const { extractBody } = await import('../src/background/mime.js');
+  const wide = {
+    mimeType: 'multipart/mixed',
+    parts: Array.from({ length: 200000 }, () => ({ mimeType: 'text/plain', body: {} })),
+  };
+  const t0 = Date.now();
+  extractBody({ id: 'z', payload: wide });
+  assert.ok(Date.now() - t0 < 2000, `took ${Date.now() - t0}ms — the walk is no longer linear`);
+});
+
+test('every part of a wide message is seen, not truncated', async () => {
+  // The reason the cap was removed: a real message must not lose attachments.
+  const { extractBody } = await import('../src/background/mime.js');
+  const wide = {
+    mimeType: 'multipart/mixed',
+    parts: Array.from({ length: 600 }, (_, i) => ({
+      mimeType: 'application/pdf',
+      filename: `doc${i}.pdf`,
+      body: { attachmentId: `a${i}`, size: 10 },
+    })),
+  };
+  const out = extractBody({ id: 'w', payload: wide });
+  assert.equal(out.attachments.length, 600, 'attachments were silently dropped');
+});
+
+test('the depth bound does not affect a normally-nested message', async () => {
+  // mixed > alternative > related > text is what real mail looks like.
+  const { extractBody } = await import('../src/background/mime.js');
+  const real = {
+    mimeType: 'multipart/mixed',
+    parts: [{
+      mimeType: 'multipart/alternative',
+      parts: [
+        { mimeType: 'text/plain', body: { data: 'aGVsbG8' } },
+        {
+          mimeType: 'multipart/related',
+          parts: [{ mimeType: 'text/html', body: { data: 'PGI-aGk8L2I-' } }],
+        },
+      ],
+    }],
+  };
+  const out = extractBody({ id: 'a', payload: real });
+  assert.equal(out.text, 'hello');
+  assert.match(out.html, /hi/);
+});

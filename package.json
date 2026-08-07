@@ -18,7 +18,8 @@
     "doctor": "node tools/doctor.mjs",
     "verify": "node tools/verify-here.mjs",
     "why": "node tools/why.mjs",
-    "operators": "node tools/check-operators.mjs"
+    "operators": "node tools/check-operators.mjs",
+    "departments": "node tools/check-departments.mjs"
   },
   "devDependencies": {
     "jsdom": "^24.0.0"

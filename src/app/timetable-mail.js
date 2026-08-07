@@ -110,7 +110,53 @@ const PATTERNS = [
  * cannot be distinguished by the engine alone) means matching the two shapes
  * separately: spaced, then unspaced with an explicit single course letter.
  */
-const COURSE_RE = /\b([A-Z]{2,5})\s([A-Z])?(\d{3})([A-Z])?\b|\b([A-Z]{2,4})([A-Z])(\d{3})([A-Z])?\b/g;
+/*
+ * DEPARTMENT CODES ARE ENUMERATED, NOT PATTERN-MATCHED.
+ *
+ * The original pattern was `[A-Z]{2,5}` plus an OPTIONAL letter and three
+ * digits, which matches far more than a BITS course number:
+ *
+ *     "Flight AI 202 delayed"   -> AI 202
+ *     "ISBN 978 3 16"           -> ISBN 978
+ *
+ * Harmless while nothing displayed the result. Feature 55 puts a course chip
+ * on the message row, so a false positive is now a visible lie on a row the
+ * user is scanning -- and the rule this project set for academic detection is
+ * that a wrong badge is worse than no badge, because it teaches people to stop
+ * reading badges.
+ *
+ * The real vocabulary is small and known: 33 departments, generated from
+ * src/timetable/data.json, and the letter before the digits is MANDATORY
+ * (F###, G###, U###, C###T, E###...). Both false positives fail on the letter
+ * alone; enumerating the departments as well makes a collision essentially
+ * impossible.
+ *
+ * Kept as a literal rather than imported from data.json because this module is
+ * on the ingest path and must not pull in a 652KB JSON file to classify a
+ * subject line. tools/check-departments.mjs asserts the two agree.
+ */
+const DEPTS = 'AN|BIOT|BIO|BITS|CE|CHEM|CHE|CS|DE|ECON|ECE|EEE|EE|ENVS|FIN|GS|HSS|INSTR|MAC|MATH|MEL|MSE|ME|MF|MGTS|MPBA|PHA|PHY|SAN|SCM|SNS|SS|SW';
+
+/*
+ * Two alternatives, spaced and unspaced, same as before.
+ *
+ * A NOTE ON ORDERING, BECAUSE I ASSERTED A HAZARD THAT DOES NOT EXIST.
+ *
+ * The list is written longest-first within each prefix family (BIOT before
+ * BIO, CHEM before CHE) and I claimed that was load-bearing -- that BIO would
+ * otherwise shadow BIOT. Tested it: it does not. `\b(BIO)([A-Z])(\d{3})`
+ * cannot match "BIOTF110", because after BIO the next character must be a
+ * single letter followed by three DIGITS, and "TF11" is not. The spaced
+ * alternative fails on the word boundary for the same reason.
+ *
+ * The ordering is kept because it is clearer to read and costs nothing, but it
+ * is a convention, not a correctness requirement. Recorded rather than
+ * silently corrected, per the project's rule about disproved suspicions.
+ */
+const COURSE_RE = new RegExp(
+  `\\b(${DEPTS})\\s([A-Z])(\\d{3})([A-Z])?\\b|\\b(${DEPTS})([A-Z])(\\d{3})([A-Z])?\\b`,
+  'g'
+);
 
 /** Section token: L1, T7, P12. */
 const SECTION_RE = /\b([LTP])\s?(\d{1,2})\b/g;
