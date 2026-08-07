@@ -91,8 +91,8 @@ export async function syncPage({ pageToken = '', max = BATCH_SIZE, q = '', label
  *
  * Returns one of:
  *   { kind: 'delta', added:[msg], removed:[id], patched:[{id,unread,starred}] }
- *   { kind: 'resync' }   — cursor expired, caller must do a full syncPage run
- *   { kind: 'none' }     — no cursor yet
+ *   { kind: 'resync' }   -- cursor expired, caller must do a full syncPage run
+ *   { kind: 'none' }     -- no cursor yet
  */
 /**
  * Beyond this many new messages in one delta, a full resync is both cheaper
@@ -145,7 +145,7 @@ export async function syncDelta() {
  * What the API actually gives us is a sequence of events. Only the last event
  * per message matters. Writing them into one map in order makes that true by
  * construction, and guarantees the returned `added` and `removed` are
- * disjoint — so the caller cannot get it wrong either.
+ * disjoint -- so the caller cannot get it wrong either.
  *
  * Exported for testing; this is the part with all the ordering subtlety.
  */
@@ -176,8 +176,8 @@ export function reduceHistory(records) {
       if (ls.includes('UNREAD')) patchFor(message.id).unread = true;
       if (ls.includes('STARRED')) patchFor(message.id).starred = true;
       // Gaining INBOX means un-archived, or a thread pulled back by a reply.
-      // This never produces a messagesAdded record — that fires only when a
-      // message first enters the mailbox — so if we ignore it here the message
+      // This never produces a messagesAdded record -- that fires only when a
+      // message first enters the mailbox -- so if we ignore it here the message
       // stays invisible until the next full resync.
       if (ls.includes('INBOX')) fate.set(message.id, 'add');
       if (ls.includes('TRASH') || ls.includes('SPAM')) fate.set(message.id, 'remove');
@@ -196,7 +196,7 @@ export function reduceHistory(records) {
   const removeIds = [];
   for (const [id, what] of fate) (what === 'add' ? addIds : removeIds).push(id);
 
-  // A message we are about to fetch fresh does not need a patch — the fetched
+  // A message we are about to fetch fresh does not need a patch -- the fetched
   // metadata is newer. A message we are about to remove cannot use one.
   const skip = new Set([...addIds, ...removeIds]);
   const patched = [];

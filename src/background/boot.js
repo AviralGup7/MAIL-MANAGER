@@ -93,7 +93,7 @@ import('./index.js')
       chrome.action?.setBadgeText({ text: '!' });
       chrome.action?.setBadgeBackgroundColor({ color: '#b3261e' });
       chrome.action?.setTitle({
-        title: 'BITS Mail Manager — background failed to load. Open Gmail and press Alt+Shift+M.',
+        title: 'BITS Mail Manager -- background failed to load. Open Gmail and press Alt+Shift+M.',
       });
     } catch {
       // Badge is a courtesy; never let it mask the original error.

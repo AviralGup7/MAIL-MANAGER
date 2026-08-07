@@ -55,7 +55,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /**
  * How long to wait before attempt N (1-indexed).
  *
- * Honours `Retry-After` when Google sends it — guessing when we have been told
+ * Honours `Retry-After` when Google sends it -- guessing when we have been told
  * is how you get rate-limited harder. Otherwise exponential with jitter; the
  * jitter matters because several parallel batch requests will otherwise all
  * wake at the same instant and re-collide.
@@ -140,7 +140,7 @@ export async function listIds({ q = '', labelIds = ['INBOX'], max = 100, pageTok
 /**
  * Metadata for up to BATCH_SIZE ids in ONE request.
  * Returns an array of normalised message records (see `normalise`).
- * Sub-requests that fail are dropped, not thrown — one dead message must not
+ * Sub-requests that fail are dropped, not thrown -- one dead message must not
  * kill a sync of a hundred good ones.
  */
 export async function batchMetadata(ids) {
@@ -268,7 +268,7 @@ export function normalise(g) {
  *
  * Exported because THREE separate places parsed header arrays by hand
  * (`normalise` here, and `extractBody`'s message and part loops in
- * index.js), and all three used the same `for (const { name, value } of …)`
+ * index.js), and all three used the same `for (const { name, value } of ...)`
  * shape that throws on a header with no `name` or a null entry. Fuzzing found
  * the crash independently in each.
  *
@@ -318,7 +318,7 @@ export async function modify(id, addLabelIds = [], removeLabelIds = []) {
   });
 }
 
-/** Bulk modify — one request for up to 1000 ids. */
+/** Bulk modify -- one request for up to 1000 ids. */
 export async function batchModify(ids, addLabelIds = [], removeLabelIds = []) {
   if (!ids.length) return null;
   await api('/messages/batchModify', {

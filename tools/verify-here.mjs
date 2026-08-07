@@ -37,11 +37,11 @@ const DIR = resolve(process.argv[2] || process.cwd());
 const REFERENCE = {
   'manifest.json': '525f4abd7bc4',
   'sw.js': '4fba68c536e4',
-  'src/background/index.js': 'd00ee662af26',
-  'src/background/auth.js': 'baa953195d11',
-  'src/background/gmail.js': '93e4dd778df6',
-  'src/background/sync.js': '56973bb7fdee',
-  'src/app/snooze.js': 'a94c5172d27e',
+  'src/background/index.js': 'c5c7eaaee58d',
+  'src/background/auth.js': '7eb32fe1853d',
+  'src/background/gmail.js': '3c00c979fc9b',
+  'src/background/sync.js': '47c273b50270',
+  'src/app/snooze.js': '57135d8c8d3f',
 };
 
 const md5 = (p) => createHash('md5').update(readFileSync(p)).digest('hex').slice(0, 12);

@@ -163,7 +163,7 @@ async function authorize(interactive) {
 
   // Verify state before trusting anything else in the response.
   if (frag.get('state') !== state) {
-    throw new Error('OAuth state mismatch — sign-in aborted.');
+    throw new Error('OAuth state mismatch -- sign-in aborted.');
   }
 
   const accessToken = frag.get('access_token');
@@ -186,7 +186,7 @@ async function authorize(interactive) {
 /** Interactive sign-in. Persists the token. */
 export async function signIn() {
   /*
-   * A new sign-in supersedes anything in flight too — including a silent
+   * A new sign-in supersedes anything in flight too -- including a silent
    * renewal for the PREVIOUS account. Without this, switching accounts could
    * let the old account's renewal overwrite the new account's token, which is
    * worse than the sign-out case: the user ends up reading someone else's
@@ -271,7 +271,7 @@ let inFlight = null;
  *
  * THIS FIXES A REAL SECURITY DEFECT. `signOut()` cleared storage, but a silent
  * renewal already in flight would call `persist()` AFTERWARDS and write a
- * fresh, live access token back — so signing out during a renewal left the
+ * fresh, live access token back -- so signing out during a renewal left the
  * user believing they were signed out while a working credential sat in
  * storage. Reproduced: sign out 10ms into a 60ms renewal, and `accessToken`
  * came back as a valid token.
@@ -280,7 +280,7 @@ let inFlight = null;
  * has already started. The epoch is the missing piece: every operation that
  * WRITES credentials captures it first and refuses to commit if it has moved.
  *
- * A boolean "signing out" flag would not do — sign-out completes, and a
+ * A boolean "signing out" flag would not do -- sign-out completes, and a
  * renewal that started before it must stay invalid forever after, not just
  * during the sign-out itself.
  */

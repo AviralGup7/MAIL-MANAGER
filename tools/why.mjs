@@ -169,67 +169,25 @@ if (!swRel) {
 /* ── 3. the browser-side snippet ──────────────────────────────────────── */
 
 const snippetPath = join(ROOT, 'tools', 'paste-into-devtools.js');
-const snippet = `/*
- * PASTE THIS INTO THE DEVTOOLS CONSOLE OF ANY EXTENSION PAGE.
+/*
+ * The snippet is now a CHECKED-IN FILE rather than generated text.
  *
- * How to get there:
- *   chrome://extensions -> BITS Mail Manager -> click "Details"
- *   -> scroll to "Inspect views" -> click any listed page
- *   (or open the options page and press F12)
+ * The generated version called navigator.serviceWorker.register() on the same
+ * script the manifest declares, at the same scope Chrome has already reserved
+ * for the extension. That second registration competes with the first and is
+ * aborted -- so the AbortError it produced was quite possibly the snippet's
+ * own doing, and it sent this investigation down a false path twice.
  *
- * Chrome hides the registration error on the extensions card. It does NOT
- * hide it from navigator.serviceWorker.register(), which returns the real
- * exception. That is the whole trick.
+ * tools/paste-into-devtools.js now READS the state Chrome already holds and
+ * registers nothing. Keeping it in git means it can be reviewed and fixed
+ * like any other code, instead of being rewritten from a string literal.
  */
-(async () => {
-  const url = chrome.runtime.getURL('${swRel || 'src/background/index.js'}');
-  console.log('[why] attempting to register:', url);
+const snippet = existsSync(snippetPath)
+  ? readFileSync(snippetPath, 'utf8')
+  : '// tools/paste-into-devtools.js is missing from the checkout.\n';
 
-  // Does the file even serve over the extension origin?
-  try {
-    const res = await fetch(url);
-    console.log('[why] fetch status:', res.status, res.statusText);
-    const text = await res.text();
-    console.log('[why] bytes served:', text.length);
-    if (!text.length) console.error('[why] THE FILE IS EMPTY over chrome-extension://');
-  } catch (e) {
-    console.error('[why] could not fetch the worker file at all:', e);
-    return;
-  }
-
-  /*
-   * Try the DEFAULT scope first -- the script's own directory. This is the
-   * one that produced
-   *
-   *   AbortError ... for scope ('.../src/background/')
-   *
-   * A worker in a subdirectory is scoped to that subdirectory and cannot
-   * control the extension origin.
-   */
-  try {
-    const reg = await navigator.serviceWorker.register(url, { type: 'module' });
-    console.log('[why] REGISTERED OK at default scope', reg.scope);
-  } catch (e) {
-    console.error('[why] default scope FAILED:', e && e.name, '-', e && e.message);
-
-    // Now force the root scope, which is what an extension worker needs.
-    try {
-      const reg2 = await navigator.serviceWorker.register(url, {
-        type: 'module', scope: '/',
-      });
-      console.error('[why] but it REGISTERS AT ROOT SCOPE:', reg2.scope);
-      console.error('[why] => the worker must live at the extension root.');
-      console.error('[why]    That is the bug, and moving the file fixes it.');
-    } catch (e2) {
-      console.error('[why] root scope also failed:', e2 && e2.name, '-', e2 && e2.message);
-      console.error('[why] => not a scope problem. Real error object below.');
-      console.error(e2);
-    }
-  }
-})();
-`;
-
-writeFileSync(snippetPath, snippet);
+// (the snippet is a checked-in file; nothing to write)
+void snippet;
 
 console.log('\n3. GET THE BROWSER\'S OWN ERROR');
 console.log(`   Wrote ${relative(ROOT, snippetPath)}`);

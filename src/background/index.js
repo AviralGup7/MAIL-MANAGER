@@ -60,9 +60,9 @@ chrome.runtime.onInstalled?.addListener(async () => {
   const manifest = chrome.runtime.getManifest();
   const problems = [];
 
-  if (!chrome.scripting) problems.push('chrome.scripting unavailable — "scripting" permission missing');
+  if (!chrome.scripting) problems.push('chrome.scripting unavailable -- "scripting" permission missing');
   if (!(manifest.host_permissions || []).some((h) => h.includes('mail.google.com'))) {
-    problems.push('no host permission for mail.google.com — tab.url will be undefined');
+    problems.push('no host permission for mail.google.com -- tab.url will be undefined');
   }
 
   const commands = await chrome.commands.getAll().catch(() => []);
@@ -70,7 +70,7 @@ chrome.runtime.onInstalled?.addListener(async () => {
     // An empty shortcut means the browser refused it, usually a collision.
     if (c.name === 'toggle-takeover' && !c.shortcut) {
       problems.push(
-        'the keyboard shortcut is unassigned — set one at chrome://extensions/shortcuts'
+        'the keyboard shortcut is unassigned -- set one at chrome://extensions/shortcuts'
       );
     }
   }
@@ -440,7 +440,7 @@ function b64url(data) {
   const b64 = data.replace(/-/g, '+').replace(/_/g, '/');
   const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
   try {
-    // Round-trip through bytes so UTF-8 (e.g. curly quotes, ₹) survives.
+    // Round-trip through bytes so UTF-8 (e.g. curly quotes, INR) survives.
     const bin = atob(padded);
     const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
     return new TextDecoder('utf-8').decode(bytes);

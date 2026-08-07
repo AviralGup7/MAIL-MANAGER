@@ -139,7 +139,7 @@ export function due(all, now = Date.now()) {
     .map(([id]) => id);
 }
 
-/** Still asleep, soonest first — the order the Snoozed view should show. */
+/** Still asleep, soonest first -- the order the Snoozed view should show. */
 export function pending(all, now = Date.now()) {
   return Object.entries(all)
     .filter(([, v]) => v && typeof v.at === 'number' && v.at > now)
@@ -147,7 +147,7 @@ export function pending(all, now = Date.now()) {
     .map(([id, v]) => ({ id, at: v.at }));
 }
 
-/** "in 3 hours", "tomorrow", "on 14 Mar" — the same voice as the radar. */
+/** "in 3 hours", "tomorrow", "on 14 Mar" -- the same voice as the radar. */
 export function wakeLabel(wakeAt, now = Date.now()) {
   const ms = wakeAt - now;
   if (ms <= 0) return 'now';
