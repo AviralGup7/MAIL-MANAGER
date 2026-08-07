@@ -60,7 +60,7 @@ const MESSAGES = [
  * Boot app.html in jsdom.
  * Returns { win, doc, calls, settle } — `calls` records every worker message.
  */
-async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bodyOverride = {}, syncLatency = 0, perLabel = false, emptyLabels = [], labels = [], timetableData = null, storageTimetable = undefined } = {}) {
+async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bodyOverride = {}, syncLatency = 0, perLabel = false, emptyLabels = [], labels = [], timetableData = null, storageTimetable = undefined, deadWorker = false } = {}) {
   const html = readFileSync(join(ROOT, 'app.html'), 'utf8');
   const dom = new JSDOM(html, {
     url: 'chrome-extension://test/app.html',
@@ -99,6 +99,20 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
       getURL: (p) => `chrome-extension://test/${p}`,
       sendMessage(msg, cb) {
         calls.push(msg);
+        /*
+         * `deadWorker` reproduces "Service worker registration failed":
+         * Chrome invokes the callback with undefined and sets lastError,
+         * rather than throwing. Getting that shape right is the whole point --
+         * a mock that throws would exercise a path the browser never takes.
+         */
+        if (deadWorker) {
+          win.chrome.runtime.lastError = { message: 'Could not establish connection.' };
+          setTimeout(() => {
+            cb(undefined);
+            win.chrome.runtime.lastError = null;
+          }, 0);
+          return;
+        }
         // Async, like the real thing — synchronous replies would hide
         // ordering bugs that only appear across a await boundary.
         // `syncLatency` makes a slow mailbox fetch reproducible, which is what
@@ -1950,6 +1964,70 @@ test('CONSISTENCY: toggling threading in Options redraws the list at once', asyn
     assert.equal(
       rows(doc).length, 2,
       'the list must redraw as conversations without waiting for another event'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('FALLBACK: a dead service worker degrades instead of bricking the app', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * THE REAL FAILURE THIS EXISTS FOR.
+   *
+   * Chrome has been refusing to register the worker with "Status code: 2",
+   * and every static check passes, so the cause is still unknown. A mail
+   * client that cannot start is worth nothing; one running with degraded
+   * background features is worth almost everything.
+   *
+   * The mock reproduces Chrome's ACTUAL shape for an absent worker: the
+   * callback fires with `undefined` and `lastError` is set. It does not
+   * throw. A mock that threw would exercise a path the browser never takes,
+   * and the fallback would be tested against a fiction.
+   */
+  const { doc, settle, restore } = await boot({ deadWorker: true });
+  try {
+    await settle(8);
+
+    // The user is told, once, in a persistent place.
+    const warn = doc.getElementById('sw-warn');
+    assert.ok(warn, 'a dead worker must be announced, not silently absorbed');
+    assert.match(
+      warn.textContent, /Background service unavailable/,
+      'the banner must say what is wrong'
+    );
+    assert.match(
+      warn.textContent, /snooze/i,
+      'and name the capability that is actually lost'
+    );
+
+    // It is a status region, so assistive tech hears it too.
+    assert.equal(warn.getAttribute('role'), 'status');
+
+    // And it is dismissable: the app works, so the notice must not be a wall.
+    const dismiss = warn.querySelector('button');
+    assert.ok(dismiss, 'the banner needs a way out');
+    dismiss.click();
+    await settle();
+    assert.equal(doc.getElementById('sw-warn'), null, 'dismiss must remove it');
+  } finally {
+    restore();
+  }
+});
+
+test('FALLBACK: the warning appears exactly once, not per verb', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * Boot alone fires several verbs (AUTH_STATUS, PROFILE, SYNC_PAGE...). If
+   * each raised its own banner the screen would fill with identical strips,
+   * which is a worse experience than the degradation being announced.
+   */
+  const { doc, settle, restore } = await boot({ deadWorker: true });
+  try {
+    await settle(8);
+    assert.equal(
+      doc.querySelectorAll('#sw-warn').length, 1,
+      'one banner for the session, however many verbs failed'
     );
   } finally {
     restore();

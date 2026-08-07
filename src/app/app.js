@@ -32,6 +32,7 @@ import { icon, setIcon } from './icons.js';
 import { Selection, selectionLabel } from './selection.js';
 import { loadViews, saveView, removeView } from './views.js';
 import { extractDeadline, relativeLabel, urgency } from './deadlines.js';
+import { runInPage } from './fallback.js';
 import { parseQuery, buildReply } from './query.js';
 import * as settings from './settings.js';
 import { addressOf } from './contacts.js';
@@ -247,16 +248,78 @@ const el = {
 
 // ------------------------------------------------------------------ plumbing --
 
-/** Ask the service worker to do something. It owns the token; we never see it. */
+/**
+ * Ask the service worker to do something. It owns the token; we never see it.
+ *
+ * FALLS BACK TO THIS PAGE if the worker is not answering.
+ *
+ * The extension has been unloadable in Chrome with "Service worker
+ * registration failed. Status code: 2", and a mail client that cannot start
+ * is worth nothing. `handle()` in the worker uses no chrome.* APIs at all --
+ * it is pure dispatch over gmail.js and auth.js -- and this page runs on the
+ * extension origin whose CSP already allows the Gmail API. So almost
+ * everything the worker does, the page can do.
+ *
+ * The switch is one-way and sticky: once the worker has failed to answer we
+ * stop paying the round-trip cost of asking it again on every verb.
+ */
+let workerDown = false;
+
 function send(type, extra = {}) {
+  if (workerDown) return runInPage(type, extra);
+
   return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage({ type, ...extra }, (res) => {
-      const lastErr = chrome.runtime.lastError;
-      if (lastErr) return reject(new Error(lastErr.message));
-      if (!res) return reject(new Error('No response from background worker'));
-      res.ok ? resolve(res.data) : reject(new Error(res.error));
-    });
+    let settled = false;
+    /*
+     * A worker that never replies is indistinguishable from one that is not
+     * there, and `sendMessage` has no timeout of its own. Without this a dead
+     * worker leaves every action hanging forever with no error.
+     */
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      degradeToFallback('the background worker stopped responding');
+      runInPage(type, extra).then(resolve, reject);
+    }, 4000);
+
+    try {
+      chrome.runtime.sendMessage({ type, ...extra }, (res) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        // Reading lastError is what suppresses Chrome's unchecked-error noise.
+        const lastErr = chrome.runtime.lastError;
+        if (lastErr || !res) {
+          degradeToFallback(lastErr?.message || 'the background worker did not start');
+          runInPage(type, extra).then(resolve, reject);
+          return;
+        }
+        res.ok ? resolve(res.data) : reject(new Error(res.error));
+      });
+    } catch (err) {
+      settled = true;
+      clearTimeout(timer);
+      degradeToFallback(err.message);
+      runInPage(type, extra).then(resolve, reject);
+    }
   });
+}
+
+/**
+ * Switch to in-page mode and tell the user once.
+ *
+ * ONCE is the point. Every verb would otherwise raise its own banner, and a
+ * degraded mode that shouts on every keystroke is worse than the degradation.
+ */
+function degradeToFallback(why) {
+  if (workerDown) return;
+  workerDown = true;
+  console.warn('[BMM] background worker unavailable —', why, '— running in-page.');
+  try {
+    showWorkerWarning(why);
+  } catch {
+    // The banner is a courtesy; never let it break the fallback itself.
+  }
 }
 
 let toastTimer = 0;
@@ -2550,6 +2613,49 @@ function reportError(err) {
 }
 
 // -------------------------------------------------------------------- gate --
+
+/**
+ * The degraded-mode banner.
+ *
+ * A persistent strip rather than a toast: a toast is for something that just
+ * happened and then stops mattering, and this condition lasts for the whole
+ * session. It must also survive the user not being at the screen when the
+ * first failure occurred.
+ *
+ * Deliberately not a modal. The app WORKS in this mode -- reading, searching,
+ * archiving, sending all function -- so blocking the UI to announce partial
+ * degradation would be a worse outcome than the degradation.
+ */
+function showWorkerWarning(why) {
+  if (document.getElementById('sw-warn')) return;
+
+  const bar = document.createElement('div');
+  bar.id = 'sw-warn';
+  bar.setAttribute('role', 'status');
+
+  const text = document.createElement('span');
+  text.className = 'sw-warn-text';
+  text.textContent =
+    'Background service unavailable — running in this tab. '
+    + 'Mail works; snooze will not wake on a timer and the toolbar shortcut is off.';
+
+  const detail = document.createElement('span');
+  detail.className = 'sw-warn-why';
+  detail.textContent = why ? `(${why})` : '';
+
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.className = 'ghost small';
+  close.textContent = 'Dismiss';
+  close.addEventListener('click', () => bar.remove());
+
+  bar.append(text, detail, close);
+  // Above the panes, below the topbar: it describes the whole app, not one pane.
+  const main = document.getElementById('main');
+  const panes = document.getElementById('panes');
+  if (main && panes) main.insertBefore(bar, panes);
+  else document.body.prepend(bar);
+}
 
 function showGate(message) {
   el.gate.hidden = false;

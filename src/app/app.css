@@ -2376,6 +2376,46 @@ html[data-scheme='dark'] .snooze-menu {
     var(--shadow-lg);
 }
 
+/* ------------------------------------------------ degraded-mode banner -- */
+
+/*
+ * Shown when the service worker will not start and the app has fallen back to
+ * running the Gmail layer in this page.
+ *
+ * Warning tone, not danger: nothing has broken and nothing is lost. Some
+ * background capability is missing and the user should know why snooze is not
+ * firing. Danger red here would misreport a working app as a failed one.
+ */
+#sw-warn {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-4);
+  border-bottom: 1px solid var(--line);
+  border-left: 3px solid var(--warning);
+  background: var(--bg-sunken);
+  color: var(--fg-dim);
+  font-size: var(--t-sm);
+  line-height: var(--lh-snug);
+  animation: note-in var(--dur-base) var(--ease-out) both;
+}
+.sw-warn-text {
+  color: var(--fg);
+  font-weight: var(--w-medium);
+}
+.sw-warn-why {
+  color: var(--fg-faint);
+  font-size: var(--t-xs);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#sw-warn .ghost {
+  margin-left: auto;
+  flex: none;
+}
+
 /* ------------------------------------------------- contextual toolbar -- */
 
 #ctx-actions {
