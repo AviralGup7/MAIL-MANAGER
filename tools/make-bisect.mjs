@@ -124,6 +124,23 @@ const cases = [];
     'LOADS while the real one fails -> the timetable payload is the cause.']);
 }
 
+/* 5 ──────────────────────────────── the whole extension, worker deleted */
+{
+  const dir = join(OUT, '5-no-worker');
+  mkdirSync(dir, { recursive: true });
+  const m = { ...manifest, name: 'BMM bisect 5 — no service worker' };
+  delete m.background;
+  writeFileSync(join(dir, 'manifest.json'), JSON.stringify(m, null, 2) + '\n');
+  copyPayload(dir);
+  cases.push(['5-no-worker',
+    'Everything, with the "background" key deleted outright. The content '
+    + 'script still injects and app.html still renders; nothing answers the '
+    + '27 verbs, so sign-in and sync will fail.',
+    'LOADS -> the worker really was blocking the load. STILL FAILS -> the '
+    + 'worker was never the cause and the fault is the manifest, profile or '
+    + 'browser.']);
+}
+
 console.log('\nBisect folders written to tools/bisect/\n');
 console.log('Load each with "Load unpacked", in order, and note which is the');
 console.log('FIRST to fail. Remove the previous one before loading the next.\n');
