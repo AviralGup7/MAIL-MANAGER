@@ -122,6 +122,13 @@ function mount({ reducedMotion = false, url = 'https://mail.google.com/mail/u/0/
 
 const host = (doc) => doc.getElementById('bmm-takeover-host');
 
+/** Press Alt+Shift+M in the page, the way a user does with no worker alive. */
+function pressToggle(h) {
+  h.win.dispatchEvent(new h.win.KeyboardEvent('keydown', {
+    key: 'm', altKey: true, shiftKey: true, bubbles: true, cancelable: true,
+  }));
+}
+
 /** Drive a full enter, the way the worker + app do. */
 async function enter(h) {
   h.send({ type: 'BMM_TOGGLE' });
@@ -513,4 +520,64 @@ test('LONG SESSION: the late-node observer is not duplicated across cycles', asy
   assert.equal(marks, 1, `the node was processed ${marks} times — duplicate observers`);
   h.send({ type: 'BMM_TOGGLE' });
   await h.tick(400);
+});
+
+
+/* ========================================================================== *
+ * THE WORKER-FREE ENTRY POINT
+ * ========================================================================== */
+
+test('TAKEOVER: Alt+Shift+M opens the takeover without any worker message', async () => {
+  /*
+   * THE SECOND HALF OF THE REGISTRATION BUG.
+   *
+   * When the service worker would not register, removing it from the manifest
+   * made the error disappear and left an extension where, in the user's
+   * words, "nothing happens on clicking it".
+   *
+   * That was not a separate defect. The ONLY route into the takeover was a
+   * BMM_TOGGLE message, and only the worker sends one -- from the toolbar
+   * click and from chrome.commands. Both are worker-side events. The content
+   * script was already injected and already able to do the entire job; it
+   * simply had no way to be asked.
+   *
+   * This proves the page can now open it alone.
+   */
+  const h = mount();
+  assert.equal(host(h.doc), null, 'precondition: no takeover yet');
+
+  pressToggle(h);
+  await h.tick();
+  h.appReady();
+  await h.tick();
+  await h.tick(400);
+
+  assert.ok(host(h.doc), 'Alt+Shift+M must open the takeover with no worker involved');
+});
+
+test('TAKEOVER: the key fallback does not double-toggle alongside the worker', async () => {
+  /*
+   * The risk of adding a second entry point is that both fire and the
+   * takeover opens then immediately closes.
+   *
+   * In a real browser chrome.commands consumes the chord before the page sees
+   * a keydown, so the two can never both run. That cannot be reproduced in
+   * jsdom, so this asserts the property that actually protects us: toggle()
+   * is idempotent while a transition is in flight. Whichever path arrives
+   * second is ignored, exactly as two rapid BMM_TOGGLEs already are.
+   */
+  const h = mount();
+
+  h.send({ type: 'BMM_TOGGLE' });   // the worker's route
+  pressToggle(h);                   // and the page's, in the same turn
+  await h.tick();
+  h.appReady();
+  await h.tick();
+  await h.tick(400);
+
+  assert.ok(host(h.doc), 'the takeover must be open, not opened-then-closed');
+  assert.equal(
+    h.doc.querySelectorAll('#bmm-takeover-host').length, 1,
+    'and mounted exactly once'
+  );
 });

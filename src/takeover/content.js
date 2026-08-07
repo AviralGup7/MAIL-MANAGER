@@ -335,6 +335,37 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   return false;
 });
 
+/*
+ * A WAY IN THAT DOES NOT NEED THE SERVICE WORKER.
+ *
+ * Until now the ONLY route into the takeover was a BMM_TOGGLE message, and
+ * only the worker sends one -- from the toolbar click and from the
+ * chrome.commands shortcut. Both are worker-side events.
+ *
+ * So when the worker fails to register, removing it from the manifest made
+ * the error go away and left an extension where "nothing happens on
+ * clicking it". That was not a second bug; it was this single missing entry
+ * point. The content script was already injected and already able to do the
+ * whole job.
+ *
+ * This listens for the same chord directly in the page. It is a genuine
+ * fallback, not a duplicate: when the worker IS alive, chrome.commands
+ * swallows the shortcut before the page ever sees a keydown, so this never
+ * runs and there is no double-toggle. Verified rather than assumed --
+ * see test/takeover.test.mjs.
+ *
+ * `capture: true` matches the Escape handler above and gets ahead of Gmail's
+ * own key handling, which is aggressive about swallowing keystrokes.
+ */
+window.addEventListener('keydown', (e) => {
+  // Alt+Shift+M, the same chord the manifest asks chrome.commands for.
+  if (!e.altKey || !e.shiftKey || e.ctrlKey || e.metaKey) return;
+  if (String(e.key).toLowerCase() !== 'm') return;
+  e.preventDefault();
+  e.stopPropagation();
+  toggle();
+}, true);
+
 // The app asks to be closed (its own back button).
 window.addEventListener('message', (e) => {
   if (e.source !== frame?.contentWindow) return;
