@@ -1851,6 +1851,83 @@ function closeReader() {
  * Every action is optimistic: mutate the store now, tell Gmail after, roll
  * back on failure. A click must never wait on a 300ms network round trip.
  */
+/**
+ * Apply a removal action optimistically, with rollback and undo.
+ *
+ * SIX NEAR-IDENTICAL COPIES OF THIS LIVED IN `act()`. Archive, trash, spam,
+ * restore, unsnooze and snooze each wrote the same five steps — snapshot,
+ * move the selection, remove locally, fire the verb with a rollback, record
+ * the undo — varying only in the verb, its inverse and the wording. That is
+ * why `act()` was 164 lines, and it meant a fix to the rollback discipline had
+ * six places to miss.
+ *
+ * The order matters and is the reason this is one function rather than a
+ * convention:
+ *
+ *   1. Snapshot BEFORE mutating, or the rollback restores the post-change
+ *      value and silently does nothing.
+ *   2. Move the selection BEFORE removing, so the reader lands on a neighbour
+ *      instead of emptying.
+ *   3. Remove locally BEFORE the network call. Waiting for a 200–600ms round
+ *      trip is what made v1 feel slow; the rollback is what makes it safe.
+ *   4. `before` runs between the local removal and the request — snooze and
+ *      unsnooze need to touch the local schedule at exactly that point, so a
+ *      failed request cannot leave a message scheduled locally and not
+ *      remotely.
+ *
+ * @param {Object}   o
+ * @param {string}   o.id
+ * @param {string}   o.verb      background verb to apply
+ * @param {string}  [o.undoVerb] its inverse; omit for actions that cannot be undone
+ * @param {string}   o.past      undo label, e.g. "Archived"
+ * @param {string}   o.failed    error toast, e.g. "Could not archive"
+ * @param {string}  [o.done]     success toast, when the action needs one
+ * @param {(id:string)=>Promise<void>} [o.before] local work before the request
+ * @param {(id:string)=>Promise<void>} [o.rollback] undo `before` when the request fails
+ * @param {(id:string)=>Promise<void>} [o.undoBefore] undo `before` on user undo
+ */
+function optimistic({
+  id, verb, undoVerb, past, failed, done, before, rollback: undoLocal, undoBefore,
+}) {
+  const m = store.get(id);
+  if (!m) return Promise.resolve();
+  const snapshot = { ...m };
+
+  selectNeighbourThen(id);
+  store.remove(id);
+
+  const rollback = async () => {
+    /*
+     * Undo the LOCAL write first, then restore the message. An action that
+     * wrote local state before the request (snooze writes the schedule) would
+     * otherwise leave that write behind after a failure -- the message is back
+     * in the list but still scheduled to disappear.
+     */
+    if (undoLocal) await undoLocal(id);
+    store.upsert(snapshot);
+    renderList();
+    toast(failed, { kind: 'error' });
+  };
+
+  const run = async () => {
+    if (before) await before(id);
+    return send(verb, { id });
+  };
+
+  const sent = run().catch(rollback);
+
+  if (undoVerb) {
+    recordUndo(ctx, past, async () => {
+      if (undoBefore) await undoBefore(id);
+      store.upsert(snapshot);
+      await send(undoVerb, { id });
+      renderList();
+    });
+  }
+  if (done) toast(done);
+  return sent;
+}
+
 async function act(action, id) {
   const m = store.get(id);
   if (!m) return;
@@ -1900,36 +1977,20 @@ async function act(action, id) {
       });
       break;
     }
-    case 'archive': {
-      const snapshot = { ...m };
-      selectNeighbourThen(id);
-      store.remove(id);
-      send('ARCHIVE', { id }).catch(() => {
-        store.upsert(snapshot);
-        toast('Could not archive', { kind: 'error' });
-      });
-      // Gmail cannot undo an archive. We can, because the message is still in
-      // memory and re-applying INBOX is one call.
-      recordUndo(ctx, 'Archived', async () => {
-        store.upsert(snapshot);
-        await send('UNARCHIVE', { id });
+    // Gmail cannot undo an archive. We can, because the message is still in
+    // memory and re-applying INBOX is one call.
+    case 'archive':
+      optimistic({
+        id, verb: 'ARCHIVE', undoVerb: 'UNARCHIVE',
+        past: 'Archived', failed: 'Could not archive',
       });
       break;
-    }
-    case 'trash': {
-      const snapshot = { ...m };
-      selectNeighbourThen(id);
-      store.remove(id);
-      send('TRASH', { id }).catch(() => {
-        store.upsert(snapshot);
-        toast('Could not delete', { kind: 'error' });
-      });
-      recordUndo(ctx, 'Deleted', async () => {
-        store.upsert(snapshot);
-        await send('UNTRASH', { id });
+    case 'trash':
+      optimistic({
+        id, verb: 'TRASH', undoVerb: 'UNTRASH',
+        past: 'Deleted', failed: 'Could not delete',
       });
       break;
-    }
     /*
      * SPAM, both directions, decided by WHERE YOU ARE.
      *
@@ -1954,21 +2015,13 @@ async function act(action, id) {
     case 'edit':
       await editDraft(ctx, id);
       break;
-    case 'restore': {
-      const snapshot = { ...m };
-      selectNeighbourThen(id);
-      store.remove(id);
-      send('UNTRASH', { id }).catch(() => {
-        store.upsert(snapshot);
-        toast('Could not restore', { kind: 'error' });
+    case 'restore':
+      optimistic({
+        id, verb: 'UNTRASH', undoVerb: 'TRASH',
+        past: 'Restored', failed: 'Could not restore',
+        done: 'Moved back to the inbox',
       });
-      recordUndo(ctx, 'Restored', async () => {
-        store.upsert(snapshot);
-        await send('TRASH', { id });
-      });
-      toast('Moved back to the inbox');
       break;
-    }
     /*
      * WAKE A SNOOZED MESSAGE NOW. Snooze is a promise about the future, and a
      * promise you cannot change your mind about is worse than none. The local
@@ -1976,32 +2029,25 @@ async function act(action, id) {
      * failed network call cannot leave a message snoozed locally but not
      * remotely.
      */
-    case 'unsnooze': {
-      const snapshot = { ...m };
-      selectNeighbourThen(id);
-      store.remove(id);
-      await removeSnooze(id, chrome.storage.local);
-      send('UNSNOOZE', { id }).catch(() => {
-        store.upsert(snapshot);
-        toast('Could not wake this message', { kind: 'error' });
+    case 'unsnooze':
+      await optimistic({
+        id, verb: 'UNSNOOZE',
+        // No undo: re-snoozing needs a wake time the user never chose here.
+        past: 'Woken', failed: 'Could not wake this message',
+        done: 'Back in your inbox',
+        // Clear the local schedule before the request, so a failure cannot
+        // leave a message scheduled locally but not remotely.
+        before: (mid) => removeSnooze(mid, chrome.storage.local),
       });
-      toast('Back in your inbox');
       break;
-    }
     case 'spam': {
       const rescuing = state.mailbox === 'spam';
-      const snapshot = { ...m };
-      selectNeighbourThen(id);
-      store.remove(id);
-      const verb = rescuing ? 'NOT_SPAM' : 'SPAM';
-      const undoVerb = rescuing ? 'SPAM' : 'NOT_SPAM';
-      send(verb, { id }).catch(() => {
-        store.upsert(snapshot);
-        toast(rescuing ? 'Could not rescue' : 'Could not report spam', { kind: 'error' });
-      });
-      recordUndo(ctx, rescuing ? 'Moved out of spam' : 'Reported spam', async () => {
-        store.upsert(snapshot);
-        await send(undoVerb, { id });
+      optimistic({
+        id,
+        verb: rescuing ? 'NOT_SPAM' : 'SPAM',
+        undoVerb: rescuing ? 'SPAM' : 'NOT_SPAM',
+        past: rescuing ? 'Moved out of spam' : 'Reported spam',
+        failed: rescuing ? 'Could not rescue' : 'Could not report spam',
       });
       break;
     }
@@ -2016,28 +2062,16 @@ async function act(action, id) {
  * of a round trip after the user has already moved on.
  */
 async function snoozeMessage(id, wakeAt, label) {
-  const m = store.get(id);
-  if (!m) return;
-  const snapshot = { ...m };
-
-  selectNeighbourThen(id);
-  store.remove(id);
-  await addSnooze(id, wakeAt, chrome.storage.local);
-  renderList();
-
-  send('SNOOZE', { id }).catch(async () => {
-    await removeSnooze(id, chrome.storage.local);
-    store.upsert(snapshot);
-    renderList();
-    toast('Could not snooze', { kind: 'error' });
-  });
-
-  toast(`Snoozed ${label ? label.toLowerCase() : ''}`.trim());
-  recordUndo(ctx, 'Snoozed', async () => {
-    await removeSnooze(id, chrome.storage.local);
-    store.upsert(snapshot);
-    await send('UNSNOOZE', { id });
-    renderList();
+  await optimistic({
+    id, verb: 'SNOOZE', undoVerb: 'UNSNOOZE',
+    past: 'Snoozed', failed: 'Could not snooze',
+    done: `Snoozed ${label ? label.toLowerCase() : ''}`.trim(),
+    // The local schedule is written before the request and unwound on either
+    // failure or undo -- a message must never be scheduled locally without
+    // Gmail agreeing, nor left scheduled after the user takes it back.
+    before: () => addSnooze(id, wakeAt, chrome.storage.local),
+    rollback: () => removeSnooze(id, chrome.storage.local),
+    undoBefore: () => removeSnooze(id, chrome.storage.local),
   });
 }
 

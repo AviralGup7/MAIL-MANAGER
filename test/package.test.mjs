@@ -1605,3 +1605,34 @@ test('the collapsed rail hides everything that needs width', () => {
     );
   }
 });
+
+test('COMPLEXITY: removal actions share one optimistic helper', () => {
+  /*
+   * F-4 from the complexity audit. `act()` held SIX near-identical blocks --
+   * archive, trash, spam, restore, unsnooze, snooze -- each writing:
+   *
+   *   const snapshot = {...m}; selectNeighbourThen(id); store.remove(id);
+   *   send(VERB).catch(rollback); recordUndo(...)
+   *
+   * The variation was only the verb, its inverse and the toast. That is why
+   * `act()` was 164 lines and touched five concerns, and it meant a fix to the
+   * rollback discipline had six places to miss.
+   *
+   * This pins the merge. `const snapshot = { ...m }` is the fingerprint of the
+   * hand-written form; one copy may remain (inside the helper itself) and no
+   * more. Counting the fingerprint rather than reading the code means the test
+   * fails if someone adds a seventh action by copying the sixth.
+   */
+  const src = read('src/app/app.js').replace(/\/\*[\s\S]*?\*\//g, '');
+  const copies = (src.match(/const snapshot = \{ \.\.\.m \}/g) || []).length;
+  assert.ok(
+    copies <= 1,
+    `expected the optimistic block to exist once, found ${copies} copies`
+  );
+
+  // And the helper must actually be there, not merely the copies deleted.
+  assert.match(
+    src, /function optimistic\(/,
+    'the shared optimistic-mutation helper must exist'
+  );
+});

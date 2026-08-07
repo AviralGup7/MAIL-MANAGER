@@ -5308,3 +5308,47 @@ test('DRAFTS: the edit control is offered only in Drafts', async (t) => {
     restore();
   }
 });
+
+test('UNDO: a rolled-back action restores the message as it was', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * SABOTAGE EXPOSED THIS TEST AS MISSING.
+   *
+   * The optimistic helper snapshots BEFORE mutating. Taking the snapshot after
+   * `store.remove(id)` instead changed no existing test -- undo still put a
+   * row back, because the row came from the surviving reference. What broke
+   * silently was the CONTENT: the restored message carried post-change field
+   * values, so an undone star or an undone read-state came back wrong.
+   *
+   * This asserts the restored message equals the original field for field,
+   * which is the only way the ordering is visible from outside.
+   */
+  const { doc, win, settle, restore } = await boot();
+  try {
+    await settle(8);
+    const before = win.__bmmStore.get(MESSAGES[0].id);
+    assert.ok(before, 'precondition: the message is in the store');
+    const original = { ...before };
+
+    rows(doc)[0].click();
+    await settle(6);
+    press(doc, win, 'e');            // archive
+    await settled(doc, settle);
+    assert.equal(win.__bmmStore.get(original.id), undefined, 'it left the store');
+
+    press(doc, win, 'z', { ctrlKey: true });
+    await settled(doc, settle);
+
+    const after = win.__bmmStore.get(original.id);
+    assert.ok(after, 'undo must put the message back');
+    for (const field of ['id', 'threadId', 'from', 'subject', 'snippet', 'date',
+      'unread', 'starred', 'category']) {
+      assert.deepEqual(
+        after[field], original[field],
+        `undo restored a different ${field}: the snapshot was taken too late`
+      );
+    }
+  } finally {
+    restore();
+  }
+});
