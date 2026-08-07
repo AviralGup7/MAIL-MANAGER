@@ -904,7 +904,13 @@ a.ghost {
   place-items: center;
   width: 28px;
   height: 28px;
-  margin: -6px;
+  /*
+   * NEGATIVE, so the enlarged target does not push the row's other content
+   * around. This pulls the 28px box back to the ~16px the icon occupies. It
+   * is a hit-area correction, not layout rhythm, which is why it is expressed
+   * against the grid rather than as a round number pulled from nowhere.
+   */
+  margin: calc(var(--s-2) * -0.75);
   padding: 0;
   border-radius: var(--r-full);
   color: var(--fg-faint);
@@ -1410,7 +1416,7 @@ a.ghost {
   text-align: center;
 }
 #gate-card h2 {
-  margin: 0 0 var(--s-3);
+  margin: 0 0 var(--s-2);
   font-size: var(--t-2xl);
   font-weight: var(--w-semi);
   letter-spacing: var(--track-tight);
@@ -1419,7 +1425,10 @@ a.ghost {
 #gate-card p {
   color: var(--fg-dim);
   font-size: var(--t-md);
-  margin: 0 0 12px;
+  line-height: var(--lh-body);
+  /* Was a raw 12px. The gate is the first screen a new user sees and it was
+     the one place still spacing itself off the grid. */
+  margin: 0 0 var(--s-3);
 }
 #gate-card .fine {
   font-size: var(--t-sm);
@@ -1432,7 +1441,11 @@ a.ghost {
   border-radius: var(--r-sm);
 }
 #gate-card .primary {
-  margin: 6px 0 10px;
+  /* Was `6px 0 10px` -- two more off-grid values, and asymmetric for no
+     stated reason. The button is the one thing on this card the user must
+     find, so it gets real breathing room above and below. */
+  margin: var(--s-5) 0 var(--s-3);
+  width: 100%;
 }
 .err {
   color: var(--danger) !important;
@@ -1755,11 +1768,19 @@ a.ghost {
   box-shadow: var(--shadow-lg);
 }
 #gate-card::before {
-  /* A thin accent edge along the top of the card. */
+  /*
+   * A thin accent edge along the top of the card.
+   *
+   * The bleed must equal the card's own padding exactly, or the strip
+   * overhangs the rounded corners. It was hardcoded at -26px while the
+   * padding is --s-6 (24px) -- a 2px overhang on both sides, sitting outside
+   * the card's radius on the first screen a new user sees. Deriving it from
+   * the same token means the two cannot drift apart again.
+   */
   content: '';
   display: block;
   height: 3px;
-  margin: -26px -26px 20px;
+  margin: calc(var(--s-6) * -1) calc(var(--s-6) * -1) var(--s-5);
   border-radius: var(--r-xl) var(--r-xl) 0 0;
   background: linear-gradient(90deg, var(--accent), var(--warning));
 }

@@ -513,6 +513,43 @@ test('every theme token used in CSS has a :root fallback', () => {
   );
 });
 
+test('spacing comes from the 4px grid, not from arbitrary pixels', () => {
+  /*
+   * The file header promises "a 4px grid. Every margin, padding and gap in the
+   * file resolves to one of these", and nothing enforced it. The gate card --
+   * the FIRST screen a new user sees -- was spacing itself with `12px`,
+   * `6px 0 10px` and a bare `20px`, none of which land on the grid.
+   *
+   * That is exactly how rhythm rots: each value is individually defensible and
+   * collectively nothing lines up, which is what makes an interface read as
+   * assembled rather than designed.
+   *
+   * SMALL VALUES ARE ALLOWED, and deliberately so. 1-3px are hairlines,
+   * optical nudges and negative offsets that pull a control's hit area
+   * outward -- they are not rhythm, they are craft, and forcing them onto the
+   * grid would round a 1px border up to 4. The threshold is >= 4px, where a
+   * value starts participating in layout rhythm.
+   */
+  const css = read('src/app/app.css');
+  const offenders = [];
+
+  css.split('\n').forEach((line, i) => {
+    const m = /^\s*(gap|margin|padding)(-top|-bottom|-left|-right)?\s*:\s*([^;]+);/.exec(line);
+    if (!m) return;
+    for (const tok of m[3].split(/\s+/)) {
+      const px = /^-?(\d+)px$/.exec(tok);
+      if (px && Number(px[1]) >= 4) {
+        offenders.push(`line ${i + 1}: ${m[1]}${m[2] || ''} uses ${tok}`);
+      }
+    }
+  });
+
+  assert.deepEqual(
+    offenders, [],
+    'these should use a --s-* token so the 4px rhythm actually holds'
+  );
+});
+
 test('no hardcoded colour bypasses the theme tokens', () => {
   const css = read('src/app/app.css');
   const body = css.slice(css.indexOf('/*\n * THEME VALUES LIVE IN'));
