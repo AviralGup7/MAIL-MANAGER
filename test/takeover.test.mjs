@@ -527,7 +527,7 @@ test('LONG SESSION: the late-node observer is not duplicated across cycles', asy
  * THE WORKER-FREE ENTRY POINT
  * ========================================================================== */
 
-test('TAKEOVER: Alt+Shift+M opens the takeover without any worker message', async () => {
+test('TAKEOVER: Alt+Shift+M opens the takeover without any worker message', async (t) => {
   /*
    * THE SECOND HALF OF THE REGISTRATION BUG.
    *
@@ -543,6 +543,7 @@ test('TAKEOVER: Alt+Shift+M opens the takeover without any worker message', asyn
    *
    * This proves the page can now open it alone.
    */
+  if (!JSDOM) return t.skip('jsdom not installed');
   const h = mount();
   assert.equal(host(h.doc), null, 'precondition: no takeover yet');
 
@@ -555,7 +556,7 @@ test('TAKEOVER: Alt+Shift+M opens the takeover without any worker message', asyn
   assert.ok(host(h.doc), 'Alt+Shift+M must open the takeover with no worker involved');
 });
 
-test('TAKEOVER: the key fallback does not double-toggle alongside the worker', async () => {
+test('TAKEOVER: the key fallback does not double-toggle alongside the worker', async (t) => {
   /*
    * The risk of adding a second entry point is that both fire and the
    * takeover opens then immediately closes.
@@ -566,6 +567,7 @@ test('TAKEOVER: the key fallback does not double-toggle alongside the worker', a
    * is idempotent while a transition is in flight. Whichever path arrives
    * second is ignored, exactly as two rapid BMM_TOGGLEs already are.
    */
+  if (!JSDOM) return t.skip('jsdom not installed');
   const h = mount();
 
   h.send({ type: 'BMM_TOGGLE' });   // the worker's route

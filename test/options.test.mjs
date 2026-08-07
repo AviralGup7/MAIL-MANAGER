@@ -9,7 +9,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
+import { join, dirname } from 'node:path';
 
 let JSDOM;
 try {
@@ -18,10 +19,29 @@ try {
   test('options (skipped: jsdom not installed)', { skip: true }, () => {});
 }
 
-const ROOT = new URL('..', import.meta.url).pathname;
+/*
+ * WINDOWS. `new URL('..', import.meta.url).pathname` returns
+ * "/C:/Users/asus/Downloads/..." -- a URL path, with a leading slash before
+ * the drive letter. Interpolating that into `${ROOT}/options.html` gave
+ * Windows a path it resolved against the current drive, producing
+ *
+ *   C:\C:\Users\asus\Downloads\MAIL-MANAGER-main\options.html
+ *
+ * and the read failed. On Linux and macOS `.pathname` happens to be a valid
+ * filesystem path, so this file passed here and in CI for months while being
+ * broken for every Windows contributor.
+ *
+ * `fileURLToPath` is the conversion that understands drive letters and
+ * percent-encoding; `join` is what produces a correct separator. The other
+ * four test files already do it this way -- this one was the outlier.
+ *
+ * Reported by a user running the suite on Windows, which is the only place
+ * it could have been found.
+ */
+const ROOT = dirname(fileURLToPath(new URL('.', import.meta.url)));
 
 async function bootOptions(seed = {}, { slowMs = 0 } = {}) {
-  const html = readFileSync(`${ROOT}/options.html`, 'utf8');
+  const html = readFileSync(join(ROOT, 'options.html'), 'utf8');
   const dom = new JSDOM(html, {
     url: 'chrome-extension://test/options.html',
     runScripts: 'outside-only',
@@ -60,7 +80,7 @@ async function bootOptions(seed = {}, { slowMs = 0 } = {}) {
   globalThis.document = win.document;
   globalThis.chrome = win.chrome;
 
-  await import(pathToFileURL(`${ROOT}/src/options/options.js`).href + `?t=${Math.random()}`);
+  await import(pathToFileURL(join(ROOT, 'src/options/options.js')).href + `?t=${Math.random()}`);
   await new Promise((r) => setTimeout(r, 60));
 
   return {
@@ -182,7 +202,7 @@ test('the page no longer claims PKCE', async () => {
   // PKCE was tried and abandoned -- Google demands a client_secret from a Web
   // application client even with a verifier. Docs that describe a flow the
   // code does not use send people to the wrong Google Cloud settings.
-  const html = readFileSync(`${ROOT}/options.html`, 'utf8');
+  const html = readFileSync(join(ROOT, 'options.html'), 'utf8');
   // Strip comments: the source explains WHY PKCE was abandoned, which is
   // worth keeping. What matters is that no user-visible text claims it.
   const visible = html.replace(/<!--[\s\S]*?-->/g, '');
@@ -266,7 +286,7 @@ test('every setting in the schema has a control on this page', async (t) => {
    */
   const { doc, restore } = await bootOptions();
   try {
-    const schema = readFileSync(`${ROOT}/src/app/settings.js`, 'utf8');
+    const schema = readFileSync(join(ROOT, 'src/app/settings.js'), 'utf8');
     const declared = [...schema.matchAll(/^ {2}([a-zA-Z][a-zA-Z0-9]*): \{ type:/gm)]
       .map((m) => m[1]);
 

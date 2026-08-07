@@ -1581,6 +1581,55 @@ test('LOAD: the doctor catches markdown mangling EMBEDDED in a longer string', (
   }
 });
 
+test('PORTABILITY: no test builds a filesystem path from URL.pathname', () => {
+  /*
+   * FOUND BY A USER RUNNING THE SUITE ON WINDOWS, which is the only place it
+   * could have been found.
+   *
+   * test/options.test.mjs had:
+   *
+   *   const ROOT = new URL('..', import.meta.url).pathname;
+   *   readFileSync(`${ROOT}/options.html`)
+   *
+   * On Linux and macOS `.pathname` happens to be a usable filesystem path, so
+   * this passed here and in CI indefinitely. On Windows it returns
+   * "/C:/Users/..." -- a URL path with a leading slash before the drive
+   * letter -- and the interpolation produced
+   *
+   *   C:\C:\Users\asus\Downloads\MAIL-MANAGER-main\options.html
+   *
+   * The suite was broken for every Windows contributor and green for
+   * everyone else, which is the worst shape a portability bug can take: it
+   * cannot be found by the people who could fix it.
+   *
+   * `fileURLToPath` is the conversion that understands drive letters and
+   * percent-encoding. Four of the five test files already used it; this pins
+   * the fifth and any future one.
+   */
+  /*
+   * Comments must be stripped first. Both this test and options.test.mjs
+   * QUOTE the broken pattern while explaining it, and the first version of
+   * this scan flagged its own documentation. Newlines preserved so the
+   * pattern cannot straddle a stripped region.
+   */
+  const decomment = (t) => t
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+    .replace(/\/\/[^\n]*/g, '');
+
+  const offenders = [];
+  for (const f of readdirSync(join(ROOT, 'test'))) {
+    if (!f.endsWith('.mjs')) continue;
+    const src = decomment(read(`test/${f}`));
+    if (/new URL\([^)]*import\.meta\.url[^)]*\)\s*\.pathname/.test(src)) {
+      offenders.push(`test/${f}`);
+    }
+  }
+  assert.deepEqual(
+    offenders, [],
+    'use fileURLToPath(...) — .pathname yields "/C:/..." on Windows and breaks the read'
+  );
+});
+
 test('LOAD: the extension passes the load-time doctor', () => {
   /*
    * THE LAYER 890 TESTS COULD NOT SEE.
