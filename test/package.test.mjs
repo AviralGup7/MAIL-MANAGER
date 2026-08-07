@@ -1630,6 +1630,46 @@ test('PORTABILITY: no test builds a filesystem path from URL.pathname', () => {
   );
 });
 
+test('LOAD: the service worker sits at the extension root', () => {
+  /*
+   * THE ACTUAL CAUSE, finally, from the browser rather than from inference.
+   *
+   * Chrome reported only "Service worker registration failed. Status code: 2"
+   * for many rounds. Calling navigator.serviceWorker.register() by hand in
+   * the extension's own DevTools returned what Chrome was hiding:
+   *
+   *   AbortError: Failed to register a ServiceWorker for scope
+   *   ('chrome-extension://<id>/src/background/') with script
+   *   ('chrome-extension://<id>/src/background/boot.js'):
+   *   Operation has been aborted
+   *
+   * THE SCOPE IS THE TELL. A worker's default scope is its own directory, so
+   * a script under /src/background/ is scoped to /src/background/ and can
+   * only control that subtree. An extension worker has to control the whole
+   * extension origin.
+   *
+   * Chrome normally special-cases the manifest's `service_worker` and mounts
+   * it at "/" wherever the file lives. That exemption is not holding on the
+   * reporter's build. Keeping the entry file at the repository root makes the
+   * default scope "/" and removes the dependency on the exemption.
+   *
+   * The fetch in the same session returned 200 and the exact byte count, so
+   * this was never a missing or corrupted file.
+   */
+  const sw = manifest.background?.service_worker;
+  assert.ok(sw, 'the manifest must declare a service worker');
+  assert.ok(
+    !sw.includes('/'),
+    `the worker is at "${sw}"; a worker in a subdirectory gets that `
+    + 'subdirectory as its scope and Chrome aborts the registration. '
+    + 'Keep the entry file at the extension root.'
+  );
+  assert.ok(
+    existsSync(join(ROOT, sw)),
+    `the manifest points at "${sw}" and there is no such file`
+  );
+});
+
 test('LOAD: the extension passes the load-time doctor', () => {
   /*
    * THE LAYER 890 TESTS COULD NOT SEE.

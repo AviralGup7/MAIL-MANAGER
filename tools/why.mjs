@@ -197,15 +197,34 @@ const snippet = `/*
     return;
   }
 
-  // Then ask the browser to actually start it, and catch the real error.
+  /*
+   * Try the DEFAULT scope first -- the script's own directory. This is the
+   * one that produced
+   *
+   *   AbortError ... for scope ('.../src/background/')
+   *
+   * A worker in a subdirectory is scoped to that subdirectory and cannot
+   * control the extension origin.
+   */
   try {
     const reg = await navigator.serviceWorker.register(url, { type: 'module' });
-    console.log('[why] REGISTERED OK', reg);
-    console.log('[why] so the script is fine; the failure is manifest-level.');
+    console.log('[why] REGISTERED OK at default scope', reg.scope);
   } catch (e) {
-    console.error('[why] REAL REGISTRATION ERROR:');
-    console.error(e && e.name, '-', e && e.message);
-    console.error(e);
+    console.error('[why] default scope FAILED:', e && e.name, '-', e && e.message);
+
+    // Now force the root scope, which is what an extension worker needs.
+    try {
+      const reg2 = await navigator.serviceWorker.register(url, {
+        type: 'module', scope: '/',
+      });
+      console.error('[why] but it REGISTERS AT ROOT SCOPE:', reg2.scope);
+      console.error('[why] => the worker must live at the extension root.');
+      console.error('[why]    That is the bug, and moving the file fixes it.');
+    } catch (e2) {
+      console.error('[why] root scope also failed:', e2 && e2.name, '-', e2 && e2.message);
+      console.error('[why] => not a scope problem. Real error object below.');
+      console.error(e2);
+    }
   }
 })();
 `;
