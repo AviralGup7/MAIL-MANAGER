@@ -4939,6 +4939,24 @@ test('MAIL: auto-refresh stops when the user signs out', async (t) => {
     doc.getElementById('btn-signout').click();
     await settle(12);
 
+    /*
+     * WAIT FOR THE TIMER TO BE GONE, then count -- rather than counting after
+     * a fixed 260ms and hoping the teardown finished first.
+     *
+     * `autoRefreshMs` is 60 here, so the old form raced: under full-suite
+     * load a couple more ticks could land between the click and the count,
+     * and the assertion failed with 19 !== 13. It failed on scheduling, not
+     * on behaviour -- the timer really had been cleared.
+     *
+     * `__bmmAutoRefreshPending()` is the deterministic seam the assertion
+     * below already relies on. Using it here too removes the clock from a
+     * test about whether polling stopped, without weakening what is checked:
+     * the count is still taken AFTER the stop and must not move.
+     */
+    for (let i = 0; i < 40 && win.__bmmAutoRefreshPending(); i++) {
+      await settle(2);
+    }
+
     const atSignout = calls.filter((c) => c.type === 'SYNC_DELTA').length;
     await new Promise((r) => setTimeout(r, 260));
     await settle(6);

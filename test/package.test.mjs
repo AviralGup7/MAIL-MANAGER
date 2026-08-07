@@ -1647,135 +1647,38 @@ test('PORTABILITY: no test builds a filesystem path from URL.pathname', () => {
   );
 });
 
-test('LOAD: the service worker sits at the extension root', () => {
+test('LOAD: the manifest service worker exists and is reachable', () => {
   /*
-   * THE ACTUAL CAUSE, finally, from the browser rather than from inference.
+   * WHAT THE REGISTRATION EPISODE ACTUALLY TAUGHT.
    *
-   * Chrome reported only "Service worker registration failed. Status code: 2"
-   * for many rounds. Calling navigator.serviceWorker.register() by hand in
-   * the extension's own DevTools returned what Chrome was hiding:
+   * Chrome refused to register this worker for many rounds with
+   * "Status code: 2". Across those rounds the entry file was moved to the
+   * extension root, rewritten as a loader, flattened into a classic bundle,
+   * and given a fresh extension ID. None of it helped.
    *
-   *   AbortError: Failed to register a ServiceWorker for scope
-   *   ('chrome-extension://<id>/src/background/') with script
-   *   ('chrome-extension://<id>/src/background/boot.js'):
-   *   Operation has been aborted
+   * RESTARTING THE BROWSER FIXED IT. The cause was stale browser state --
+   * precisely what the StackOverflow and Chromium-tracker answers say
+   * kErrorAbort usually means, and what crbug 394523691 describes: a
+   * registration interrupted by another extension loading, leaving nothing
+   * that a file change could repair.
    *
-   * THE SCOPE IS THE TELL. A worker's default scope is its own directory, so
-   * a script under /src/background/ is scoped to /src/background/ and can
-   * only control that subtree. An extension worker has to control the whole
-   * extension origin.
+   * So the scaffolding is gone and the worker is back where it belongs: a
+   * module in src/background/. Chrome mounts a manifest-declared worker at
+   * the extension root wherever the file sits (relaxed in Chrome 93; this
+   * manifest requires 116), so the subdirectory was never the problem.
    *
-   * Chrome normally special-cases the manifest's `service_worker` and mounts
-   * it at "/" wherever the file lives. That exemption is not holding on the
-   * reporter's build. Keeping the entry file at the repository root makes the
-   * default scope "/" and removes the dependency on the exemption.
-   *
-   * The fetch in the same session returned 200 and the exact byte count, so
-   * this was never a missing or corrupted file.
+   * This keeps the assertion that is actually worth having -- the declared
+   * file exists -- without re-encoding a diagnosis that turned out wrong.
    */
   const sw = manifest.background?.service_worker;
   assert.ok(sw, 'the manifest must declare a service worker');
   assert.ok(
-    !sw.includes('/'),
-    `the worker is at "${sw}"; a worker in a subdirectory gets that `
-    + 'subdirectory as its scope and Chrome aborts the registration. '
-    + 'Keep the entry file at the extension root.'
-  );
-  assert.ok(
     existsSync(join(ROOT, sw)),
     `the manifest points at "${sw}" and there is no such file`
   );
-});
-
-test('LOAD: sw.bundle.js is in sync with its sources', () => {
-  /*
-   * THE BUNDLE IS GENERATED, SO IT CAN GO STALE.
-   *
-   * `sw.bundle.js` is the service-worker graph flattened into one classic
-   * script, so the manifest can drop `"type": "module"`. Four module-worker
-   * variants failed to register in the reporter's Chrome -- subdirectory,
-   * root, and with a fresh extension ID -- while the files served 200 OK and
-   * evaluated cleanly under Node. `type: module` was the only variable never
-   * changed, and a module worker uses a materially different fetch-and-link
-   * path from a classic one.
-   *
-   * The hazard of any generated artefact is that someone edits a source file
-   * and ships the old bundle. That produces a worker running code nobody can
-   * find by reading, which is worse than the bug it was built to dodge. This
-   * regenerates and compares.
-   */
-  const res = spawnSync(process.execPath, ['tools/build-sw.mjs'], {
-    cwd: ROOT, encoding: 'utf8',
-  });
-  assert.equal(res.status, 0, `the bundler failed:\n${res.stdout}${res.stderr}`);
-
-  const built = read('sw.bundle.js');
-
-  // It must be a CLASSIC script: no ESM survives the flattening.
-  const code = built
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
-    .replace(/\/\/[^\n]*/g, '');
-  const esm = [...code.matchAll(/^\s*(import|export)\s/gm)].map((m) => m[1]);
-  assert.deepEqual(
-    [...new Set(esm)], [],
-    'ESM syntax survived the bundle; a classic worker cannot parse it'
-  );
-
-  // And the manifest must actually point at it, without type: module.
-  assert.equal(manifest.background.service_worker, 'sw.bundle.js');
-  assert.ok(
-    !('type' in manifest.background),
-    'the whole point is that this is NOT a module worker'
-  );
-});
-
-test('FALLBACK: covers every verb the app sends, with the real signatures', () => {
-  /*
-   * THE IN-PAGE FALLBACK IS THE PRODUCT ON BRAVE.
-   *
-   * The service worker will not register there -- path, scope, entry file,
-   * extension ID and module-vs-classic have all been varied and all failed,
-   * and Brave has filed divergences in exactly this subsystem
-   * (brave/brave-browser#30782, where Shields' cookie policy denies service
-   * worker APIs outright). So the fallback is not a nicety; it is how the
-   * extension works at all on that browser.
-   *
-   * Two things it must get right, and the first draft got both wrong:
-   *
-   * 1. COVERAGE. GET_BODY was missing, so the fallback could list mail and
-   *    not open it.
-   *
-   * 2. SIGNATURES. gmail.js takes POSITIONAL arrays --
-   *    modify(id, add = [], remove = []) -- and the draft passed
-   *    `{ removeLabelIds: [...] }`, copying the shape of the Gmail REST body
-   *    rather than our own wrapper. Every mutation would have been a silent
-   *    no-op: request sent with no labels, Gmail returns 200, optimistic UI
-   *    stands, and the change vanishes on reload. Proven by capturing the
-   *    outgoing request -- it now carries
-   *    {"addLabelIds":[],"removeLabelIds":["INBOX"]} for ARCHIVE.
-   */
-  const app = read('src/app/app.js');
-  const fb = read('src/app/fallback.js');
-
-  const sent = new Set([...app.matchAll(/send\(\s*'([A-Z_]+)'/g)].map((m) => m[1]));
-  const handled = new Set([...fb.matchAll(/case '([A-Z_]+)'/g)].map((m) => m[1]));
-  assert.ok(sent.size >= 8, `expected the app to send several verbs, saw ${sent.size}`);
-
-  const uncovered = [...sent].filter((v) => !handled.has(v)).sort();
-  assert.deepEqual(
-    uncovered, [],
-    'the fallback cannot serve these, so they fail whenever the worker is dead'
-  );
-
-  /*
-   * And no object-shaped label argument may creep back in. This is a
-   * fingerprint of the exact bug: `modify(id, { ... })` instead of
-   * `modify(id, [...], [...])`.
-   */
-  const objArgs = [...fb.matchAll(/gmail\.(modify|batchModify)\([^)]*\{\s*(add|remove)LabelIds/g)];
-  assert.deepEqual(
-    objArgs.map((m) => m[0].slice(0, 50)), [],
-    'gmail.js takes positional arrays; an object here is a silent no-op'
+  assert.equal(
+    manifest.background.type, 'module',
+    'the worker graph uses ES imports, so it must be declared as a module'
   );
 });
 

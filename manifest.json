@@ -48,11 +48,11 @@
     }
   ],
   "background": {
-    "service_worker": "sw.bundle.js"
+    "service_worker": "src/background/index.js",
+    "type": "module"
   },
   "action": {
-    "default_title": "Take over Gmail (Alt+Shift+M)",
-    "default_popup": "popup.html"
+    "default_title": "Take over Gmail (Alt+Shift+M)"
   },
   "options_ui": {
     "page": "options.html",

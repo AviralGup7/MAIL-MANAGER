@@ -55,150 +55,50 @@ source. So rotating this breaks nothing here — it only closes the old hole.
 
 ---
 
-## 2 · The service worker will not register — the likely cause, at last
+## 2 · The service worker — RESOLVED
 
-### Status code 2 is not a cause
+**Restarting the browser fixed it.**
 
-It is `kErrorAbort`, Chromium's generic "operation aborted". A Google
-engineer on the issue tracker calls it *"a general grab bag of 'something bad
-happened'"*. That is why ten rounds of static analysis found nothing: there
-was nothing in the files to find.
+That is the whole answer, and it matches what the sources said all along.
+`Status code: 2` is `kErrorAbort`, which a Google engineer on the Chromium
+tracker calls *"a general grab bag of 'something bad happened'"*. The
+StackOverflow answer for this exact error recommends a browser or profile
+restart. [crbug 394523691](https://issues.chromium.org/issues/394523691)
+describes the mechanism: a registration interrupted by another extension
+loading, leaving a state no file change can repair.
 
-### What actually fits every observation
+### What that means for the code
 
-From `woxxOm` (75k reputation, the standing authority on chromium-extensions):
+Nothing was ever wrong with it. Across the investigation the worker was moved
+to the extension root, rewritten as a dynamic-import loader, flattened into a
+classic bundle, and given a fresh extension ID. **None of it helped, because
+none of it was the problem.** All of that scaffolding has been removed and the
+worker is back to a module in `src/background/index.js`.
 
-> *"You've unregistered the service worker… reinstall the extension or run
-> `navigator.serviceWorker.register(chrome.runtime.getManifest().background.service_worker, {scope:'/', type: …})`"*
+### If it ever returns
 
-**Once a profile holds an unregistered slot for an extension ID, Chrome does
-not re-create it when the extension reloads.** The extension loads, the card
-shows the error, and the worker never starts.
+In order, cheapest first:
 
-That state is reached by "Clear site data" in the extension's own DevTools, by
-privacy/cleaner tools, and by the interrupted-registration bug
-[crbug 394523691](https://issues.chromium.org/issues/394523691).
+1. **Restart the browser.** This is what worked.
+2. Remove the extension and **Load unpacked** again.
+3. `chrome://serviceworker-internals` → find the extension → **Unregister**,
+   then reload it.
+4. Disable ad blockers and privacy extensions temporarily. Those hold
+   `webRequest`, which is what triggers crbug 394523691.
+5. Check `chrome://version` is **137+**, where that bug is fixed.
 
-Why this fits when nothing else did:
+### And the app keeps working regardless
 
-| Observation | Explained |
+These were built during the investigation and are **deliberately kept**:
+
+| Safety net | What it does |
 |---|---|
-| `sw.js` always fetched **200 OK** | the file was never the problem |
-| Moving it to the root changed nothing | scope was never the problem |
-| Remove + Load unpacked never helped | **`manifest.key` pins the ID, so you get the same poisoned slot every time** |
-| "It worked before the timetable" | a profile event unregistered it; no code change caused this |
-
-That fourth row is the one that matters. Reinstalling *felt* like it should
-work, and it could never have worked.
-
-### The fix — try these in order
-
-**1. Open the toolbar popup.** It now detects a dead worker and **repairs it
-automatically**: it unregisters the stale slot and registers again from the
-manifest. That is the documented recovery, done for you. If the silent
-attempt does not take, a **Repair** button appears.
-
-**2. Load `tools/bisect/6-fresh-id`.** Run `node tools/make-bisect.mjs` first.
-This is the complete extension with the `key` removed, so Chrome mints a
-**new ID and a clean registration slot**.
-
-> **If that one loads and the real one does not, the diagnosis is confirmed** —
-> the profile's slot for `dgeanijfllibcphbblkhacjcbdehihcp` is poisoned, and
-> no change to this repository can fix it.
-
-**3. If 6-fresh-id works, ship without the key.** `tools/manifest-key.txt`
-keeps it, and `docs/EXTENSION-KEY.md` explains the trade (you re-register the
-OAuth redirect URI after reloads).
-
-**4. `chrome://version`** — if below **137**, update. That is where crbug
-394523691 is fixed.
-
-**5. Untick "unregister service worker"** in DevTools → Application → Clear
-storage, if you have ever used it on this extension.
-
-### You are not blocked meanwhile
-
-- **Toolbar button** → the popup, rendered by the browser, needs no worker.
-- **<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd> on Gmail** → the content
-  script handles it directly.
-- **Reading, searching, archiving, sending** → the app falls back to running
-  the Gmail layer in the page, with an amber banner saying so.
+| `src/app/fallback.js` | If the worker does not answer, the app runs the Gmail layer **in the page**. All 11 verbs — read, search, archive, send, drafts. |
+| Amber banner | Says so once, names what is lost, dismissable. |
+| <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd> in the content script | Opens the takeover with no worker involved. |
+| `chrome.action?.` / `chrome.commands?.` | A missing manifest key costs one feature, not the whole worker. |
 
 Only **snooze wake-on-timer** genuinely needs the worker.
-
----
-
-## 2b · Older diagnostic notes
-
-You have hit this twice:
-
-```
-Service worker registration failed. Status code: 2
-```
-
-**That message names no file, no line and no cause.** It is emitted for any
-failure during worker startup, and Chrome deliberately hides the detail on the
-extensions card. Everything below exists to get the real error out of it.
-
-### 2a. Get the actual exception — this is the important step
-
-On `chrome://extensions`, on the BITS Mail Manager card, there is a red
-**`Errors`** button (it only appears when there are errors). Click it.
-
-That panel shows the real thrown exception with a filename and line number.
-One screenshot or paste of it and I can fix the cause in minutes. Without it I
-am guessing, and I have now guessed twice.
-
-If there is no `Errors` button, click **`service worker`** (blue link) and read
-the Console tab that opens.
-
-### 2b. Rule out the browser with a two-file probe
-
-`tools/sw-probe/` is the smallest legal MV3 extension: a manifest and a
-one-line worker. No permissions, no imports, no manifest key, no `chrome.*`
-call. There is nothing in it that *can* fail.
-
-1. `chrome://extensions` → **Load unpacked** → select `tools/sw-probe`
-2. Click its **service worker** link and look for `[PROBE] service worker
-   registered OK`
-
-| Result | What it means |
-|---|---|
-| Probe registers | Chrome is fine. The fault is specific to the main extension, and 2a will name it. |
-| Probe **also** fails | The fault is in the browser or profile, not in any file I can change. See 2c. |
-
-### 2c. If even the probe fails
-
-Then no MV3 extension can start on that profile, and the cause is environmental:
-
-- **Enterprise policy.** Check `chrome://policy` for `ExtensionInstallBlocklist`
-  or `ExtensionSettings`. Managed machines commonly block unpacked extensions.
-- **A different Chrome profile**, or a fresh one, or Chrome Canary.
-- **Chrome version.** The manifest asks for 116+. Check `chrome://version`.
-- **The extensions directory is unwritable** — common if Chrome was installed
-  by a package manager under a different user, or is running from a read-only
-  mount or a WSL/network path.
-
-### 2d. Reload properly, not with the refresh arrow
-
-The circular refresh icon can keep a stale worker registration alive. Use
-**Remove**, then **Load unpacked** again. Also confirm you are selecting the
-repository ROOT — the folder containing `manifest.json` — and not a parent or
-a subfolder.
-
-### 2e. Confirm your files match mine
-
-The manifest you pasted had every URL rewritten as
-`[https://mail.google.com/*](https://mail.google.com/*)`, which is markdown
-link syntax inside JSON. That is still *valid JSON*, so it parses, and Chrome
-then rejects the match patterns. If your working copy really looks like that,
-that alone is the bug:
-
-```bash
-git status          # should be clean
-git pull
-npm run doctor      # one second; fails loudly if the manifest is mangled
-```
 
 ---
 
