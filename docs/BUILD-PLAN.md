@@ -14,7 +14,7 @@ observed to fail. This project has found 15+ worthless tests that way.
 
 | # | Feature | Module | State |
 |---|---|---|---|
-| 29 | Sender-aware snippet | `src/app/snippet.js` | ✅ built + tested |
+| 29 | Sender-aware snippet | `src/app/snippet.js` + wired into `fillRow` | ✅ built + tested |
 | 32 | Only-addressed-to-me | `src/app/direct.js` | ✅ built + tested |
 | 48 | Negation and OR | `src/app/query.js` | ✅ built + tested |
 | 31 | Triage lanes | `src/app/lanes.js` | ✅ built + tested |
@@ -32,9 +32,9 @@ observed to fail. This project has found 15+ worthless tests that way.
 | 73 | Rule engine | `src/app/rule-engine.js` | ✅ built + tested |
 | 74 | Rule dry-run + log | `src/app/rule-engine.js` | ✅ built + tested |
 | 36 | Bulk by rule | `src/app/rule-engine.js` (`idsMatching`) | ✅ logic built |
-| 39 | Keyboard cursor | `app.js` | ⬜ wiring |
-| 40 | Action-and-advance | `app.js` | ⬜ wiring |
-| 28 | Density | `app.css` + settings | ⬜ wiring |
+| 39 | Keyboard cursor | `app.js` | ✅ **already existed** — audit was wrong |
+| 40 | Action-and-advance | `app.js` | ✅ **already existed** — `selectNeighbourThen` |
+| 28 | Density | `app.css` + `options.html` | ✅ built + tested |
 | 76 | Context menu | `menu.js` | ⬜ wiring |
 | 77 | Context-aware palette | `palette.js` | ⬜ wiring |
 | 1 | Label write | `label-picker.js` | ⬜ needs verb wiring |
@@ -56,3 +56,35 @@ Logic first, wiring second. Every module above is reachable from a test without
 booting jsdom, which is the only way 900+ tests stay fast. The wiring rows are
 the ones that touch `app.js`, and they are deliberately last so that a mistake
 there cannot invalidate the logic underneath it.
+
+
+## Correction to audit 17
+
+Two features on the Keep list **already existed** and were found during wiring:
+
+- **#39 keyboard cursor** — `j`/`k` are bound, `move()` handles the cursor and
+  `scrollIntoView`, and there is a test named *"j/k move the selection and
+  Escape closes the reader"*.
+- **#40 action-and-advance** — `selectNeighbourThen()` already opens the next
+  message after archive/trash/spam, with a test asserting the reader shows the
+  neighbour rather than going blank.
+
+Both were listed as missing in the elimination pass. That was a reading error
+on my part: I inferred the gap from the *absence of a feature name* rather than
+checking the behaviour. Recorded rather than quietly dropped, per the project's
+rule about disproved suspicions.
+
+What was genuinely missing near them was **#29** — the row printed
+`m.snippet` raw, so every institutional row read "Dear Students, Greetings
+from AUGSD".
+
+## The memory ceiling
+
+`npm test` used `--max-old-space-size=3072` on a machine with **1984 MB** of
+RAM. That was always over-committed; adding the 191st jsdom document finally
+reached the ceiling and the OS OOM-killer sent SIGKILL — reported as a test
+failure with no assertion attached, which is exactly the symptom the project
+notes already describe.
+
+Lowered to **1400 MB**, which fits in real memory. The suite went from
+240s (thrashing) to 153s.

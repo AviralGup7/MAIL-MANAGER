@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Takes over Gmail with a faster, BITS-aware mail client",
   "scripts": {
-    "test": "node --max-old-space-size=3072 --test test/",
+    "test": "node --max-old-space-size=1400 --test test/",
     "test:unit": "node --test test/classify.test.mjs test/store.test.mjs test/gmail.test.mjs test/sync.test.mjs test/package.test.mjs",
     "bench": "node test/bench.mjs",
     "preview": "node tools/make-preview.mjs",
@@ -17,7 +17,8 @@
     "timetable": "node tools/parse-timetable.mjs",
     "doctor": "node tools/doctor.mjs",
     "verify": "node tools/verify-here.mjs",
-    "why": "node tools/why.mjs"
+    "why": "node tools/why.mjs",
+    "operators": "node tools/check-operators.mjs"
   },
   "devDependencies": {
     "jsdom": "^24.0.0"

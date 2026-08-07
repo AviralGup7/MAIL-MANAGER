@@ -40,7 +40,9 @@ export const SCHEMA = {
    * WHAT IS *NOT* HERE, AND WHY
    *
    * `density`, `undoSendSeconds` and `autoSyncMinutes` were declared here
-   * before anything read them. A schema entry is a PROMISE: `undoSendSeconds:
+   * before anything read them. `density` has since been IMPLEMENTED and is
+   * back below; the other two are still absent and still specified rather than
+   * stubbed. A schema entry is a PROMISE: `undoSendSeconds:
    * 8` states that undo-send exists and is configurable, when no undo-send
    * feature existed anywhere in the codebase.
    *
@@ -55,6 +57,14 @@ export const SCHEMA = {
 
   // ---- appearance ----
   theme: { type: 'string', def: 'daylight' },
+  /*
+   * Density. Returned to the schema by the commit that implements it, as the
+   * note below promised.
+   *
+   * `comfortable` is byte-identical to the pre-feature rendering, so an
+   * existing profile sees no change until it asks for one.
+   */
+  density: { type: 'enum', def: 'comfortable', values: ['comfortable', 'cosy', 'compact'] },
 
   // ---- reading ----
   /*

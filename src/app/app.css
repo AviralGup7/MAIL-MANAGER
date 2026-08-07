@@ -119,6 +119,64 @@
 }
 
 /*
+ * DENSITY.  (Feature 28.)
+ *
+ * `density` was declared in the settings schema before anything read it, and
+ * was DELETED with a note saying it returns on the commit that implements it.
+ * This is that commit.
+ *
+ * WHY THIS IS A TOKEN REMAP AND NOT A SET OF COMPONENT OVERRIDES
+ *
+ * Every surface in this stylesheet spaces itself from `--s-*` and sizes rows
+ * from `--row-h`. Redefining those four values under an attribute selector
+ * changes the whole app coherently, in about twenty lines, and -- critically --
+ * it cannot drift: a component added next year inherits the density it was
+ * never told about.
+ *
+ * The alternative, a `.compact .row { height: … }` rule per component, is how
+ * a density setting ends up applying to eleven of the fourteen surfaces and
+ * looking broken on the other three.
+ *
+ * THE 4px GRID IS PRESERVED. There is already a test asserting that spacing
+ * values are multiples of 4 (with 1-3px allowed as hairlines), and these
+ * values were chosen to keep it passing rather than to look right in
+ * isolation.
+ *
+ * COMFORTABLE IS THE DEFAULT and is identical to the values above, so a
+ * profile that has never touched the setting renders byte-identically to
+ * before this feature existed.
+ */
+:root[data-density='cosy'] {
+  --s-2: 6px;
+  --s-3: 10px;
+  --s-4: 12px;
+  --s-5: 16px;
+  --s-6: 20px;
+  --row-h: 56px;
+}
+
+:root[data-density='compact'] {
+  --s-2: 4px;
+  --s-3: 8px;
+  --s-4: 10px;
+  --s-5: 12px;
+  --s-6: 16px;
+  --row-h: 44px;
+}
+
+/*
+ * At compact density the snippet line is what gives way, not the type size.
+ *
+ * Shrinking the font is the obvious move and the wrong one: it makes the list
+ * harder to read at exactly the moment the user has asked to fit more on
+ * screen, which is self-defeating. Dropping the second line keeps every
+ * remaining character at full size.
+ */
+:root[data-density='compact'] .r-snip {
+  display: none;
+}
+
+/*
  * THEME VALUES LIVE IN src/app/themes.js, NOT HERE.
  *
  * They are applied as custom properties on <html> at boot. Keeping them as

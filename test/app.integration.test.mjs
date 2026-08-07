@@ -6209,3 +6209,98 @@ test('UNDO: a rolled-back action restores the message as it was', async (t) => {
     restore();
   }
 });
+
+/* ==========================================================================
+ * SURVIVORS: the wired-in features (28, 29)
+ *
+ * These are the ones that touch app.js rather than living in a pure module,
+ * so they can only be verified with the real DOM booted.
+ * ========================================================================== */
+
+test('the row snippet is CLEANED, not the raw institutional boilerplate', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, settle, restore } = await boot({
+    messages: [{
+      id: 'x1', threadId: 'tx1',
+      from: 'AUGSD <augsd@pilani.bits-pilani.ac.in>',
+      subject: 'Fee payment',
+      snippet: 'Dear Students, Greetings from AUGSD. This is to inform you that the SBI counter closes at 5pm on Friday.',
+      date: Date.now(), unread: true, starred: false, labels: ['INBOX', 'UNREAD'],
+    }],
+  });
+  try {
+    await settle();
+    const snip = doc.querySelector('.r-snip').textContent;
+    assert.doesNotMatch(snip, /Dear Students/, 'the salutation is gone');
+    assert.doesNotMatch(snip, /Greetings from/, 'the throat-clearing is gone');
+    assert.match(snip, /SBI counter/, 'the actual content survived');
+  } finally {
+    restore();
+  }
+});
+
+test('a snippet that only restates the subject leaves the line blank', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, settle, restore } = await boot({
+    messages: [{
+      id: 'x2', threadId: 'tx2',
+      from: 'AUGSD <augsd@pilani.bits-pilani.ac.in>',
+      subject: 'Mid-semester exam schedule',
+      snippet: 'Dear all, the mid semester examination schedule is attached.',
+      date: Date.now(), unread: true, starred: false, labels: ['INBOX', 'UNREAD'],
+    }],
+  });
+  try {
+    await settle();
+    // A blank second line is better than one that repeats the subject.
+    assert.equal(doc.querySelector('.r-snip').textContent, '');
+  } finally {
+    restore();
+  }
+});
+
+test('density is applied to the root element at boot', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, settle, restore } = await boot();
+  try {
+    await settle();
+    // Always stated, never absent -- a missing attribute and the default would
+    // be indistinguishable when reading a screenshot.
+    assert.equal(doc.documentElement.getAttribute('data-density'), 'comfortable');
+  } finally {
+    restore();
+  }
+});
+
+test('a stored density is honoured at boot', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * Settings are stored as FLAT TOP-LEVEL KEYS, not nested under a `settings`
+   * object -- `loadSettings` does `storage.get(Object.keys(SCHEMA))`. Seeding
+   * `{settings: {density: 'compact'}}` writes a key nothing reads, and the
+   * test failed with the default. Worth the note: the nested shape is the
+   * obvious guess and it is wrong.
+   */
+  const { doc, settle, restore } = await boot({
+    storageSeed: { density: 'compact' },
+  });
+  try {
+    await settle();
+    assert.equal(doc.documentElement.getAttribute('data-density'), 'compact');
+  } finally {
+    restore();
+  }
+});
+
+test('changing density from the options page repaints without a reload', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, settle, changeSetting, restore } = await boot();
+  try {
+    await settle();
+    await changeSetting('density', 'cosy');
+    await settle();
+    assert.equal(doc.documentElement.getAttribute('data-density'), 'cosy');
+  } finally {
+    restore();
+  }
+});

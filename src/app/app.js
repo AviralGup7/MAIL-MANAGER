@@ -1073,7 +1073,25 @@ function fillRow(li, m) {
   setText(subjEl, subject);
   setAttr(subjEl, 'title', subject);
 
-  setText(q('.r-snip'), m.snippet);
+  /*
+   * THE SNIPPET IS CLEANED, NOT PRINTED RAW.  (Feature 29.)
+   *
+   * Gmail's snippet is the first ~200 characters of the body. On institutional
+   * mail those characters are always the same -- "Dear Students, Greetings
+   * from AUGSD. This is to inform all students that..." -- so every row said
+   * the same thing and the one line of the list that exists to let you decide
+   * WITHOUT OPENING told you nothing.
+   *
+   * `rowSnippet` strips salutations, throat-clearing, disclaimers, quoted
+   * replies and signature blocks, and returns '' when what is left merely
+   * restates the subject. An empty string is a deliberate outcome: a blank
+   * second line is better than a redundant one.
+   *
+   * This is also why the elimination audit CUT the hover preview card -- with
+   * the row saying something useful, a popover repeating it 500ms later is a
+   * hover-intent state machine and a positioning engine bought for nothing.
+   */
+  setText(q('.r-snip'), rowSnippet(m));
   setText(q('.r-date'), shortDate(m.date));
 
   const tag = q('.tag');
@@ -3168,6 +3186,22 @@ function themeTick() {
   return tick;
 }
 
+/**
+ * Push the density setting onto the root element.  (Feature 28.)
+ *
+ * One attribute. `app.css` redefines four spacing tokens and the row height
+ * under `:root[data-density=...]`, so every surface follows without a single
+ * component knowing the setting exists.
+ *
+ * `comfortable` writes the attribute too rather than removing it, so the DOM
+ * always states the current density -- a missing attribute and the default
+ * value would be indistinguishable when debugging a screenshot.
+ */
+function applyDensity() {
+  const d = settings.get('density') || 'comfortable';
+  document.documentElement.setAttribute('data-density', d);
+}
+
 function setTheme(id) {
   const theme = applyTheme(id);
   state.theme = theme.id;
@@ -4230,6 +4264,13 @@ async function boot() {
       renderList();
       renderSidebar();
     }
+    /*
+     * Density is a pure CSS token remap, so it needs no re-render at all --
+     * the attribute change repaints every surface at once. Handled here rather
+     * than in the options page so the two stay in step through the same
+     * channel `threaded` already uses.
+     */
+    if (key === 'density') applyDensity();
   });
 
   // Theme next, before anything paints, so there is no flash of the wrong
@@ -4237,6 +4278,7 @@ async function boot() {
   // covers the old binary 'light'/'dark' values from before the picker.
   const theme = settings.get('theme');
   state.theme = applyTheme(theme || DEFAULT_THEME).id;
+  applyDensity();
 
   buildSidebar();
   renderSidebar();
