@@ -48,3 +48,34 @@ see it was already checked.
 reported in the v1 classifier were all wrong, retracted in
 [`../notes/CLASSIFIER_CORRECTION.md`](../notes/CLASSIFIER_CORRECTION.md). Every
 finding here therefore carries the command or measurement that produced it.
+
+## Audit 18 — per-file defect hunt (post-build)
+
+Six bugs across the modules built for the survivor roadmap. Method was
+adversarial probing rather than reading: a hostile-input harness, a ReDoS timer,
+a cross-module contract checker, and doubles rebuilt from each module's *actual*
+storage contract.
+
+| # | File | Bug | Severity |
+|---|---|---|---|
+| 1 | `cache.js` | Dropped the `audience` stamp, so cache-first boot put list blasts in `needsReply` | **serious** |
+| 2 | `backup.js` | Exported a `settings` key that never existed — captured zero preferences, silently | **serious** |
+| 3 | `snippet.js` | Quadratic backtracking on dash runs, on the render path (267ms/row) | moderate |
+| 4 | `followups.js` | `isAnswered` crashed on a partial store, from the radar render path | moderate |
+| 5 | `followups.js` | `pruneFollowups` would delete every follow-up against an unready store | **serious** (latent) |
+| 6 | `outbox.js` | `statusOf` printed "Retrying in 0s" forever after a crash-restart | low |
+
+**The methodological finding**, which is worth more than any single fix: bugs 2
+and 1 were both invisible to a full green test suite because *the test doubles
+agreed with the code under test rather than with the system*. `backup.test.mjs`
+seeded `{settings: {theme}}` because that is what the exporter looked for —
+neither had ever consulted `settings.js`, which stores flat keys. A fake built
+from the consumer's assumption can only ever confirm that assumption.
+
+Both now have guards that walk the real schema, so the two files cannot drift
+apart again.
+
+**Cleared:** 16 XSS vectors against `sanitize.js` (entity-encoded, case-varied,
+`formaction`, `<base>`, `<meta refresh>`) all blocked. Store indices consistent
+across remove and recategorise. Every built-in view is a valid rule condition
+and names only categories that exist.
