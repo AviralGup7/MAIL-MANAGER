@@ -1682,6 +1682,50 @@ test('LOAD: the manifest service worker exists and is reachable', () => {
   );
 });
 
+test('ARCH: no undo is recorded before its request has succeeded', () => {
+  /*
+   * THE SAME DEFECT APPEARED IN THREE PLACES, so it gets a structural guard.
+   *
+   * flagAction(), optimistic() and autoArchive() each pushed the undo entry
+   * at DISPATCH time, while the request was still in flight. On failure the
+   * rollback ran and an error was shown, but the entry survived -- and Ctrl+Z,
+   * the natural response to seeing a failure, then sent the INVERSE verb for
+   * a change that never happened. Undoing a failed star unstarred mail that
+   * was already starred; undoing a failed archive pulled old mail back.
+   *
+   * The fingerprint of the bug is `recordUndo` reachable from a plain
+   * `.catch(` continuation rather than from a success branch. This asserts
+   * the shape that cannot have it: every recordUndo in app.js sits inside a
+   * `.then(` success handler, or after an `await` that would have thrown.
+   *
+   * Counting rather than parsing, because the alternative is a JS parser in
+   * a test. If a fourth call site appears it must justify itself here.
+   */
+  const src = read('src/app/app.js')
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+    .replace(/\/\/[^\n]*/g, '');
+
+  const sites = [...src.matchAll(/recordUndo\(/g)].length;
+  assert.ok(sites >= 3, `expected several recordUndo sites, found ${sites}`);
+
+  /*
+   * `send(...).catch(` immediately followed by recordUndo within a few lines
+   * is the exact broken shape. It must not reappear.
+   */
+  const broken = [...src.matchAll(/send\([^;]*?\)\.catch\([\s\S]{0,400}?recordUndo\(/g)];
+  assert.deepEqual(
+    broken.map((m) => m[0].slice(0, 40)), [],
+    'recordUndo is reachable from a failure path: undo would fire for an '
+    + 'action that never succeeded'
+  );
+
+  // And the success-gated form must actually be present, or the above is vacuous.
+  assert.match(
+    src, /\.then\(\s*\(\)\s*=>\s*\{[\s\S]{0,300}?recordUndo\(/,
+    'expected recordUndo inside a .then() success handler'
+  );
+});
+
 test('LOAD: the extension passes the load-time doctor', () => {
   /*
    * THE LAYER 890 TESTS COULD NOT SEE.

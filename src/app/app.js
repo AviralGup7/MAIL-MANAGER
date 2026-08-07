@@ -2064,8 +2064,15 @@ function flagAction({
    * Gmail for a change that never happened. On a message that was already
    * starred server-side, undoing a failed star silently unstarred it.
    *
-   * Nothing is lost by waiting: the undo stack is only ever read by a later
-   * user gesture, and the request settles in 200-600ms.
+   * THE TRADEOFF, STATED HONESTLY: the undo toast now appears 200-600ms after
+   * the keypress instead of instantly. That is a real cost and it was weighed
+   * against the alternative, which is offering an Undo button for something
+   * that did not happen and which, when pressed, changes the mailbox the
+   * wrong way. A slightly late toast is a smaller harm than a lying one.
+   *
+   * The part the user actually feels -- the star filling, the row leaving --
+   * is unchanged: that is the optimistic store.patch above, which still runs
+   * before the request. Only the confirmation waits.
    */
   const sent = send(verb, { id, ...payload }).then(
     () => {
@@ -2459,16 +2466,29 @@ function autoArchive(records) {
    */
   const { add = [], remove = [] } = BULK_ACTIONS.archive;
 
-  send('BULK', { ids, add, remove }).catch(() => {
-    for (const s of snapshots) store.upsert(s);
-    toast('Could not auto-archive', { kind: 'error' });
-  });
-
-  toast(`Auto-archived ${ids.length} message${ids.length === 1 ? '' : 's'}`);
-  recordUndo(ctx, `Auto-archived ${ids.length}`, async () => {
-    for (const s of snapshots) store.upsert(s);
-    await send('BULK', { ids, add: remove, remove: add });
-  });
+  /*
+   * STILL FIRE-AND-FORGET -- ingest must not block on a network round trip --
+   * but the undo and the announcement now wait for it to SUCCEED.
+   *
+   * Recording the undo on the next line meant a failed request left an entry
+   * behind: the catch restores the snapshots and shows an error, and Ctrl+Z
+   * then sends the inverse BULK, adding INBOX back to mail that was never
+   * archived. Worse here than elsewhere, because auto-archive runs on ingest
+   * and the user may not have been watching when it failed.
+   */
+  send('BULK', { ids, add, remove }).then(
+    () => {
+      toast(`Auto-archived ${ids.length} message${ids.length === 1 ? '' : 's'}`);
+      recordUndo(ctx, `Auto-archived ${ids.length}`, async () => {
+        for (const s of snapshots) store.upsert(s);
+        await send('BULK', { ids, add: remove, remove: add });
+      });
+    },
+    () => {
+      for (const s of snapshots) store.upsert(s);
+      toast('Could not auto-archive', { kind: 'error' });
+    }
+  );
 }
 
 /**

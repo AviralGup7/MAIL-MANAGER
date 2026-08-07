@@ -173,10 +173,38 @@ test('an all-muted list explains itself and offers a way out', () => {
 });
 
 test('auto-archive reports what it did and can be undone', () => {
+  /*
+   * SCOPED TO THE FUNCTION, not to a character count.
+   *
+   * This used `fn.slice(0, 1400)` -- a fixed window from the declaration --
+   * and broke when a comment explaining the failure-path fix pushed `toast(`
+   * past 1400 characters. The behaviour was unchanged; the ruler was too
+   * short. A test that fails when you document the code trains people to
+   * delete comments.
+   *
+   * Bounded by the next top-level declaration instead, so it measures the
+   * function rather than an arbitrary prefix of it.
+   */
   const fn = app.slice(app.indexOf('function autoArchive('));
-  const body = fn.slice(0, 1400);
+  const end = fn.indexOf('\nfunction ', 1);
+  const body = end === -1 ? fn : fn.slice(0, end);
+
   assert.ok(body.includes('toast('), 'silent removal is indistinguishable from lost mail');
   assert.ok(body.includes('recordUndo('), 'must be reversible');
+
+  /*
+   * And both must sit in the SUCCESS branch. Recording the undo at dispatch
+   * time meant a failed request still left an entry, so Ctrl+Z sent the
+   * inverse BULK for an archive that never happened -- adding INBOX back to
+   * mail that was never removed.
+   */
+  const thenAt = body.indexOf('.then(');
+  const undoAt = body.indexOf('recordUndo(');
+  assert.ok(thenAt !== -1, 'the request result must be branched on');
+  assert.ok(
+    undoAt > thenAt,
+    'recordUndo must be inside the success handler, not fired at dispatch'
+  );
 });
 
 test('auto-archive only touches newly-arrived unread mail', () => {

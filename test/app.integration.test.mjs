@@ -2151,6 +2151,43 @@ test('UNDO: a failed ARCHIVE leaves no undo entry either', async (t) => {
   }
 });
 
+test('UNDO: a failed auto-archive leaves no undo entry', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * The third instance of the same defect. autoArchive fires BULK without
+   * awaiting -- deliberately, it must not block ingest -- and then records
+   * the undo unconditionally on the next line.
+   *
+   * If the request fails the snapshots are restored and an error shown, but
+   * the entry remains. Ctrl+Z then sends the inverse BULK, adding INBOX back
+   * to mail that was never archived. Because auto-archive runs on ingest,
+   * the user may not even have been looking when it failed.
+   */
+  const { doc, win, calls, settle, restore } = await boot({
+    messages: [],
+    failVerbs: ['BULK'],
+    storageSeed: { categoryRules: { muted: [], autoArchive: ['augsd'], corrections: {} } },
+  });
+  try {
+    win.__bmmIngest(bulk(3, { unread: true }));
+    await settled(doc, settle);
+
+    // The rollback put the mail back.
+    assert.equal(rows(doc).length, 3, 'a failed auto-archive must restore the mail');
+
+    calls.length = 0;
+    press(doc, win, 'z', { ctrlKey: true });
+    await settle(8);
+
+    assert.deepEqual(
+      calls.filter((c) => c.type === 'BULK'), [],
+      'undo sent BULK for an auto-archive that never happened'
+    );
+  } finally {
+    restore();
+  }
+});
+
 test('CONSISTENCY: the gate takes focus on open, like every other dialog', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');
   /*
