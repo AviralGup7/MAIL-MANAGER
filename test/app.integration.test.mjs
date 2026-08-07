@@ -60,7 +60,7 @@ const MESSAGES = [
  * Boot app.html in jsdom.
  * Returns { win, doc, calls, settle } — `calls` records every worker message.
  */
-async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bodyOverride = {}, syncLatency = 0, perLabel = false, emptyLabels = [], labels = [], timetableData = null, storageTimetable = undefined, deadWorker = false } = {}) {
+async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bodyOverride = {}, syncLatency = 0, perLabel = false, emptyLabels = [], labels = [], timetableData = null, storageTimetable = undefined, deadWorker = false, failVerbs = [] } = {}) {
   const html = readFileSync(join(ROOT, 'app.html'), 'utf8');
   const dom = new JSDOM(html, {
     url: 'chrome-extension://test/app.html',
@@ -164,6 +164,17 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
   };
 
   function respond(msg) {
+    /*
+     * FAIL-INJECTION, so rollback paths can be exercised.
+     *
+     * Every optimistic action has a failure branch that rolls the local store
+     * back, and none of them had a test: the harness always answered ok. A
+     * rollback nobody exercises is a rollback nobody knows works -- and it is
+     * exactly where the undo/failure interaction bug lived.
+     */
+    if (failVerbs.includes(msg.type)) {
+      return { ok: false, error: `${msg.type} failed (injected)` };
+    }
     switch (msg.type) {
       case 'AUTH_STATUS': return { ok: true, data: { signedIn } };
       case 'PROFILE': return { ok: true, data: { emailAddress: 'f20240294@pilani.bits-pilani.ac.in' } };
@@ -252,6 +263,8 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
   ({ _resetTimetableUI: timetableState } = await import('../src/app/timetable-ui.js'));
   // menu.js holds the single open menu in module state, for the same reason.
   ({ _resetMenu: menuState } = await import('../src/app/menu.js'));
+  // The undo stack is module-level too, and leaks entries between boots.
+  ({ _resetUndo: undoState } = await import('../src/app/undo-actions.js'));
   const ttStore = await import('../src/app/timetable-store.js');
   ttStore._resetSourceData(); // the catalogue is memoised per module, not per boot
 
@@ -303,6 +316,16 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
     } catch {
       // Never mask the real result.
     }
+    /*
+     * Empty the undo stack. Without this a test's Ctrl+Z pops an entry left
+     * by an EARLIER test and fires that test's verb -- which is exactly how
+     * two new failure-path tests passed alone and failed in the suite.
+     */
+    try {
+      undoState?.();
+    } catch {
+      // Never mask the real result.
+    }
     Object.assign(globalThis, prev);
 
     /*
@@ -335,6 +358,8 @@ let featureState = null;
 let timetableState = null;
 /** @type {null | (() => void)} */
 let menuState = null;
+/** @type {null | (() => void)} */
+let undoState = null;
 
 const rows = (doc) => [...doc.querySelectorAll('#list .row')];
 
@@ -2028,6 +2053,98 @@ test('FALLBACK: the warning appears exactly once, not per verb', async (t) => {
     assert.equal(
       doc.querySelectorAll('#sw-warn').length, 1,
       'one banner for the session, however many verbs failed'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('UNDO: a FAILED action must not leave an undo entry behind', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * A REAL BUG, found by reading flagAction() and optimistic() side by side.
+   *
+   * Both push the undo entry unconditionally, at dispatch time, while the
+   * network request is still in flight. If the request then FAILS, the catch
+   * rolls the local store back -- but the undo entry is still on the stack.
+   *
+   *   press `s`            -> patch(starred:true), send STAR, push undo
+   *   network fails        -> patch(starred:false), error toast
+   *   press Ctrl+Z         -> patch(starred:false)  [local no-op]
+   *                           send STAR {on:false}  [TELLS GMAIL TO UNSTAR]
+   *
+   * So undoing a visibly-failed action mutates the mailbox in the opposite
+   * direction. If the message had been starred server-side beforehand, the
+   * undo silently unstars it.
+   *
+   * The user-visible symptom is worse than the mechanism: an action reports
+   * "Could not update star", and then Ctrl+Z -- the natural response to a
+   * failure -- makes a change nobody asked for.
+   *
+   * The fix is to record the undo only once the request has SUCCEEDED.
+   */
+  const { doc, win, calls, settle, restore } = await boot({ failVerbs: ['STAR'] });
+  try {
+    rows(doc)[0].click();
+    await settle(6);
+    const id = MESSAGES[0].id;
+    assert.equal(win.__bmmStore.get(id).starred, false, 'precondition: unstarred');
+
+    press(doc, win, 's');
+    await settle(8);
+
+    // The failure rolled the optimistic change back.
+    assert.equal(
+      win.__bmmStore.get(id).starred, false,
+      'a failed star must not stay applied locally'
+    );
+
+    // Now the part that matters: undo must have nothing to do.
+    calls.length = 0;
+    press(doc, win, 'z', { ctrlKey: true });
+    await settle(8);
+
+    const starCalls = calls.filter((c) => c.type === 'STAR');
+    assert.deepEqual(
+      starCalls, [],
+      'undo sent a STAR for an action that never succeeded — this mutates the '
+      + 'mailbox in the opposite direction'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('UNDO: a failed ARCHIVE leaves no undo entry either', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * The same defect as the star case, in `optimistic()` -- which covers
+   * archive, trash, spam, restore and unsnooze, so the stakes are higher.
+   *
+   * The undo was pushed at dispatch time. On failure the message is restored
+   * to the list and an error toast shown, but the undo entry survives; Ctrl+Z
+   * then sends UNARCHIVE for an archive that never happened. On a message the
+   * user had archived earlier, that silently pulls it back into the inbox.
+   */
+  const { doc, win, calls, settle, restore } = await boot({ failVerbs: ['ARCHIVE'] });
+  try {
+    const before = rows(doc).length;
+    rows(doc)[0].click();
+    await settle(6);
+
+    press(doc, win, 'e');
+    await settled(doc, settle);
+
+    // The rollback put it back.
+    assert.equal(rows(doc).length, before, 'a failed archive must restore the row');
+
+    calls.length = 0;
+    press(doc, win, 'z', { ctrlKey: true });
+    await settle(8);
+
+    assert.deepEqual(
+      calls.filter((c) => c.type === 'UNARCHIVE'), [],
+      'undo sent UNARCHIVE for an archive that never happened'
     );
   } finally {
     restore();

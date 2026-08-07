@@ -50,3 +50,18 @@ export async function performUndo(ctx) {
     ctx.toast(err.message);
   }
 }
+
+/**
+ * Test seam: empty the stack between jsdom boots.
+ *
+ * `undoStack` is module-level, and app.js is the only module re-imported with
+ * a cache-busting URL -- its imports keep their state. So without this every
+ * test inherits the undo entries of every test before it, and a Ctrl+Z pops
+ * a NEIGHBOUR'S entry and fires that test's verb.
+ *
+ * The same hazard is already handled for features.js, timetable-ui.js and
+ * menu.js. This file was missed.
+ */
+export function _resetUndo() {
+  undoStack.clear();
+}

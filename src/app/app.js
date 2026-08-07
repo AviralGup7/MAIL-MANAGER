@@ -2054,17 +2054,33 @@ function flagAction({
   // The reader's toolbar mirrors these flags, so it has to follow the store.
   if (id === state.selected) syncContextActions(store.get(id));
 
-  const sent = send(verb, { id, ...payload }).catch(() => {
-    store.patch(id, undoPatch);
-    if (id === state.selected) syncContextActions(store.get(id));
-    toast(failed, { kind: 'error' });
-  });
-
-  recordUndo(ctx, past, async () => {
-    store.patch(id, undoPatch);
-    if (id === state.selected) syncContextActions(store.get(id));
-    await send(undoVerb || verb, { id, ...undoPayload });
-  });
+  /*
+   * THE UNDO IS RECORDED ONLY ON SUCCESS.
+   *
+   * Recording it at dispatch time -- which this did -- means a request that
+   * FAILS still leaves an undo entry on the stack. The catch below rolls the
+   * local store back, so the user sees the change revert and an error toast;
+   * then Ctrl+Z, the natural response to a failure, sends the INVERSE verb to
+   * Gmail for a change that never happened. On a message that was already
+   * starred server-side, undoing a failed star silently unstarred it.
+   *
+   * Nothing is lost by waiting: the undo stack is only ever read by a later
+   * user gesture, and the request settles in 200-600ms.
+   */
+  const sent = send(verb, { id, ...payload }).then(
+    () => {
+      recordUndo(ctx, past, async () => {
+        store.patch(id, undoPatch);
+        if (id === state.selected) syncContextActions(store.get(id));
+        await send(undoVerb || verb, { id, ...undoPayload });
+      });
+    },
+    () => {
+      store.patch(id, undoPatch);
+      if (id === state.selected) syncContextActions(store.get(id));
+      toast(failed, { kind: 'error' });
+    }
+  );
 
   return sent;
 }
@@ -2097,17 +2113,35 @@ function optimistic({
     return send(verb, { id });
   };
 
-  const sent = run().catch(rollback);
+  /*
+   * UNDO AND THE SUCCESS TOAST BOTH WAIT FOR THE REQUEST TO SETTLE.
+   *
+   * Recording the undo at dispatch time meant a FAILED request still left an
+   * entry on the stack. `rollback` restores the message and shows an error,
+   * and then Ctrl+Z -- the natural response to seeing a failure -- sends
+   * UNARCHIVE for an archive that never happened. On mail the user had
+   * archived earlier that silently pulls it back into the inbox.
+   *
+   * `done` moves for the same reason: "Moved back to the inbox" printed while
+   * the request was still in flight, so a failure showed the success toast
+   * first and the error second. The optimistic UI update is what keeps this
+   * feeling instant; the toast is a confirmation and can honestly wait.
+   */
+  const sent = run().then(
+    () => {
+      if (undoVerb) {
+        recordUndo(ctx, past, async () => {
+          if (undoBefore) await undoBefore(id);
+          store.upsert(snapshot);
+          await send(undoVerb, { id });
+          renderList();
+        });
+      }
+      if (done) toast(done);
+    },
+    rollback
+  );
 
-  if (undoVerb) {
-    recordUndo(ctx, past, async () => {
-      if (undoBefore) await undoBefore(id);
-      store.upsert(snapshot);
-      await send(undoVerb, { id });
-      renderList();
-    });
-  }
-  if (done) toast(done);
   return sent;
 }
 
