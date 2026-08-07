@@ -1642,8 +1642,17 @@ test('BULK: Escape clears the selection before anything else', async (t) => {
 
 test('BULK: selection survives a re-render', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');
-  // Selection lives outside the store, so a delta arriving mid-triage must
-  // not silently drop the ticks the user has already placed.
+  /*
+   * Selection lives outside the store, so a delta arriving mid-triage must not
+   * silently drop the ticks the user has already placed.
+   *
+   * THE ARRIVALS ARE IN NEW CONVERSATIONS. The original version reused
+   * `bulk(2)`, whose threadIds collide with the existing rows -- so under
+   * threading the "new" messages joined the ticked conversations and became
+   * their roots. That is correct product behaviour (see the THREAD: tick
+   * tests) but it is not what this test is about: this one is about unrelated
+   * mail arriving mid-triage. Distinct threadIds keep the two cases apart.
+   */
   const { doc, win, settle, restore } = await boot({ messages: bulk(6) });
   try {
     pick(rows(doc)[0], win);
@@ -1651,7 +1660,9 @@ test('BULK: selection survives a re-render', async (t) => {
     await settle();
     assert.equal(doc.querySelectorAll('.row.picked').length, 2);
 
-    win.__bmmIngest(bulk(2).map((m) => ({ ...m, id: `new${m.id}`, subject: 'arrived later' })));
+    win.__bmmIngest(bulk(2).map((m, i) => ({
+      ...m, id: `new${m.id}`, threadId: `newthread${i}`, subject: 'arrived later',
+    })));
     await settle();
 
     assert.equal(doc.querySelectorAll('.row.picked').length, 2, 'ticks must survive');
@@ -4451,6 +4462,325 @@ test('MAIL: attachments do not leak into the next message', async (t) => {
     assert.deepEqual(
       sent.draft.attachments, [],
       'the previous file must not ride along to a different recipient'
+    );
+  } finally {
+    restore();
+  }
+});
+
+/* ================================================================ threading == */
+
+/** Three messages in one conversation, plus two unrelated singles. */
+const THREADED = [
+  {
+    id: 'c1', threadId: 'CONV',
+    from: 'AUGSD <augsd@pilani.bits-pilani.ac.in>',
+    subject: 'Revised schedule',
+    snippet: 'The revised schedule is attached.',
+    date: Date.now() - 9000_000, unread: false, starred: false, labels: ['INBOX'],
+  },
+  {
+    id: 'c2', threadId: 'CONV',
+    from: 'Registrar <registrar@pilani.bits-pilani.ac.in>',
+    subject: 'Re: Revised schedule',
+    snippet: 'Corrigendum to the above.',
+    date: Date.now() - 5000_000, unread: true, starred: false, labels: ['INBOX', 'UNREAD'],
+  },
+  {
+    id: 'c3', threadId: 'CONV',
+    from: 'AUGSD <augsd@pilani.bits-pilani.ac.in>',
+    subject: 'Re: Revised schedule',
+    snippet: 'Final revised schedule.',
+    date: Date.now() - 1000_000, unread: true, starred: false, labels: ['INBOX', 'UNREAD'],
+  },
+  {
+    id: 's1', threadId: 'S1',
+    from: 'Library <library@pilani.bits-pilani.ac.in>',
+    subject: 'Book due',
+    snippet: 'Your book is due.',
+    date: Date.now() - 7000_000, unread: false, starred: false, labels: ['INBOX'],
+  },
+  {
+    id: 's2', threadId: 'S2',
+    from: 'GitHub <notifications@github.com>',
+    subject: 'Run failed',
+    snippet: 'The workflow failed.',
+    date: Date.now() - 3000_000, unread: false, starred: false, labels: ['INBOX'],
+  },
+];
+
+test('THREAD: a conversation occupies one row, not one per message', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * The point of the whole feature. Five messages, three of them one
+   * conversation, must render as THREE rows -- and the conversation must sit
+   * where its newest message would, because a conversation is as recent as
+   * its latest reply.
+   */
+  const { doc, settle, restore } = await boot({ messages: THREADED });
+  try {
+    await settle(8);
+    const r = rows(doc);
+    assert.equal(r.length, 3, `expected 3 rows, got ${rowText(doc).join(' | ')}`);
+
+    // Newest first: CONV (c3) is newest, then s2, then s1.
+    assert.deepEqual(
+      r.map((x) => x.dataset.id), ['c3', 's2', 's1'],
+      'the conversation row is its newest message'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('THREAD: the row shows the conversation, not just the last message', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * A collapsed conversation has to say it IS one, or the user cannot tell
+   * three messages from one. Gmail shows a count and the participants; both
+   * are what make a collapsed row readable rather than lossy.
+   *
+   * The subject is the ORIGINAL, not "Re: ..." -- a conversation is named for
+   * what it is about.
+   */
+  const { doc, settle, restore } = await boot({ messages: THREADED });
+  try {
+    await settle(8);
+    const conv = rows(doc).find((x) => x.dataset.id === 'c3');
+    assert.ok(conv, 'the conversation row must exist');
+
+    assert.equal(
+      conv.querySelector('.r-subj').textContent, 'Revised schedule',
+      'the original subject, with no Re: prefix'
+    );
+    const count = conv.querySelector('.r-count');
+    assert.ok(count, 'a collapsed conversation must show how many it holds');
+    assert.equal(count.textContent, '3');
+    assert.match(
+      conv.querySelector('.r-from').textContent, /AUGSD.*Registrar|Registrar.*AUGSD/,
+      'and who is in it'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('THREAD: a conversation is unread if ANY message in it is', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * c1 is read, c2 and c3 are not. The row must read as unread -- a
+   * conversation you have not finished reading is unread, and deriving that
+   * from the newest message alone would hide an unread reply under a read one.
+   */
+  const { doc, settle, restore } = await boot({ messages: THREADED });
+  try {
+    await settle(8);
+    const conv = rows(doc).find((x) => x.dataset.id === 'c3');
+    assert.ok(conv.classList.contains('unread'), 'two unread replies means unread');
+
+    const single = rows(doc).find((x) => x.dataset.id === 's1');
+    assert.ok(!single.classList.contains('unread'), 'a read single stays read');
+  } finally {
+    restore();
+  }
+});
+
+test('THREAD: opening a conversation shows every message in it', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * Collapsing must not lose access. Opening the row has to reveal the whole
+   * exchange, oldest first, which is the order a conversation reads in.
+   */
+  const { doc, settle, restore } = await boot({ messages: THREADED });
+  try {
+    await settle(8);
+    rows(doc).find((x) => x.dataset.id === 'c3').click();
+    await settle(10);
+
+    const parts = [...doc.querySelectorAll('#r-thread .r-msg')];
+    assert.equal(parts.length, 3, 'all three messages must be reachable');
+    assert.deepEqual(
+      parts.map((p) => p.dataset.id), ['c1', 'c2', 'c3'],
+      'oldest first -- the order a conversation reads in'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('THREAD: a single message still opens as a plain reader', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // The 1-message case must not grow conversation furniture. Most mail is a
+  // single message and it should look exactly as it always did.
+  const { doc, settle, restore } = await boot({ messages: THREADED });
+  try {
+    await settle(8);
+    rows(doc).find((x) => x.dataset.id === 's1').click();
+    await settle(10);
+    /*
+     * The strip is HIDDEN, not populated with one entry. A one-item list of
+     * alternatives is furniture with nothing to choose between, and most mail
+     * is a single message -- the reader must look exactly as it always did.
+     */
+    assert.equal(
+      doc.getElementById('r-thread').hidden, true,
+      'no conversation strip on a single message'
+    );
+    assert.equal(
+      doc.querySelectorAll('#r-thread .r-msg').length, 0,
+      'and nothing rendered inside it'
+    );
+    const badge = doc.querySelector('#list .row[data-id="s1"] .r-count');
+    assert.ok(!badge || badge.hidden, 'no count badge on a single message');
+  } finally {
+    restore();
+  }
+});
+
+test('THREAD: clicking a message in the strip loads that message', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * Collapsing is only acceptable if every message stays one click away.
+   * Selecting a part must load THAT body, mark it current, and leave the row
+   * selection alone -- the conversation is still the selected row.
+   */
+  const { doc, calls, settle, restore } = await boot({ messages: THREADED });
+  try {
+    await settle(8);
+    rows(doc).find((x) => x.dataset.id === 'c3').click();
+    await settle(10);
+
+    const before = calls.filter((c) => c.type === 'GET_BODY').map((c) => c.id);
+    assert.equal(before[before.length - 1], 'c3', 'opens on the newest message');
+
+    doc.querySelector('#r-thread .r-msg[data-id="c1"]').click();
+    await settle(10);
+
+    const after = calls.filter((c) => c.type === 'GET_BODY').map((c) => c.id);
+    assert.equal(after[after.length - 1], 'c1', 'the chosen message is fetched');
+
+    const cur = doc.querySelector('#r-thread .r-msg.current');
+    assert.equal(cur.dataset.id, 'c1', 'and marked as current');
+    assert.equal(cur.getAttribute('aria-pressed'), 'true');
+
+    assert.equal(
+      doc.querySelector('#list .row[aria-selected="true"]')?.dataset.id, 'c3',
+      'the conversation stays the selected row'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('THREAD: opening a conversation marks only the message you read', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * READ STATE IS PER MESSAGE, NOT PER CONVERSATION.
+   *
+   * Marking a whole thread read because you glanced at the newest reply
+   * destroys the one piece of triage the user cannot reconstruct -- and in a
+   * long institutional thread the unread one is usually the one that matters.
+   *
+   * The row therefore stays unread while an unread reply remains.
+   */
+  const { doc, win, calls, settle, restore } = await boot({ messages: THREADED });
+  try {
+    await settle(8);
+    rows(doc).find((x) => x.dataset.id === 'c3').click();
+    // Long enough for the mark-read grace period to elapse.
+    await new Promise((r) => setTimeout(r, 1400));
+    await settle(8);
+
+    const read = calls.filter((c) => c.type === 'MARK_READ').map((c) => c.id);
+    assert.deepEqual(read, ['c3'], 'only the message actually displayed');
+
+    const row = doc.querySelector('#list .row[data-id="c3"]');
+    assert.ok(
+      row.classList.contains('unread'),
+      'c2 is still unread, so the conversation is still unread'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('THREAD: selecting a conversation selects every message in it', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * THE RULE FOR ACTIONS ON A COLLAPSED ROW.
+   *
+   * A row IS the conversation, so ticking it and pressing Archive must archive
+   * the exchange, not just its newest message. Archiving one reply and leaving
+   * two behind is the single most confusing thing a threaded client can do --
+   * the row appears to survive the action.
+   *
+   * The tick is placed on the row; the selection resolves to the members.
+   */
+  const { doc, win, calls, settle, restore } = await boot({ messages: THREADED });
+  try {
+    await settle(8);
+    const conv = rows(doc).find((x) => x.dataset.id === 'c3');
+    pick(conv, win);
+    await settle(6);
+
+    assert.equal(
+      doc.getElementById('bulk-count').textContent, '3 selected',
+      'one tick on a 3-message conversation selects three messages'
+    );
+
+    doc.getElementById('bulk-archive').click();
+    await settled(doc, settle);
+
+    const bulkCall = calls.find((c) => c.type === 'BULK' && (c.remove || []).includes('INBOX'));
+    assert.ok(bulkCall, 'the archive must reach Gmail');
+    assert.deepEqual(
+      [...bulkCall.ids].sort(), ['c1', 'c2', 'c3'],
+      'every message in the conversation, not just the newest'
+    );
+    assert.ok(
+      !rows(doc).some((r) => r.dataset.id === 'c3'),
+      'and the row must leave'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('THREAD: a tick survives a reply arriving in the same conversation', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * REGRESSION FOUND BY AN EXISTING TEST.
+   *
+   * Threading broke "selection survives a re-render": ticking a row and then
+   * receiving a NEWER message in that conversation replaces the rendered root,
+   * so the ticked id is no longer a row and the tick visually vanished.
+   *
+   * Selection is per-conversation, so the tick has to move to the new root.
+   * The user ticked a conversation; a reply arriving does not un-tick it.
+   */
+  const { doc, win, settle, restore } = await boot({ messages: THREADED });
+  try {
+    await settle(8);
+    pick(rows(doc).find((x) => x.dataset.id === 'c3'), win);
+    await settle(6);
+    assert.equal(doc.querySelectorAll('.row.picked').length, 1);
+
+    // A fourth message lands in the same conversation.
+    win.__bmmIngest([{
+      id: 'c4', threadId: 'CONV',
+      from: 'AUGSD <augsd@pilani.bits-pilani.ac.in>',
+      subject: 'Re: Revised schedule', snippet: 'One more thing.',
+      date: Date.now(), unread: true, starred: false, labels: ['INBOX', 'UNREAD'],
+    }]);
+    await settle(10);
+
+    assert.equal(
+      doc.querySelectorAll('.row.picked').length, 1,
+      'the conversation must still read as ticked'
+    );
+    assert.equal(
+      doc.querySelector('.row.picked').dataset.id, 'c4',
+      'and the tick follows the conversation to its new newest message'
     );
   } finally {
     restore();

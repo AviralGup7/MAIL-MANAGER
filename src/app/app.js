@@ -211,6 +211,7 @@ const el = {
   gate: $('gate'),
   gateError: $('gate-error'),
   reader: $('reader'),
+  rThread: $('r-thread'),
   rTimetable: $('r-timetable'),
   readerEmpty: $('reader-empty'),
   rSubject: $('r-subject'),
@@ -495,8 +496,28 @@ function applyMute(ids) {
 }
 
 /** The ids the list should currently show. */
+/*
+ * THREADING IS APPLIED AT ONE PLACE.
+ *
+ * `visibleIds()` is the single choke point every render path already goes
+ * through -- list, counts, bulk actions, j/k navigation all read from it. So
+ * collapsing conversations here means every one of those subsystems inherits
+ * threading without its own special case, which is the only way a change this
+ * broad stays consistent.
+ *
+ * SEARCH IS DELIBERATELY NOT COLLAPSED. When you search you are looking for a
+ * MESSAGE, and hiding the match behind the newest reply in its conversation is
+ * exactly the wrong answer -- you would see "Revised schedule" when you
+ * searched for a phrase that appears only in the corrigendum. Gmail collapses
+ * search results and it is the most complained-about thing it does.
+ */
+function collapseThreads(ids) {
+  if (!settings.get('threaded')) return ids;
+  return store.rootIds(ids);
+}
+
 function visibleIds() {
-  if (!state.query) return applyMute(store.idsFor(state.category));
+  if (!state.query) return collapseThreads(applyMute(store.idsFor(state.category)));
 
   // Operators are applied as a PREDICATE over what the index returns, not by
   // scanning every message. The index still does the fast token lookup; the
@@ -836,7 +857,10 @@ function buildRow(id) {
     '<input class="r-check" type="checkbox" tabindex="-1" aria-label="Select message" />' +
     '</span>' +
     '<span class="r-mid">' +
-    '<span class="r-line1"><span class="r-from"></span></span>' +
+    '<span class="r-line1"><span class="r-from"></span>' +
+    // Conversation size. Empty and hidden on a single message, so most rows
+    // are shaped exactly as they always were.
+    '<span class="r-count" aria-hidden="true"></span></span>' +
     '<div class="r-subj"></div>' +
     '<div class="r-snip"></div>' +
     '</span>' +
@@ -879,13 +903,35 @@ function fillRow(li, m) {
    * Set through the same guarded helper as the text, so an unchanged row still
    * costs zero DOM writes.
    */
+  /*
+   * A COLLAPSED CONVERSATION MUST SAY IT IS ONE.
+   *
+   * Without a count and the participants, three messages look exactly like
+   * one and collapsing becomes lossy rather than tidy. `thread()` returns null
+   * for anything with a single message, so the common case takes the original
+   * path unchanged.
+   */
+  const conv = settings.get('threaded') ? store.thread(Store.threadOf(m)) : null;
+  const isConv = !!conv && conv.count > 1;
+
   const fromEl = q('.r-from');
-  setText(fromEl, displayName(m.from));
-  setAttr(fromEl, 'title', m.from);
+  setText(fromEl, isConv ? conv.participants.join(', ') : displayName(m.from));
+  setAttr(fromEl, 'title', isConv
+    ? `${conv.count} messages · ${conv.participants.join(', ')}`
+    : m.from);
+
+  const countEl = q('.r-count');
+  if (countEl) {
+    setText(countEl, isConv ? String(conv.count) : '');
+    countEl.hidden = !isConv;
+  }
 
   const subjEl = q('.r-subj');
-  setText(subjEl, m.subject);
-  setAttr(subjEl, 'title', m.subject);
+  // The ORIGINAL subject on a conversation: it is named for what it is about,
+  // not for the last reply, which is almost always "Re: ...".
+  const subject = isConv ? conv.subject : m.subject;
+  setText(subjEl, subject);
+  setAttr(subjEl, 'title', subject);
 
   setText(q('.r-snip'), m.snippet);
   setText(q('.r-date'), shortDate(m.date));
@@ -895,7 +941,12 @@ function fillRow(li, m) {
   tag.classList.toggle('low', (m.confidence ?? 1) < LOW_CONFIDENCE);
   if (m.reason && tag.title !== m.reason) tag.title = m.reason;
 
-  li.classList.toggle('unread', !!m.unread);
+  /*
+   * A conversation you have not finished reading is unread. Deriving this from
+   * the newest message alone would hide an unread reply underneath a read one,
+   * which is the exact failure the rail-count bug had.
+   */
+  li.classList.toggle('unread', isConv ? conv.unread > 0 : !!m.unread);
   li.classList.toggle('muted', MUTED_CATEGORIES.has(m.category));
   const star = q('.r-star');
   const starred = !!m.starred;
@@ -1252,6 +1303,142 @@ function renderTimetableEffects(id) {
   box.hidden = false;
 }
 
+
+
+/**
+ * Load one message of the open conversation into the reader.
+ *
+ * Shares the body path with openMessage rather than duplicating it: same
+ * token guard against a stale response, same inline-image prefetch, same
+ * mark-read grace period. Duplicating that logic is how two readers drift.
+ */
+/**
+ * Fetch and paint ONE message body into the reader frame.
+ *
+ * Extracted from openMessage so the conversation strip can reuse it verbatim.
+ * Both paths need the same stale-response token, the same inline-image
+ * prefetch and the same mark-read grace period; two copies of that is how two
+ * readers drift apart.
+ */
+async function loadBody(id) {
+  const token = ++bodyToken;
+  el.rLoading.hidden = false;
+  el.rBody.srcdoc = '';
+  try {
+    const body = await send('GET_BODY', { id });
+    if (token !== bodyToken) return; // user moved on; drop the stale response
+
+    /*
+     * Inline images are fetched BEFORE the first paint of the body.
+     *
+     * Painting without them and substituting afterwards would reflow the
+     * message under the reader's eyes, which is worse than a marginally later
+     * paint -- and these parts come from the message we have already fetched,
+     * so the extra round trip is small and predictable.
+     */
+    if (body.inline?.length) {
+      try {
+        const res = await send('GET_INLINE', { messageId: id, parts: body.inline });
+        if (token !== bodyToken) return;
+        body.inlineData = res.inline || [];
+      } catch {
+        body.inlineData = []; // placeholders rather than a failed message
+      }
+    }
+
+    lastBody = body;
+    renderAttachments(body);
+    renderBodyInto(body);
+  } catch (err) {
+    if (token !== bodyToken) return;
+    el.rBody.srcdoc = escapeDoc(`Could not load this message.\n\n${err.message}`);
+  } finally {
+    if (token === bodyToken) el.rLoading.hidden = true;
+  }
+}
+
+
+async function openThreadPart(id) {
+  const m = store.get(id);
+  if (!m || openPart === id) return;
+  openPart = id;
+  renderThreadStrip(state.selected || id);
+  await loadBody(id);
+}
+
+/* ------------------------------------------------------- conversation strip -- */
+
+/*
+ * Which message inside the open conversation is being shown.
+ *
+ * Separate from `state.selected`, which is the ROW -- the conversation. A row
+ * stays selected while you move between the messages inside it, exactly as
+ * selection and the open message were kept separate for multi-select.
+ */
+let openPart = null;
+
+/**
+ * Render the strip of messages in the open conversation.
+ *
+ * Oldest first: a conversation reads in the order it happened. Hidden entirely
+ * for a single message, so the overwhelmingly common case keeps the reader it
+ * always had.
+ *
+ * @returns {string[]} the message ids in the conversation, oldest first
+ */
+function renderThreadStrip(rootId) {
+  const box = el.rThread;
+  const m = store.get(rootId);
+  if (!box || !m) return [rootId];
+
+  const conv = settings.get('threaded') ? store.thread(Store.threadOf(m)) : null;
+  if (!conv || conv.count < 2) {
+    box.hidden = true;
+    box.replaceChildren();
+    return [rootId];
+  }
+
+  // `thread()` returns newest-first, like every other order in the store.
+  const ids = [...conv.ids].reverse();
+
+  const frag = document.createDocumentFragment();
+  for (const id of ids) {
+    const msg = store.get(id);
+    if (!msg) continue;
+
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'r-msg';
+    row.dataset.id = id;
+    row.setAttribute('role', 'listitem');
+    // The strip is a set of alternatives, so the current one is pressed rather
+    // than selected -- selection here would collide with the list's listbox.
+    row.setAttribute('aria-pressed', String(id === openPart));
+    row.classList.toggle('current', id === openPart);
+    row.classList.toggle('unread', !!msg.unread);
+
+    const who = document.createElement('span');
+    who.className = 'r-msg-from';
+    who.textContent = displayName(msg.from);
+
+    const when = document.createElement('span');
+    when.className = 'r-msg-date';
+    when.textContent = shortDate(msg.date);
+
+    const peek = document.createElement('span');
+    peek.className = 'r-msg-snip';
+    peek.textContent = msg.snippet || '';
+
+    row.append(who, when, peek);
+    row.title = `${msg.from} · ${fullDate(msg.date)}`;
+    frag.appendChild(row);
+  }
+
+  box.replaceChildren(frag);
+  box.hidden = false;
+  return ids;
+}
+
 async function openMessage(id) {
   const m = store.get(id);
   if (!m) return;
@@ -1321,40 +1508,15 @@ async function openMessage(id) {
     else markRead();
   }
 
-  const token = ++bodyToken;
-  el.rLoading.hidden = false;
-  el.rBody.srcdoc = '';
-  try {
-    const body = await send('GET_BODY', { id });
-    if (token !== bodyToken) return; // user moved on; drop the stale response
+  /*
+   * The row is a conversation; the BODY shown is one message inside it.
+   * Opening a conversation lands on its newest message, which is the one you
+   * came to read -- the strip gives access to the rest.
+   */
+  openPart = id;
+  renderThreadStrip(id);
 
-    /*
-     * Inline images are fetched BEFORE the first paint of the body.
-     *
-     * Painting without them and substituting afterwards would reflow the
-     * message under the reader's eyes, which is worse than a marginally later
-     * paint -- and these parts come from the message we have already fetched,
-     * so the extra round trip is small and predictable.
-     */
-    if (body.inline?.length) {
-      try {
-        const res = await send('GET_INLINE', { messageId: id, parts: body.inline });
-        if (token !== bodyToken) return;
-        body.inlineData = res.inline || [];
-      } catch {
-        body.inlineData = []; // placeholders rather than a failed message
-      }
-    }
-
-    lastBody = body;
-    renderAttachments(body);
-    renderBodyInto(body);
-  } catch (err) {
-    if (token !== bodyToken) return;
-    el.rBody.srcdoc = escapeDoc(`Could not load this message.\n\n${err.message}`);
-  } finally {
-    if (token === bodyToken) el.rLoading.hidden = true;
-  }
+  await loadBody(id);
 }
 
 el.reader.addEventListener('animationend', () => el.reader.classList.remove('swap'));
@@ -2103,6 +2265,15 @@ function hideGate() {
 // One delegated listener for the whole list. The old version attached three
 // listeners per row; at 200 rows that is 600 listeners to create and tear down
 // on every refresh.
+/*
+ * The conversation strip. Delegated, because the strip is rebuilt whenever the
+ * open message changes and per-button listeners would leak with it.
+ */
+el.rThread?.addEventListener('click', (e) => {
+  const part = e.target.closest('.r-msg');
+  if (part?.dataset.id) openThreadPart(part.dataset.id);
+});
+
 el.list.addEventListener('click', (e) => {
   const row = e.target.closest('.row');
   if (!row) return;
@@ -3262,13 +3433,33 @@ async function refreshViews() {
  * to call on every selection change without going through the render loop --
  * selection does not alter WHICH rows exist, only how they look.
  */
+/**
+ * The messages the current selection stands for.
+ *
+ * With threading on, a tick on a collapsed row means the whole conversation --
+ * archiving one reply and leaving two behind is the most confusing thing a
+ * threaded client can do, because the row appears to survive the action.
+ */
+function selectedMessageIds() {
+  return settings.get('threaded')
+    ? selection.liveThreaded(store, renderedIds)
+    : selection.live(store, renderedIds);
+}
+
 function renderSelection() {
-  const n = selection.size;
+  const threaded = settings.get('threaded');
+  const ids = selectedMessageIds();
+  const n = ids.length;
   el.bulkbar.hidden = n === 0;
   el.listhead.hidden = n > 0;
 
   for (const [id, node] of nodeById) {
-    const on = selection.has(id);
+    /*
+     * A row reads as ticked when ANY message in its conversation is. A reply
+     * arriving replaces the rendered root, and without this the tick the user
+     * placed silently disappears with the row it was attached to.
+     */
+    const on = threaded ? selection.hasThread(store, id) : selection.has(id);
     if (node.classList.contains('picked') !== on) node.classList.toggle('picked', on);
     const box = node.querySelector('.r-check');
     if (box && box.checked !== on) box.checked = on;
@@ -3294,7 +3485,7 @@ function renderSelection() {
  * is precisely why UndoStack stores a thunk rather than a diff.
  */
 async function bulkAct(kind) {
-  const ids = selection.live(store, renderedIds);
+  const ids = selectedMessageIds();
   if (ids.length === 0) return;
 
   // Snapshot BEFORE mutating, for the undo.

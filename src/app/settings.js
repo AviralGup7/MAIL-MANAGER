@@ -65,6 +65,16 @@ export const SCHEMA = {
   remoteImages: { type: 'enum', def: 'ask', values: ['ask', 'always', 'never'] },
   markReadOnOpen: { type: 'bool', def: true },
   /*
+   * Conversation threading. On by default, because a five-part exchange
+   * scattered across the list is the single most common way this product
+   * looked less capable than Gmail.
+   *
+   * A setting rather than a hard rule: some people genuinely prefer a flat
+   * chronological list, and the store keeps both views cheap -- `order` is the
+   * flat one and `rootIds()` is the collapsed one, from the same index.
+   */
+  threaded: { type: 'bool', def: true },
+  /*
    * Delay before a message opened in the reader is marked read. A mis-click
    * should not consume the unread state, which is the one bit of triage the
    * user cannot reconstruct. Gmail marks read almost instantly and is worse

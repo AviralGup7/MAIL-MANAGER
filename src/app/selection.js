@@ -163,6 +163,51 @@ export class Selection {
     }
     return out;
   }
+
+  /**
+   * Is this row ticked, treating a conversation as one unit?
+   *
+   * A row IS a conversation, so a tick belongs to the conversation rather than
+   * to the particular message that happens to be its newest. Without this, a
+   * reply arriving replaces the rendered root and the tick visually vanishes
+   * -- the user ticked a conversation and a new message silently un-ticked it.
+   *
+   * @param {Store} store
+   */
+  hasThread(store, rootId) {
+    if (this.ids.has(rootId)) return true;
+    const m = store.get(rootId);
+    if (!m) return false;
+    for (const id of store.threadIds(store.constructor.threadOf(m))) {
+      if (this.ids.has(id)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Expand a tick on a conversation row into the messages it stands for.
+   *
+   * Archiving one reply and leaving two behind is the most confusing thing a
+   * threaded client can do: the row appears to survive the action. So an
+   * action on a collapsed row applies to the whole exchange.
+   *
+   * @param {Store} store
+   */
+  liveThreaded(store, orderedIds) {
+    const out = [];
+    const seen = new Set();
+    for (const rootId of orderedIds) {
+      const m = store.get(rootId);
+      if (!m) continue;
+      if (!this.hasThread(store, rootId)) continue;
+      for (const id of store.threadIds(store.constructor.threadOf(m))) {
+        if (seen.has(id) || !store.get(id)) continue;
+        seen.add(id);
+        out.push(id);
+      }
+    }
+    return out;
+  }
 }
 
 /** Human count for the bulk bar: "3 selected". */

@@ -3566,6 +3566,101 @@ kbd {
   font-variant-numeric: tabular-nums;
 }
 
+/* --------------------------------------------------- conversation strip -- */
+
+/*
+ * One entry per message in the open conversation, oldest first. A quiet strip
+ * above the body rather than a stack of expanded messages: the body frame is
+ * sandboxed and origin-less, and five of them would be five sanitiser passes
+ * and five layouts for four bodies nobody is reading.
+ */
+#r-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: var(--s-3) 0 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.r-msg {
+  display: grid;
+  grid-template-columns: minmax(0, 12ch) auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--s-2);
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  border: 0;
+  background: var(--bg-raised);
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: var(--t-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur-instant) linear;
+}
+.r-msg + .r-msg {
+  border-top: 1px solid var(--line);
+}
+.r-msg:hover {
+  background: var(--bg-sunken);
+}
+.r-msg:active {
+  transform: translateY(1px);
+}
+/* The message you are reading. A left bar, not a fill: the strip sits next to
+   the body and a filled row would compete with it. */
+.r-msg.current {
+  background: var(--bg-sunken);
+  box-shadow: inset 2px 0 0 var(--accent);
+  color: var(--fg);
+}
+.r-msg.unread .r-msg-from {
+  font-weight: var(--w-semi);
+  color: var(--fg);
+}
+.r-msg-from {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.r-msg-date {
+  color: var(--fg-faint);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.r-msg-snip {
+  color: var(--fg-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * The conversation count on a list row. Sits beside the sender, because it is
+ * a property of WHO is in the conversation, not of the subject.
+ */
+.r-count {
+  flex: none;
+  margin-left: var(--s-1);
+  /* On the 4px grid like everything else; the pill shape comes from the
+     radius, not from odd padding. */
+  padding: 0 var(--s-1);
+  min-width: 18px;
+  text-align: center;
+  border-radius: var(--r-full);
+  background: var(--bg-sunken);
+  color: var(--fg-faint);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--lh-snug);
+}
+.row.unread .r-count {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 .tt-entry-acts {
   display: flex;
   gap: var(--s-1);

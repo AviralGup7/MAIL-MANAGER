@@ -128,6 +128,7 @@ const fmtDelay = (ms) => (ms === 0 ? 'off' : `${(ms / 1000).toFixed(1)}s`);
   const delay = $('markReadDelayMs');
   const delayLabel = $('markReadDelayLabel');
   const images = $('remoteImages');
+  const threaded = $('threaded');
   const auto = $('autoRefreshMs');
   const autoLabel = $('autoRefreshLabel');
   if (!markRead || !delay || !images) return;
@@ -137,6 +138,7 @@ const fmtDelay = (ms) => (ms === 0 ? 'off' : `${(ms / 1000).toFixed(1)}s`);
   delay.value = String(settings.get('markReadDelayMs'));
   delayLabel.textContent = fmtDelay(settings.get('markReadDelayMs'));
   images.value = settings.get('remoteImages');
+  if (threaded) threaded.checked = settings.get('threaded');
   if (auto) {
     auto.value = String(settings.get('autoRefreshMs'));
     autoLabel.textContent = fmtEvery(Number(auto.value));
@@ -171,6 +173,10 @@ const fmtDelay = (ms) => (ms === 0 ? 'off' : `${(ms / 1000).toFixed(1)}s`);
 
   images.addEventListener('change', async () => {
     await settings.set('remoteImages', images.value);
+  });
+
+  threaded?.addEventListener('change', async () => {
+    await settings.set('threaded', threaded.checked);
   });
 
   // Same input/change split as the delay slider: live label, one write.

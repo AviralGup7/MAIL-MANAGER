@@ -321,6 +321,21 @@
                 </span>
               </div>
 
+              <!--
+                CONVERSATION STRIP.
+
+                One entry per message in the thread, oldest first. Selecting
+                one loads it into the single sandboxed body frame below -- the
+                frame is NOT duplicated per message, because each is a separate
+                origin-less document and rendering five at once would cost five
+                sanitiser passes and five layouts for four bodies nobody is
+                reading.
+
+                Hidden entirely on a single-message conversation, which is most
+                mail: the reader then looks exactly as it always did.
+              -->
+              <div id="r-thread" role="list" aria-label="Messages in this conversation" hidden></div>
+
               <div id="r-bodywrap">
                 <div id="r-loading">Loading…</div>
                 <!--
