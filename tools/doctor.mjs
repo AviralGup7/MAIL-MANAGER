@@ -19,6 +19,53 @@ import { readFileSync, existsSync, statSync } from 'node:fs';
 import { dirname, resolve, relative, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+/**
+ * Strip comments WITHOUT being fooled by strings.
+ *
+ * A naive `.replace(/\/\*[\s\S]*?\*\//g, '')` breaks on this very codebase:
+ *
+ *     chrome.tabs.query({ url: 'https://mail.google.com/*' })
+ *
+ * The `/*` inside that Gmail match pattern opens a phantom comment that
+ * swallows the next thirty lines, so any scan running afterwards silently
+ * sees nothing there. That is not hypothetical -- it hid a real unguarded
+ * `chrome.commands` call from this checker until sabotage exposed it.
+ *
+ * Newlines are preserved so reported line numbers stay accurate.
+ */
+function stripComments(text) {
+  let out = '';
+  let mode = 'code';
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    const nx = text[i + 1];
+    if (mode === 'code') {
+      if (c === '/' && nx === '*') { mode = 'block'; out += '  '; i++; continue; }
+      if (c === '/' && nx === '/') { mode = 'line'; out += '  '; i++; continue; }
+      if (c === "'") mode = 'single';
+      else if (c === '"') mode = 'double';
+      else if (c === '`') mode = 'tick';
+      out += c;
+      continue;
+    }
+    if (mode === 'line') {
+      if (c === '\n') { mode = 'code'; out += c; } else out += ' ';
+      continue;
+    }
+    if (mode === 'block') {
+      if (c === '*' && nx === '/') { mode = 'code'; out += '  '; i++; continue; }
+      out += c === '\n' ? c : ' ';
+      continue;
+    }
+    if (c === '\\') { out += c + (nx ?? ''); i++; continue; }
+    if ((mode === 'single' && c === "'")
+      || (mode === 'double' && c === '"')
+      || (mode === 'tick' && c === '`')) mode = 'code';
+    out += c;
+  }
+  return out;
+}
+
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const problems = [];
 const notes = [];
@@ -163,7 +210,7 @@ if (manifest) {
          * level throws during evaluation, and Chrome reports that as a bare
          * registration failure rather than as the ReferenceError it is.
          */
-        const stripped = src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ');
+        const stripped = stripComments(src);
         for (const api of ['document', 'window', 'localStorage', 'XMLHttpRequest']) {
           const hit = new RegExp(`(^|[^.\\w'"\`])${api}\\s*[.\\[]`).exec(stripped);
           if (hit) {
@@ -172,6 +219,38 @@ if (manifest) {
               `Guard it, or move that code to the page. Workers have no DOM.`);
           }
         }
+        /*
+         * UNGUARDED TOP-LEVEL chrome.* ACCESS.
+         *
+         * This is the one that actually bit us. A statement like
+         *
+         *     chrome.action.onClicked.addListener(...)
+         *
+         * at module top level throws a TypeError during evaluation if
+         * `chrome.action` is undefined -- and that aborts the entire worker.
+         * Chrome reports exactly "Service worker registration failed. Status
+         * code: 2", naming no file, no line and no cause.
+         *
+         * `chrome.action` is undefined whenever the manifest's `action` key is
+         * missing or malformed. Same for `commands`, `alarms`, `notifications`
+         * and every other optional namespace. The fix is a `?.`; the cost of
+         * missing it is an extension that looks completely dead.
+         *
+         * `runtime` is excluded: it always exists in a real worker, so
+         * guarding it would hide genuine breakage rather than prevent it.
+         */
+        const ALWAYS_PRESENT = new Set(['runtime']);
+        for (const hit of stripped.matchAll(/^chrome\.([a-zA-Z]+)\.(\w+)/gm)) {
+          const [, ns, prop] = hit;
+          if (ALWAYS_PRESENT.has(ns)) continue;
+          fail(`unguarded top-level chrome.${ns} in the service worker`,
+            `${rel(file)} runs \`chrome.${ns}.${prop}\` at module top level. If the `
+            + `manifest does not grant "${ns}", this throws during evaluation and the `
+            + `whole worker fails to register with no usable error.`,
+            `Write chrome.${ns}?.${prop} so a missing capability costs that feature `
+            + 'rather than the entire extension.');
+        }
+
         if (/\bimportScripts\s*\(/.test(stripped) && manifest.background?.type === 'module') {
           fail('importScripts() in a module service worker',
             `${rel(file)} calls importScripts(), which is illegal when type is "module".`,

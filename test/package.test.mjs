@@ -1429,6 +1429,90 @@ test('CONSISTENCY: the gate is a dialog, like every other blocking surface', () 
   );
 });
 
+test('LOAD: no optional chrome.* namespace can kill the service worker', () => {
+  /*
+   * THE ACTUAL CAUSE of "Service worker registration failed. Status code: 2".
+   *
+   * `chrome.action.onClicked.addListener(...)` sat at module top level,
+   * unguarded. If `chrome.action` is undefined -- which happens whenever the
+   * manifest's `action` key is missing or malformed -- that is a TypeError
+   * during module evaluation, and it aborts the ENTIRE worker. Chrome reports
+   * it with a status code and nothing else: no file, no line, no stack.
+   *
+   * So a one-character manifest slip took down every feature in the product,
+   * including the ones that have nothing to do with the toolbar button.
+   *
+   * Verified by evaluating the real module graph against a chrome stub with
+   * one namespace removed at a time. Before the fix, deleting `action` or
+   * `commands` threw; after it, only `runtime` does -- and `runtime` always
+   * exists in a real worker, so guarding it would hide genuine breakage.
+   */
+  /*
+   * COMMENT STRIPPING HAS TO BE STRING-AWARE, and finding that out took two
+   * sabotage rounds.
+   *
+   * v1 collapsed each block comment to a single space, gluing the next line
+   * onto the comment's last line and killing the `^` anchor.
+   *
+   * v2 preserved newlines and STILL missed, because this file contains
+   *
+   *     chrome.tabs.query({ url: 'https://mail.google.com/*' })
+   *
+   * and the `/*` inside that Gmail match pattern opens a phantom comment that
+   * swallows the following thirty lines -- including the very listener under
+   * test. A regex cannot tell a comment from a string, so the scanner walks
+   * the source character by character and tracks whether it is inside one.
+   *
+   * Both versions PASSED against deliberately broken code. Neither would have
+   * been caught by anything except sabotaging the thing they claim to check.
+   */
+  const strip = (text) => {
+    let out = '';
+    let mode = 'code'; // code | line | block | single | double | tick
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      const nx = text[i + 1];
+      if (mode === 'code') {
+        if (c === '/' && nx === '*') { mode = 'block'; out += '  '; i++; continue; }
+        if (c === '/' && nx === '/') { mode = 'line'; out += '  '; i++; continue; }
+        if (c === "'") mode = 'single';
+        else if (c === '\"') mode = 'double';
+        else if (c === '`') mode = 'tick';
+        out += c;
+        continue;
+      }
+      if (mode === 'line') {
+        if (c === '\n') { mode = 'code'; out += c; } else out += ' ';
+        continue;
+      }
+      if (mode === 'block') {
+        if (c === '*' && nx === '/') { mode = 'code'; out += '  '; i++; continue; }
+        out += c === '\n' ? c : ' ';
+        continue;
+      }
+      // inside a string: copy through, honour escapes, and close on the quote
+      if (c === '\\') { out += c + (nx ?? ''); i++; continue; }
+      if ((mode === 'single' && c === "'")
+        || (mode === 'double' && c === '\"')
+        || (mode === 'tick' && c === '`')) mode = 'code';
+      out += c;
+    }
+    return out;
+  };
+
+  const src = strip(read('src/background/index.js'));
+
+  const ALWAYS_PRESENT = new Set(['runtime']);
+  const unguarded = [...src.matchAll(/^chrome\.([a-zA-Z]+)\.(\w+)/gm)]
+    .filter(([, ns]) => !ALWAYS_PRESENT.has(ns))
+    .map(([, ns, prop]) => `chrome.${ns}.${prop}`);
+
+  assert.deepEqual(
+    unguarded, [],
+    'these run at top level and abort the whole worker if the namespace is absent; use ?.'
+  );
+});
+
 test('LOAD: the extension passes the load-time doctor', () => {
   /*
    * THE LAYER 890 TESTS COULD NOT SEE.

@@ -56,7 +56,7 @@ function isGmail(tab) {
  * This logs the actual granted state once at startup, so the next mismatch is
  * one glance at the service worker console instead of a debugging session.
  */
-chrome.runtime.onInstalled.addListener(async () => {
+chrome.runtime.onInstalled?.addListener(async () => {
   const manifest = chrome.runtime.getManifest();
   const problems = [];
 
@@ -82,8 +82,25 @@ chrome.runtime.onInstalled.addListener(async () => {
   }
 });
 
-/** Toolbar click: tell the content script in THIS tab to toggle. */
-chrome.action.onClicked.addListener(async (tab) => {
+/*
+ * Toolbar click: tell the content script in THIS tab to toggle.
+ *
+ * WHY THIS IS OPTIONAL-CHAINED, when the manifest declares `action`.
+ *
+ * A top-level `chrome.action.onClicked.addListener(...)` throws a TypeError
+ * during module evaluation if `chrome.action` is undefined -- and that aborts
+ * the WHOLE service worker. Chrome reports it as
+ * "Service worker registration failed. Status code: 2", which names no file,
+ * no line and no cause.
+ *
+ * `chrome.action` is undefined whenever the manifest's `action` key is absent
+ * or malformed, which is easy to do by hand-editing and impossible to
+ * diagnose from the error. The cost of one `?.` is nothing; the cost of the
+ * unguarded form is an extension that appears completely dead. Every other
+ * capability here already degrades rather than crashing -- see the alarms
+ * block below, which has been guarded from the start.
+ */
+chrome.action?.onClicked.addListener(async (tab) => {
   if (!tab?.id) return;
 
   if (isGmail(tab)) {
@@ -110,7 +127,9 @@ chrome.action.onClicked.addListener(async (tab) => {
   await chrome.tabs.create({ url: 'https://mail.google.com/' });
 });
 
-chrome.commands.onCommand.addListener(async (command) => {
+// Same reasoning as chrome.action above: a missing `commands` key must cost
+// the shortcut, not the entire worker.
+chrome.commands?.onCommand.addListener(async (command) => {
   if (command !== 'toggle-takeover') return;
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (isGmail(tab) && tab.id) await toggleIn(tab.id);
