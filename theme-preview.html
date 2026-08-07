@@ -1,4 +1,4 @@
-/*
+<!doctype html><html><head><style>/*
  * BITS Mail Manager — app styles.
  *
  * RULES THIS FILE FOLLOWS (learned from the old version's motion audit, which
@@ -3840,3 +3840,181 @@ kbd {
     transition-delay: 0ms !important;
   }
 }
+
+body{margin:0;padding:24px;display:flex;gap:18px;flex-wrap:wrap;background:#4a4f57;font-family:sans-serif}
+.row{height:auto}
+</style></head><body>
+<div data-theme="daylight" data-scheme="light" style="--bg:#eef1f6;--bg-raised:#ffffff;--bg-sunken:#e2e7ef;--fg:#12151b;--fg-dim:#4a5260;--fg-faint:#5d6573;--line:#d3dae5;--line-strong:#8b98ac;--accent:#1a4fd6;--accent-fg:#ffffff;--accent-soft:#e4ebfb;--danger:#b3261e;--warning:#8a5a00;--success:#0f6b45;--star:#8a6100;--glow:rgba(26, 79, 214, 0.16);background:var(--bg);padding:18px;border-radius:14px;width:340px">
+  <div style="font:600 11px sans-serif;color:var(--fg-dim);letter-spacing:.06em;text-transform:uppercase;margin-bottom:12px">Daylight</div>
+  <div style="background:var(--bg-raised);border:1px solid var(--line);border-radius:10px;overflow:hidden">
+    <div class="row unread" style="--c:var(--accent)">
+      <span class="r-bar"></span>
+      <span class="r-mid"><span class="r-line1"><span class="r-from">AUGSD</span><span class="r-date">10:24</span></span>
+      <span class="r-subj">Registration for Semester II</span><span class="r-snip">Course registration opens Monday.</span></span>
+      <span class="r-right"><span class="tag">AUGSD</span></span>
+    </div>
+    <div class="row" aria-selected="true" style="--c:var(--warning)">
+      <span class="r-bar"></span>
+      <span class="r-mid"><span class="r-line1"><span class="r-from">Practice School</span><span class="r-date">09:02</span></span>
+      <span class="r-subj">PS-II station allotment</span><span class="r-snip">Confirm within 48 hours.</span></span>
+      <span class="r-right"><span class="tag">PS</span></span>
+    </div>
+    <div class="row" style="--c:var(--success)">
+      <span class="r-bar"></span>
+      <span class="r-mid"><span class="r-line1"><span class="r-from">Placement Unit</span><span class="r-date">Tue</span></span>
+      <span class="r-subj">Pre-placement talk</span><span class="r-snip">Attendance is mandatory.</span></span>
+      <span class="r-right"><span class="tag low">PLACEMENT</span></span>
+    </div>
+  </div>
+  <div style="margin-top:12px;display:flex;gap:8px">
+    <button class="primary">Compose</button><button class="ghost">Refresh</button><button class="ghost small">Snooze</button>
+  </div>
+  <div id="r-due" class="r-due r-due-today" style="position:static;margin-top:12px">
+    <span class="r-due-when">Due today</span><span class="r-due-from">Read from: &ldquo;submit by today&rdquo;</span>
+  </div>
+</div>
+<div data-theme="midnight" data-scheme="dark" style="--bg:#0d0f14;--bg-raised:#181c25;--bg-sunken:#07090c;--fg:#e9ecf2;--fg-dim:#a8b0c0;--fg-faint:#828b9c;--line:#252932;--line-strong:#525b6b;--accent:#7aa2ff;--accent-fg:#0b0f18;--accent-soft:#1a2338;--danger:#ff8578;--warning:#e0a83a;--success:#4cc38a;--star:#eab308;--glow:rgba(122, 162, 255, 0.20);background:var(--bg);padding:18px;border-radius:14px;width:340px">
+  <div style="font:600 11px sans-serif;color:var(--fg-dim);letter-spacing:.06em;text-transform:uppercase;margin-bottom:12px">Midnight</div>
+  <div style="background:var(--bg-raised);border:1px solid var(--line);border-radius:10px;overflow:hidden">
+    <div class="row unread" style="--c:var(--accent)">
+      <span class="r-bar"></span>
+      <span class="r-mid"><span class="r-line1"><span class="r-from">AUGSD</span><span class="r-date">10:24</span></span>
+      <span class="r-subj">Registration for Semester II</span><span class="r-snip">Course registration opens Monday.</span></span>
+      <span class="r-right"><span class="tag">AUGSD</span></span>
+    </div>
+    <div class="row" aria-selected="true" style="--c:var(--warning)">
+      <span class="r-bar"></span>
+      <span class="r-mid"><span class="r-line1"><span class="r-from">Practice School</span><span class="r-date">09:02</span></span>
+      <span class="r-subj">PS-II station allotment</span><span class="r-snip">Confirm within 48 hours.</span></span>
+      <span class="r-right"><span class="tag">PS</span></span>
+    </div>
+    <div class="row" style="--c:var(--success)">
+      <span class="r-bar"></span>
+      <span class="r-mid"><span class="r-line1"><span class="r-from">Placement Unit</span><span class="r-date">Tue</span></span>
+      <span class="r-subj">Pre-placement talk</span><span class="r-snip">Attendance is mandatory.</span></span>
+      <span class="r-right"><span class="tag low">PLACEMENT</span></span>
+    </div>
+  </div>
+  <div style="margin-top:12px;display:flex;gap:8px">
+    <button class="primary">Compose</button><button class="ghost">Refresh</button><button class="ghost small">Snooze</button>
+  </div>
+  <div id="r-due" class="r-due r-due-today" style="position:static;margin-top:12px">
+    <span class="r-due-when">Due today</span><span class="r-due-from">Read from: &ldquo;submit by today&rdquo;</span>
+  </div>
+</div>
+<div data-theme="pilani" data-scheme="dark" style="--bg:#131010;--bg-raised:#211c18;--bg-sunken:#0b0908;--fg:#f2ebe3;--fg-dim:#bdb0a2;--fg-faint:#968a7e;--line:#2e2822;--line-strong:#5f5245;--accent:#e8944a;--accent-fg:#1a1411;--accent-soft:#332318;--danger:#f0776a;--warning:#dcae4e;--success:#67bb8a;--star:#eab308;--glow:rgba(232, 148, 74, 0.22);background:var(--bg);padding:18px;border-radius:14px;width:340px">
+  <div style="font:600 11px sans-serif;color:var(--fg-dim);letter-spacing:.06em;text-transform:uppercase;margin-bottom:12px">Pilani Dusk</div>
+  <div style="background:var(--bg-raised);border:1px solid var(--line);border-radius:10px;overflow:hidden">
+    <div class="row unread" style="--c:var(--accent)">
+      <span class="r-bar"></span>
+      <span class="r-mid"><span class="r-line1"><span class="r-from">AUGSD</span><span class="r-date">10:24</span></span>
+      <span class="r-subj">Registration for Semester II</span><span class="r-snip">Course registration opens Monday.</span></span>
+      <span class="r-right"><span class="tag">AUGSD</span></span>
+    </div>
+    <div class="row" aria-selected="true" style="--c:var(--warning)">
+      <span class="r-bar"></span>
+      <span class="r-mid"><span class="r-line1"><span class="r-from">Practice School</span><span class="r-date">09:02</span></span>
+      <span class="r-subj">PS-II station allotment</span><span class="r-snip">Confirm within 48 hours.</span></span>
+      <span class="r-right"><span class="tag">PS</span></span>
+    </div>
+    <div class="row" style="--c:var(--success)">
+      <span class="r-bar"></span>
+      <span class="r-mid"><span class="r-line1"><span class="r-from">Placement Unit</span><span class="r-date">Tue</span></span>
+      <span class="r-subj">Pre-placement talk</span><span class="r-snip">Attendance is mandatory.</span></span>
+      <span class="r-right"><span class="tag low">PLACEMENT</span></span>
+    </div>
+  </div>
+  <div style="margin-top:12px;display:flex;gap:8px">
+    <button class="primary">Compose</button><button class="ghost">Refresh</button><button class="ghost small">Snooze</button>
+  </div>
+  <div id="r-due" class="r-due r-due-today" style="position:static;margin-top:12px">
+    <span class="r-due-when">Due today</span><span class="r-due-from">Read from: &ldquo;submit by today&rdquo;</span>
+  </div>
+</div>
+<div data-theme="solarised" data-scheme="light" style="--bg:#f7f0dd;--bg-raised:#fffdf6;--bg-sunken:#e9e2cd;--fg:#073642;--fg-dim:#4a5c62;--fg-faint:#54646a;--line:#ddd6c1;--line-strong:#9c9279;--accent:#1c6690;--accent-fg:#ffffff;--accent-soft:#e4ecef;--danger:#b1382c;--warning:#7d5a00;--success:#526600;--star:#8a6100;--glow:rgba(31, 111, 158, 0.16);background:var(--bg);padding:18px;border-radius:14px;width:340px">
+  <div style="font:600 11px sans-serif;color:var(--fg-dim);letter-spacing:.06em;text-transform:uppercase;margin-bottom:12px">Solarised</div>
+  <div style="background:var(--bg-raised);border:1px solid var(--line);border-radius:10px;overflow:hidden">
+    <div class="row unread" style="--c:var(--accent)">
+      <span class="r-bar"></span>
+      <span class="r-mid"><span class="r-line1"><span class="r-from">AUGSD</span><span class="r-date">10:24</span></span>
+      <span class="r-subj">Registration for Semester II</span><span class="r-snip">Course registration opens Monday.</span></span>
+      <span class="r-right"><span class="tag">AUGSD</span></span>
+    </div>
+    <div class="row" aria-selected="true" style="--c:var(--warning)">
+      <span class="r-bar"></span>
+      <span class="r-mid"><span class="r-line1"><span class="r-from">Practice School</span><span class="r-date">09:02</span></span>
+      <span class="r-subj">PS-II station allotment</span><span class="r-snip">Confirm within 48 hours.</span></span>
+      <span class="r-right"><span class="tag">PS</span></span>
+    </div>
+    <div class="row" style="--c:var(--success)">
+      <span class="r-bar"></span>
+      <span class="r-mid"><span class="r-line1"><span class="r-from">Placement Unit</span><span class="r-date">Tue</span></span>
+      <span class="r-subj">Pre-placement talk</span><span class="r-snip">Attendance is mandatory.</span></span>
+      <span class="r-right"><span class="tag low">PLACEMENT</span></span>
+    </div>
+  </div>
+  <div style="margin-top:12px;display:flex;gap:8px">
+    <button class="primary">Compose</button><button class="ghost">Refresh</button><button class="ghost small">Snooze</button>
+  </div>
+  <div id="r-due" class="r-due r-due-today" style="position:static;margin-top:12px">
+    <span class="r-due-when">Due today</span><span class="r-due-from">Read from: &ldquo;submit by today&rdquo;</span>
+  </div>
+</div>
+<div data-theme="nord" data-scheme="dark" style="--bg:#2e3440;--bg-raised:#3b4252;--bg-sunken:#272c36;--fg:#eceff4;--fg-dim:#c5cddb;--fg-faint:#a7b2c4;--line:#434c5e;--line-strong:#727e94;--accent:#88c0d0;--accent-fg:#2e3440;--accent-soft:#3b4a55;--danger:#f0a49d;--warning:#ebcb8b;--success:#a3be8c;--star:#ebcb8b;--glow:rgba(136, 192, 208, 0.18);background:var(--bg);padding:18px;border-radius:14px;width:340px">
+  <div style="font:600 11px sans-serif;color:var(--fg-dim);letter-spacing:.06em;text-transform:uppercase;margin-bottom:12px">Nord</div>
+  <div style="background:var(--bg-raised);border:1px solid var(--line);border-radius:10px;overflow:hidden">
+    <div class="row unread" style="--c:var(--accent)">
+      <span class="r-bar"></span>
+      <span class="r-mid"><span class="r-line1"><span class="r-from">AUGSD</span><span class="r-date">10:24</span></span>
+      <span class="r-subj">Registration for Semester II</span><span class="r-snip">Course registration opens Monday.</span></span>
+      <span class="r-right"><span class="tag">AUGSD</span></span>
+    </div>
+    <div class="row" aria-selected="true" style="--c:var(--warning)">
+      <span class="r-bar"></span>
+      <span class="r-mid"><span class="r-line1"><span class="r-from">Practice School</span><span class="r-date">09:02</span></span>
+      <span class="r-subj">PS-II station allotment</span><span class="r-snip">Confirm within 48 hours.</span></span>
+      <span class="r-right"><span class="tag">PS</span></span>
+    </div>
+    <div class="row" style="--c:var(--success)">
+      <span class="r-bar"></span>
+      <span class="r-mid"><span class="r-line1"><span class="r-from">Placement Unit</span><span class="r-date">Tue</span></span>
+      <span class="r-subj">Pre-placement talk</span><span class="r-snip">Attendance is mandatory.</span></span>
+      <span class="r-right"><span class="tag low">PLACEMENT</span></span>
+    </div>
+  </div>
+  <div style="margin-top:12px;display:flex;gap:8px">
+    <button class="primary">Compose</button><button class="ghost">Refresh</button><button class="ghost small">Snooze</button>
+  </div>
+  <div id="r-due" class="r-due r-due-today" style="position:static;margin-top:12px">
+    <span class="r-due-when">Due today</span><span class="r-due-from">Read from: &ldquo;submit by today&rdquo;</span>
+  </div>
+</div>
+<div data-theme="contrast" data-scheme="light" style="--bg:#ffffff;--bg-raised:#ffffff;--bg-sunken:#f0f0f0;--fg:#000000;--fg-dim:#1a1a1a;--fg-faint:#333333;--line:#767676;--line-strong:#000000;--accent:#0034c4;--accent-fg:#ffffff;--accent-soft:#dfe6ff;--danger:#a1000f;--warning:#6b4400;--success:#00522f;--star:#6b4400;--glow:rgba(0, 52, 196, 0.22);background:var(--bg);padding:18px;border-radius:14px;width:340px">
+  <div style="font:600 11px sans-serif;color:var(--fg-dim);letter-spacing:.06em;text-transform:uppercase;margin-bottom:12px">High Contrast</div>
+  <div style="background:var(--bg-raised);border:1px solid var(--line);border-radius:10px;overflow:hidden">
+    <div class="row unread" style="--c:var(--accent)">
+      <span class="r-bar"></span>
+      <span class="r-mid"><span class="r-line1"><span class="r-from">AUGSD</span><span class="r-date">10:24</span></span>
+      <span class="r-subj">Registration for Semester II</span><span class="r-snip">Course registration opens Monday.</span></span>
+      <span class="r-right"><span class="tag">AUGSD</span></span>
+    </div>
+    <div class="row" aria-selected="true" style="--c:var(--warning)">
+      <span class="r-bar"></span>
+      <span class="r-mid"><span class="r-line1"><span class="r-from">Practice School</span><span class="r-date">09:02</span></span>
+      <span class="r-subj">PS-II station allotment</span><span class="r-snip">Confirm within 48 hours.</span></span>
+      <span class="r-right"><span class="tag">PS</span></span>
+    </div>
+    <div class="row" style="--c:var(--success)">
+      <span class="r-bar"></span>
+      <span class="r-mid"><span class="r-line1"><span class="r-from">Placement Unit</span><span class="r-date">Tue</span></span>
+      <span class="r-subj">Pre-placement talk</span><span class="r-snip">Attendance is mandatory.</span></span>
+      <span class="r-right"><span class="tag low">PLACEMENT</span></span>
+    </div>
+  </div>
+  <div style="margin-top:12px;display:flex;gap:8px">
+    <button class="primary">Compose</button><button class="ghost">Refresh</button><button class="ghost small">Snooze</button>
+  </div>
+  <div id="r-due" class="r-due r-due-today" style="position:static;margin-top:12px">
+    <span class="r-due-when">Due today</span><span class="r-due-from">Read from: &ldquo;submit by today&rdquo;</span>
+  </div>
+</div></body></html>

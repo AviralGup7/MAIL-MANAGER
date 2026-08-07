@@ -39,14 +39,18 @@ export const THEMES = [
     name: 'Daylight',
     scheme: 'light',
     swatch: '#1a4fd6',
-    bg: '#f4f6f9',
+    // On a light theme the raised surface is already pure white, so depth has
+    // to come from the PAGE receding rather than the panel brightening. The
+    // ground is cooled and darkened a step; white panels now sit on it
+    // clearly instead of nearly matching it.
+    bg: '#eef1f6',
     bgRaised: '#ffffff',
-    bgSunken: '#e9edf3',
+    bgSunken: '#e2e7ef',
     fg: '#12151b',
     fgDim: '#4a5260',
-    fgFaint: '#616978', // was #8a91a0 — failed AA at 2.95:1
-    line: '#dbe1ea',
-    lineStrong: '#94a0b3',
+    fgFaint: '#5d6573', // darkened again when bgSunken deepened; AA on all three surfaces
+    line: '#d3dae5',
+    lineStrong: '#8b98ac', // tracks bg; a border must stay >=2.4:1 on the page
     accent: '#1a4fd6',
     accentFg: '#ffffff',
     accentSoft: '#e4ebfb',
@@ -61,9 +65,12 @@ export const THEMES = [
     name: 'Midnight',
     scheme: 'dark',
     swatch: '#7aa2ff',
-    bg: '#0e1014',
-    bgRaised: '#161920',
-    bgSunken: '#090b0e',
+    // Raised lifted from #161920: a panel one step off the page reads as a
+    // separate sheet, and at 1.08:1 it did not. Sunken deepened to match, so
+    // the three surfaces are evenly spaced rather than two-plus-one.
+    bg: '#0d0f14',
+    bgRaised: '#181c25',
+    bgSunken: '#07090c',
     fg: '#e9ecf2',
     fgDim: '#a8b0c0',
     fgFaint: '#828b9c', // was #6d7484 — failed AA at 3.72:1
@@ -85,9 +92,12 @@ export const THEMES = [
     swatch: '#e8944a',
     // The desert campus at dusk: warm sand against deep indigo. This is the
     // one theme that is specific to what this extension is for.
-    bg: '#14110f',
-    bgRaised: '#1d1916',
-    bgSunken: '#0d0b0a',
+    // The raised surface carries slightly MORE warmth than the page, not just
+    // more light: a warm sheet over a cooler ground is what dusk actually
+    // looks like, and it separates the panels without a border doing the work.
+    bg: '#131010',
+    bgRaised: '#211c18',
+    bgSunken: '#0b0908',
     fg: '#f2ebe3',
     fgDim: '#bdb0a2',
     fgFaint: '#968a7e',
@@ -109,20 +119,24 @@ export const THEMES = [
     swatch: '#268bd2',
     // Ethan Schoonover's palette, chosen for its flat luminance relationships,
     // which is what makes it comfortable over long reading sessions.
-    bg: '#fdf6e3',
-    bgRaised: '#fffbf0',
-    bgSunken: '#eee8d5',
+    // Solarised's own base3/base2 sit only 1.04:1 apart, which is faithful to
+    // the palette and reads as one flat sheet in a three-pane layout. The page
+    // steps down toward base2 while the panel keeps the warm highlight, so the
+    // relationship stays Solarised and the panels become visible.
+    bg: '#f7f0dd',
+    bgRaised: '#fffdf6',
+    bgSunken: '#e9e2cd',
     fg: '#073642',
     fgDim: '#4a5c62',
-    fgFaint: '#59696e', // lifted from the canonical #93a1a1, which fails AA
-    line: '#e3ddca',
-    lineStrong: '#a49b83',
+    fgFaint: '#54646a', // lifted from canonical #93a1a1; re-darkened for the deeper sunken
+    line: '#ddd6c1',
+    lineStrong: '#9c9279', // tracks the darkened base3
     accent: '#1c6690', // darkened from #268bd2 for AA on cream
     accentFg: '#ffffff',
     accentSoft: '#e4ecef',
     danger: '#b1382c',
     warning: '#7d5a00',
-    success: '#5a7000',
+    success: '#526600', // AA on bgSunken, which is the darkest surface it lands on
     star: '#8a6100',
     glow: 'rgba(31, 111, 158, 0.16)',
   },

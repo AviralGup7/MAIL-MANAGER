@@ -475,6 +475,44 @@ test('the stylesheet uses design tokens, not ad-hoc values', () => {
  * in the stylesheet opts out of that guarantee, so the set of permitted
  * literals is closed here.
  */
+test('every theme token used in CSS has a :root fallback', () => {
+  /*
+   * `--star` was written by applyTheme() and defined NOWHERE else, unlike
+   * every other token. So for the instant before the theme is applied -- and
+   * permanently if storage is unavailable, which the settings module treats as
+   * a supported degraded path -- `.r-star[aria-pressed='true']` resolved to
+   * no colour at all and a starred message looked unstarred.
+   *
+   * The `:root` block is the contract: it is what the UI looks like with no
+   * JavaScript having run. A token that only exists at runtime is a token that
+   * is missing exactly when things have gone wrong.
+   *
+   * `--c` is excluded deliberately: it is set per-row as an inline style for
+   * the category dot, never globally, so a root default would be meaningless.
+   */
+  const css = read('src/app/app.css');
+  const used = new Set([...css.matchAll(/var\((--[a-z0-9-]+)/g)].map((m) => m[1]));
+  const defined = new Set([...css.matchAll(/^ {2}(--[a-z0-9-]+)\s*:/gm)].map((m) => m[1]));
+
+  const PER_ELEMENT = new Set(['--c']);
+  const missing = [...used].filter((v) => !defined.has(v) && !PER_ELEMENT.has(v));
+
+  assert.deepEqual(
+    missing, [],
+    'these tokens are used but have no :root fallback, so they are empty until a theme loads'
+  );
+
+  // And every token themes.js writes must be one the stylesheet knows about,
+  // or the theme is shipping a value nothing reads.
+  const themes = read('src/app/themes.js');
+  const written = [...themes.matchAll(/'(--[a-z0-9-]+)'/g)].map((m) => m[1]);
+  const unread = written.filter((v) => !used.has(v));
+  assert.deepEqual(
+    unread, [],
+    'themes.js writes these custom properties and no CSS rule reads them'
+  );
+});
+
 test('no hardcoded colour bypasses the theme tokens', () => {
   const css = read('src/app/app.css');
   const body = css.slice(css.indexOf('/*\n * THEME VALUES LIVE IN'));
