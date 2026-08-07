@@ -486,6 +486,8 @@ export function openCompose(ctx, prefill = {}) {
     // What the panel STARTED with. Used to tell "typed something" from "a
     // reply pre-filled a quoted original".
     baseBody: prefill.quoted ? `\n\n${prefill.quoted}` : '',
+    // Set when editing an existing Gmail draft, so saving updates it.
+    draftId: prefill.draftId || '',
   };
   const panel = $('compose');
   if (!panel) return;
@@ -541,6 +543,42 @@ export function closeCompose() {
   // would silently attach the previous file to an unrelated recipient.
   pendingFiles = [];
   renderFiles();
+}
+
+
+/**
+ * Open an existing Gmail draft for editing.
+ *
+ * A draft exists ONLY to be finished, and this was the missing path: the
+ * Drafts mailbox could list them and delete them, never open one. The product
+ * already had compose, autosave and crash recovery -- this connects them.
+ *
+ * The draft ID travels with the draft so saving UPDATES it. The Drafts
+ * mailbox is fetched by label, so the app holds a message id and the drafts
+ * API wants a draft id; the worker resolves one to the other.
+ */
+export async function editDraft(ctx, id) {
+  try {
+    const d = await ctx.send('GET_DRAFT', { id });
+    if (!d) {
+      ctx.toast('Could not find that draft in Gmail', { kind: 'error' });
+      return;
+    }
+    openCompose(ctx, {
+      to: d.to || '',
+      cc: d.cc || '',
+      bcc: d.bcc || '',
+      subject: d.subject || '',
+      title: 'Edit draft',
+      threadId: d.threadId,
+      draftId: d.draftId,
+    });
+    // Set directly rather than through `quoted`, which would re-wrap it as a
+    // reply -- this is the user's own unfinished text, not somebody else's.
+    $('c-text').value = d.text || '';
+  } catch (err) {
+    ctx.toast(`Could not open the draft: ${err.message}`, { kind: 'error' });
+  }
 }
 
 /** Open compose pre-filled as a reply / reply-all / forward. */
@@ -828,7 +866,12 @@ async function doDraft(ctx) {
   const draft = collectDraft();
   setStatus('Saving…', '');
   try {
-    await ctx.send('SAVE_DRAFT', { draft });
+    /*
+     * `draftId` is what makes a re-save an UPDATE. Without it, editing a
+     * draft twice leaves three copies in Gmail -- the original plus one per
+     * save. composeMeta carries it from openCompose.
+     */
+    await ctx.send('SAVE_DRAFT', { draft, draftId: composeMeta.draftId });
     // Saved to Gmail: the durable tier now has it, so the local crash copy is
     // redundant.
     await ensureDraftSaver().discard();

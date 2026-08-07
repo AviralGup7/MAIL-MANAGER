@@ -158,6 +158,17 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
         return { ok: true, data: { dataUrl: 'data:application/pdf;base64,JVBER' } };
       case 'LIST_LABELS':
         return { ok: true, data: labels };
+      case 'GET_DRAFT':
+        // The worker resolves a MESSAGE id to a DRAFT id; the draftId is what
+        // makes a re-save an update rather than a second copy.
+        return {
+          ok: true,
+          data: {
+            draftId: `d-${msg.id}`, to: 'someone@pilani.bits-pilani.ac.in',
+            cc: '', bcc: '', subject: 'Half-written', text: 'Unfinished thought',
+            threadId: msg.id,
+          },
+        };
       default: return { ok: true, data: {} };
     }
   }
@@ -5224,6 +5235,75 @@ test('CLASSIFY: a correction can be undone', async (t) => {
       storage.categoryRules.corrections, {},
       'the correction must be gone, not merely overwritten'
     );
+  } finally {
+    restore();
+  }
+});
+
+test('DRAFTS: a draft can be opened, finished and re-saved', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * AUDIT 13 I-2. actionsFor('drafts') returned `edit: true` and nothing read
+   * it. You could see your drafts and delete them. You could not continue
+   * writing one -- and a draft exists ONLY to be finished.
+   *
+   * The product already had compose, autosave and crash recovery; this is the
+   * single path that connects them to the Drafts mailbox.
+   *
+   * Re-saving must UPDATE the existing draft rather than create a second one,
+   * or editing a draft twice leaves three copies in Gmail.
+   */
+  const { doc, win, calls, settle, restore } = await boot({ perLabel: true });
+  try {
+    doc.querySelector('.cat[data-mailbox="drafts"]').click();
+    await settle(10);
+    assert.ok(rows(doc).length, 'precondition: there are drafts');
+
+    rows(doc)[0].click();
+    await settle(8);
+
+    const btn = doc.querySelector('#r-actions button[data-act="edit"]');
+    assert.ok(btn, 'a draft must be openable');
+    assert.equal(btn.hidden, false, 'and the control must be visible here');
+
+    btn.click();
+    await settle(12);
+
+    assert.equal(
+      doc.getElementById('compose').hidden, false,
+      'editing must open compose'
+    );
+    assert.ok(
+      calls.some((c) => c.type === 'GET_DRAFT'),
+      'and must fetch the draft rather than guess at its contents'
+    );
+
+    doc.getElementById('c-text').value = 'Finished at last.';
+    doc.getElementById('c-draft').click();
+    await settle(12);
+
+    const saves = calls.filter((c) => c.type === 'SAVE_DRAFT');
+    assert.ok(saves.length, 'saving must reach Gmail');
+    assert.ok(
+      saves[saves.length - 1].draftId,
+      're-saving must UPDATE the draft, not create a second copy'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('DRAFTS: the edit control is offered only in Drafts', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // "Edit" on a received message is meaningless, and a control that does
+  // nothing is how a UI teaches people not to trust it.
+  const { doc, settle, restore } = await boot({ perLabel: true });
+  try {
+    rows(doc)[0].click();
+    await settle(8);
+    const btn = doc.querySelector('#r-actions button[data-act="edit"]');
+    assert.ok(btn, 'the control exists in the toolbar');
+    assert.equal(btn.hidden, true, 'but is hidden outside Drafts');
   } finally {
     restore();
   }

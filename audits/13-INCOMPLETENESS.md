@@ -32,7 +32,7 @@ controls that actually exist:
 | starred | star, archive, trash, snooze, spam | — |
 | snoozed | star, archive, trash, spam, **unsnooze** ✅ | — |
 | sent | star, trash | — |
-| drafts | **trash only** | **edit** |
+| drafts | trash, **edit** ✅ | — |
 | spam | trash, spam | notSpam ✅ *(handled by the flipping label)* |
 | **trash** | **restore** ✅ | — |
 
@@ -55,7 +55,7 @@ is a viewing gallery.
 
 **Core.**
 
-### I-2 · Drafts cannot be opened
+### I-2 · Drafts cannot be opened — ✅ **FIXED**
 
 **What's incomplete.** `actionsFor('drafts')` returns `edit: true`. Nothing
 reads it. You can see your drafts and delete them. You cannot continue writing
@@ -132,7 +132,11 @@ read support without write support.
 - **`confidence` and `reason`** are stored per message and shown only when the
   classifier is unsure. That is a deliberate design decision, not an omission.
 - **Attachment preview** — download works; no inline viewer.
-- **`GET_DRAFT`** does not exist as a verb, which is what blocks I-2.
+- **`GET_DRAFT`** now exists. The Drafts mailbox is fetched by *label*, so the
+  app holds a message id while the drafts API is keyed by *draft* id — the
+  worker resolves one to the other. The draft id then travels with the draft so
+  a re-save UPDATES it; without that, editing a draft twice leaves three copies
+  in Gmail.
 
 ---
 
@@ -157,7 +161,7 @@ looked:
 1. ~~**I-1 Trash restore**~~ — done.
 2. ~~**I-4 Snooze wake**~~ — done. The wake TIME on the row is still missing.
 3. ~~**I-3 Classifier correction**~~ — done, both directions.
-4. **I-2 Drafts edit** — needs a new `GET_DRAFT` worker verb, so the largest.
+4. ~~**I-2 Drafts edit**~~ — done, with a new `GET_DRAFT` verb.
 5. **I-5 Deadline in the reader** — data is already on the message.
 6. **I-6 Labels** — the widest, and the least BITS-specific.
 
@@ -167,11 +171,14 @@ looked:
 
 **What is still missing before this is complete?**
 
-Originally four mailboxes were partially inert. **Three are now wired**:
-Trash restores, snoozed mail wakes, and the classifier can be corrected and
-un-corrected.
+All four inert mailboxes are now wired: **Trash restores, snoozed mail wakes,
+drafts open for editing, and the classifier can be corrected and
+un-corrected.** Every one of those had a working model and a working worker
+verb, and was missing only the control.
 
-What remains: **you cannot open a draft to finish it**, and labels stay
-read-only. The draft one is the real gap — a draft exists only to be finished,
-and the product has compose, autosave and crash recovery already; this is the
-single path that would connect them to the Drafts mailbox.
+What remains is genuinely smaller: **labels are read-only** (you can search by
+one and never apply one), and **a message's own deadline is never shown in the
+reader** — it is extracted, stored, cached and surfaced only in the sidebar
+radar, which shows at most six.
+
+Neither blocks daily use. That is the line this audit was looking for.

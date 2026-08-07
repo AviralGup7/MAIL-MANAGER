@@ -564,6 +564,26 @@ export async function sendMessage(mime, threadId) {
   });
 }
 
+/**
+ * Find the draft that owns a message, and return it ready for editing.
+ *
+ * The Drafts mailbox is fetched by LABEL, so the app holds message ids while
+ * the drafts API is keyed by DRAFT id -- and they are different. Without this
+ * lookup a draft could be listed and never opened, which is exactly the state
+ * the product was in.
+ *
+ * Returns the draft id alongside the RAW message resource. Parsing stays in
+ * the worker beside extractBody, which already knows how to read a Gmail
+ * payload -- a second parser is how two readers drift.
+ */
+export async function getDraftForMessage(messageId) {
+  const list = await api('/drafts?maxResults=500');
+  const hit = (list.drafts || []).find((d) => d.message?.id === messageId);
+  if (!hit) return null;
+  const full = await api(`/drafts/${encodeURIComponent(hit.id)}?format=full`);
+  return { draftId: hit.id, message: full.message || {} };
+}
+
 /** Save a draft rather than sending. */
 export async function saveDraft(mime, threadId, draftId) {
   const message = { raw: b64urlEncode(mime) };

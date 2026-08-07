@@ -54,7 +54,7 @@ import {
   renderRadar, wireRadar,
   openPalette, closePalette, wirePalette,
   openCompose, closeCompose, wireCompose, startReply,
-  restoreDraftIfAny, flushDraft, refreshLabels, _setLabels,
+  restoreDraftIfAny, flushDraft, refreshLabels, _setLabels, editDraft,
 } from './features.js';
 import {
   initTimetable, openTimetable, scanForUpdates, _resetTimetableUI,
@@ -1946,6 +1946,13 @@ async function act(action, id) {
      * and never again. Gmail's Trash is a recovery surface; this one was a
      * viewing gallery.
      */
+    /*
+     * Continue writing a draft. Delegated to features.js, which owns compose
+     * and therefore owns what "open this into compose" means.
+     */
+    case 'edit':
+      await editDraft(ctx, id);
+      break;
     case 'restore': {
       const snapshot = { ...m };
       selectNeighbourThen(id);

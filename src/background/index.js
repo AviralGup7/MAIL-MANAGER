@@ -11,7 +11,7 @@
 import { signIn, signOut, isSignedIn } from './auth.js';
 import {
   getFull, modify, batchModify, trash, profile,
-  buildMime, sendMessage, saveDraft,
+  buildMime, sendMessage, saveDraft, getDraftForMessage,
   listLabels, createLabel, getAttachment, ensureLabel, headerMap,
 } from './gmail.js';
 import { SNOOZE_LABEL, loadSnoozed, removeSnooze, due } from '../app/snooze.js';
@@ -245,6 +245,19 @@ async function handle(msg) {
     // ---- compose ---------------------------------------------------------
     case 'SEND':
       return sendMessage(buildMime(msg.draft), msg.draft.threadId);
+    /*
+     * Open a draft for editing. The Drafts mailbox is fetched by label, so the
+     * app has a MESSAGE id and the drafts API wants a DRAFT id -- see
+     * getDraftForMessage. Without this a draft could be listed and never
+     * opened, which is where the product was.
+     */
+    case 'GET_DRAFT': {
+      const d = await getDraftForMessage(msg.id);
+      if (!d) return null;
+      // Parsed HERE, beside extractBody, which already knows how to read a
+      // Gmail payload. A second parser is how two readers drift apart.
+      return { draftId: d.draftId, ...extractBody(d.message) };
+    }
     case 'SAVE_DRAFT':
       return saveDraft(buildMime(msg.draft), msg.draft.threadId, msg.draftId);
 

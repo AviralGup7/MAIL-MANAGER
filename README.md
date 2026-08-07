@@ -31,7 +31,7 @@ faster, and it stays out of the way when it has nothing to add.
 - **Seven mailboxes** — Inbox, Snoozed, Sent, Drafts, Starred, Spam, Trash.
   Categories apply to the inbox, where they mean something.
 - **Read and triage:** open, search, star, archive, delete, report spam (and rescue
-  from it), mark read/unread,
+  from it), restore from Trash, wake a snoozed message, mark read/unread,
   snooze, multi-select with bulk actions, attachment download, inline images.
 - **Conversation threading.** A five-part exchange is one row showing who is
   in it and how many messages; opening it gives a strip of every message,
@@ -45,7 +45,8 @@ faster, and it stays out of the way when it has nothing to add.
 - **Undo everything**, not just send — archive, delete, star, snooze and bulk
   actions all reverse with `Ctrl+Z` for five minutes.
 - **Category rules Gmail cannot offer:** mute a category, auto-archive it, or
-  correct the classifier and have it remember.
+  tell it "wrong category" — the correction is keyed by sender, applies to mail
+  already on screen, and can be undone.
 - **A deterministic timetable.** Built once from the official BITS timetable
   (688 courses) and the change notice, then updated only by rules that can be
   written down. Course → teacher → section, with linked tutorials and labs
@@ -372,7 +373,7 @@ src/
 timetable/data.json         GENERATED. 688 courses, 119 change rows.
 timetable/sources/          The two official documents, verbatim.
 tools/parse-timetable.mjs   Offline parser. Never runs in the extension.
-test/                       857 tests. `npm test` · `npm run test:ci` (fails on skips)
+test/                       859 tests. `npm test` · `npm run test:ci` (fails on skips)
   app.integration.test.mjs  Boots the real app.html in jsdom and drives it.
   resilience.test.mjs       Failure injection across every persistence module.
   package.test.mjs          Lints the manifest, tokens, motion rules, hit targets.
@@ -432,7 +433,7 @@ mis-file something the preview mis-files it too.
 
 ## Status
 
-**857 tests pass, 0 skipped.** 165 of them boot the real `app.html` in a real
+**859 tests pass, 0 skipped.** 167 of them boot the real `app.html` in a real
 DOM and drive it as a user would — click a row, type in search, press `j`/`k`,
 archive, snooze, sign out. All six themes pass WCAG AA in CI.
 
@@ -453,7 +454,8 @@ would produce a real corpus.
 
 - **Gmail labels are searchable, not manageable.** Your labels appear in the
   command palette and `label:Thesis` filters by them, but you cannot apply,
-  create or remove a label from the UI.
+  create or remove a label from the UI. The last significant one-way feature —
+  see [`audits/13-INCOMPLETENESS.md`](audits/13-INCOMPLETENESS.md).
 - **No desktop notification for new mail.** The inbox refreshes itself every
   two minutes, but nothing tells you while the tab is in the background.
 - **No view-original or print.**
