@@ -38,7 +38,8 @@ observed to fail. This project has found 15+ worthless tests that way.
 | 76 | Context menu | `menu.js` | ⬜ wiring |
 | 77 | Context-aware palette | `palette.js` | ⬜ wiring |
 | 1 | Label write | `label-picker.js` | ⬜ needs verb wiring |
-| 13/14 | Undo send / outbox | `outbox.js` | ⬜ |
+| 14 | Outbox with retry | `src/app/outbox.js` | ✅ built + tested |
+| 13 | Undo send | `src/app/outbox.js` (held state) | ✅ built + tested |
 | 19 | Inline quick reply | `compose.js` | ⬜ |
 | 23 | Paste/drag attach | `compose.js` | ⬜ |
 | 54 | Search other stores | `app.js` | ⬜ |

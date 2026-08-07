@@ -1,0 +1,241 @@
+/**
+ * Outbox tests.
+ *
+ * THE UNFORGIVABLE FAILURE IS A DOUBLE SEND. A message that fails to send can
+ * be retried; a message sent twice cannot be recalled. Several tests here
+ * exist only to pin that down.
+ *
+ * The second is silent loss: a queued message that no code path will ever pick
+ * up again is worse than an error, because the user believes it is pending.
+ */
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { fakeStorage } from './helpers/storage.mjs';
+
+const {
+  enqueue, dueItems, nextWakeIn, canUndo, markFailed, isStuck, statusOf,
+  flushOutbox, cancel, retryNow, loadOutbox, saveOutbox, normaliseOutbox,
+  _resetOutbox, isDispatching, DEFAULT_HOLD_MS, MAX_ATTEMPTS, BACKOFF_MS,
+} = await import('../src/app/outbox.js');
+
+const NOW = 1_700_000_000_000;
+const draft = { to: 'prof@bits.ac.in', subject: 'Hi', body: 'text' };
+
+test.beforeEach(() => _resetOutbox());
+
+// ------------------------------------------------------------- undo window --
+
+test('a queued message is HELD, not sent', () => {
+  const it = enqueue(draft, { now: NOW });
+  assert.equal(it.state, 'held');
+  assert.equal(it.releaseAt, NOW + DEFAULT_HOLD_MS);
+});
+
+test('a held message is not due until its hold expires', () => {
+  const it = enqueue(draft, { now: NOW });
+  assert.deepEqual(dueItems([it], NOW + 1000), []);
+  assert.equal(dueItems([it], NOW + DEFAULT_HOLD_MS).length, 1);
+});
+
+test('undo is possible during the hold and impossible after', () => {
+  const it = enqueue(draft, { now: NOW });
+  assert.equal(canUndo(it, NOW + 1000), true);
+  assert.equal(canUndo(it, NOW + DEFAULT_HOLD_MS + 1), false);
+});
+
+test('a zero hold sends immediately, for users who turn undo-send off', () => {
+  const it = enqueue(draft, { now: NOW, holdMs: 0 });
+  assert.equal(dueItems([it], NOW).length, 1);
+  assert.equal(canUndo(it, NOW), false);
+});
+
+test('undo removes the message and it is never dispatched', async () => {
+  const s = fakeStorage();
+  const it = enqueue(draft, { now: NOW });
+  await saveOutbox([it], s);
+  assert.ok(await cancel(it.id, s));
+
+  let calls = 0;
+  await flushOutbox({ send: async () => { calls++; }, storage: s, now: NOW + 60_000 });
+  assert.equal(calls, 0, 'a cancelled message must never be sent');
+  assert.deepEqual(await loadOutbox(s), []);
+});
+
+test('A MESSAGE ON THE WIRE CANNOT BE CANCELLED', async () => {
+  /*
+   * This test found a real bug rather than confirming a design.
+   *
+   * The guard was originally written against the PERSISTED state
+   * (`item.state === 'sending'`). But `cancel` reloads through
+   * `normaliseOutbox`, which demotes a stored `sending` to `failed` so a
+   * crashed dispatch is not orphaned -- so the guard could never fire. It was
+   * unreachable, and a message could be pulled out of the queue while its
+   * request was still in flight.
+   *
+   * Liveness is now tracked in memory for the current session. This test races
+   * a cancel against a slow send to prove it.
+   */
+  const s = fakeStorage();
+  await saveOutbox([enqueue(draft, { now: NOW, holdMs: 0 })], s);
+  const [queued] = await loadOutbox(s);
+
+  let released;
+  const gate = new Promise((r) => { released = r; });
+  const flushing = flushOutbox({
+    send: async () => { await gate; },
+    storage: s,
+    now: NOW,
+  });
+
+  // Let the flush claim the item and reach the await.
+  await new Promise((r) => setTimeout(r, 5));
+  assert.equal(isDispatching(queued.id), true, 'precondition: it is on the wire');
+  assert.equal(await cancel(queued.id, s), null, 'cancel refused');
+
+  released();
+  await flushing;
+  assert.equal(isDispatching(queued.id), false, 'the flag clears afterwards');
+});
+
+// ---------------------------------------------------------------- sending --
+
+test('a successful send removes the item from the queue', async () => {
+  const s = fakeStorage();
+  await saveOutbox([enqueue(draft, { now: NOW, holdMs: 0 })], s);
+  const out = await flushOutbox({ send: async () => ({ ok: true }), storage: s, now: NOW });
+  assert.equal(out.sent, 1);
+  assert.deepEqual(await loadOutbox(s), []);
+});
+
+test('A FAILED SEND KEEPS THE MESSAGE', async () => {
+  // The bug this module exists to fix: a failure used to lose the draft.
+  const s = fakeStorage();
+  await saveOutbox([enqueue(draft, { now: NOW, holdMs: 0 })], s);
+  const out = await flushOutbox({ send: async () => { throw new Error('offline'); }, storage: s, now: NOW });
+  assert.equal(out.failed, 1);
+  const [kept] = await loadOutbox(s);
+  assert.equal(kept.state, 'failed');
+  assert.deepEqual(kept.draft, draft, 'the composed message survived');
+  assert.match(kept.error, /offline/);
+});
+
+test('TWO OVERLAPPING FLUSHES CANNOT DOUBLE-SEND', async () => {
+  const s = fakeStorage();
+  await saveOutbox([enqueue(draft, { now: NOW, holdMs: 0 })], s);
+  let calls = 0;
+  const send = async () => {
+    calls++;
+    await new Promise((r) => setTimeout(r, 10));
+  };
+  const [a, b] = await Promise.all([
+    flushOutbox({ send, storage: s, now: NOW }),
+    flushOutbox({ send, storage: s, now: NOW }),
+  ]);
+  assert.equal(calls, 1, 'exactly one dispatch');
+  assert.ok(a.skipped || b.skipped, 'the second flush stood down');
+});
+
+test('flushing an empty queue does nothing and does not write', async () => {
+  const s = fakeStorage();
+  const out = await flushOutbox({ send: async () => {}, storage: s, now: NOW });
+  assert.equal(out.sent, 0);
+  assert.equal(s.writes, 0);
+});
+
+test('onChange fires so the UI can show the row moving', async () => {
+  const s = fakeStorage();
+  await saveOutbox([enqueue(draft, { now: NOW, holdMs: 0 })], s);
+  const seen = [];
+  await flushOutbox({ send: async () => {}, storage: s, now: NOW, onChange: (i) => seen.push(i.length) });
+  assert.ok(seen.length >= 2, 'at least: claimed, then removed');
+});
+
+// ---------------------------------------------------------------- backoff --
+
+test('each failure waits longer than the last', () => {
+  let it = enqueue(draft, { now: NOW, holdMs: 0 });
+  const waits = [];
+  for (let i = 0; i < MAX_ATTEMPTS; i++) {
+    it = markFailed(it, 'x', NOW);
+    waits.push(it.nextAttempt - NOW);
+  }
+  for (let i = 1; i < waits.length; i++) {
+    assert.ok(waits[i] > waits[i - 1], `attempt ${i} waits longer`);
+  }
+  assert.deepEqual(waits, BACKOFF_MS);
+});
+
+test('retries stop after the cap rather than hammering forever', () => {
+  let it = enqueue(draft, { now: NOW, holdMs: 0 });
+  for (let i = 0; i < MAX_ATTEMPTS; i++) it = markFailed(it, 'x', NOW);
+  assert.equal(isStuck(it), true);
+  assert.deepEqual(dueItems([it], NOW + 10 ** 9), [], 'a stuck item is not retried');
+});
+
+test('a stuck item can be retried by hand, which resets the backoff', async () => {
+  const s = fakeStorage();
+  let it = enqueue(draft, { now: NOW, holdMs: 0 });
+  for (let i = 0; i < MAX_ATTEMPTS; i++) it = markFailed(it, 'x', NOW);
+  await saveOutbox([it], s);
+  const back = await retryNow(it.id, s, NOW);
+  assert.equal(back.attempts, 0);
+  assert.equal(dueItems([back], NOW).length, 1);
+});
+
+// ------------------------------------------------------------- scheduling --
+
+test('nextWakeIn returns null when there is nothing to do', () => {
+  assert.equal(nextWakeIn([], NOW), null);
+});
+
+test('nextWakeIn returns the soonest pending moment', () => {
+  const a = enqueue(draft, { now: NOW, holdMs: 5000 });
+  const b = enqueue(draft, { now: NOW, holdMs: 30_000 });
+  assert.equal(nextWakeIn([a, b], NOW), 5000);
+});
+
+test('nextWakeIn ignores permanently stuck items', () => {
+  let it = enqueue(draft, { now: NOW, holdMs: 0 });
+  for (let i = 0; i < MAX_ATTEMPTS; i++) it = markFailed(it, 'x', NOW);
+  assert.equal(nextWakeIn([it], NOW), null);
+});
+
+// ------------------------------------------------------------- durability --
+
+test('AN INTERRUPTED SEND IS RECOVERED, NOT ORPHANED', async () => {
+  /*
+   * A record left in `sending` by a crashed tab is invisible to the flush loop
+   * and would sit in the queue forever. It must be demoted on load.
+   */
+  const s = fakeStorage({
+    outbox: [{ id: 'x', state: 'sending', draft, queuedAt: NOW, releaseAt: NOW, attempts: 0, nextAttempt: 0 }],
+  });
+  const [it] = await loadOutbox(s);
+  assert.equal(it.state, 'failed', 'demoted so the loop can see it again');
+  assert.equal(dueItems([it], NOW).length, 1);
+});
+
+test('a corrupt queue degrades to empty rather than throwing', async () => {
+  for (const bad of [null, 'x', 7, {}, [null], [{ no: 'draft' }]]) {
+    assert.deepEqual(normaliseOutbox(bad), []);
+  }
+  assert.deepEqual(await loadOutbox(fakeStorage({ outbox: 'nope' })), []);
+});
+
+test('a failing storage write reports false rather than throwing', async () => {
+  assert.equal(await saveOutbox([enqueue(draft)], fakeStorage()._fail()), false);
+});
+
+// ----------------------------------------------------------------- status --
+
+test('the status line says something true in every state', () => {
+  const held = enqueue(draft, { now: NOW });
+  assert.match(statusOf(held, NOW), /Sending in \d+s/);
+
+  let f = markFailed(held, 'offline', NOW);
+  assert.match(statusOf(f, NOW), /Retrying in/);
+
+  for (let i = 1; i < MAX_ATTEMPTS; i++) f = markFailed(f, 'offline', NOW);
+  assert.match(statusOf(f, NOW), /Could not send/);
+  assert.match(statusOf(f, NOW), /offline/, 'the reason is shown, not hidden');
+});
