@@ -3696,7 +3696,18 @@ function scheduleAutoRefresh() {
   }, every);
 }
 
+/**
+ * Unhook the cross-page settings listener.
+ *
+ * Registered at boot, so it must be released on teardown: a listener left
+ * attached outlives the document it was created for, and in tests the next
+ * boot inherits a handler writing into a settings cache from a closed window.
+ */
+let stopFollowingSettings = null;
+
 function cancelPendingWork() {
+  stopFollowingSettings?.();
+  stopFollowingSettings = null;
   stopAutoRefresh();
   // Server search owns its own timer and token, and resets them itself.
   _resetServerSearch();
@@ -3875,6 +3886,37 @@ async function boot() {
    * every launch.
    */
   await settings.loadSettings();
+
+  /*
+   * Then follow anything the OPTIONS PAGE changes while this tab stays open.
+   *
+   * Options is a separate extension page, so its writes cannot reach an
+   * in-process subscriber -- `chrome.storage.onChanged` is the only channel
+   * that crosses pages. Without this the cache above is a boot-time snapshot:
+   * turning off "mark read on open" changed nothing here until the tab was
+   * reloaded, which reads as the setting being broken.
+   */
+  stopFollowingSettings = settings.followExternalChanges();
+
+  /*
+   * ...and repaint for the ones that change how mail is DRAWN.
+   *
+   * A current cache is enough for `markReadOnOpen`, which is read at the
+   * moment a message opens. It is not enough for `threaded`, read in six
+   * render paths: the list on screen was built from the old value and nothing
+   * would ask it to redraw, so conversation view appeared to do nothing until
+   * some unrelated event forced a render.
+   *
+   * `subscribe()` is what makes this possible and, until now, had no callers
+   * at all -- it could only ever have fired for writes from THIS page, and the
+   * only such write is the theme picker, which repaints itself.
+   */
+  settings.subscribe((key) => {
+    if (key === 'threaded') {
+      renderList();
+      renderSidebar();
+    }
+  });
 
   // Theme next, before anything paints, so there is no flash of the wrong
   // palette. `applyTheme` falls back to the default for an unknown id, which

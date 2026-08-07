@@ -143,6 +143,48 @@ export async function loadSettings(storage = chrome.storage.local) {
   return snapshot();
 }
 
+/**
+ * Follow settings changed by ANOTHER extension page.
+ *
+ * WHY THIS IS NECESSARY AND `subscribe()` IS NOT ENOUGH
+ * ----------------------------------------------------
+ * `subscribe()` notifies listeners in THIS page when THIS page calls `set()`.
+ * The options page is a separate extension page with its own module instances,
+ * so nothing it writes can reach an in-process listener -- and `subscribe()`
+ * had no callers at all, which made the gap invisible.
+ *
+ * Meanwhile `get()` is a synchronous read of a cache filled once by
+ * `loadSettings()` at boot. The result was that turning off "mark read on
+ * open" in Options changed nothing in the already-open mail tab: it kept
+ * marking mail read until the tab was reloaded, with no indication why.
+ *
+ * `chrome.storage.onChanged` is the only channel that crosses pages. Values
+ * are put through `coerce` exactly as `loadSettings` does, so a hand-edited
+ * or corrupt stored value cannot enter the cache by this back door in a shape
+ * `loadSettings` would have rejected.
+ *
+ * @returns {() => void} unsubscribe, for tests and teardown
+ */
+export function followExternalChanges(area = chrome?.storage) {
+  const onChanged = area?.onChanged;
+  // Degrades silently: the app must still run where this API is unavailable.
+  if (!onChanged?.addListener) return () => {};
+
+  const handler = (changes, areaName) => {
+    if (areaName && areaName !== 'local') return;
+    for (const key of Object.keys(changes || {})) {
+      if (!(key in SCHEMA)) continue; // not ours; the cache holds only schema keys
+      const value = coerce(key, changes[key].newValue);
+      if (cache.get(key) === value) continue; // no change, no notification
+      cache.set(key, value);
+      emit(key, value);
+    }
+  };
+
+  onChanged.addListener(handler);
+  return () => onChanged.removeListener?.(handler);
+}
+
 /** Synchronous read. Returns the schema default before `loadSettings` runs. */
 export function get(key) {
   if (!(key in SCHEMA)) throw new Error(`Unknown setting: ${key}`);

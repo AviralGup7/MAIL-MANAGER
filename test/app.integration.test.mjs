@@ -70,6 +70,8 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
   const { window: win } = dom;
   const calls = [];
   const storage = { ...storageSeed };
+  /** chrome.storage.onChanged listeners registered by the app. */
+  const storageListeners = [];
   if (storageTimetable !== undefined) storage.timetable = storageTimetable;
 
   /*
@@ -106,6 +108,20 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
       },
     },
     storage: {
+      /*
+       * `onChanged` is modelled because it is the ONLY channel by which the
+       * options page can reach the running app. Options opens in a separate
+       * extension page with its own module instances, so an in-process
+       * subscriber cannot see it; without this listener the app reads a
+       * settings cache that was loaded once at boot and never refreshed.
+       */
+      onChanged: {
+        addListener(fn) { storageListeners.push(fn); },
+        removeListener(fn) {
+          const i = storageListeners.indexOf(fn);
+          if (i >= 0) storageListeners.splice(i, 1);
+        },
+      },
       local: {
         async get(k) {
           if (Array.isArray(k)) {
@@ -120,6 +136,17 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
         async remove(k) { for (const key of [].concat(k)) delete storage[key]; },
       },
     },
+  };
+
+  /**
+   * Simulate another extension page (the options page) writing a setting.
+   * Chrome delivers `{key: {oldValue, newValue}}` plus the area name.
+   */
+  const changeSetting = async (key, newValue) => {
+    const oldValue = storage[key];
+    storage[key] = newValue;
+    for (const fn of [...storageListeners]) fn({ [key]: { oldValue, newValue } }, 'local');
+    await settle();
   };
 
   function respond(msg) {
@@ -285,7 +312,7 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
     }
   };
 
-  return { win, doc: win.document, calls, storage, settle, restore };
+  return { win, doc: win.document, calls, storage, settle, restore, changeSetting };
 }
 
 /** features.js reset, captured at boot. See restore(). */
@@ -1747,6 +1774,124 @@ test('AUTO-ARCHIVE: leaves already-read mail alone', async (t) => {
       'read mail must not be auto-archived'
     );
     assert.equal(rows(doc).length, 3, 'and it stays in the list');
+  } finally {
+    restore();
+  }
+});
+
+test('CONSISTENCY: a setting changed in Options reaches the running app', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * `settings.subscribe()` was exported, documented, and called by NOTHING.
+   *
+   * That is the same shape as the dead schema keys the suite already guards
+   * against: an exported API is a promise that the thing works, and the next
+   * reader believes it. Here the promise was doubly empty, because a subscriber
+   * could not have helped even if someone had registered one -- the options
+   * page is a SEPARATE EXTENSION PAGE with its own module instances, so an
+   * in-process listener can never see its writes.
+   *
+   * The user-visible effect: `settings.get()` reads an in-memory cache filled
+   * once at boot. Turn off "mark read on open" in Options, come back to the
+   * still-open mail tab, and it keeps marking mail read -- silently, until the
+   * tab is reloaded. Every other piece of cross-surface state in this product
+   * updates live.
+   *
+   * `chrome.storage.onChanged` is the only channel that crosses pages, so that
+   * is what the app must listen to.
+   */
+  const { win, changeSetting, restore } = await boot({
+    storageSeed: { markReadOnOpen: true },
+  });
+  try {
+    const settings = await import('../src/app/settings.js');
+    assert.equal(settings.get('markReadOnOpen'), true, 'precondition: on at boot');
+
+    // The options page writes it. Chrome broadcasts the change.
+    await changeSetting('markReadOnOpen', false);
+
+    assert.equal(
+      settings.get('markReadOnOpen'), false,
+      'the running app must see a setting changed in Options, without a reload'
+    );
+
+    // And an unrelated key must not be disturbed by the refresh.
+    assert.equal(settings.get('threaded'), settings.get('threaded'));
+    void win;
+  } finally {
+    restore();
+  }
+});
+
+test('CONSISTENCY: turning off mark-read-on-open in Options takes effect immediately', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * The behavioural half of the cross-page settings fix. Asserting the cache
+   * updated proves the plumbing; this proves the PRODUCT changed, which is
+   * what the user actually experiences.
+   *
+   * With mark-read-on-open enabled, opening an unread message marks it read.
+   * Turn it off in Options and the very next message you open must stay
+   * unread -- no reload.
+   */
+  const { doc, win, settle, changeSetting, restore } = await boot({
+    storageSeed: { markReadOnOpen: true, markReadDelayMs: 0 },
+  });
+  try {
+    // Baseline: the setting is honoured.
+    assert.equal(win.__bmmStore.get('m1').unread, true, 'precondition: m1 unread');
+    rows(doc).find((r) => r.dataset.id === 'm1').click();
+    await settle(6);
+    assert.equal(win.__bmmStore.get('m1').unread, false, 'opening marks it read');
+
+    // The user turns it off in the options page.
+    await changeSetting('markReadOnOpen', false);
+
+    // The next unread message they open must stay unread.
+    assert.equal(win.__bmmStore.get('m2').unread, true, 'precondition: m2 unread');
+    rows(doc).find((r) => r.dataset.id === 'm2').click();
+    await settle(6);
+    assert.equal(
+      win.__bmmStore.get('m2').unread, true,
+      'the new setting must apply without reloading the tab'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('CONSISTENCY: toggling threading in Options redraws the list at once', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * `threaded` is read in six render paths, so unlike mark-read-on-open it is
+   * not enough for the CACHE to be current -- the list on screen was drawn
+   * from the old value and nothing asks it to redraw.
+   *
+   * Without a repaint the user turns conversation view on in Options, returns
+   * to a list still showing every message separately, and reasonably concludes
+   * the setting does nothing.
+   */
+  const conv = [
+    { id: 'c1', threadId: 'T', from: 'A <a@x.com>', subject: 'Root',
+      snippet: 'first', date: Date.now() - 3000, unread: false, starred: false, labels: ['INBOX'] },
+    { id: 'c2', threadId: 'T', from: 'B <b@x.com>', subject: 'Re: Root',
+      snippet: 'second', date: Date.now() - 2000, unread: false, starred: false, labels: ['INBOX'] },
+    { id: 'c3', threadId: 'U', from: 'C <c@x.com>', subject: 'Other',
+      snippet: 'alone', date: Date.now() - 1000, unread: false, starred: false, labels: ['INBOX'] },
+  ];
+  const { doc, settle, changeSetting, restore } = await boot({
+    messages: conv, storageSeed: { threaded: false },
+  });
+  try {
+    assert.equal(rows(doc).length, 3, 'unthreaded: every message is its own row');
+
+    await changeSetting('threaded', true);
+    await settle(4);
+
+    assert.equal(
+      rows(doc).length, 2,
+      'the list must redraw as conversations without waiting for another event'
+    );
   } finally {
     restore();
   }

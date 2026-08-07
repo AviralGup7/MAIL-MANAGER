@@ -25,6 +25,7 @@ are retracted in place rather than deleted.
 | [12](12-MAIL-LIFECYCLE.md) | Core mail lifecycle | 3 core + 3 important, 2 false | Mail never arrived on its own (fixed); no outbound attachments (fixed); no conversation threading |
 | [13](13-INCOMPLETENESS.md) | Severe incompleteness | 6 | Trash had ZERO usable actions; the classifier could be taught but never corrected — both write paths existed and were called from nowhere |
 | [14](14-COMPLEXITY.md) | Complexity, file size, boundaries | 4 | Only 4 of app.js's 24 bindings span 3+ domains — it is a control tower with extractable tenants, not a god object. features.js was five unrelated modules sharing a filename |
+| [15](15-CONSISTENCY.md) | Product consistency | 6 + 1 retracted | Star/unread undoable in bulk but not one at a time; Options settings never reached the running app |
 
 Actions are consolidated and prioritised in [`../TODO.md`](../TODO.md).
 
