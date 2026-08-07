@@ -84,6 +84,142 @@ function parseSpan(v) {
  */
 export function parseQuery(q, now = Date.now()) {
   const tokens = tokenize(String(q || '').trim());
+
+  /*
+   * OR AND PARENTHESES.  (Feature 48.)
+   *
+   * The elimination audit called this the AUTOMATION LANGUAGE rather than a
+   * search feature, and that is the right way to read it: rules, smart views
+   * and bulk-by-rule all express or fail to express their condition based on
+   * whether this exists. Implicit AND cannot say "everything academic except
+   * the timetable bot", which is the shape of nearly every real filter.
+   *
+   * Handled here, ahead of the flat token loop, so the common case -- a query
+   * with no OR in it -- walks exactly the same code path it always did and
+   * pays nothing for a feature it is not using.
+   */
+  if (hasGrouping(tokens)) return parseGrouped(tokens, now);
+
+  return compileFlat(tokens, now);
+}
+
+/** Cheap pre-check: is there anything the flat parser cannot handle? */
+function hasGrouping(tokens) {
+  return tokens.some((t) => /^(or|\|\|)$/i.test(t) || (!t.startsWith('"') && /[()]/.test(t)));
+}
+
+/**
+ * Split parentheses off tokens so the parser sees them as their own symbols.
+ *
+ * `tokenize` is quote-aware but not paren-aware, so `(category:clubs` arrives
+ * as one token. Quoted tokens are passed through untouched -- a literal
+ * bracket inside `"..."` is text the user typed, not structure.
+ */
+function explode(tokens) {
+  const out = [];
+  for (const t of tokens) {
+    if (t.startsWith('"')) { out.push(t); continue; }
+    let body = t;
+    // A leading `-(` negates the whole group.
+    while (body.startsWith('(') || body.startsWith('-(')) {
+      if (body.startsWith('-(')) { out.push('-('); body = body.slice(2); }
+      else { out.push('('); body = body.slice(1); }
+    }
+    const trail = [];
+    while (body.endsWith(')')) { trail.push(')'); body = body.slice(0, -1); }
+    if (body) out.push(body);
+    out.push(...trail);
+  }
+  return out;
+}
+
+/**
+ * Recursive-descent parser for grouped queries.
+ *
+ *   expr   := and ( OR and )*
+ *   and    := factor+                  implicit AND, as before
+ *   factor := '(' expr ')' | '-(' expr ')' | atom
+ *
+ * A FLAT SPLIT ON `OR` WAS TRIED FIRST AND WAS WRONG. It ignored nesting, so
+ * `(category:clubs OR category:events) is:unread` put the literal word "OR"
+ * into the term list and ANDed the two categories -- a query that can never
+ * match anything, returned silently as if it were fine. Caught by running it,
+ * not by reading it. The lesson is the usual one: a parser that does not track
+ * depth is not a parser.
+ *
+ * WHY THE FREE TEXT STOPS USING THE INVERTED INDEX HERE
+ *
+ * `terms` is handed to the store, which INTERSECTS postings lists -- an AND.
+ * Under an OR that is the wrong operation and there is no honest way to
+ * express `(a OR b)` through an interface that only intersects. So a grouped
+ * query returns no terms and folds its free text into the predicate: the store
+ * yields everything, the predicate narrows it. Bounded by MAX_MESSAGES = 2000,
+ * paid only by queries that actually contain an OR.
+ */
+function parseGrouped(tokens, now) {
+  const toks = explode(tokens);
+  let i = 0;
+  const operators = [];
+
+  const peek = () => toks[i];
+  const isOr = (t) => /^(or|\|\|)$/i.test(t || '');
+
+  /** @returns {(m:object)=>boolean} */
+  function parseExpr(depth) {
+    const alts = [parseAnd(depth)];
+    while (isOr(peek())) {
+      i++;
+      alts.push(parseAnd(depth));
+    }
+    return alts.length === 1 ? alts[0] : (m) => alts.some((p) => p(m));
+  }
+
+  function parseAnd(depth) {
+    const parts = [];
+    while (i < toks.length && !isOr(peek()) && peek() !== ')') {
+      const p = parseFactor(depth);
+      if (p) parts.push(p);
+    }
+    if (parts.length === 0) return () => true;
+    return parts.length === 1 ? parts[0] : (m) => parts.every((p) => p(m));
+  }
+
+  function parseFactor(depth) {
+    const t = toks[i];
+    if (t === '(' || t === '-(') {
+      i++;
+      // Bounded recursion. Deeply nested input is more likely a typo than a
+      // query, and a stack overflow in the search box is not an error message.
+      const inner = depth > 12 ? (() => { i++; return () => true; })() : parseExpr(depth + 1);
+      if (peek() === ')') i++;
+      return t === '-(' ? (m) => !inner(m) : inner;
+    }
+    if (t === ')') { i++; return null; }
+    i++;
+    const one = compileFlat([t], now, { textAsPredicate: true });
+    operators.push(...one.operators);
+    return one.predicate || (() => true);
+  }
+
+  const predicate = parseExpr(0);
+  return {
+    terms: [],
+    operators,
+    isEmpty: toks.length === 0,
+    predicate: toks.length === 0 ? null : predicate,
+    grouped: true,
+  };
+}
+
+/**
+ * The original flat, implicit-AND parser.
+ *
+ * @param {string[]} tokens
+ * @param {number} now
+ * @param {{textAsPredicate?:boolean}} [opts] when set, free text becomes a
+ *   predicate instead of an index term -- required under an OR, see above.
+ */
+function compileFlat(tokens, now, { textAsPredicate = false } = {}) {
   /** @type {Array<(m:object)=>boolean>} */
   const checks = [];
   const terms = [];
@@ -107,6 +243,9 @@ export function parseQuery(q, now = Date.now()) {
       } else if (negated) {
         const needle = unquoted.toLowerCase();
         checks.push((m) => !`${m.subject} ${m.from} ${m.snippet}`.toLowerCase().includes(needle));
+      } else if (textAsPredicate) {
+        const needle = unquoted.toLowerCase();
+        checks.push((m) => `${m.subject} ${m.from} ${m.snippet}`.toLowerCase().includes(needle));
       } else {
         terms.push(unquoted);
       }
