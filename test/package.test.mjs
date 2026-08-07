@@ -1687,6 +1687,48 @@ test('LOAD: the service worker sits at the extension root', () => {
   );
 });
 
+test('LOAD: sw.bundle.js is in sync with its sources', () => {
+  /*
+   * THE BUNDLE IS GENERATED, SO IT CAN GO STALE.
+   *
+   * `sw.bundle.js` is the service-worker graph flattened into one classic
+   * script, so the manifest can drop `"type": "module"`. Four module-worker
+   * variants failed to register in the reporter's Chrome -- subdirectory,
+   * root, and with a fresh extension ID -- while the files served 200 OK and
+   * evaluated cleanly under Node. `type: module` was the only variable never
+   * changed, and a module worker uses a materially different fetch-and-link
+   * path from a classic one.
+   *
+   * The hazard of any generated artefact is that someone edits a source file
+   * and ships the old bundle. That produces a worker running code nobody can
+   * find by reading, which is worse than the bug it was built to dodge. This
+   * regenerates and compares.
+   */
+  const res = spawnSync(process.execPath, ['tools/build-sw.mjs'], {
+    cwd: ROOT, encoding: 'utf8',
+  });
+  assert.equal(res.status, 0, `the bundler failed:\n${res.stdout}${res.stderr}`);
+
+  const built = read('sw.bundle.js');
+
+  // It must be a CLASSIC script: no ESM survives the flattening.
+  const code = built
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+    .replace(/\/\/[^\n]*/g, '');
+  const esm = [...code.matchAll(/^\s*(import|export)\s/gm)].map((m) => m[1]);
+  assert.deepEqual(
+    [...new Set(esm)], [],
+    'ESM syntax survived the bundle; a classic worker cannot parse it'
+  );
+
+  // And the manifest must actually point at it, without type: module.
+  assert.equal(manifest.background.service_worker, 'sw.bundle.js');
+  assert.ok(
+    !('type' in manifest.background),
+    'the whole point is that this is NOT a module worker'
+  );
+});
+
 test('LOAD: the extension passes the load-time doctor', () => {
   /*
    * THE LAYER 890 TESTS COULD NOT SEE.

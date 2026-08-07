@@ -48,8 +48,7 @@
     }
   ],
   "background": {
-    "service_worker": "sw.js",
-    "type": "module"
+    "service_worker": "sw.bundle.js"
   },
   "action": {
     "default_title": "Take over Gmail (Alt+Shift+M)",

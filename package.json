@@ -17,7 +17,8 @@
     "timetable": "node tools/parse-timetable.mjs",
     "doctor": "node tools/doctor.mjs",
     "verify": "node tools/verify-here.mjs",
-    "why": "node tools/why.mjs"
+    "why": "node tools/why.mjs",
+    "build:sw": "node tools/build-sw.mjs"
   },
   "devDependencies": {
     "jsdom": "^24.0.0"
