@@ -36,6 +36,8 @@ import { runInPage } from './fallback.js';
 import { parseQuery, buildReply } from './query.js';
 import * as settings from './settings.js';
 import { addressOf } from './contacts.js';
+import { audienceOf } from './direct.js';
+import { rowSnippet } from './snippet.js';
 import { renderShortcuts } from './shortcuts.js';
 import { openLayer, closeTopLayer, hasLayers, closeAllLayers } from './layers.js';
 import { openMenu, closeMenu, menuIsOpen } from './menu.js';
@@ -151,6 +153,20 @@ const state = {
    * current?", and a failure means the answer is still the old timestamp.
    */
   lastSync: 0,
+
+  /*
+   * The signed-in address, once PROFILE returns.
+   *
+   * Held in state rather than re-fetched because the ingest path stamps every
+   * message with its `audience` (feature 32) and that runs on every synced
+   * page. An await there would make classification asynchronous for the sake
+   * of a string that never changes during a session.
+   *
+   * Empty until PROFILE lands, which is the safe direction: `audienceOf`
+   * returns 'direct' for an unknown self, so nothing is ever hidden because we
+   * did not know who we were yet.
+   */
+  selfEmail: '',
 };
 
 /** Ids currently rendered, in order. The diff baseline. */
@@ -2432,6 +2448,18 @@ function ingestInto(mailboxId, messages, classified) {
       unread: m.unread,
       starred: m.starred,
       hasAttachment: !!m.hasAttachment,
+      cc: m.cc,
+      /*
+       * Stamped ONCE, here, where the recipient headers are in hand and the
+       * signed-in address is known. Feature 32.
+       *
+       * The alternative -- deriving it in the query operator and in the lane
+       * assigner and in the list filter -- would parse the same header three
+       * times per message per render. This is a pure function of data that
+       * never changes after ingest, which is the definition of something that
+       * belongs in the record rather than in the render path.
+       */
+      audience: audienceOf(m, state.selfEmail),
     };
     if (classified) {
       const c = classify(m);
@@ -4108,6 +4136,7 @@ async function start() {
   try {
     const p = await send('PROFILE');
     el.account.textContent = p.emailAddress || '';
+    state.selfEmail = p.emailAddress || '';
   } catch {
     /* not fatal; the list is what matters */
   }

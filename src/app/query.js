@@ -322,6 +322,26 @@ function buildCheck(key, value, now) {
         case 'due': return (m) => typeof m.dueAt === 'number';
         case 'overdue': return (m) => typeof m.dueAt === 'number' && m.dueAt < now;
         case 'important': return (m) => (m.confidence ?? 0) >= 0.9;
+
+        /*
+         * `is:direct` -- addressed to me personally rather than to an
+         * audience. Feature 32.
+         *
+         * WHY THE SELF ADDRESS IS READ OFF THE MESSAGE AND NOT PASSED IN
+         *
+         * `buildCheck` has no access to the signed-in identity and threading
+         * one through would change the signature of every operator for the
+         * benefit of one. The ingest path already knows who we are, so it
+         * stamps `audience` onto the record once, at the point where the
+         * information is free. This operator reads that stamp.
+         *
+         * A record without the stamp -- anything ingested before this shipped,
+         * or by a path that does not classify -- is treated as DIRECT. Same
+         * asymmetry as direct.js itself: never hide mail because a field is
+         * missing.
+         */
+        case 'direct': return (m) => m.audience !== 'broadcast';
+        case 'broadcast': return (m) => m.audience === 'broadcast';
         default: return null;
       }
     case 'has':

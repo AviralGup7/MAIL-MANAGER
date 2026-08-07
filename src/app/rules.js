@@ -46,7 +46,7 @@ const KEY = 'categoryRules';
 
 /** @returns {Rules} */
 export function emptyRules() {
-  return { muted: [], autoArchive: [], corrections: {} };
+  return { muted: [], autoArchive: [], corrections: {}, mutedThreads: [] };
 }
 
 /** Coerce whatever is in storage into a usable shape. Never throws. */
@@ -56,6 +56,9 @@ export function normaliseRules(raw) {
   if (Array.isArray(raw.muted)) out.muted = raw.muted.filter((x) => typeof x === 'string');
   if (Array.isArray(raw.autoArchive)) {
     out.autoArchive = raw.autoArchive.filter((x) => typeof x === 'string');
+  }
+  if (Array.isArray(raw.mutedThreads)) {
+    out.mutedThreads = raw.mutedThreads.filter((x) => typeof x === 'string');
   }
   if (raw.corrections && typeof raw.corrections === 'object' && !Array.isArray(raw.corrections)) {
     for (const [k, v] of Object.entries(raw.corrections)) {
@@ -164,12 +167,80 @@ export function applyCorrection(rules, msg) {
 
 /** Ids to hide from the inbox list because their category is muted. */
 export function filterMuted(rules, messages) {
-  if (!rules.muted.length) return messages;
   const muted = new Set(rules.muted);
-  return messages.filter((m) => !muted.has(m.category));
+  const threads = new Set(rules.mutedThreads || []);
+  if (!muted.size && !threads.size) return messages;
+  return messages.filter((m) => !muted.has(m.category) && !threads.has(m.threadId));
 }
 
-/** How many messages a set of rules is currently hiding. */
+/* ========================================================================== *
+ * THREAD MUTE  (Feature 83)
+ * ========================================================================== *
+ *
+ * WHY A THIRD MUTE KIND RATHER THAN REUSING THE CATEGORY ONE
+ *
+ * Category mute answers "I do not care about club mail". It cannot answer the
+ * far more common campus problem, which is ONE THREAD going runaway: eighty
+ * replies to a hostel mailing list, all in `administration`, where muting the
+ * category would also silence the mess-timing notice you actually need.
+ *
+ * Gmail has this and it is one of its genuinely good features. The difference
+ * here is that our mute is LOCAL and reversible with no API call, so muting a
+ * thread by mistake costs nothing.
+ *
+ * WHAT MUTING A THREAD DOES AND DOES NOT DO
+ *
+ *   does:      hides every message in the thread from the inbox list
+ *   does not:  delete, archive, mark read, or touch Gmail in any way
+ *
+ * The mail stays searchable, stays in its category, and reappears the instant
+ * the mute is lifted. Same guarantee category mute already makes: a feature
+ * that HIDES mail must never be able to hide it WITHOUT TRACE.
+ */
+
+/** Mute or unmute one conversation. Returns a NEW rules object. */
+export function toggleThreadMute(rules, threadId) {
+  if (!threadId) return rules;
+  const set = new Set(rules.mutedThreads || []);
+  if (set.has(threadId)) set.delete(threadId);
+  else set.add(threadId);
+  return { ...rules, mutedThreads: [...set] };
+}
+
+export function isThreadMuted(rules, threadId) {
+  return !!threadId && (rules.mutedThreads || []).includes(threadId);
+}
+
+/**
+ * How many messages are hidden by thread mutes specifically.
+ *
+ * Reported separately from `mutedCount` so the "N hidden" affordance can say
+ * WHICH rule is hiding things. A single merged number leaves the user unable
+ * to tell whether to unmute a category or a conversation.
+ */
+export function mutedThreadCount(rules, messages) {
+  const threads = new Set(rules.mutedThreads || []);
+  if (!threads.size) return 0;
+  let n = 0;
+  for (const m of messages) if (threads.has(m.threadId)) n++;
+  return n;
+}
+
+/**
+ * Forget mutes for threads that are no longer in the mailbox.
+ *
+ * Without this the list grows forever: every thread ever muted stays in
+ * storage even after the conversation has been deleted, and the blob becomes
+ * a slow leak. Called after a full sync, when the live thread set is known.
+ */
+export function pruneThreadMutes(rules, liveThreadIds) {
+  const live = liveThreadIds instanceof Set ? liveThreadIds : new Set(liveThreadIds);
+  const kept = (rules.mutedThreads || []).filter((t) => live.has(t));
+  if (kept.length === (rules.mutedThreads || []).length) return rules;
+  return { ...rules, mutedThreads: kept };
+}
+
+/** How many messages the CATEGORY mutes are hiding. Threads are counted separately. */
 export function mutedCount(rules, messages) {
   if (!rules.muted.length) return 0;
   const muted = new Set(rules.muted);

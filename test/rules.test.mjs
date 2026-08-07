@@ -263,3 +263,89 @@ test('saveRules reports success and failure distinguishably', () => {
     saveRules(emptyRules(), bad).then((r) => assert.equal(r, false, 'failure must report false')),
   ]);
 });
+
+
+// ==========================================================================
+// THREAD MUTE  (Feature 83)
+//
+// Same guarantee as category mute: a feature that hides mail must never hide
+// it without trace, and must never hide more than it was asked to.
+// ==========================================================================
+
+const {
+  toggleThreadMute, isThreadMuted, mutedThreadCount, pruneThreadMutes,
+} = await import('../src/app/rules.js');
+
+const tmsg = (id, threadId, category = 'admin') => ({ id, threadId, category });
+
+test('muting a thread hides every message in it', () => {
+  const r = toggleThreadMute(emptyRules(), 't1');
+  const msgs = [tmsg('a', 't1'), tmsg('b', 't1'), tmsg('c', 't2')];
+  assert.deepEqual(filterMuted(r, msgs).map((m) => m.id), ['c']);
+});
+
+test('muting a thread does NOT hide the rest of its category', () => {
+  // The whole reason this exists rather than reusing the category mute.
+  const r = toggleThreadMute(emptyRules(), 't1');
+  const msgs = [tmsg('a', 't1', 'administration'), tmsg('b', 't2', 'administration')];
+  assert.deepEqual(filterMuted(r, msgs).map((m) => m.id), ['b']);
+});
+
+test('unmuting restores the thread immediately', () => {
+  let r = toggleThreadMute(emptyRules(), 't1');
+  r = toggleThreadMute(r, 't1');
+  assert.equal(isThreadMuted(r, 't1'), false);
+  assert.equal(filterMuted(r, [tmsg('a', 't1')]).length, 1);
+});
+
+test('category mutes and thread mutes both apply', () => {
+  let r = toggleMute(emptyRules(), 'clubs');
+  r = toggleThreadMute(r, 't1');
+  const msgs = [tmsg('a', 't1', 'admin'), tmsg('b', 't2', 'clubs'), tmsg('c', 't3', 'admin')];
+  assert.deepEqual(filterMuted(r, msgs).map((m) => m.id), ['c']);
+});
+
+test('thread mutes are counted separately from category mutes', () => {
+  // A single merged number cannot tell the user which rule to lift.
+  let r = toggleMute(emptyRules(), 'clubs');
+  r = toggleThreadMute(r, 't1');
+  const msgs = [tmsg('a', 't1', 'admin'), tmsg('b', 't2', 'clubs')];
+  assert.equal(mutedCount(r, msgs), 1);
+  assert.equal(mutedThreadCount(r, msgs), 1);
+});
+
+test('a message with no threadId is never hidden by a thread mute', () => {
+  const r = toggleThreadMute(emptyRules(), 't1');
+  assert.equal(filterMuted(r, [{ id: 'a', category: 'admin' }]).length, 1);
+});
+
+test('toggling a falsy thread id is a no-op, not a mute of undefined', () => {
+  const r = toggleThreadMute(emptyRules(), '');
+  assert.deepEqual(r.mutedThreads, []);
+  assert.equal(isThreadMuted(r, ''), false);
+});
+
+test('pruning forgets threads that have left the mailbox', () => {
+  let r = toggleThreadMute(emptyRules(), 't1');
+  r = toggleThreadMute(r, 't2');
+  const pruned = pruneThreadMutes(r, new Set(['t2']));
+  assert.deepEqual(pruned.mutedThreads, ['t2']);
+});
+
+test('pruning returns the SAME object when nothing changed', () => {
+  // Storage writes are not free; an unchanged prune must not trigger one.
+  const r = toggleThreadMute(emptyRules(), 't1');
+  assert.equal(pruneThreadMutes(r, new Set(['t1'])), r);
+});
+
+test('a corrupt mutedThreads list degrades to empty', () => {
+  for (const bad of [null, 'x', 7, {}]) {
+    assert.deepEqual(normaliseRules({ mutedThreads: bad }).mutedThreads, []);
+  }
+  assert.deepEqual(normaliseRules({ mutedThreads: ['t1', 42, null] }).mutedThreads, ['t1']);
+});
+
+test('thread mutes survive a normalise round trip', () => {
+  const r = toggleThreadMute(emptyRules(), 't1');
+  assert.deepEqual(normaliseRules(r).mutedThreads, ['t1']);
+});

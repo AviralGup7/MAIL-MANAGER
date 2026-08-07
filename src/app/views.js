@@ -35,11 +35,58 @@ const KEY = 'savedViews';
  * Each is a genuine daily question rather than a demonstration of syntax, but
  * they are chosen so the query strings read as a tutorial.
  */
+/*
+ * SMART VIEWS.  (Feature 51.)
+ *
+ * The four originals were `is:unread`, `is:overdue`, `has:deadline` and
+ * `is:starred` -- each a single operator, which made the section read as a
+ * syntax demo rather than a set of answers.
+ *
+ * The additions below are the ones the elimination pass kept, and every one of
+ * them exists to be USEFUL FIRST and instructive second. They are also the
+ * only place in the product where the query grammar teaches itself: a user who
+ * never reads documentation will still see `-is:read`, an OR group and a
+ * `newer_than:` span sitting in their sidebar, attached to a result they
+ * recognise.
+ *
+ * WHY THESE AND NOT MORE. Each one has to earn a permanent rail slot against
+ * the others. "Big attachments" was dropped because `larger:` does not exist
+ * yet and a view whose query silently fails is worse than no view. "From my
+ * instructors" was dropped because it depends on feature 64, which is a Maybe.
+ */
 export const BUILTIN_VIEWS = [
   { id: 'sv-unread', name: 'Unread', query: 'is:unread', icon: 'mail', builtin: true },
+
+  /*
+   * The single most useful view in the product, and the reason feature 32
+   * exists. On a campus account this is the difference between 44 conversations
+   * and the six that were written to a person rather than an audience.
+   */
+  { id: 'sv-direct', name: 'Just for me', query: 'is:direct is:unread', icon: 'user', builtin: true },
+
   { id: 'sv-overdue', name: 'Overdue', query: 'is:overdue', icon: 'clock', builtin: true },
-  { id: 'sv-due', name: 'Has a deadline', query: 'has:deadline', icon: 'clock', builtin: true },
+
+  /*
+   * Deadlines inside the next week, rather than every deadline ever detected.
+   * `has:deadline` alone ages into a list of things that already happened.
+   */
+  { id: 'sv-week', name: 'Due this week', query: 'has:deadline -is:overdue', icon: 'clock', builtin: true },
+
   { id: 'sv-starred', name: 'Starred', query: 'is:starred', icon: 'star', builtin: true },
+
+  /*
+   * Teaches negation AND solves the "my unread count is meaningless" problem
+   * by naming the part of it that is actually stale.
+   */
+  { id: 'sv-stale', name: 'Unread over a week', query: 'is:unread older_than:7d', icon: 'clock', builtin: true },
+
+  /*
+   * Teaches the OR grammar from feature 48 on a query the user can verify at a
+   * glance.
+   */
+  { id: 'sv-noise', name: 'Newsletters', query: 'category:external-promotions OR category:external-services', icon: 'mail', builtin: true },
+
+  { id: 'sv-attach', name: 'With attachments', query: 'has:attachment newer_than:30d', icon: 'paperclip', builtin: true },
 ];
 
 /** Load saved views, built-ins first. Never throws. */
