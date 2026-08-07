@@ -200,7 +200,14 @@ test('a display-name recipient is not reported as invalid', () => {
 
 // ------------------------------------------------------------------ wiring ---
 
-const feat = readFileSync(new URL('../src/app/features.js', import.meta.url), 'utf8');
+/*
+ * The autocomplete wiring moved out of features.js into its own module when
+ * the complexity audit found features.js was five unrelated things sharing a
+ * file. Both are read here: the wiring lives in autocomplete.js, and compose
+ * (which calls it) still lives in features.js.
+ */
+const feat = readFileSync(new URL('../src/app/autocomplete.js', import.meta.url), 'utf8')
+  + readFileSync(new URL('../src/app/features.js', import.meta.url), 'utf8');
 const html = readFileSync(new URL('../app.html', import.meta.url), 'utf8');
 
 test('the recipient fields are real comboboxes', () => {
