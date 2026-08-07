@@ -37,6 +37,7 @@ import * as settings from './settings.js';
 import { addressOf } from './contacts.js';
 import { renderShortcuts } from './shortcuts.js';
 import { openLayer, closeTopLayer, hasLayers, closeAllLayers } from './layers.js';
+import { openMenu, closeMenu } from './menu.js';
 import {
   MAILBOXES, DEFAULT_MAILBOX, getMailbox, isMailbox, showsCategories, actionsFor,
 } from './mailboxes.js';
@@ -2927,10 +2928,13 @@ async function doSignIn() {
 
 // ------------------------------------------------------------ category rules --
 
-let catMenu = null;
-
+/*
+ * The category and snooze menus now share one primitive, which owns the single
+ * open handle. These remain as named closers so the call sites (and the
+ * Escape ladder's expectations) read the same as before.
+ */
 function closeCategoryMenu() {
-  catMenu?.layer.close();
+  closeMenu();
 }
 
 /**
@@ -2958,100 +2962,53 @@ function closeCategoryMenu() {
  * re-files everything from that sender at once.
  */
 function openRecategoriseMenu(msg, anchor) {
-  closeCategoryMenu();
-
-  const node = document.createElement('div');
-  node.className = 'snooze-menu cat-menu';
-  node.setAttribute('role', 'menu');
-  node.setAttribute('aria-label', 'Move to a different category');
-
   const current = msg.category;
   const taught = Object.prototype.hasOwnProperty.call(
     rules.corrections || {}, addressOf(msg.from)
   );
 
-  const mk = (text, sub, on, run) => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'snooze-opt';
-    b.setAttribute('role', 'menuitemradio');
-    b.setAttribute('aria-checked', String(on));
-    const left = document.createElement('span');
-    const name = document.createElement('span');
-    name.textContent = text;
-    const hint = document.createElement('span');
-    hint.className = 'sc-when';
-    hint.textContent = sub;
-    left.append(name, hint);
-    const mark = document.createElement('span');
-    mark.className = 'snooze-when';
-    mark.textContent = on ? 'Now' : '';
-    b.append(left, mark);
-    b.addEventListener('click', async () => {
-      closeCategoryMenu();
-      await run();
-    });
-    node.appendChild(b);
-  };
+  const items = [];
 
   /*
    * Offered FIRST when a correction exists, because undoing a mistake is more
-   * urgent than making another one. clearCorrection was referenced zero times
-   * anywhere in the app -- teaching a classifier something wrong and being
-   * unable to un-teach it is worse than not teaching it at all.
+   * urgent than making another one. clearCorrection was referenced nowhere in
+   * the app before this menu existed -- teaching a classifier something wrong
+   * and being unable to un-teach it is worse than not teaching it at all.
    */
   if (taught) {
-    mk(
-      'Use the automatic category',
-      'Forget what I taught you about this sender.',
-      false,
-      async () => {
+    items.push({
+      text: 'Use the automatic category',
+      hint: 'Forget what I taught you about this sender.',
+      run: async () => {
         rules = clearCorrection(rules, msg.from);
         await saveRules(rules);
         reclassifyAll();
         toast('Back to the automatic category');
-      }
-    );
+      },
+    });
   }
 
   for (const cat of SIDEBAR_ORDER) {
     if (cat === current) continue;
-    mk(
-      CATEGORY_LABELS[cat] || cat,
-      `File mail from ${displayName(msg.from)} here.`,
-      false,
-      async () => {
+    items.push({
+      text: CATEGORY_LABELS[cat] || cat,
+      hint: `File mail from ${displayName(msg.from)} here.`,
+      run: async () => {
         rules = correctSender(rules, msg.from, cat);
         await saveRules(rules);
         reclassifyAll();
         toast(`${displayName(msg.from)} now files under ${CATEGORY_LABELS[cat] || cat}`);
-      }
-    );
+      },
+    });
   }
 
-  node.addEventListener('keydown', (e) => {
-    const items = [...node.querySelectorAll('.snooze-opt')];
-    const i = items.indexOf(document.activeElement);
-    if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1) % items.length]?.focus(); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); items[(i - 1 + items.length) % items.length]?.focus(); }
-    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeCategoryMenu(); }
-  });
-
-  const layer = openLayer({
+  openMenu({
     name: 'category-menu',
-    node,
-    dismissOnOutsideClick: true,
-    restoreFocusTo: anchor || document.activeElement,
-    onClose: () => {
-      node.remove();
-      catMenu = null;
-    },
+    label: 'Move to a different category',
+    anchor,
+    className: 'cat-menu',
+    items,
   });
-  catMenu = { node, layer };
-
-  anchor.style.position = anchor.style.position || 'relative';
-  anchor.appendChild(node);
-  node.querySelector('.snooze-opt')?.focus();
 }
 
 /**
@@ -3072,91 +3029,45 @@ function reclassifyAll() {
 }
 
 function openCategoryMenu(category, anchor) {
-  closeCategoryMenu();
   const label = CATEGORY_LABELS[category] || category;
 
-  const node = document.createElement('div');
-  node.className = 'snooze-menu cat-menu';
-  node.setAttribute('role', 'menu');
-  node.setAttribute('aria-label', `${label} rules`);
-
-  const mk = (text, sub, on, run) => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'snooze-opt';
-    b.setAttribute('role', 'menuitemcheckbox');
-    b.setAttribute('aria-checked', String(on));
-    const left = document.createElement('span');
-    const name = document.createElement('span');
-    name.textContent = text;
-    const hint = document.createElement('span');
-    hint.className = 'sc-when';
-    hint.textContent = sub;
-    left.append(name, hint);
-    const mark = document.createElement('span');
-    mark.className = 'snooze-when';
-    mark.textContent = on ? 'On' : '';
-    b.append(left, mark);
-    b.addEventListener('click', async () => {
-      closeCategoryMenu();
-      await run();
-    });
-    node.appendChild(b);
-  };
-
-  mk(
-    `Mute ${label}`,
-    'Hide from the inbox list. Still searchable, nothing deleted.',
-    isMuted(rules, category),
-    async () => {
-      rules = toggleMute(rules, category);
-      await saveRules(rules);
-      renderList();
-      renderSidebar();
-      toast(isMuted(rules, category) ? `${label} muted` : `${label} unmuted`);
-    }
-  );
-
-  mk(
-    `Auto-archive ${label}`,
-    'Archive new mail in this category as it arrives.',
-    isAutoArchived(rules, category),
-    async () => {
-      rules = toggleAutoArchive(rules, category);
-      await saveRules(rules);
-      renderSidebar();
-      toast(
-        isAutoArchived(rules, category)
-          ? `New ${label} mail will be archived`
-          : `Auto-archive off for ${label}`
-      );
-    }
-  );
-
-  node.addEventListener('keydown', (e) => {
-    const items = [...node.querySelectorAll('.snooze-opt')];
-    const i = items.indexOf(document.activeElement);
-    if (e.key === 'ArrowDown') { e.preventDefault(); items[(i + 1) % items.length]?.focus(); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); items[(i - 1 + items.length) % items.length]?.focus(); }
-    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeCategoryMenu(); }
-  });
-
-  // Outside-click, focus restoration and teardown all belong to the layer.
-  const layer = openLayer({
+  openMenu({
     name: 'category-menu',
-    node,
-    dismissOnOutsideClick: true,
-    restoreFocusTo: anchor || document.activeElement,
-    onClose: () => {
-      node.remove();
-      catMenu = null;
-    },
+    label: `${label} rules`,
+    anchor,
+    className: 'cat-menu',
+    items: [
+      {
+        text: `Mute ${label}`,
+        hint: 'Hide from the inbox list. Still searchable, nothing deleted.',
+        checked: isMuted(rules, category),
+        trailing: isMuted(rules, category) ? 'On' : '',
+        run: async () => {
+          rules = toggleMute(rules, category);
+          await saveRules(rules);
+          renderList();
+          renderSidebar();
+          toast(isMuted(rules, category) ? `${label} muted` : `${label} unmuted`);
+        },
+      },
+      {
+        text: `Auto-archive ${label}`,
+        hint: 'Archive new mail in this category as it arrives.',
+        checked: isAutoArchived(rules, category),
+        trailing: isAutoArchived(rules, category) ? 'On' : '',
+        run: async () => {
+          rules = toggleAutoArchive(rules, category);
+          await saveRules(rules);
+          renderSidebar();
+          toast(
+            isAutoArchived(rules, category)
+              ? `New ${label} mail will be archived`
+              : `Auto-archive off for ${label}`
+          );
+        },
+      },
+    ],
   });
-  catMenu = { node, layer };
-
-  anchor.style.position = anchor.style.position || 'relative';
-  anchor.appendChild(node);
-  node.querySelector('.snooze-opt')?.focus();
 }
 
 // ----------------------------------------------------------------- snooze --
@@ -3171,14 +3082,11 @@ function openCategoryMenu(category, anchor) {
  * Rendered on demand and torn down on dismiss, so there is no persistent menu
  * in the DOM listening for clicks.
  */
-let snoozeMenu = null;
-
 function closeSnoozeMenu() {
-  snoozeMenu?.layer.close();
+  closeMenu();
 }
 
 function openSnoozeMenu(id, anchor) {
-  closeSnoozeMenu();
   const m = store.get(id);
   if (!m) return;
 
@@ -3190,64 +3098,21 @@ function openSnoozeMenu(id, anchor) {
     deadline = undefined;
   }
 
-  const options = snoozePresets(Date.now(), { deadline });
-  const node = document.createElement('div');
-  node.className = 'snooze-menu';
-  node.setAttribute('role', 'menu');
-  node.setAttribute('aria-label', 'Snooze until');
-
-  for (const opt of options) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'snooze-opt';
-    b.setAttribute('role', 'menuitem');
-
-    const name = document.createElement('span');
-    name.textContent = opt.label;
-    const when = document.createElement('span');
-    when.className = 'snooze-when';
-    when.textContent = new Date(opt.at).toLocaleString(undefined, {
-      weekday: 'short', hour: 'numeric', minute: '2-digit',
-    });
-
-    b.append(name, when);
-    b.addEventListener('click', () => {
-      closeSnoozeMenu();
-      snoozeMessage(id, opt.at, opt.label);
-    });
-    node.appendChild(b);
-  }
-
-  // Keyboard: arrows move, Escape dismisses. Same contract as the palette.
-  node.addEventListener('keydown', (e) => {
-    const items = [...node.querySelectorAll('.snooze-opt')];
-    const i = items.indexOf(document.activeElement);
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      items[(i + 1) % items.length]?.focus();
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      items[(i - 1 + items.length) % items.length]?.focus();
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation(); // do not also close the reader
-      closeSnoozeMenu();
-    }
-  });
-
-  const layer = openLayer({
+  openMenu({
     name: 'snooze-menu',
-    node,
-    dismissOnOutsideClick: true,
-    restoreFocusTo: anchor || document.activeElement,
-    onClose: () => {
-      node.remove();
-      snoozeMenu = null;
-    },
+    label: 'Snooze until',
+    anchor,
+    // Hangs off the reader's action bar rather than the row, so the menu is
+    // not clipped by the list's overflow.
+    mountTo: anchor?.closest('#r-actions') || el.reader || document.body,
+    items: snoozePresets(Date.now(), { deadline }).map((opt) => ({
+      text: opt.label,
+      trailing: new Date(opt.at).toLocaleString(undefined, {
+        weekday: 'short', hour: 'numeric', minute: '2-digit',
+      }),
+      run: () => snoozeMessage(id, opt.at, opt.label),
+    })),
   });
-  snoozeMenu = { node, layer };
-  (anchor?.closest('#r-actions') || el.reader || document.body).appendChild(node);
-  node.querySelector('.snooze-opt')?.focus();
 }
 
 // ------------------------------------------------------------------- help --
