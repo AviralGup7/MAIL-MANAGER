@@ -1005,15 +1005,38 @@ a.ghost {
   from { opacity: 0; transform: translate3d(0, 6px, 0); }
   to   { opacity: 1; transform: none; }
 }
+/*
+ * The empty state's mark sits IN something rather than floating.
+ *
+ * It was a 1.4px outline at 50% opacity on a flat background -- technically
+ * present, visually nothing, and the most-seen screen in a well-triaged inbox.
+ * A soft disc gives the glyph a home and a reason to be centred, which is the
+ * difference between "this view is empty" and "this view failed to render".
+ *
+ * The disc uses accent-soft rather than a grey so the moment carries a little
+ * of the product's colour. Reaching inbox zero is the one genuinely good
+ * outcome in a mail client and it should not look like an error.
+ */
 #empty svg {
-  color: var(--fg-faint);
-  margin-bottom: var(--s-2);
+  color: var(--accent);
+  opacity: 0.85;
+  margin-bottom: var(--s-4);
+  padding: var(--s-4);
+  box-sizing: content-box;
+  border-radius: var(--r-full);
+  background: var(--accent-soft);
 }
 #empty-title {
   margin: 0;
-  font-size: var(--t-md);
+  /*
+   * Was --t-md, the same size as a subject line, in --fg-dim -- so the
+   * headline of the screen was quieter than the rows it replaced. It leads
+   * now, at full strength, with the explanation staying secondary beneath it.
+   */
+  font-size: var(--t-lg);
   font-weight: var(--w-semi);
-  color: var(--fg-dim);
+  color: var(--fg);
+  letter-spacing: var(--track-tight);
 }
 #empty-sub {
   margin: 0;
@@ -1093,13 +1116,38 @@ a.ghost {
   margin: auto;
   text-align: center;
   color: var(--fg-faint);
+  padding: var(--s-6);
+  animation: empty-in var(--dur-base) var(--ease-out) both;
 }
+/*
+ * The lead line carries the instruction, so it should not be the same weight
+ * as the shortcut legend beneath it.
+ */
+#reader-empty > p:first-of-type {
+  margin: 0 0 var(--s-3);
+  font-size: var(--t-lg);
+  font-weight: var(--w-medium);
+  color: var(--fg-dim);
+  letter-spacing: var(--track-tight);
+}
+/*
+ * Was an empty 44px dashed square: a bordered void where the biggest surface
+ * in the app sits whenever nothing is selected. It read as a component that
+ * had failed to load rather than as a resting state.
+ *
+ * Now the same envelope mark the empty list uses, on the same soft disc, so
+ * "nothing here yet" looks like one idea in two places instead of two
+ * unrelated placeholders.
+ */
 #reader-empty-mark {
-  width: 44px;
-  height: 44px;
-  margin: 0 auto 14px;
-  border-radius: var(--r-lg);
-  border: 2px dashed var(--line);
+  width: 64px;
+  height: 64px;
+  margin: 0 auto var(--s-4);
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-full);
+  background: var(--bg-sunken);
+  color: var(--fg-faint);
 }
 #reader-empty .hint {
   font-size: var(--t-sm);

@@ -261,7 +261,20 @@
           -->
           <div id="readpane">
             <div id="reader-empty">
-              <div id="reader-empty-mark" aria-hidden="true"></div>
+              <!--
+                An envelope, not an empty dashed square. This is the largest
+                area on screen whenever nothing is selected, and a bordered
+                void reads as a component that failed to load rather than as
+                a resting state.
+              -->
+              <div id="reader-empty-mark" aria-hidden="true">
+                <svg viewBox="0 0 48 48" width="30" height="30" fill="none"
+                     stroke="currentColor" stroke-width="1.6"
+                     stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="6" y="12" width="36" height="26" rx="5"/>
+                  <path d="M7 16.5 24 28l17-11.5"/>
+                </svg>
+              </div>
               <p>Select a message.</p>
               <p class="hint"><kbd>j</kbd>/<kbd>k</kbd> move · <kbd>e</kbd> archive · <kbd>s</kbd> star · <kbd>u</kbd> unread · <kbd>Esc</kbd> Gmail</p>
             </div>
