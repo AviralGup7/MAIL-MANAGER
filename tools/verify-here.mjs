@@ -36,8 +36,8 @@ const DIR = resolve(process.argv[2] || process.cwd());
  */
 const REFERENCE = {
   'manifest.json': '2db440f6e956',
-  'sw.bundle.js': '1152e8255216',
-  'src/background/index.js': 'c5c7eaaee58d',
+  'sw.bundle.js': 'b03db3d2b2f4',
+  'src/background/index.js': 'b99ba4dac2b3',
   'src/background/auth.js': '7eb32fe1853d',
   'src/background/gmail.js': '3c00c979fc9b',
   'src/background/sync.js': '47c273b50270',

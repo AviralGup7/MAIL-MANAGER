@@ -1729,6 +1729,56 @@ test('LOAD: sw.bundle.js is in sync with its sources', () => {
   );
 });
 
+test('FALLBACK: covers every verb the app sends, with the real signatures', () => {
+  /*
+   * THE IN-PAGE FALLBACK IS THE PRODUCT ON BRAVE.
+   *
+   * The service worker will not register there -- path, scope, entry file,
+   * extension ID and module-vs-classic have all been varied and all failed,
+   * and Brave has filed divergences in exactly this subsystem
+   * (brave/brave-browser#30782, where Shields' cookie policy denies service
+   * worker APIs outright). So the fallback is not a nicety; it is how the
+   * extension works at all on that browser.
+   *
+   * Two things it must get right, and the first draft got both wrong:
+   *
+   * 1. COVERAGE. GET_BODY was missing, so the fallback could list mail and
+   *    not open it.
+   *
+   * 2. SIGNATURES. gmail.js takes POSITIONAL arrays --
+   *    modify(id, add = [], remove = []) -- and the draft passed
+   *    `{ removeLabelIds: [...] }`, copying the shape of the Gmail REST body
+   *    rather than our own wrapper. Every mutation would have been a silent
+   *    no-op: request sent with no labels, Gmail returns 200, optimistic UI
+   *    stands, and the change vanishes on reload. Proven by capturing the
+   *    outgoing request -- it now carries
+   *    {"addLabelIds":[],"removeLabelIds":["INBOX"]} for ARCHIVE.
+   */
+  const app = read('src/app/app.js');
+  const fb = read('src/app/fallback.js');
+
+  const sent = new Set([...app.matchAll(/send\(\s*'([A-Z_]+)'/g)].map((m) => m[1]));
+  const handled = new Set([...fb.matchAll(/case '([A-Z_]+)'/g)].map((m) => m[1]));
+  assert.ok(sent.size >= 8, `expected the app to send several verbs, saw ${sent.size}`);
+
+  const uncovered = [...sent].filter((v) => !handled.has(v)).sort();
+  assert.deepEqual(
+    uncovered, [],
+    'the fallback cannot serve these, so they fail whenever the worker is dead'
+  );
+
+  /*
+   * And no object-shaped label argument may creep back in. This is a
+   * fingerprint of the exact bug: `modify(id, { ... })` instead of
+   * `modify(id, [...], [...])`.
+   */
+  const objArgs = [...fb.matchAll(/gmail\.(modify|batchModify)\([^)]*\{\s*(add|remove)LabelIds/g)];
+  assert.deepEqual(
+    objArgs.map((m) => m[0].slice(0, 50)), [],
+    'gmail.js takes positional arrays; an object here is a silent no-op'
+  );
+});
+
 test('LOAD: the extension passes the load-time doctor', () => {
   /*
    * THE LAYER 890 TESTS COULD NOT SEE.

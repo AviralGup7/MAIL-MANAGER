@@ -267,7 +267,16 @@ test('a forward carries the full original header block', () => {
 test('the background actually supplies the date the attribution needs', () => {
   // The attribution silently degrades if extractBody omits `date`, and that
   // degradation is invisible in the app.
-  const bg = readFileSync(new URL('../src/background/index.js', import.meta.url), 'utf8');
+  //
+  // REPOINTED: extractBody moved from src/background/index.js to
+  // src/background/mime.js so the in-page fallback can reuse it. index.js
+  // registers six chrome.* listeners at load, so a page importing it to
+  // borrow one pure function would attach a second set of handlers.
+  //
+  // Pointed at the new file rather than relaxed -- scanning a file that no
+  // longer contains the function would find nothing and pass vacuously,
+  // which is the failure mode this whole suite exists to avoid.
+  const bg = readFileSync(new URL('../src/background/mime.js', import.meta.url), 'utf8');
   const fn = bg.slice(bg.indexOf('function extractBody'));
   assert.ok(
     /date: Number\(full\.internalDate\)/.test(fn.slice(0, 1600)),

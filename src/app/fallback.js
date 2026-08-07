@@ -57,13 +57,14 @@ let loadError = null;
 async function buildHandler() {
   if (handler || loadError) return handler;
   try {
-    const [auth, gmail, sync, snooze] = await Promise.all([
+    const [auth, gmail, sync, snooze, mime] = await Promise.all([
       import('../background/auth.js'),
       import('../background/gmail.js'),
       import('../background/sync.js'),
       import('./snooze.js'),
+      import('../background/mime.js'),
     ]);
-    handler = makeHandler({ auth, gmail, sync, snooze });
+    handler = makeHandler({ auth, gmail, sync, snooze, mime });
   } catch (err) {
     loadError = err;
     handler = null;
@@ -79,7 +80,7 @@ async function buildHandler() {
  * chrome.scripting is refused by name rather than failing obscurely, so the
  * caller gets "this needs the background worker" instead of a TypeError.
  */
-function makeHandler({ auth, gmail, sync, snooze }) {
+function makeHandler({ auth, gmail, sync, snooze, mime }) {
   return async function handleInPage(msg) {
     const { type } = msg;
 
@@ -92,22 +93,60 @@ function makeHandler({ auth, gmail, sync, snooze }) {
       case 'SYNC_PAGE': return sync.syncPage(msg.opts || {});
       case 'SYNC_DELTA': return sync.syncDelta(msg.historyId);
 
-      case 'MARK_READ': return gmail.modify(msg.id, { removeLabelIds: ['UNREAD'] });
-      case 'MARK_UNREAD': return gmail.modify(msg.id, { addLabelIds: ['UNREAD'] });
+      /*
+       * SIGNATURES MATTER, AND I GOT THEM WRONG FIRST TIME.
+       *
+       * gmail.js uses POSITIONAL arrays:
+       *   modify(id, addLabelIds = [], removeLabelIds = [])
+       *   batchModify(ids, addLabelIds = [], removeLabelIds = [])
+       *   trash(id)                       -- no second argument
+       *
+       * The first version of this file passed `{ removeLabelIds: [...] }`
+       * objects, copying the shape of the Gmail REST body rather than the
+       * shape of our own wrapper. Every mutation would have been a silent
+       * no-op: the request goes out with no labels to change, Gmail returns
+       * 200, and the optimistic UI update stands while the server never
+       * moved. Read as "it works" until a reload put everything back.
+       *
+       * Mirrored from src/background/index.js verb for verb.
+       */
+      case 'MARK_READ': return gmail.modify(msg.id, [], ['UNREAD']);
+      case 'MARK_UNREAD': return gmail.modify(msg.id, ['UNREAD'], []);
       case 'STAR':
-        return gmail.modify(msg.id, msg.on
-          ? { addLabelIds: ['STARRED'] }
-          : { removeLabelIds: ['STARRED'] });
-      case 'ARCHIVE': return gmail.modify(msg.id, { removeLabelIds: ['INBOX'] });
-      case 'UNARCHIVE': return gmail.modify(msg.id, { addLabelIds: ['INBOX'] });
-      case 'TRASH': return gmail.trash(msg.id, true);
-      case 'UNTRASH': return gmail.trash(msg.id, false);
-      case 'SPAM': return gmail.modify(msg.id, { addLabelIds: ['SPAM'], removeLabelIds: ['INBOX'] });
-      case 'NOT_SPAM': return gmail.modify(msg.id, { addLabelIds: ['INBOX'], removeLabelIds: ['SPAM'] });
+        return gmail.modify(msg.id, msg.on ? ['STARRED'] : [], msg.on ? [] : ['STARRED']);
+      case 'ARCHIVE': return gmail.modify(msg.id, [], ['INBOX']);
+      case 'UNARCHIVE': return gmail.modify(msg.id, ['INBOX'], []);
+      case 'TRASH': return gmail.trash(msg.id);
+      case 'UNTRASH':
+        return gmail.api(`/messages/${encodeURIComponent(msg.id)}/untrash`, { method: 'POST' });
+      case 'SPAM': return gmail.modify(msg.id, ['SPAM'], ['INBOX']);
+      case 'NOT_SPAM': return gmail.modify(msg.id, ['INBOX'], ['SPAM']);
       case 'BULK':
-        return gmail.batchModify(msg.ids, {
-          addLabelIds: msg.add || [], removeLabelIds: msg.remove || [],
-        });
+        return gmail.batchModify(msg.ids, msg.add || [], msg.remove || []);
+
+      /*
+       * READING A MESSAGE. Without this the fallback lists mail and cannot
+       * open it, which is not a mail client.
+       *
+       * Uses the SAME parser as the worker. `extractBody` was moved out of
+       * index.js into mime.js precisely so this could reuse it: index.js
+       * registers six chrome.* listeners at load, so importing it from a page
+       * to borrow one pure function would attach a second set of handlers.
+       * One parser, two callers, no drift.
+       */
+      case 'GET_BODY': return mime.extractBody(await gmail.getFull(msg.id));
+
+      /*
+       * INLINE IMAGES degrade rather than fail.
+       *
+       * The worker fetches each cid: part and inlines it as a data URI under
+       * a byte budget. Reimplementing that here would be a second copy of a
+       * budgeted loop for a cosmetic feature. Returning an empty list means
+       * the message renders with its inline images missing, which is exactly
+       * what happens today when a part is over budget -- a path the reader
+       * already handles.
+       */
+      case 'GET_INLINE': return [];
 
       case 'LIST_LABELS': return gmail.listLabels();
       case 'CREATE_LABEL': return gmail.createLabel(msg.name);
