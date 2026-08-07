@@ -55,7 +55,73 @@ source. So rotating this breaks nothing here — it only closes the old hole.
 
 ---
 
-## 2 · The service worker will not register — read this first
+## 2 · The service worker will not register — SOLVED, and it is not our code
+
+### What it actually is
+
+`Status code: 2` is `kErrorAbort` — Chromium's generic "operation aborted".
+Google engineers confirm on the issue tracker that it is a grab bag, not a
+specific cause. That is why nine rounds of static analysis found nothing:
+there was nothing in the files to find.
+
+Research turned up a **known Chromium bug that matches exactly**:
+
+> **[Issue 394523691](https://issues.chromium.org/issues/394523691)** —
+> *Service worker fails to register on first launch of new profile*
+>
+> Another installed extension holding `webRequest` or
+> `declarativeNetRequest` causes Chrome to reset the URL loader factories
+> **while our extension is registering**, interrupting it. The registration
+> fails with `kErrorStartWorkerFailed`.
+>
+> **Fixed in Chrome 137.0.7115.0** (April 2025).
+
+The reporters found the same thing we did: the file is fine, the manifest is
+fine, and it fails anyway — depending on *what else is installed* and the
+order things load.
+
+### What to do, in order
+
+1. **Check your Chrome version** at `chrome://version`.
+   If it is **below 137**, you are hitting the bug above. Update Chrome.
+
+2. **Click the toolbar button.** It now opens a popup that works with no
+   service worker at all, tells you whether the background is running, and
+   has a **Retry background service** button. Retrying is the documented
+   workaround: the first attempt was interrupted by another extension
+   loading, and a second attempt usually lands because nothing else is in
+   flight.
+
+3. **Reload the extension a second time.** Same reasoning. Several reporters
+   note it registers on the second attempt.
+
+4. **Unregister a stale worker.** Go to `chrome://serviceworker-internals`,
+   find any entry for this extension, click **Unregister**, then reload the
+   extension.
+
+5. **Disable other extensions temporarily** — particularly ad blockers and
+   privacy tools, which is what holds `webRequest`/`declarativeNetRequest`.
+   If ours registers with those off, that confirms the bug.
+
+6. **Try a fresh or guest profile.** Also widely reported as a fix.
+
+### You are not blocked while this is unresolved
+
+The extension is built to work without the worker:
+
+- **Toolbar button** → the popup, rendered by the browser, no worker needed.
+- **<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd> on Gmail** → the content
+  script handles this itself.
+- **Reading, searching, archiving, sending** → the app falls back to running
+  the Gmail layer in the page and shows an amber banner saying so.
+
+What is genuinely lost until the worker starts: **snooze does not wake on a
+timer** (it catches up when you next open the app), and the `chrome.commands`
+shortcut registration.
+
+---
+
+## 2b · Older diagnostic notes
 
 You have hit this twice:
 

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>BITS Mail Manager</title>
+  <!--
+    THE TOOLBAR BUTTON, WITHOUT A SERVICE WORKER.
+
+    `chrome.action.onClicked` only fires when a worker is alive to receive it,
+    so with registration failing the button did nothing at all. A
+    `default_popup` is rendered by the BROWSER itself — no worker involved —
+    so this works even when the worker is dead, and it is the surface that
+    reports and repairs that state.
+
+    Chromium bug 394523691: another installed extension holding `webRequest`
+    or `declarativeNetRequest` can reset the URL loader factories mid-
+    registration and abort ours. Fixed in Chrome 137.0.7115.0. The documented
+    workaround below is simply to register again, which usually succeeds
+    because nothing else is loading at that moment.
+  -->
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      width: 300px;
+      margin: 0;
+      padding: 14px 16px;
+      font: 13px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: Canvas;
+      color: CanvasText;
+    }
+    h1 { margin: 0 0 2px; font-size: 14px; font-weight: 600; }
+    .sub { margin: 0 0 12px; font-size: 11px; opacity: 0.65; }
+    #state {
+      display: flex; align-items: flex-start; gap: 8px;
+      padding: 9px 11px; margin-bottom: 12px;
+      border-left: 3px solid currentColor; border-radius: 0 6px 6px 0;
+      background: color-mix(in srgb, CanvasText 6%, transparent);
+      font-size: 12px;
+    }
+    #state.ok   { color: #0f7b4f; }
+    #state.warn { color: #8a5a00; }
+    #state.busy { opacity: 0.7; }
+    #detail { margin: 0 0 12px; font-size: 11px; opacity: 0.7; word-break: break-word; }
+    button {
+      width: 100%; padding: 8px 10px; margin-bottom: 7px;
+      font: inherit; font-weight: 500; border-radius: 7px; cursor: pointer;
+      border: 1px solid color-mix(in srgb, CanvasText 22%, transparent);
+      background: color-mix(in srgb, CanvasText 5%, transparent);
+      color: inherit;
+    }
+    button:hover { background: color-mix(in srgb, CanvasText 11%, transparent); }
+    button.primary {
+      background: #1a4fd6; border-color: #1a4fd6; color: #fff; font-weight: 600;
+    }
+    button.primary:hover { background: #1746bb; }
+    kbd {
+      font: inherit; font-size: 11px; padding: 1px 5px; border-radius: 4px;
+      border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
+      border-bottom-width: 2px;
+    }
+    .hint { margin: 10px 0 0; font-size: 11px; opacity: 0.6; }
+  </style>
+</head>
+<body>
+  <h1>BITS Mail Manager</h1>
+  <p class="sub">A faster, BITS-aware inbox</p>
+
+  <div id="state" class="busy" role="status">Checking background service…</div>
+  <p id="detail" hidden></p>
+
+  <button id="open" class="primary" type="button">Open on Gmail</button>
+  <button id="repair" type="button" hidden>Retry background service</button>
+  <button id="options" type="button">Settings</button>
+
+  <p class="hint">Or press <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd> on any Gmail tab.</p>
+
+  <script src="popup.js" type="module"></script>
+</body>
+</html>

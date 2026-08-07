@@ -29,6 +29,23 @@ function jsFiles(rel = 'src', out = []) {
     if (e.isDirectory()) jsFiles(p, out);
     else if (e.name.endsWith('.js')) out.push(p);
   }
+  /*
+   * ROOT-LEVEL SCRIPTS COUNT TOO.
+   *
+   * This walked only `src/`, so `sw.js` and `popup.js` — both shipped, both
+   * calling chrome.* — were invisible to every scan built on it, including
+   * the permission guard. That guard exists precisely because a missing
+   * `tabs` permission once shipped an extension that could not work at all;
+   * leaving two of its files unscanned reopened the same hole.
+   *
+   * They live at the root deliberately: the worker must, for scope, and the
+   * popup sits beside it.
+   */
+  if (rel === 'src') {
+    for (const e of readdirSync(ROOT, { withFileTypes: true })) {
+      if (e.isFile() && e.name.endsWith('.js') && !e.name.startsWith('.')) out.push(e.name);
+    }
+  }
   return out;
 }
 
