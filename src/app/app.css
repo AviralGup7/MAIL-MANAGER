@@ -1165,6 +1165,51 @@ a.ghost {
  * panel, matching the toast variants. It appears on the rare mail that
  * actually moved a class, so it can afford to be noticed without shouting.
  */
+/*
+ * THE MESSAGE'S OWN DEADLINE.
+ *
+ * Same visual language as #r-timetable directly below -- a 2px left border on
+ * a sunken surface -- because they are the same KIND of thing: a fact the app
+ * derived from this message rather than something the sender wrote.
+ *
+ * The urgency colour comes from the same four bands the radar uses, so a
+ * deadline that is red in the rail is red here. Colour is never the only
+ * signal: the words "overdue"/"due today" carry it too.
+ */
+#r-due {
+  margin-top: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border-left: 2px solid var(--accent);
+  background: var(--bg-sunken);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  font-size: var(--t-sm);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-1) var(--s-3);
+}
+.r-due-when {
+  font-weight: var(--w-semi);
+  color: var(--fg);
+}
+.r-due-from {
+  color: var(--fg-faint);
+  font-size: var(--t-xs);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The four bands, matching .radar-* exactly. */
+#r-due.r-due-overdue { border-left-color: var(--danger); }
+#r-due.r-due-overdue .r-due-when { color: var(--danger); }
+#r-due.r-due-today { border-left-color: var(--danger); }
+#r-due.r-due-today .r-due-when { color: var(--danger); }
+#r-due.r-due-soon { border-left-color: var(--warning); }
+#r-due.r-due-soon .r-due-when { color: var(--warning); }
+#r-due.r-due-week { border-left-color: var(--accent); }
+#r-due.r-due-week .r-due-when { color: var(--accent); }
+
 #r-timetable {
   margin-top: var(--s-3);
   padding: var(--s-2) var(--s-3);

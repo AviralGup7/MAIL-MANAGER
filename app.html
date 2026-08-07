@@ -278,6 +278,20 @@
                   unless the message actually changed something, so it costs
                   nothing on the overwhelming majority of mail.
                 -->
+                <!--
+                  THE MESSAGE'S OWN DEADLINE.
+
+                  Extracted on every ingest and, until now, surfaced only in
+                  the sidebar radar -- which caps at six. A message with a
+                  deadline outside that top six had one the product knew about
+                  and never mentioned, including on the screen where the user
+                  is definitely reading that exact message.
+
+                  Hidden by default: most mail has no deadline, and a
+                  permanent empty strip would push every body down for the
+                  benefit of a minority.
+                -->
+                <div id="r-due" hidden></div>
                 <div id="r-timetable" hidden></div>
                 <div id="r-actions">
                   <button data-act="star" class="ghost" type="button" title="Star (s)">Star</button>

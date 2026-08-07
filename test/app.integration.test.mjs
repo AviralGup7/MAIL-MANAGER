@@ -499,6 +499,65 @@ test('RADAR: the heading reports how many and how urgent', async (t) => {
   }
 });
 
+test('READER: a message with a deadline says so, in the message', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * THE DEADLINE WAS EXTRACTED, STORED, CACHED -- AND ONLY EVER SHOWN IN THE
+   * SIDEBAR, capped at six items.
+   *
+   * `extractDeadline` runs on every ingest and writes dueAt/dueKind/dueText
+   * onto the message. The radar renders the top six. Message seven has a
+   * deadline the product knows about and never mentions -- and the one place
+   * the user is certainly looking at that message, the reader, said nothing.
+   *
+   * This is the product's most differentiated feature being hidden from the
+   * surface where it matters most. It must use the SAME vocabulary as the
+   * radar (`relativeLabel`, `urgency`), or the same date acquires two
+   * different names depending on where you read it.
+   */
+  const { doc, settle, restore } = await boot({ messages: DUE_MESSAGES });
+  try {
+    await settle(6);
+    rows(doc)[0].click();
+    await settle(6);
+
+    const due = doc.getElementById('r-due');
+    assert.ok(due, 'the reader needs a deadline surface');
+    assert.equal(due.hidden, false, 'this message has a deadline; show it');
+
+    // The same phrasing the radar uses, not a second vocabulary.
+    assert.match(
+      due.textContent, /due (today|tomorrow|in \d)|overdue/i,
+      `expected radar-style wording, got: ${due.textContent}`
+    );
+
+    // And it must explain itself, exactly as the radar item does.
+    assert.match(
+      due.textContent, /Read from|read from/,
+      'the deadline must quote the phrase it came from'
+    );
+  } finally {
+    restore();
+  }
+});
+
+test('READER: a message with no deadline shows no deadline strip', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // The counterpart. An always-present empty strip is chrome, and it would
+  // push the body down on every message for the benefit of a minority.
+  const { doc, settle, restore } = await boot();
+  try {
+    rows(doc)[0].click();
+    await settle(6);
+    assert.equal(
+      doc.getElementById('r-due').hidden, true,
+      'no deadline, no strip'
+    );
+  } finally {
+    restore();
+  }
+});
+
 test('RADAR: an item shows which phrase the date was read from', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');
   /*

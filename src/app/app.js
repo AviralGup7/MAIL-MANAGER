@@ -221,6 +221,7 @@ const el = {
   gateError: $('gate-error'),
   reader: $('reader'),
   rThread: $('r-thread'),
+  rDue: $('r-due'),
   rTimetable: $('r-timetable'),
   readerEmpty: $('reader-empty'),
   rSubject: $('r-subject'),
@@ -1277,6 +1278,68 @@ let markReadTimer = 0;
  * timetable, and a permanently-present "no timetable changes" line would be
  * noise on every single mail to save a glance on one.
  */
+/**
+ * The open message's own deadline.
+ *
+ * WHY THIS EXISTS
+ * ---------------
+ * `extractDeadline` runs on every ingest and writes `dueAt`/`dueKind`/
+ * `dueText` onto the message. Until now the ONLY consumer was the sidebar
+ * radar, which shows the six most urgent. A message with a deadline outside
+ * that top six had one the product knew about, had parsed, had cached -- and
+ * never mentioned. Including on the one screen where the user is definitely
+ * looking at that exact message.
+ *
+ * It deliberately reuses `relativeLabel` and `urgency`, the radar's own
+ * functions, rather than formatting a date here. Two surfaces describing one
+ * date in two different vocabularies is precisely the drift audit 15 was
+ * about: "due tomorrow" in the rail and "12 Aug" in the reader would read as
+ * two different facts.
+ *
+ * The quoted phrase is the same trick the radar item plays in its tooltip --
+ * it turns "how did it know that?" into "of course, it read the line". Here
+ * it is on the surface rather than in a title, because the reader has the
+ * width for it and a tooltip is not reachable by touch or keyboard.
+ */
+function renderMessageDeadline(m) {
+  const box = el.rDue;
+  if (!box) return;
+
+  if (!m || !m.dueAt) {
+    box.hidden = true;
+    box.replaceChildren();
+    return;
+  }
+
+  const now = Date.now();
+  const band = urgency(m.dueAt, now);
+
+  const when = document.createElement('span');
+  when.className = 'r-due-when';
+  // Capitalised because it opens the line: "Due tomorrow", not "due tomorrow".
+  const label = relativeLabel(m.dueAt, now);
+  when.textContent = label.charAt(0).toUpperCase() + label.slice(1);
+
+  const frag = document.createDocumentFragment();
+  frag.appendChild(when);
+
+  /*
+   * The evidence. `dueText` is the phrase the parser matched, so quoting it
+   * lets the user judge whether the machine read the mail correctly -- which
+   * matters, because a wrong deadline is worse than no deadline.
+   */
+  if (m.dueText) {
+    const from = document.createElement('span');
+    from.className = 'r-due-from';
+    from.textContent = `Read from: “${m.dueText}”`;
+    frag.appendChild(from);
+  }
+
+  box.className = `r-due r-due-${band}`;
+  box.replaceChildren(frag);
+  box.hidden = false;
+}
+
 function renderTimetableEffects(id) {
   const box = el.rTimetable;
   if (!box) return;
@@ -1521,6 +1584,7 @@ async function openMessage(id) {
     recat
   );
 
+  renderMessageDeadline(m);
   renderTimetableEffects(id);
 
   /*
