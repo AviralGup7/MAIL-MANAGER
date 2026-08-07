@@ -42,6 +42,10 @@ import {
   scheduleServerSearch, wireServerSearch, _resetServerSearch,
 } from './server-search.js';
 import {
+  renderViews, refreshViews, suggestViewName, updateSaveAffordance,
+  wireViews, _resetViews,
+} from './saved-views.js';
+import {
   MAILBOXES, DEFAULT_MAILBOX, getMailbox, isMailbox, showsCategories, actionsFor,
 } from './mailboxes.js';
 import {
@@ -2675,32 +2679,9 @@ el.search.addEventListener('input', () => {
  * present "save" button on an empty search box is noise, and offering to save
  * something already saved is a small lie about what the button will do.
  */
-/**
- * A sensible default name, so the user is confirming rather than composing.
- *
- * `is:unread category:augsd` becomes "Unread AUGSD" — a blank prompt makes the
- * user do work the query has already described.
- */
-function suggestViewName(q) {
-  const parsed = parseQuery(q);
-  const bits = [];
-  for (const o of parsed.operators) {
-    if (o.key === 'is' || o.key === 'has') bits.push(cap(o.value));
-    else if (o.key === 'category') bits.push(CATEGORY_LABELS[o.value] || cap(o.value));
-    else if (o.key === 'from') bits.push(`From ${o.value}`);
-  }
-  if (parsed.terms.length) bits.push(`"${parsed.terms.join(' ')}"`);
-  return bits.join(' ').slice(0, 40) || q.slice(0, 40);
-}
-const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
-function updateSaveAffordance() {
-  const btn = $('btn-save-view');
-  if (!btn) return;
-  const q = state.query.trim();
-  const known = savedViews.some((v) => v.query === q);
-  btn.hidden = !q || known;
-}
+
+
 
 $('btn-refresh').addEventListener('click', () => refresh());
 el.helpClose?.addEventListener('click', closeHelp);
@@ -3403,85 +3384,14 @@ function syncReaderActions() {
   }
 }
 
-/* ======================================================================== *
- * SAVED VIEWS
- * ======================================================================== */
-
-let savedViews = [];
-
-/**
- * Render the saved-view list with live counts.
- *
- * Counts make a saved view genuinely useful rather than a bookmark — but each
- * one is a full query, so this runs only on a SETTLED store change, never per
- * keystroke. That is the same discipline the render loop follows.
+/*
+ * Saved views live in saved-views.js. renderViews() is still called from the
+ * render loop below -- the module owns the rendering, not the scheduling.
  */
-function renderViews() {
-  if (!el.viewsList) return;
-  const frag = document.createDocumentFragment();
 
-  for (const v of savedViews) {
-    const li = document.createElement('li');
 
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'view-item';
-    btn.dataset.viewId = v.id;
-    btn.dataset.query = v.query;
-    btn.title = v.query;
-    btn.setAttribute('aria-current', String(state.query === v.query));
 
-    const ico = document.createElement('span');
-    ico.className = 'view-icon';
-    ico.appendChild(icon(v.icon || 'search', { size: 14 }));
 
-    const name = document.createElement('span');
-    name.className = 'view-name';
-    name.textContent = v.name;
-
-    const count = document.createElement('span');
-    count.className = 'view-count';
-    const n = countFor(v.query);
-    count.textContent = n ? String(n) : '';
-
-    const del = document.createElement('span');
-    del.className = 'view-remove';
-    del.dataset.removeView = v.id;
-    del.setAttribute('role', 'button');
-    del.setAttribute('tabindex', '-1');
-    del.setAttribute('aria-label', `Remove view ${v.name}`);
-    del.appendChild(icon('close', { size: 12 }));
-
-    btn.append(ico, name, count, del);
-    li.appendChild(btn);
-    frag.appendChild(li);
-  }
-  el.viewsList.replaceChildren(frag);
-}
-
-/** How many messages a saved query currently matches. */
-function countFor(query) {
-  try {
-    const parsed = parseQuery(query);
-    const base = parsed.terms.length
-      ? store.search(parsed.terms.join(' '), 'all')
-      : store.idsFor('all');
-    if (!parsed.predicate) return base.length;
-    let n = 0;
-    for (const id of base) {
-      const m = store.get(id);
-      if (m && parsed.predicate(m)) n++;
-    }
-    return n;
-  } catch {
-    return 0;
-  }
-}
-
-async function refreshViews() {
-  savedViews = await loadViews();
-  renderViews();
-}
 
 /* ======================================================================== *
  * BULK SELECTION
@@ -3705,6 +3615,7 @@ function cancelPendingWork() {
   stopAutoRefresh();
   // Server search owns its own timer and token, and resets them itself.
   _resetServerSearch();
+  _resetViews();
   clearTimeout(markReadTimer);
   markReadTimer = 0;
   if (searchFrame) {
@@ -3767,6 +3678,8 @@ const ctx = {
    * it -- a reply must answer that one.
    */
   openMessageId: () => openPart || state.selected,
+  // Saved views render into the rail and count against the inbox store.
+  viewsList: () => el.viewsList,
   // Server search needs to know what is already on screen (so it only reports
   // genuinely new hits) and how to merge what Gmail returns.
   visibleIds: () => visibleIds(),
@@ -3990,6 +3903,7 @@ async function boot() {
   wireCompose(ctx);
   wireRadar(ctx);
   wireServerSearch(ctx);
+  wireViews(ctx);
   $('btn-compose').addEventListener('click', () => openCompose(ctx));
   $('btn-timetable')?.addEventListener('click', () => openTimetable(ctx));
   // Render the (empty) list once up front. The store only notifies when it

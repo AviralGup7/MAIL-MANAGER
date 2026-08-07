@@ -1009,7 +1009,7 @@ test('contacts.js exports both the lenient and the strict parser', () => {
 const LAYER = {
   shell: ['src/app/app.js'],
   features: ['src/app/features.js', 'src/app/layers.js', 'src/app/icons.js',
-    'src/app/menu.js', 'src/app/server-search.js',
+    'src/app/menu.js', 'src/app/server-search.js', 'src/app/saved-views.js',
     'src/app/shortcuts.js', 'src/app/themes.js',
     // The five modules features.js was split into. Same layer, same rules:
     // they may import domain and platform, never the shell.
