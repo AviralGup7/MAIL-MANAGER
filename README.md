@@ -363,6 +363,9 @@ src/
   app/timetable-store.js    Timetable persistence + course search.
   app/timetable-ui.js       The panel: build wizard, manager, proposals.
   app/undo.js               Universal undo. 20 entries, 5-minute TTL.
+  app/menu.js               One anchored-menu primitive; three menus use it.
+  app/server-search.js      The Gmail fallback that makes body search work.
+  app/saved-views.js        Kept searches, with live counts.
   app/features.js           Barrel: re-exports the five modules below.
   app/undo-actions.js       Recording and replaying a reversible action.
   app/radar.js              The "what is due" rail panel.

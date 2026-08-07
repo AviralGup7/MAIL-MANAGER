@@ -141,8 +141,8 @@ tenants:
 | Group | Lines | Calls out | Called in | Verdict |
 |---|---|---|---|---|
 | **server search** | 76 | 4 | 1 | **Extract first** — nearly free |
-| **saved views** | 128 | 10 | 4 | Extract second |
-| **menus** (category / recategorise / snooze) | 345 | 7 | 3 | Extract third |
+| ~~**saved views**~~ | 128 | 10 → **1** | 4 | ✅ Extracted. The audit's estimate of 10 was wrong; only `countFor` needed the store |
+| ~~**menus**~~ | 345 | 7 | 3 | ✅ **Moot.** Now three thin call sites over `menu.js`; the duplication that justified extracting them is gone |
 | **reader** (open/close/body/strip) | 347 | 12 | 5 | Extract last, or leave |
 | render / list / selection | ~900 | — | — | **Leave.** Genuinely welded via `renderedIds`, `nodeById`, `store` |
 
@@ -154,7 +154,7 @@ Not in one sweep — that is how a working system gets broken for a tidier tree.
 
 ---
 
-## 🟡 F-3 · Three hand-rolled menus with identical scaffolding
+## 🟡 F-3 · Three hand-rolled menus with identical scaffolding — ✅ **DONE**
 
 `openCategoryMenu`, `openRecategoriseMenu` and `openSnoozeMenu` each build the
 same thing: `.snooze-menu` container, `role="menu"`, `.snooze-opt` buttons,
@@ -170,9 +170,18 @@ kind of thing that gets fixed in two places out of three.
 **Clean split:** one `menu({ anchor, label, items })` helper.
 **When:** with the menu extraction in F-2.
 
+**Outcome.** `menu.js`. The three call sites disagreed on exactly two things
+and both became parameters rather than being flattened: the item **role**
+(category rules are `menuitemcheckbox`, snooze options are plain `menuitem`)
+and the **mount point** (snooze hangs off the reader's action bar so the row's
+overflow cannot clip it). Eight tests written first, pinning the two details a
+re-implementation drops — ArrowUp from the first item must wrap to the *last*,
+and Escape must `stopPropagation` or one press also closes the reader. Removed
+`catMenu` and `snoozeMenu` from `app.js`.
+
 ---
 
-## 🟡 F-4 · Six copies of the optimistic-mutation pattern
+## 🟡 F-4 · Six copies of the optimistic-mutation pattern — ✅ **DONE**
 
 `act()` contains six near-identical blocks:
 
@@ -192,6 +201,18 @@ to the rollback discipline has six places to miss.
 case becomes three lines.
 **When:** with F-2's action work. Lower risk than it looks — the pattern is
 already uniform, which is precisely what makes it extractable.
+
+**Outcome.** `optimistic()`. `act()` went from 164 to 125 lines. Snooze did
+*not* fit the original shape — it writes local state before the request, so
+both the failure path and the undo path must unwind that write — so the helper
+grew two honest hooks rather than snooze being forced into a bad fit.
+
+**Sabotage found the missing test that mattered most.** Moving the snapshot to
+*after* `store.remove()` broke nothing: undo still put a row back, so every
+row-count assertion passed. What silently broke was the **content** — the
+restored message would carry post-change values, so an undone star came back
+wrong. There is now a field-by-field comparison, and it fails when the
+ordering is reversed.
 
 ---
 
@@ -214,10 +235,28 @@ existing is the right one:
 ## Order of work
 
 1. ~~**F-1 `features.js` → five modules.**~~ Done.
-2. **F-3/F-4 the two duplicated patterns.** Small, and they shrink `app.js`
-   before it is carved.
-3. **F-2 `app.js`, one group per change**, easiest first: search → views →
-   menus. Stop before the render/list/selection core.
+2. ~~**F-3/F-4 the two duplicated patterns.**~~ Done.
+3. ~~**F-2 server search, then saved views.**~~ Done. **Stopped there.**
+
+### Where this stopped, and why
+
+Re-measured after the work:
+
+```
+module-level bindings in app.js:  24 → 19
+spanning 3+ feature domains:       4 → 3   (store, renderedIds, rules)
+app.js:                         2460 → ~2200 code lines
+```
+
+The three bindings that remain shared are precisely the welded core the
+original measurement identified. Menus were dropped from the plan on evidence
+rather than fatigue: once `menu.js` existed they became three thin call sites,
+and moving them would buy nothing.
+
+The next candidate is the render/list/selection cluster. It is genuinely
+coupled through `store`, `renderedIds` and `nodeById`, and splitting it would
+mean rewriting several unrelated flows at once. **Better a slightly larger
+coherent core than a clean split that damages the product.**
 
 Nothing here is urgent. Everything here compounds.
 
