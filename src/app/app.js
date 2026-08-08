@@ -2923,8 +2923,19 @@ function reportError(err) {
   } else if (/401|invalid_grant|No refresh token/i.test(msg)) {
     state.signedIn = false;
     showGate('Session expired. Sign in again.');
+  } else if (isOffline() || /failed to fetch|networkerror|load failed|fetch failed/i.test(msg)) {
+    /*
+     * A NETWORK FAILURE IS NOT AN ERROR MESSAGE, IT IS A STATE.
+     *
+     * Chrome says "Failed to fetch", Firefox "NetworkError when attempting to
+     * fetch resource.", Safari "Load failed" -- three different pieces of
+     * jargon for one condition, none of which tells the user anything they can
+     * act on. The banner says it once, in one voice, and stays until it is no
+     * longer true.
+     */
+    showOfflineBanner();
   } else {
-    toast(msg.slice(0, 140));
+    toast(msg.slice(0, 140), { kind: 'error' });
   }
 }
 
@@ -2973,10 +2984,100 @@ function showWorkerWarning(why) {
   else document.body.prepend(bar);
 }
 
+
+/* ========================================================================== *
+ * OFFLINE
+ * ========================================================================== *
+ *
+ * `navigator.onLine` appeared nowhere in this codebase, so a dropped
+ * connection fell to the last branch of reportError() and surfaced as
+ * `toast("Failed to fetch")` -- browser jargon, styled as INFORMATION rather
+ * than a problem, gone in 2200ms.
+ *
+ * Three things wrong with that, and the third is the one that matters: offline
+ * is not an event, it is a CONDITION. It lasts until the network returns, and
+ * a transient toast is the wrong shape for something that is still true thirty
+ * seconds later.
+ *
+ * The right idiom already existed. showWorkerWarning() renders a persistent
+ * strip for degraded mode, and its own comment explains why: "a toast is for
+ * something that just happened and then stops mattering, and this condition
+ * lasts for the whole session." Offline is that condition and never got the
+ * treatment.
+ *
+ * WHAT THE BANNER SAYS IS THE POINT. Not "you are offline" -- the user knows.
+ * What they do not know is what still works, and on a campus network that
+ * drops several times an hour that is the difference between waiting and
+ * retrying by hand until they conclude the app is broken.
+ */
+let offlineBar = null;
+
+function showOfflineBanner() {
+  if (offlineBar || document.getElementById('net-warn')) return;
+
+  const bar = document.createElement('div');
+  bar.id = 'net-warn';
+  // `alert`, not `status`: losing the connection is worth interrupting for.
+  bar.setAttribute('role', 'alert');
+
+  const text = document.createElement('span');
+  text.className = 'sw-warn-text';
+  text.textContent =
+    'No connection — showing mail already downloaded. '
+    + 'Anything you send is queued and goes out automatically when you are back.';
+
+  bar.append(text);
+  const main = document.getElementById('main');
+  const panes = document.getElementById('panes');
+  if (main && panes) main.insertBefore(bar, panes);
+  else document.body.prepend(bar);
+  offlineBar = bar;
+}
+
+function hideOfflineBanner() {
+  offlineBar?.remove();
+  offlineBar = null;
+}
+
+/*
+ * No Dismiss button, deliberately, unlike the worker banner.
+ *
+ * That one describes a condition the user can do nothing about and may last
+ * the whole session, so dismissing it is reasonable. This one clears itself
+ * the moment the network returns -- a dismiss control would only let the user
+ * hide a fact that is still true.
+ */
+window.addEventListener('offline', () => {
+  showOfflineBanner();
+});
+
+window.addEventListener('online', () => {
+  hideOfflineBanner();
+  // Catch up immediately rather than waiting for the next scheduled poll, and
+  // drain anything the outbox has been holding.
+  refresh({ silent: true });
+  pumpOutbox();
+});
+
+/** True when the browser knows it is offline. Feature-detected: jsdom has no navigator.onLine. */
+function isOffline() {
+  return typeof navigator !== 'undefined' && navigator.onLine === false;
+}
+
 function showGate(message) {
   el.gate.hidden = false;
   el.gateError.hidden = !message;
   el.gateError.textContent = message || '';
+
+  /*
+   * The explanation appears only for the one error it explains.
+   *
+   * A returning user whose session expired does not need to be told what an
+   * OAuth client ID is -- they already have one. Showing it always would turn
+   * a one-time onboarding note into permanent furniture.
+   */
+  const why = $('gate-why');
+  if (why) why.hidden = !/client ID/i.test(message || '');
   /*
    * MOVE FOCUS IN, like every other dialog.
    *
@@ -3802,6 +3903,8 @@ function endOfDay(ms) {
  * wakes every second to discover it has nothing to do is a battery bug.
  */
 let outboxTimer = 0;
+/** How many sends had already given up, so only NEW failures are announced. */
+let newlyStuck = 0;
 
 async function pumpOutbox() {
   clearTimeout(outboxTimer);
@@ -3819,6 +3922,34 @@ async function pumpOutbox() {
   if (result.failed) {
     activity.record({ verb: 'SEND', ids: [], actor: 'user', outcome: 'failed' });
   }
+
+  /*
+   * A SEND THAT HAS GIVEN UP MUST SAY SO, ONCE.
+   *
+   * The outbox row already reports "Retrying in 15s (attempt 2 of 4)" and turns
+   * red when it is stuck -- but that section only exists while the queue is
+   * non-empty, and the user has no reason to be looking at it. Their model is
+   * "I sent it"; the app's model is "attempt 4 failed". Nothing bridged those,
+   * so the worst outcome in the product -- a message the user believes they
+   * sent -- was recorded and never announced.
+   *
+   * Only on the FINAL failure. A toast per retry would train the user to
+   * ignore it, and the retries usually succeed.
+   */
+  const stuck = (await outbox.loadOutbox()).filter(outbox.isStuck);
+  if (stuck.length > newlyStuck) {
+    const who = displayName(stuck[0].draft?.to || '');
+    toast(
+      stuck.length === 1
+        ? `Could not send to ${who}`
+        : `${stuck.length} messages could not be sent`,
+      {
+        kind: 'error',
+        action: { label: 'Show', run: () => $('outbox')?.scrollIntoView({ block: 'nearest' }) },
+      }
+    );
+  }
+  newlyStuck = stuck.length;
 
   const items = await outbox.loadOutbox();
   renderOutbox(items);
@@ -4893,6 +5024,9 @@ window.__bmmIngest = ingest;
  * the runner. Driving it is deterministic.
  */
 window.__bmmPumpOutbox = () => pumpOutbox();
+/* Test seam: the gate is reached through several error paths; driving it
+   directly is what lets a test assert which explanation each one shows. */
+window.__bmmShowGate = (m) => showGate(m);
 // Same live-binding hazard as ctx.store: defined as a getter so a harness
 // inspecting it after a mailbox switch sees the ACTIVE store, not the inbox.
 Object.defineProperty(window, '__bmmStore', { get: () => store, configurable: true });

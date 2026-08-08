@@ -523,6 +523,22 @@
             toast stays polite because it also narrates routine success.
           -->
           <p id="gate-error" class="err" role="alert" hidden></p>
+          <!--
+            WHY THE APP ASKS FOR A CLIENT ID.
+
+            This is the first screen a new user sees, and it was asking for a
+            Google Cloud OAuth client ID with no explanation of what one is or
+            why it is needed. Every other empty state in this product explains
+            itself; this one stated a precondition.
+
+            Shown only when there is no client ID yet -- once configured, the
+            gate is a plain sign-in screen and this would be noise.
+          -->
+          <p id="gate-why" class="hint" hidden>
+            This extension talks to Gmail with <em>your</em> credentials — there is no
+            server in between and nothing is shared with anyone. That needs a free
+            OAuth client ID from Google Cloud, once.
+          </p>
           <button id="btn-options" class="ghost small" type="button">Set OAuth client ID…</button>
         </div>
       </div>

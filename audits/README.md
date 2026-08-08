@@ -270,3 +270,21 @@ whether it is the file you wanted.
 
 The reading surface, by contrast, was already excellent: 15px/1.65 at a 68ch
 measure with a written rationale, constrained images, `pre-wrap`, capped tables.
+
+
+## Audit 27 — empty, loading and error states
+
+Every state where the product is not on the happy path, reached by tracing the
+code path a user actually arrives through rather than by reading markup.
+
+**This turned out to be the strongest area of the product.** The empty state
+alone has six contextual branches, each with its own copy and its own recovery
+action — including one that refuses to say "you're all caught up" when the list
+is empty only because a mute rule hid everything, on the grounds that a feature
+which can make mail vanish without trace is how you lose someone's trust.
+Search states, quota handling, auth expiry and draft recovery are all complete.
+
+The gap was **offline**: `navigator.onLine` appeared nowhere, so a dropped
+connection surfaced as `toast("Failed to fetch")` — browser jargon, styled as
+information rather than a problem, gone in 2200ms. Offline is not an event, it
+is a condition, and the codebase already had the right idiom for conditions.

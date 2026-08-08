@@ -3895,3 +3895,103 @@ test('the undo button has an accessible name in the markup, not only from JS', a
   }
 });
 
+
+/* ==========================================================================
+ * NON-HAPPY-PATH STATES (audit 27)
+ * ========================================================================== */
+
+test('going offline shows a persistent banner, not a 2-second toast', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * `navigator.onLine` appeared nowhere, so a dropped connection fell to the
+   * last branch of reportError() and surfaced as toast("Failed to fetch") --
+   * browser jargon, styled as INFORMATION rather than a problem, gone in
+   * 2200ms.
+   *
+   * Offline is not an event, it is a CONDITION: still true thirty seconds
+   * later, which is the wrong shape for a toast entirely.
+   */
+  const { doc, win, settle, restore } = await boot();
+  try {
+    await settle();
+    assert.equal(doc.getElementById('net-warn'), null, 'nothing while online');
+
+    win.dispatchEvent(new win.Event('offline'));
+    await settle();
+
+    const bar = doc.getElementById('net-warn');
+    assert.ok(bar, 'losing the connection must say so');
+    assert.equal(bar.getAttribute('role'), 'alert', 'and interrupt for it');
+    // The point is not "you are offline" -- the user knows. It is what STILL
+    // WORKS, which is what stops them retrying by hand.
+    assert.match(bar.textContent, /already downloaded/i, 'must say cached mail is readable');
+    assert.match(bar.textContent, /queued/i, 'must say sends are not lost');
+  } finally {
+    restore();
+  }
+});
+
+test('reconnecting clears the banner and catches up', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, win, calls, settle, restore } = await boot();
+  try {
+    await settle();
+    win.dispatchEvent(new win.Event('offline'));
+    await settle();
+    assert.ok(doc.getElementById('net-warn'), 'precondition: banner is up');
+
+    const before = calls.length;
+    win.dispatchEvent(new win.Event('online'));
+    await settle(6);
+
+    assert.equal(doc.getElementById('net-warn'), null, 'the banner clears itself');
+    assert.ok(calls.length > before, 'and the app catches up rather than waiting for the next poll');
+  } finally {
+    restore();
+  }
+});
+
+test('the offline banner has no dismiss control', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * Unlike the worker banner, which describes something the user can do
+   * nothing about and may last the session. This one clears itself the moment
+   * the network returns, so a dismiss button would only let someone hide a
+   * fact that is still true.
+   */
+  const { doc, win, settle, restore } = await boot();
+  try {
+    await settle();
+    win.dispatchEvent(new win.Event('offline'));
+    await settle();
+    assert.equal(doc.querySelectorAll('#net-warn button').length, 0);
+  } finally {
+    restore();
+  }
+});
+
+test('the gate explains why it wants a client ID, and only then', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * The first screen a new user sees was asking for a Google Cloud OAuth
+   * client ID with no explanation of what one is. A returning user whose
+   * session merely expired must NOT see it -- they already have one, and
+   * showing it always turns onboarding into permanent furniture.
+   */
+  const { doc, win, settle, restore } = await boot({ signedIn: false });
+  try {
+    await settle();
+    const why = doc.getElementById('gate-why');
+    assert.ok(why, 'the explanation must exist');
+
+    win.__bmmShowGate?.('No OAuth client ID configured. Open the extension options.');
+    await settle();
+    assert.equal(why.hidden, false, 'shown for the error it explains');
+
+    win.__bmmShowGate?.('Session expired. Sign in again.');
+    await settle();
+    assert.equal(why.hidden, true, 'hidden for every other reason');
+  } finally {
+    restore();
+  }
+});

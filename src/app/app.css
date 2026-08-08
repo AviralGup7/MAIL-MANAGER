@@ -3216,6 +3216,19 @@ html[data-scheme='dark'] #gate-card,
  * background capability is missing and the user should know why snooze is not
  * firing. Danger red here would misreport a working app as a failed one.
  */
+/*
+ * ONE BANNER IDIOM, TWO CONDITIONS.
+ *
+ * #net-warn (offline) and #sw-warn (degraded worker) are the same surface: a
+ * persistent strip stating a condition that lasts longer than a toast. Sharing
+ * the rule is what stops the second one drifting from the first.
+ *
+ * The border colour differs and nothing else. Amber for the worker, because
+ * the app is degraded and stays degraded; --fg-faint for offline, because it
+ * is a temporary fact about the network rather than a fault in the product,
+ * and colouring it as a warning would overstate it.
+ */
+#net-warn,
 #sw-warn {
   display: flex;
   align-items: center;
@@ -3241,6 +3254,10 @@ html[data-scheme='dark'] #gate-card,
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+#net-warn {
+  border-left-color: var(--fg-faint);
+}
+
 #sw-warn .ghost {
   margin-left: auto;
   flex: none;
