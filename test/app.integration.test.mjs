@@ -500,20 +500,44 @@ test('the sidebar count carries an explanatory title', async (t) => {
  * a fixed date would silently drift into "overdue" and the test would start
  * asserting something different from what it was written to check.
  */
+/*
+ * A TIME-DEPENDENT TEST THAT FAILED WHEN THE CLOCK CROSSED MIDNIGHT.
+ *
+ * These messages said "by today" and "is tomorrow", anchored -- correctly, by
+ * design -- to the message's SEND date rather than to now, so that opening a
+ * three-day-old mail does not shift its deadline forward.
+ *
+ * The seed used `Date.now() - 7200_000`. Run at 01:34 UTC that is 23:34 on the
+ * PREVIOUS day, so "today" resolved to that previous day and the radar
+ * correctly reported it overdue -- while the assertion demanded "today". The
+ * product was right and the test was wrong, and it had been silently wrong for
+ * however long the suite happened to run outside the 02:00-24:00 window.
+ *
+ * Fixed by anchoring the seed to local NOON, so the two-hour offset cannot
+ * cross a day boundary in any timezone. The clock is pinned, not the
+ * behaviour: the extractor, the urgency bands and the radar are all still
+ * exercised for real.
+ */
+const NOON_TODAY = (() => {
+  const d = new Date();
+  d.setHours(12, 0, 0, 0);
+  return d.getTime();
+})();
+
 const DUE_MESSAGES = [
   {
     id: 'd1', threadId: 'td1',
     from: 'AUGSD <augsd@pilani.bits-pilani.ac.in>',
     subject: 'Fee payment',
     snippet: 'The last date for fee payment is tomorrow.',
-    date: Date.now() - 3600_000, unread: true, starred: false, labels: ['INBOX', 'UNREAD'],
+    date: NOON_TODAY, unread: true, starred: false, labels: ['INBOX', 'UNREAD'],
   },
   {
     id: 'd2', threadId: 'td2',
     from: 'Practice School Division <psd@pilani.bits-pilani.ac.in>',
     subject: 'PS report',
     snippet: 'Please submit the PS report by today.',
-    date: Date.now() - 7200_000, unread: true, starred: false, labels: ['INBOX', 'UNREAD'],
+    date: NOON_TODAY, unread: true, starred: false, labels: ['INBOX', 'UNREAD'],
   },
 ];
 

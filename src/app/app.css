@@ -47,6 +47,20 @@
   --t-2xl: 23px;   /* empty states, gate heading */
 
   /* Weights: four, not "whatever looked right". 650 was a real value in here. */
+  /*
+   * The scale starts at 400, not 500.
+   *
+   * It previously began at --w-medium, on the reasoning that unstyled text is
+   * already 400 so a token for it is redundant. That held until a rule needed
+   * to push an element BACK DOWN to regular -- `.r-from` on a read row, which
+   * had to lose its medium weight to stop tying with the subject. Expressing
+   * that as a literal `400` bypasses the scale, and the design-system guard in
+   * package.test.mjs correctly rejected it.
+   *
+   * A token for the base step is the honest fix: the scale now covers every
+   * weight the app uses.
+   */
+  --w-regular: 400;
   --w-medium: 500;
   --w-semi: 600;
   --w-bold: 700;
@@ -861,6 +875,29 @@ a.ghost {
   color: var(--fg);
 }
 
+/*
+ * ANYTHING THE ACCESSIBILITY LAYER CALLS AN ALERT MUST LOOK LIKE ONE.
+ *
+ * `#c-status` -- the element that reports "Could not send" in the compose
+ * panel -- was styled with exactly one declaration, `font-size: var(--t-sm)`.
+ * No colour, no weight. A failed send rendered identically to a "Saved" hint,
+ * so the user closes the panel believing the message went. That is the one
+ * hierarchy defect in this app that can cost someone their work, and it
+ * directly undermines the outbox, which exists to prevent exactly that loss.
+ *
+ * `#gate-error` was already correct via `.err` -- checked rather than assumed,
+ * which is why this rule is narrow.
+ *
+ * Keyed off `role="alert"` rather than off a class, so the visual treatment
+ * cannot drift from the semantics: an element the screen reader interrupts for
+ * is an element the eye is interrupted by. `:not(:empty)` keeps it inert until
+ * there is something to say.
+ */
+[role='alert']:not(:empty) {
+  color: var(--danger);
+  font-weight: var(--w-medium);
+}
+
 /* The category dot. Small, and paired with the text tag — never colour alone. */
 .r-bar {
   width: var(--s-1);
@@ -891,7 +928,36 @@ a.ghost {
 
 .r-from {
   font-size: var(--t-sm);
-  font-weight: var(--w-medium);
+  /*
+   * REGULAR, NOT MEDIUM, ON A READ ROW.
+   *
+   * Measured: read sender scored 6.93 and read subject 6.95 on Daylight --
+   * a 0.3% difference, which is a tie. The subject's 1px size advantage was
+   * exactly cancelled by the sender carrying 100 extra weight units, so the
+   * eye had no consistent entry point and re-decided where to start on every
+   * row of a 44-row list.
+   *
+   * The subject has to win. In a campus inbox the sender repeats across whole
+   * runs of rows -- AUGSD, the placement unit, one mailing list -- so it
+   * carries almost no discriminating information, while the subject carries
+   * nearly all of it.
+   *
+   * The UNREAD state is untouched: `.row.unread .r-from` (specificity 0,3,1)
+   * re-applies --w-semi and outranks this rule (0,1,1) regardless of source
+   * order -- it is declared ABOVE, at the unread block. Unread already
+   * separated cleanly at 19.05 vs 17.59 and must not change.
+   *
+   * NOTE FOR ANYONE VERIFYING THIS IN jsdom: jsdom does not implement
+   * specificity and reports last-declaration-wins, so it will claim the unread
+   * sender is 400. Checked against a minimal two-rule case; it is a tooling
+   * artefact, not a cascade bug. Verify in a real browser or by reading the
+   * specificity.
+   *
+   * Uses --w-regular, added to the scale for this: the design-system guard
+   * rejects a bare 400, and it is right to. A weight scale that cannot express
+   * its own base step is incomplete.
+   */
+  font-weight: var(--w-regular);
   color: var(--fg-dim);
   white-space: nowrap;
   overflow: hidden;
@@ -2825,8 +2891,25 @@ html[data-scheme='dark'] .snooze-menu {
   border-bottom: 1px solid var(--line);
   margin-bottom: var(--s-1);
 }
+/*
+ * ONE SPEC FOR EVERY SIDEBAR SECTION LABEL.
+ *
+ * `.rail-heading` is injected at runtime by buildSidebar(); #views-title and
+ * #radar-title are static in app.html. They were styled independently and had
+ * drifted: the runtime one was w600 at --fg-dim (contrast 7.87) while the
+ * static pair were w700 at --fg-faint (5.88). So "Categories" -- the middle,
+ * least-prioritised group -- rendered at 34% MORE contrast than its peers
+ * while being 100 weight units lighter. Two errors pointing in opposite
+ * directions, which is exactly why nobody caught it by eye: they partly
+ * cancelled. It only showed up when the values were measured.
+ *
+ * These are peer labels whose only job is to separate groups. They must be
+ * identical and they must all recede. Merged into one selector list rather
+ * than harmonised by hand, so a third heading cannot drift again.
+ */
 #views-title,
-#radar-title {
+#radar-title,
+.rail-heading {
   font-size: var(--t-xs);
   text-transform: uppercase;
   letter-spacing: var(--track-wide);
@@ -3130,15 +3213,7 @@ html[data-scheme='dark'] .snooze-menu {
   border-top: 1px solid var(--line);
 }
 
-.rail-heading {
-  margin: 0 0 var(--s-2);
-  padding: 0 var(--s-3);
-  font-size: var(--t-xs);
-  font-weight: var(--w-semi);
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--fg-dim);
-}
+
 
 /*
  * Mailboxes get an icon where categories get a colour dot. The dot encodes a

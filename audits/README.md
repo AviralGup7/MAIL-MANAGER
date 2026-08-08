@@ -142,3 +142,24 @@ roadmap are not imported anywhere.** They are complete and covered by passing
 tests; the running extension reaches none of them. See the correction appended
 to `docs/BUILD-PLAN.md`. The highest-value next action is wiring, not building,
 and it is not one of the 100 ideas.
+
+
+## Audit 21 — visual hierarchy
+
+Measured rather than eyeballed: CSS parsed as a rule table, the real DOM booted
+in jsdom, and a `contrast × size × weight` model used to rank what the eye
+actually reaches first.
+
+Seven findings, three applied. The foundations were sound — `.primary` appears
+exactly three times and never twice on one screen, the reader hierarchy is
+correct (subject 27.85 / sender 17.44 / body 16.15), and academic features are
+subordinate everywhere they touch the mail surface.
+
+The two sharpest findings were both invisible by eye and only appeared once the
+numbers were computed: read-row sender and subject differed by **0.3%** (a tie,
+so the eye had no entry point on any row), and the sidebar's three peer headings
+had **two different specifications** — the least important one rendering at 34%
+more contrast than its siblings.
+
+Also found: a pre-existing test that was time-dependent and failed for two hours
+of every day.
