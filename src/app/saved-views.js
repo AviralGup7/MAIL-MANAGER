@@ -41,6 +41,15 @@ export function _resetViews() {
  * one is a full query, so this runs only on a SETTLED store change, never per
  * keystroke. That is the same discipline the render loop follows.
  */
+/**
+ * The loaded views, for surfaces that offer them as suggestions.
+ *
+ * Same reasoning as `labelNames()`: one owner of the list, read by others.
+ */
+export function currentViews() {
+  return savedViews;
+}
+
 export function renderViews() {
   if (!ctx.viewsList()) return;
 

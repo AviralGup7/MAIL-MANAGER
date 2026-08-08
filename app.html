@@ -133,6 +133,19 @@
               aria-label="Search mail"
             />
             <kbd id="searchkbd">/</kbd>
+            <!--
+              SEARCH SUGGESTIONS.
+
+              The query language has twenty operators, negation and OR groups,
+              and none of it is discoverable: nobody types `deadline:overdue`
+              unless something offers it. This is that offer, at the moment of
+              use -- which beats a reference panel behind `?`, because the
+              reference is something you have to decide to go and read.
+
+              A listbox, so the input can own it through aria-controls and
+              arrow keys behave the way they do in every other combobox.
+            -->
+            <ul id="search-suggest" role="listbox" aria-label="Search suggestions" hidden></ul>
             <button id="btn-save-view" class="ghost small" type="button"
                     title="Save this search as a view" hidden>Save view</button>
             <!--

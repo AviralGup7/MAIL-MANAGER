@@ -1342,6 +1342,64 @@ a.ghost {
   color: var(--fg-faint);
 }
 
+/* ---- search suggestions ------------------------------------------------- */
+
+#searchwrap {
+  position: relative;
+}
+
+#search-suggest {
+  position: absolute;
+  top: calc(100% + var(--s-1));
+  left: 0;
+  right: 0;
+  z-index: var(--z-menu);
+  margin: 0;
+  padding: var(--s-1);
+  list-style: none;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.suggest-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background-color var(--dur-instant) linear;
+}
+
+.suggest-item:hover,
+.suggest-item.active {
+  background: var(--accent-soft);
+}
+
+.suggest-label {
+  font-size: var(--t-sm);
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * The gloss is what teaches the operator. Quiet, because it is explanation
+ * rather than content -- the label is the thing being chosen.
+ */
+.suggest-hint {
+  font-size: var(--t-xs);
+  color: var(--fg-faint);
+  white-space: nowrap;
+  flex: none;
+}
+
 /* ---- outbox ------------------------------------------------------------- */
 
 #outbox {

@@ -1315,11 +1315,21 @@ test('A11Y: the listbox owns its options directly', async (t) => {
   // list -- the central UI of the app -- as empty.
   const { doc, restore } = await boot();
   try {
-    const listbox = doc.querySelector('[role="listbox"]');
+    /*
+     * Scoped to #list by id rather than taking the first [role="listbox"] in
+     * the document.
+     *
+     * The search suggestion dropdown is also a listbox -- correctly, it is a
+     * combobox popup -- and it appears EARLIER in the DOM, so the unscoped
+     * query started matching it and this test failed on a change that was not
+     * a regression. The property being protected is about the MESSAGE LIST's
+     * ARIA ownership specifically.
+     */
+    const listbox = doc.getElementById('list');
     assert.ok(listbox, 'a listbox must exist');
-    assert.equal(listbox.id, 'list');
+    assert.equal(listbox.getAttribute('role'), 'listbox');
 
-    const options = [...doc.querySelectorAll('[role="option"]')];
+    const options = [...listbox.querySelectorAll('[role="option"]')];
     assert.equal(options.length, 3);
     for (const opt of options) {
       assert.equal(

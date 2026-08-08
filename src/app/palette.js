@@ -114,6 +114,18 @@ function buildCommands(ctx) {
  */
 let knownLabels = [];
 
+/**
+ * The label cache, for other surfaces that need it.
+ *
+ * Search suggestions offer `label:` values and must draw them from what the
+ * mailbox actually has -- a suggestion that returns nothing reads as the
+ * search being broken. Exposed as a reader rather than copied into app.js so
+ * there stays one owner of the cache.
+ */
+export function labelNames() {
+  return knownLabels.map((l) => l.name).filter(Boolean);
+}
+
 /** Test seam: seed the label cache directly, bypassing the network. */
 export function _setLabels(list) {
   knownLabels = Array.isArray(list) ? list : [];

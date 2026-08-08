@@ -30,7 +30,7 @@
 export { undoStack, recordUndo, performUndo } from './undo-actions.js';
 export { renderRadar, wireRadar } from './radar.js';
 export {
-  openPalette, closePalette, wirePalette, refreshLabels, _setLabels,
+  openPalette, closePalette, wirePalette, refreshLabels, _setLabels, labelNames,
 } from './palette.js';
 export {
   openCompose, closeCompose, wireCompose, startReply, editDraft,
