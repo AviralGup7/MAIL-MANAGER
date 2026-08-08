@@ -102,6 +102,14 @@ export const SCHEMA = {
    */
   threaded: { type: 'bool', def: true },
   /*
+   * Triage lanes: group the list by what needs doing rather than by date.
+   *
+   * OFF by default. A flat, date-ordered list is what a mail client IS, and
+   * grouping is an opinion -- a strong one, and one worth offering, but not
+   * one to impose on someone who opened their inbox expecting Gmail.
+   */
+  lanes: { type: 'bool', def: false },
+  /*
    * Delay before a message opened in the reader is marked read. A mis-click
    * should not consume the unread state, which is the one bit of triage the
    * user cannot reconstruct. Gmail marks read almost instantly and is worse

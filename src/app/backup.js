@@ -72,6 +72,7 @@ export const EXPORTED_KEYS = [
   'remoteImages',
   'markReadOnOpen',
   'threaded',
+  'lanes',
   'markReadDelayMs',
   'autoRefreshMs',
   'signature',

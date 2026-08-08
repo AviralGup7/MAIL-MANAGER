@@ -40,6 +40,7 @@ import { audienceOf } from './direct.js';
 import * as activity from './activity.js';
 import * as outbox from './outbox.js';
 import * as suggest from './suggest.js';
+import * as lanes from './lanes.js';
 import * as followups from './followups.js';
 import * as deadlineStore from './deadline-store.js';
 import * as myCourses from './my-courses.js';
@@ -801,6 +802,25 @@ function renderList() {
     }
     frag.appendChild(node);
     dismissRow(node);
+  }
+
+  /*
+   * TRIAGE LANES.
+   *
+   * Section headers are inserted into the fragment AFTER the rows are built,
+   * rather than by restructuring the loop above. That loop does the row
+   * diffing that keeps a delta sync free -- reusing nodes, skipping unchanged
+   * writes -- and threading a grouping concept through it would have meant
+   * rewriting the one part of this file that is genuinely performance-critical.
+   *
+   * Inserting headers is a pure DOM operation on an already-correct fragment,
+   * so the diffing is untouched and lanes cost nothing when the setting is off.
+   *
+   * Off by default: a flat date-ordered list is what a mail client is, and
+   * lanes are an opinion the user opts into.
+   */
+  if (settings.get('lanes') && !state.query) {
+    insertLaneHeaders(frag);
   }
 
   el.list.replaceChildren(frag);
@@ -3472,6 +3492,54 @@ async function renderSnoozed() {
 }
 
 
+
+/**
+ * Insert lane headers into a built fragment.
+ *
+ * Walks the rows in order, asks which lane each belongs to, and inserts a
+ * header before the first row of each new lane. Order follows the lane
+ * cascade, not the fragment, so a message that sorts late still appears under
+ * the right heading -- rows are moved into lane order first.
+ */
+function insertLaneHeaders(frag) {
+  const rows = [...frag.children].filter((n) => n.classList?.contains('row'));
+  if (rows.length === 0) return;
+
+  const answered = lanes.answeredPredicate(store, state.selfEmail);
+  const ctxArgs = { self: state.selfEmail, isAnswered: answered };
+
+  const byLane = new Map();
+  for (const node of rows) {
+    const m = store.get(node.dataset.id);
+    if (!m) continue;
+    const lane = lanes.laneOf(m, ctxArgs);
+    if (!byLane.has(lane)) byLane.set(lane, []);
+    byLane.get(lane).push(node);
+  }
+
+  // Rebuild in lane order. Empty lanes are skipped entirely -- a heading over
+  // nothing is the problem the completeness audit found in Views.
+  for (const lane of lanes.LANES) {
+    const group = byLane.get(lane);
+    if (!group || group.length === 0) continue;
+
+    const head = document.createElement('div');
+    head.className = 'lane-head';
+    head.setAttribute('role', 'presentation');
+
+    const label = document.createElement('span');
+    label.textContent = lanes.LANE_LABELS[lane];
+
+    const count = document.createElement('span');
+    count.className = 'lane-count';
+    count.textContent = String(group.length);
+
+    head.append(label, count);
+    frag.appendChild(head);
+    for (const node of group) frag.appendChild(node);
+  }
+}
+
 /**
  * The class-change cards.
  *
@@ -4867,6 +4935,7 @@ async function boot() {
      * channel `threaded` already uses.
      */
     if (key === 'density') applyDensity();
+    if (key === 'lanes') renderList();
   });
 
   // Theme next, before anything paints, so there is no flash of the wrong

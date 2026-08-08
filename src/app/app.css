@@ -1418,6 +1418,30 @@ a.ghost {
   flex: none;
 }
 
+/*
+ * A lane header.
+ *
+ * Deliberately quieter than a message row: it is a divider that happens to
+ * carry a word, not a thing to read. Same register as the rail's section
+ * labels, so the two kinds of grouping in the app look related.
+ */
+.lane-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-2);
+  padding: var(--s-4) var(--s-4) var(--s-1);
+  font-size: var(--t-xs);
+  font-weight: var(--w-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--track-wide);
+  color: var(--fg-faint);
+}
+
+.lane-count {
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---- class-change notices ------------------------------------------------ */
 
 #notices {

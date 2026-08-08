@@ -147,6 +147,11 @@ function fmtHold(sec) {
   delayLabel.textContent = fmtDelay(settings.get('markReadDelayMs'));
   images.value = settings.get('remoteImages');
   if (threaded) threaded.checked = settings.get('threaded');
+  const lanesBox = $('lanes');
+  if (lanesBox) {
+    lanesBox.checked = settings.get('lanes');
+    lanesBox.addEventListener('change', () => settings.set('lanes', lanesBox.checked));
+  }
   if (auto) {
     auto.value = String(settings.get('autoRefreshMs'));
     autoLabel.textContent = fmtEvery(Number(auto.value));
