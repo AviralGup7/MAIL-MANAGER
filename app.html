@@ -269,6 +269,18 @@
                 list as empty. Nothing may sit between the listbox and its
                 options.
               -->
+              <!--
+                CLASS CHANGES, PINNED ABOVE THE LIST.
+
+                Room moves and cancellations are the highest-urgency,
+                lowest-volume mail on campus and in a list they look like
+                everything else. Read-only by design: a parser working on prose
+                written by a hurried professor at 11pm WILL be wrong sometimes,
+                and a wrong write to the timetable is silent and persistent.
+                Saying "this looks like a room change" is useful even when it
+                is wrong, because the mail is right there to check.
+              -->
+              <ul id="notices" aria-label="Class changes" hidden></ul>
               <div id="list" role="listbox" aria-label="Messages" tabindex="0"></div>
               <!--
                 A real empty state, not the word "Nothing".

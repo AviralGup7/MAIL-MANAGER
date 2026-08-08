@@ -114,6 +114,28 @@
     </fieldset>
 
     <fieldset>
+      <legend>Backup</legend>
+      <p class="hint">
+        Everything you have taught this extension — rules, corrections, saved
+        views, templates, follow-ups, your courses — lives in this browser
+        profile and nowhere else. One reinstall and it is gone.
+      </p>
+      <div class="row">
+        <button id="btn-export" class="ghost" type="button">Export a backup</button>
+        <button id="btn-import" class="ghost" type="button">Restore from a file</button>
+        <input id="import-file" type="file" accept="application/json" hidden
+               aria-label="Choose a backup file" />
+      </div>
+      <!--
+        Reports what an import WOULD change before anything is written -- the
+        same discipline the rule engine's dry run follows. An import that
+        silently replaces a semester of corrections is exactly the kind of
+        irreversible surprise this product keeps designing against.
+      -->
+      <p id="backup-status" role="alert"></p>
+    </fieldset>
+
+    <fieldset>
       <legend>Sending</legend>
 
       <label for="undoSendSeconds">

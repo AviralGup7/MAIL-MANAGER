@@ -20,6 +20,7 @@ function fmtEvery(ms) {
  */
 
 import * as settings from '../app/settings.js';
+import * as bk from '../app/backup.js';
 
 /**
  * The client ID version 1 shipped with. Offered as a convenience because the
@@ -242,5 +243,82 @@ function fmtHold(sec) {
   box.addEventListener('blur', () => {
     clearTimeout(timer);
     commit();
+  });
+})();
+
+
+/* ========================================================================== *
+ * BACKUP AND RESTORE
+ * ========================================================================== */
+
+(function wireBackup() {
+  const exportBtn = document.getElementById('btn-export');
+  const importBtn = document.getElementById('btn-import');
+  const file = document.getElementById('import-file');
+  const status = document.getElementById('backup-status');
+  if (!exportBtn || !importBtn || !file) return;
+
+  const say = (msg, bad = false) => {
+    status.textContent = msg;
+    status.dataset.bad = String(bad);
+  };
+
+  exportBtn.addEventListener('click', async () => {
+    try {
+      const backup = await bk.exportBackup();
+      const blob = new Blob([bk.toJson(backup)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = bk.filenameFor(backup);
+      a.click();
+      // Revoke on the next turn: revoking synchronously can beat the download.
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      say(`Saved ${backup.keys.length} settings groups.`);
+    } catch (err) {
+      say(`Could not export: ${err.message}`, true);
+    }
+  });
+
+  importBtn.addEventListener('click', () => file.click());
+
+  file.addEventListener('change', async () => {
+    const chosen = file.files?.[0];
+    if (!chosen) return;
+    try {
+      const text = await chosen.text();
+
+      /*
+       * PREVIEW, THEN CONFIRM, THEN WRITE.
+       *
+       * The count per key is what the user actually needs to decide -- "replace
+       * my 12 rules with these 5" -- and it is the difference between restoring
+       * a backup and losing a semester of corrections to a stray click.
+       */
+      const preview = await bk.previewImport(text);
+      if (!preview.ok) {
+        say(preview.reason, true);
+        return;
+      }
+      const summary = preview.changes
+        .map((c) => `${c.key}: ${c.currentCount} -> ${c.incomingCount}`)
+        .join('\n');
+      if (!confirm(`Restore this backup?\n\n${summary}\n\nThis replaces what is there now.`)) {
+        say('Restore cancelled.');
+        return;
+      }
+
+      const out = await bk.importBackup(text);
+      if (out.ok) {
+        say(`Restored ${out.applied.length} groups. Reopen the mail tab to see them.`);
+      } else {
+        say(`Restored ${out.applied.length}, failed: ${out.failed.join(', ')}`, true);
+      }
+    } catch (err) {
+      say(`Could not read that file: ${err.message}`, true);
+    } finally {
+      // Or choosing the same file twice fires no change event.
+      file.value = '';
+    }
   });
 })();

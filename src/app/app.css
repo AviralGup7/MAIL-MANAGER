@@ -1418,6 +1418,60 @@ a.ghost {
   flex: none;
 }
 
+/* ---- class-change notices ------------------------------------------------ */
+
+#notices {
+  list-style: none;
+  margin: 0;
+  padding: var(--s-2) var(--s-4) 0;
+}
+
+/*
+ * A pinned card, not a row. It sits above the list and has to read as a
+ * different KIND of thing, or it is just a message that jumped the queue.
+ * Warning-toned because that is what the colour is for -- and it is one of
+ * only three places --warning now appears.
+ */
+.notice {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--s-2) var(--s-3);
+  margin-bottom: var(--s-2);
+  border-left: 3px solid var(--warning);
+  border-radius: var(--r-sm);
+  background: var(--bg-raised);
+  cursor: pointer;
+  transition: background-color var(--dur-instant) linear;
+}
+
+.notice:hover {
+  background: var(--bg-sunken);
+}
+
+.notice:active {
+  transform: scale(0.995);
+}
+
+.notice-what {
+  font-size: var(--t-sm);
+  font-weight: var(--w-semi);
+  color: var(--fg);
+}
+
+/*
+ * The sentence the detector matched. Quiet, but present: a card the user can
+ * check at a glance is one they can trust, and this parser reads prose written
+ * in a hurry.
+ */
+.notice-why {
+  font-size: var(--t-xs);
+  color: var(--fg-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ---- snoozed ------------------------------------------------------------ */
 
 #snoozed {
