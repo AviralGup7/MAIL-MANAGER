@@ -88,3 +88,49 @@ notes already describe.
 
 Lowered to **1400 MB**, which fits in real memory. The suite went from
 240s (thrashing) to 153s.
+
+
+## Correction: "built + tested" is not "wired in"
+
+Checked during audit 20, not assumed:
+
+```
+snippet.js       imported by app.js          ✅ reachable
+direct.js        imported by app.js, query   ✅ reachable
+lanes.js         imported by NOTHING         ⬜
+suggest.js       imported by NOTHING         ⬜
+templates.js     imported by NOTHING         ⬜
+followups.js     imported by NOTHING         ⬜
+my-courses.js    imported by NOTHING         ⬜
+notices.js       imported by NOTHING         ⬜
+deadline-store.js imported by NOTHING        ⬜
+rule-engine.js   imported by NOTHING         ⬜
+outbox.js        imported by NOTHING         ⬜
+activity.js      imported by NOTHING         ⬜
+backup.js        imported by NOTHING         ⬜
+```
+
+**Eleven of thirteen modules are unreachable from the running extension.** They
+are complete and covered by 1245 passing tests, and a user running the build
+today has none of them: no outbox, no rule engine, no templates, no activity
+log.
+
+The table above this section marks them `✅ built + tested`, which is true and
+misleading. The honest status is **logic complete, not integrated**. A test
+that imports a module directly proves the module works; it cannot prove the
+application uses it.
+
+This is the same class of finding as audit 16's "three background verbs
+implemented and unreachable", one layer up, and it recurs for the same reason:
+logic and wiring land in different sessions and the suite is green either way.
+
+**Next session should wire, not build.** Ordering by dependency:
+
+1. `activity.js` — nothing calls `record()`, so the log is empty as well as
+   unread. Wire the writers first; ten discovery ideas depend on it.
+2. `outbox.js` + `templates.js` — the compose path touches both.
+3. `deadline-store.js` + `followups.js` — both feed the radar.
+4. `my-courses.js` + `notices.js` — both need an enrolment picker first.
+5. `lanes.js` + `suggest.js` — both are list/search surfaces.
+6. `rule-engine.js` — needs an editor, and must ship with its dry run.
+7. `backup.js` — needs two buttons in options.

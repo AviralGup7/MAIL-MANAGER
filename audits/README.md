@@ -128,3 +128,17 @@ worth recording as much as the bugs:
 
 **Disproved:** `classify(null)` throws, but is unreachable — `toMessage()`
 normalises every field before the classifier sees it. No defensive code added.
+
+
+## Audit 20 — feature discovery, second pass
+
+100 ideas, mined from the four seams the last build cycle opened: the rule
+engine as an execution surface, the activity log as a data source, the outbox
+as a general job queue, and the first opportunity to cross the audience, lane
+and enrolment signals against each other.
+
+**It also found that eleven of the thirteen modules built for the audit-17
+roadmap are not imported anywhere.** They are complete and covered by passing
+tests; the running extension reaches none of them. See the correction appended
+to `docs/BUILD-PLAN.md`. The highest-value next action is wiring, not building,
+and it is not one of the 100 ideas.
