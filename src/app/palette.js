@@ -8,7 +8,7 @@
  */
 
 import { icon } from './icons.js';
-import { openLayer } from './layers.js';
+import { openLayer, closeWithMotion, cancelExit } from './layers.js';
 import { openCompose } from './compose.js';
 import { performUndo } from './undo-actions.js';
 
@@ -260,6 +260,9 @@ export function openPalette(ctx) {
   paletteCommands = buildCommands(ctx);
   input.value = '';
   filterPalette('');
+  // Strip any half-finished exit before showing, or a re-open during the
+  // 140ms close leaves `.closing` on and the panel animates straight back out.
+  cancelExit(box);
   box.hidden = false;
   /*
    * The palette is a dismissable overlay, so it belongs on the layer stack
@@ -271,7 +274,7 @@ export function openPalette(ctx) {
     name: 'palette',
     node: box,
     onClose: () => {
-      box.hidden = true;
+      closeWithMotion(box);
       paletteLayer = null;
     },
   });
@@ -283,8 +286,7 @@ export function closePalette() {
   // shell's Escape path and several command handlers both call it).
   if (paletteLayer) paletteLayer.close();
   else {
-    const box = $('palette');
-    if (box) box.hidden = true;
+    closeWithMotion($('palette'));
   }
 }
 

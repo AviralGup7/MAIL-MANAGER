@@ -41,6 +41,7 @@ export function menuIsOpen() {
   return current !== null;
 }
 
+
 /** Test seam: module state outlives a jsdom boot, so tests must clear it. */
 export function _resetMenu() {
   if (current) {
@@ -195,6 +196,26 @@ export function openMenu({
     dismissOnOutsideClick: true,
     restoreFocusTo: anchor || document.activeElement,
     onClose: () => {
+      /*
+       * MENUS CLOSE INSTANTLY, AND THAT IS DELIBERATE.
+       *
+       * I gave them an exit animation and reverted it. A menu is REMOVED
+       * rather than hidden, so animating out means leaving the node attached
+       * for another 140ms -- and four tests caught that immediately:
+       * `querySelector('.snooze-menu')` still found it, so by every observable
+       * measure the menu was still open.
+       *
+       * The tests were encoding a real contract, not an implementation detail.
+       * A menu that is visually present is one an outside click can hit and a
+       * screen reader will announce. Making it inert while it fades is
+       * possible, but it means "closed" and "gone" stop being the same thing
+       * for the one surface where users dismiss by clicking somewhere else.
+       *
+       * The asymmetry is also less felt here than anywhere else: `menu-in` is
+       * --dur-fast from -4px, a movement small and quick enough that its
+       * absence on exit does not read as a glitch. Overlays that arrive over
+       * --dur-base from further away do need the counterpart, and they have it.
+       */
       node.remove();
       current = null;
       onClose?.();

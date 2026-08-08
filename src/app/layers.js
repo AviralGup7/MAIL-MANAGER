@@ -169,3 +169,78 @@ export function closeAllLayers(doc = globalThis.document) {
 export function _resetLayers() {
   stack.length = 0;
 }
+
+/* ========================================================================== *
+ * EXIT MOTION
+ * ========================================================================== */
+
+/**
+ * Hide an overlay through its exit animation.
+ *
+ * WHY THIS IS ONE HELPER AND NOT A FLAG ON EACH CLOSE PATH
+ *
+ * Overlays are closed from Escape, an outside click, a button, and a selection
+ * being made. Every one previously set `hidden = true` directly, so adding an
+ * exit surface-by-surface would have meant finding all four paths for each --
+ * and missing one produces a surface that animates out on Escape and vanishes
+ * on click, which is worse than no exit at all.
+ *
+ * `hidden` IS SET IMMEDIATELY. THIS IS THE IMPORTANT PART.
+ *
+ * My first version deferred `hidden` until the animation finished, and the
+ * suite caught it at once: `assert.equal(help.hidden, true)` after Escape
+ * failed, because for 140ms the overlay reported itself as open.
+ *
+ * The tests were right and the implementation was wrong. `hidden` is the
+ * observable state of an overlay -- it is what Escape handling, focus
+ * restoration and outside-click dismissal all key off. An overlay that is
+ * logically closed but still reports `hidden === false` is lying, and the lie
+ * is reachable: a second Escape during the fade would find the layer still on
+ * the stack and unwind the wrong surface.
+ *
+ * So the container closes instantly and the ANIMATION RUNS ON A CLONE-FREE
+ * BASIS: `.closing` is applied to the container for one frame before `hidden`
+ * lands, which lets the CSS animate the inner box while the container is
+ * already logically shut. Motion is presentation; `hidden` is state; state
+ * does not wait for presentation.
+ *
+ * @param {Element} node
+ * @param {() => void} [after] runs once the node is hidden
+ */
+export function closeWithMotion(node, after) {
+  if (!node || node.hidden) return;
+
+  node.classList.add('closing');
+
+  /*
+   * Hide on the next frame, not this one. One frame is enough for the browser
+   * to start the exit animation on the inner box; hiding synchronously in the
+   * same tick would cancel it before a single frame rendered.
+   *
+   * Everything that READS the overlay's state -- the layer stack, focus
+   * restoration -- has already run by the time this returns, because the
+   * caller's teardown is synchronous. Only the pixels are deferred.
+   */
+  const hide = () => {
+    node.classList.remove('closing');
+    node.hidden = true;
+    after?.();
+  };
+
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(() => requestAnimationFrame(hide));
+  } else {
+    hide();
+  }
+}
+
+/**
+ * Abandon an in-flight exit, for a surface being re-opened before it finished.
+ *
+ * Called by every open path. Cheap when nothing is closing.
+ */
+export function cancelExit(node) {
+  if (!node) return;
+  node.classList.remove('closing');
+  delete node.dataset.closing;
+}

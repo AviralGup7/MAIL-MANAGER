@@ -9,6 +9,7 @@
 
 import { buildReply } from './query.js';
 import { openMenu } from './menu.js';
+import { closeWithMotion, cancelExit } from './layers.js';
 import * as outbox from './outbox.js';
 import * as templates from './templates.js';
 import { createDraftSaver, loadDraft, isMeaningful } from './draft-store.js';
@@ -104,6 +105,9 @@ export function openCompose(ctx, prefill = {}) {
   // Rebuild the address book once per open, from mail already in the store.
   refreshContacts(ctx);
 
+  // Clear a half-finished exit: reply-to-reply reopens compose inside the
+  // 140ms close window, and a stale `.closing` would animate it right back out.
+  cancelExit(panel);
   panel.hidden = false;
   panel.classList.remove('minimised');
   // Focus the first EMPTY field: a reply already has a recipient and a
@@ -114,7 +118,7 @@ export function openCompose(ctx, prefill = {}) {
 
 export function closeCompose() {
   const panel = $('compose');
-  if (panel) panel.hidden = true;
+  if (panel) closeWithMotion(panel);
   composeMeta = {};
   // Attachments belong to ONE message. Carrying them into the next compose
   // would silently attach the previous file to an unrelated recipient.

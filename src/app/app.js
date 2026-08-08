@@ -48,7 +48,7 @@ import * as myCourses from './my-courses.js';
 import { detectNotice, shouldPromote, summarise } from './notices.js';
 import { rowSnippet } from './snippet.js';
 import { renderShortcuts } from './shortcuts.js';
-import { openLayer, closeTopLayer, hasLayers, closeAllLayers } from './layers.js';
+import { openLayer, closeTopLayer, hasLayers, closeAllLayers, closeWithMotion, cancelExit } from './layers.js';
 import { openMenu, closeMenu, menuIsOpen } from './menu.js';
 import {
   scheduleServerSearch, wireServerSearch, _resetServerSearch,
@@ -181,6 +181,8 @@ const state = {
 
 /** Ids currently rendered, in order. The diff baseline. */
 let renderedIds = [];
+/** When the reader last animated a swap, so rapid j/k can skip it. See openMessage. */
+let lastSwapAt = 0;
 /** Whether the list has ever been painted with content. */
 let firstPaint = false;
 
@@ -436,6 +438,9 @@ function toast(text, opts = {}) {
   void el.toastDrain.offsetWidth;
   el.toastDrain.style.animation = `toast-drain ${ms}ms linear forwards`;
 
+  // Toasts re-fire constantly -- a second one inside the 140ms exit is normal,
+  // not an edge case -- so the cancel matters more here than anywhere else.
+  cancelExit(el.toast);
   el.toast.hidden = false;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(hideToast, ms);
@@ -443,7 +448,7 @@ function toast(text, opts = {}) {
 
 function hideToast() {
   clearTimeout(toastTimer);
-  el.toast.hidden = true;
+  closeWithMotion(el.toast);
   el.toastAction.hidden = true;
   el.toastAction.onclick = null;
 }
@@ -1743,11 +1748,32 @@ async function openMessage(id) {
 
   el.readerEmpty.hidden = true;
   el.reader.hidden = false;
-  // Restart the 180ms swap animation. Runs once, then the class is removed
-  // on animationend so it never accumulates.
+
+  /*
+   * SKIP THE SWAP WHEN THE USER IS MOVING FAST.
+   *
+   * The animation restarts on every open, so holding `j` produced a stack of
+   * interrupted 200ms fades that never completed -- the reader flickered
+   * instead of settling, which is the opposite of what the motion is for.
+   *
+   * The fix is not a longer or shorter animation. It is that a transition
+   * explains a change the user is watching, and someone pressing `j` five
+   * times is not watching -- they are scanning, and they want to ARRIVE. So a
+   * step taken within one animation's length of the last one is instant, and a
+   * deliberate single step still animates.
+   *
+   * `--dur-base` is 200ms; the threshold matches it, so the rule is exactly
+   * "do not interrupt a swap that is still running".
+   */
+  const now = Date.now();
+  const rapid = now - lastSwapAt < 200;
+  lastSwapAt = now;
+
   el.reader.classList.remove('swap');
-  void el.reader.offsetWidth; // reflow to reset the animation
-  el.reader.classList.add('swap');
+  if (!rapid) {
+    void el.reader.offsetWidth; // reflow to reset the animation
+    el.reader.classList.add('swap');
+  }
 
   el.rSubject.textContent = m.subject;
   el.rFrom.textContent = m.from;
@@ -4167,12 +4193,13 @@ let goPending = null;
 function openHelp() {
   if (!el.help || helpLayer) return;
   renderShortcuts(el.helpBody, document);
+  cancelExit(el.help);
   el.help.hidden = false;
   helpLayer = openLayer({
     name: 'help',
     node: el.help,
     onClose: () => {
-      el.help.hidden = true;
+      closeWithMotion(el.help);
       helpLayer = null;
     },
   });

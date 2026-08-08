@@ -1285,7 +1285,10 @@ a.ghost {
 .sk-row:nth-child(5) .sk-bar::after { animation-delay: 360ms; }
 .sk-row:nth-child(6) .sk-bar::after { animation-delay: 450ms; }
 @keyframes sk-shimmer {
-  to { transform: translateX(100%); }
+  /* translate3d: this one runs INFINITELY on every skeleton row, so it is the
+     animation where compositor promotion matters most. Found by the guard
+     added for tt-in -- I had only looked at the entrance keyframes. */
+  to { transform: translate3d(100%, 0, 0); }
 }
 
 /* ---------------------------------------------------------------- reader -- */
@@ -2033,7 +2036,12 @@ a.ghost {
   font-size: var(--t-sm);
   box-shadow: var(--shadow);
   z-index: var(--z-toast);
-  animation: toast-in var(--dur-base) var(--ease-out) both;
+  /*
+   * The spring lives on the later #toast rule, which wins. This block used to
+   * declare `toast-in` with --ease-out as well, so the same animation had two
+   * curves in two places and the intent was unrecoverable from the file --
+   * the same defect class as the two .rail-heading specs in audit 21.
+   */
 }
 
 /* ------------------------------------------------------------- responsive -- */
@@ -2766,6 +2774,86 @@ html[data-theme='contrast'] .row[aria-selected='true'] {
  * it move. Profiled at 2000 rows the list render is 8.1ms; this is not the
  * expensive part. Measured before deciding, rather than assumed either way.
  */
+/*
+ * ============================================================================
+ * EXITS
+ * ============================================================================
+ *
+ * The system had 23 entrances and ONE exit (`row-out`). Every overlay closed
+ * by setting `hidden = true` -- an instantaneous vanish after a 200ms arrival.
+ *
+ * That asymmetry is felt without being named. A surface eases in, establishing
+ * itself as a thing that ARRIVED, and then disappears between two frames. The
+ * eye tracks the entrance and is given nothing to track on the way out, so the
+ * close reads as a glitch rather than a dismissal -- worst on Escape, where
+ * there is no pointer near the surface to explain what happened.
+ *
+ * TWO RULES, AND THEY ARE NOT THE ENTRANCE REVERSED.
+ *
+ *   FASTER. Entrances are --dur-base because arriving should be seen; exits
+ *   are --dur-fast because leaving should not be waited for. A user who
+ *   pressed Escape has already moved on.
+ *
+ *   --ease-in, NOT --ease-out. An exit accelerates away; an entrance
+ *   decelerates into place. Reversing the entrance curve makes the surface
+ *   hesitate before leaving, which feels sticky. This is why --ease-in existed
+ *   with only two uses in the whole file: it is the exit curve, and there were
+ *   no exits.
+ *
+ * Each exit mirrors the DIRECTION its entrance came from, so the surface
+ * returns the way it arrived.
+ */
+
+@keyframes overlay-out {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: translate3d(0, -6px, 0) scale(0.98); }
+}
+
+@keyframes fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+@keyframes compose-out {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: translate3d(0, 12px, 0); }
+}
+
+@keyframes toast-out {
+  from { opacity: 1; transform: translate3d(-50%, 0, 0) scale(1); }
+  to   { opacity: 0; transform: translate3d(-50%, 10px, 0) scale(0.97); }
+}
+
+/*
+ * `.closing` is set by the JS a frame before the element is hidden, and the
+ * hide waits for the animation. One class name across every overlay, so a new
+ * surface inherits the behaviour by using the same close helper.
+ */
+#palette.closing #palette-box {
+  animation: overlay-out var(--dur-fast) var(--ease-in) both;
+}
+
+/*
+ * A surface on its way out is pixels only. It must not be clickable, or an
+ * outside-click dismissal can land on the thing it just dismissed.
+ */
+.closing {
+  pointer-events: none;
+}
+
+#help.closing,
+#gate.closing {
+  animation: fade-out var(--dur-fast) var(--ease-in) both;
+}
+
+#compose.closing {
+  animation: compose-out var(--dur-fast) var(--ease-in) both;
+}
+
+#toast.closing {
+  animation: toast-out var(--dur-fast) var(--ease-in) both;
+}
+
 @keyframes row-out {
   from {
     opacity: 1;
@@ -3798,12 +3886,19 @@ html[data-scheme='dark'] .snooze-menu {
 
 #help-box {
   /*
-   * Every other overlay in the app eases in -- palette, compose, gate, menus.
-   * This one appeared instantly, which read as a cruder surface, and it is the
-   * screen a new user is most likely to open first. Reuses `palette-in`, its
-   * closest analogue: a centred overlay opened by a keystroke.
+   * `gate-in`, not `palette-in`.
+   *
+   * Audit 23 fixed this overlay popping in by reaching for the nearest
+   * animation, and reached for the wrong one: `palette-in` starts at
+   * translate3d(0, -8px, 0) and settles DOWNWARD, which is right for the
+   * palette because it hangs from `padding-top: 14vh`. #help is
+   * `place-items: center` -- a centred dialog sliding down is anchored to
+   * nothing.
+   *
+   * `gate-in` is opacity-only and is what the app's other centred surface
+   * already uses. A centred modal should materialise in place.
    */
-  animation: palette-in var(--dur-base) var(--ease-out) both;
+  animation: gate-in var(--dur-base) var(--ease-out) both;
   width: min(760px, 100%);
   max-height: 84vh;
   overflow: auto;
@@ -3974,7 +4069,11 @@ kbd {
   animation: tt-in var(--dur-base) var(--ease-out) both;
 }
 @keyframes tt-in {
-  from { opacity: 0; transform: translateY(8px) scale(0.995); }
+  /* translate3d, not translateY: the 3d form promotes to its own compositor
+     layer, and this is the largest animated surface in the app -- the one
+     where a dropped frame is most visible. It was the only keyframe of
+     seventeen not using it. */
+  from { opacity: 0; transform: translate3d(0, 8px, 0) scale(0.995); }
   to   { opacity: 1; transform: none; }
 }
 

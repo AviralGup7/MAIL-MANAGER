@@ -2394,3 +2394,132 @@ test('a slow bulk action raises the busy state', () => {
   assert.match(fn, /setBusy\(true\)/, 'a large batch must show it is working');
   assert.match(fn, /finally\s*\{[^}]*setBusy\(false\)/s, 'and must clear it on every path');
 });
+
+
+/* ==========================================================================
+ * MOTION SYSTEM (audit 24)
+ * ========================================================================== */
+
+test('overlays that animate in also animate out', () => {
+  /*
+   * The system had 23 entrances and one exit. Every overlay closed by setting
+   * `hidden = true` -- an instant vanish after a 200ms arrival. The eye tracks
+   * the entrance and gets nothing to track on the way out, so the close reads
+   * as a glitch rather than a dismissal.
+   */
+  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const exits = [...css.matchAll(/@keyframes\s+([a-z-]+)/g)]
+    .map((m) => m[1])
+    .filter((k) => /out$/.test(k));
+  assert.ok(exits.length >= 4, `expected exit keyframes, found: ${exits.join(', ')}`);
+
+  // And each must be wired to a `.closing` state.
+  for (const sel of ['#help.closing', '#compose.closing', '#toast.closing']) {
+    assert.ok(css.includes(sel), `${sel} must have an exit`);
+  }
+});
+
+test('exits are faster than entrances and use the exit curve', () => {
+  /*
+   * An exit is not the entrance reversed. Entrances decelerate into place
+   * (--ease-out, --dur-base); exits accelerate away (--ease-in, --dur-fast).
+   * Reversing the entrance curve makes a surface hesitate before leaving,
+   * which feels sticky.
+   */
+  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  for (const m of css.matchAll(/([^{}]*\.closing[^{}]*)\{([^{}]*)\}/g)) {
+    const body = m[2];
+    if (!body.includes('animation:')) continue;
+    assert.match(body, /--dur-fast/, `${m[1].trim()} must exit quickly`);
+    assert.match(body, /--ease-in\)/, `${m[1].trim()} must use the exit curve`);
+  }
+});
+
+test('a closing surface is not interactive', () => {
+  // Otherwise an outside-click dismissal can land on the thing it dismissed.
+  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(css, /\.closing\s*\{[^}]*pointer-events:\s*none/);
+});
+
+test('closeWithMotion sets hidden immediately, not after the animation', () => {
+  /*
+   * `hidden` is the OBSERVABLE STATE of an overlay -- Escape handling, focus
+   * restoration and outside-click dismissal all key off it. Deferring it means
+   * that for 140ms the overlay reports itself as open, and a second Escape
+   * during the fade unwinds the wrong surface.
+   *
+   * Caught by the suite the first time: `assert.equal(help.hidden, true)`
+   * after Escape failed. Motion is presentation; state does not wait for it.
+   */
+  const src = read('src/app/layers.js');
+  const fn = src.slice(src.indexOf('export function closeWithMotion'));
+  assert.match(fn, /node\.hidden = true/, 'must hide the node');
+  assert.doesNotMatch(
+    fn.slice(0, fn.indexOf('export function cancelExit')),
+    /setTimeout\([^)]*\d{2,}/,
+    'must not gate hiding behind a long timer'
+  );
+});
+
+test('every overlay open path cancels a half-finished exit', () => {
+  /*
+   * Re-opening inside the exit window would otherwise inherit `.closing` and
+   * animate straight back out. Reply-to-reply and back-to-back toasts both hit
+   * this in normal use.
+   */
+  for (const [file, marker] of [
+    ['src/app/compose.js', 'panel'],
+    ['src/app/palette.js', 'box'],
+    ['src/app/app.js', 'el.toast'],
+  ]) {
+    assert.match(read(file), /cancelExit\(/, `${file} must clear a stale exit before opening`);
+  }
+});
+
+test('rapid reader navigation skips the swap animation', () => {
+  /*
+   * Holding j/k restarted a 200ms fade on every keypress, so the reader
+   * flickered through interrupted animations instead of settling. A user
+   * scanning wants to arrive, not to watch five fades.
+   */
+  const src = read('src/app/app.js');
+  const fn = src.slice(src.indexOf('async function openMessage'), src.indexOf('function renderAttachments'));
+  assert.match(fn, /lastSwapAt/, 'must track when the last swap ran');
+  assert.match(fn, /if \(!rapid\)/, 'and must skip the animation when stepping fast');
+});
+
+test('every keyframe uses translate3d, not translateY', () => {
+  /*
+   * `translate3d` promotes the element to its own compositor layer. `tt-in`
+   * was the only one of seventeen using `translateY`, on the LARGEST animated
+   * surface in the app -- the one where a dropped frame is most visible.
+   */
+  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const bad = [];
+  for (const m of css.matchAll(/@keyframes\s+([a-z-]+)\s*\{([\s\S]*?)\n\}/g)) {
+    if (/transform:[^;]*translate[XY]\(/.test(m[2])) bad.push(m[1]);
+  }
+  assert.deepEqual(bad, [], 'these keyframes miss compositor promotion');
+});
+
+test('no animation is declared twice with different easings', () => {
+  /*
+   * `#toast` carried `toast-in` with --ease-out in one block and --ease-spring
+   * in another. The later won, so the first was dead code -- but a reader of
+   * either has no way to tell which is current, and both are defensible. Same
+   * defect class as the two .rail-heading specs in audit 21.
+   */
+  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const seen = new Map();
+  for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const a = m[2].match(/animation:\s*([a-z-]+)\s+(\S+)\s+(var\(--ease-[a-z]+\))/);
+    if (!a) continue;
+    for (const sel of m[1].split(',').map((x) => x.trim().split('\n').pop().trim())) {
+      const key = `${sel}|${a[1]}`;
+      if (seen.has(key) && seen.get(key) !== a[3]) {
+        assert.fail(`${sel} declares ${a[1]} with two easings: ${seen.get(key)} and ${a[3]}`);
+      }
+      seen.set(key, a[3]);
+    }
+  }
+});

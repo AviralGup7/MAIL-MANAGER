@@ -203,3 +203,25 @@ declaration.
 
 Four of the seven were drift I introduced in the wiring pass: new rail sections
 that matched their neighbours' layout but not their motion.
+
+
+## Audit 24 — motion system
+
+The stylesheet parsed into a table of every animation with its keyframe,
+duration and easing, then every keyframe decomposed into transform and opacity
+tracks. That turns "does the motion feel coherent" into a question with an
+answer.
+
+The system was already good — 24 surfaces on 4 tokenised durations, a distance
+language that scales with the weight of the thing moving (3px attached, 16px
+entering from off-screen), reduced-motion handled including the delays that
+most implementations forget.
+
+**The finding was asymmetry: 23 entrances and one exit.** Every overlay closed
+by setting `hidden = true` — an instant vanish after a 200ms arrival — so the
+eye tracked the arrival and got nothing to track on the way out.
+
+Fixed with four exit keyframes and one shared helper, but only after two wrong
+attempts that the test suite caught: deferring a menu's removal made a closed
+menu still findable in the DOM, and deferring `hidden` made a closed overlay
+report itself as open. Both times the tests were encoding a real contract.
