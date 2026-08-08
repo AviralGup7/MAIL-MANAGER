@@ -163,3 +163,24 @@ more contrast than its siblings.
 
 Also found: a pre-existing test that was time-dependent and failed for two hours
 of every day.
+
+
+## Audit 22 — UI completeness
+
+Where does the interface still need one more pass? Measured: state coverage
+from the parsed selector table, reachability from the import graph and the verb
+list, empty states from the real DOM booted with nothing in it.
+
+**The finding is C-1: eleven modules are built, tested and have no interface.**
+A user running the current build has no outbox, no undo-send, no templates, no
+rule engine, no activity log and no backup — while 1249 tests pass covering all
+of them. Every other finding in the document is a refinement of something
+visible; that one is eleven features that are not.
+
+Four small completions applied: an empty state for saved views, a no-match row
+in the command palette that offers a working search fallback, pressed feedback
+on three surfaces that had only hover, and an accessible name in the markup for
+the undo button — which was the one control in the document with no name at all.
+
+Two findings were retracted after checking (mailbox rows and the reader header
+both already complete), and one fix was wrong on the first attempt.

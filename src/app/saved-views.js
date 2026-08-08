@@ -43,6 +43,18 @@ export function _resetViews() {
  */
 export function renderViews() {
   if (!ctx.viewsList()) return;
+
+  /*
+   * THE EMPTY SLOT.
+   *
+   * With no saved views this section rendered a heading over nothing. The
+   * empty line is toggled here rather than in the shell because renderViews is
+   * the only writer of the list, so the two cannot disagree about whether it is
+   * empty.
+   */
+  const emptyLine = document.getElementById('views-empty');
+  if (emptyLine) emptyLine.hidden = savedViews.length > 0;
+
   const frag = document.createDocumentFragment();
 
   for (const v of savedViews) {

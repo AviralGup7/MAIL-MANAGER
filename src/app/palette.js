@@ -21,6 +21,8 @@ const $ = (id) => document.getElementById(id);
 let paletteCommands = [];
 let paletteFiltered = [];
 let paletteIndex = 0;
+/** The live query, so the empty state can quote it and offer a fallback. */
+let paletteQuery = '';
 
 /**
  * Build the command list.
@@ -180,10 +182,52 @@ function renderPalette() {
     li.append(ico, label, hint);
     frag.appendChild(li);
   });
+
+  /*
+   * NO MATCHES IS A STATE, NOT AN ABSENCE.
+   *
+   * Typing an unmatched string used to leave the list blank while the input
+   * stayed focused: the palette did not close, did not explain, and offered no
+   * way forward. That is worse than an ordinary empty list because the palette
+   * is modal and keyboard-driven -- the user has committed to a flow and
+   * received no signal about whether they mistyped or the command does not
+   * exist.
+   *
+   * The row is not merely an apology. `ctx.runQuery` already exists and the
+   * palette already knows the string, so the dead end becomes the thing the
+   * user probably wanted: search the mail for it. Rendered as a real
+   * `.palette-item` so Enter and click both reach it through the existing
+   * handlers rather than needing a special case.
+   */
+  if (paletteFiltered.length === 0) {
+    const q = paletteQuery.trim();
+    const li = document.createElement('li');
+    li.className = 'palette-item palette-empty active';
+    li.setAttribute('role', 'option');
+    li.setAttribute('aria-selected', 'true');
+    li.dataset.index = '0';
+
+    const ico = document.createElement('span');
+    ico.className = 'palette-icon';
+    ico.appendChild(icon(q ? 'search' : 'palette', { size: 15 }));
+
+    const label = document.createElement('span');
+    label.className = 'palette-label';
+    label.textContent = q ? `No command matches “${q}” — search mail instead` : 'No commands available';
+
+    li.append(ico, label);
+    frag.appendChild(li);
+
+    // Make Enter and click work through the paths that already exist.
+    paletteFiltered = q ? [{ id: 'fallback', label, run: () => ctx.runQuery(q) }] : [];
+    paletteIndex = 0;
+  }
+
   list.replaceChildren(frag);
 }
 
 function filterPalette(q) {
+  paletteQuery = q;
   paletteFiltered = paletteCommands
     .map((c) => ({ c, s: fuzzyScore(q, c.label) }))
     .filter((x) => x.s > 0)
@@ -285,6 +329,7 @@ export function _resetPalette() {
   paletteCommands = [];
   paletteFiltered = [];
   paletteIndex = 0;
+  paletteQuery = '';
   knownLabels = [];
   // Close through the layer, not by nulling: the layer stack holds its own
   // reference, and an orphan there breaks the Escape chain.

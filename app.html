@@ -41,6 +41,18 @@
         <section id="views" aria-labelledby="views-title">
           <h2 id="views-title">Views</h2>
           <ul id="views-list"></ul>
+          <!--
+            A HEADING OVER BLANK SPACE IS THE CLASSIC UNFINISHED SIGNAL.
+
+            With no saved views this section rendered its label and then
+            nothing: no copy, no hint, no way to discover what a view is. The
+            adjacent #radar hides itself when empty, so two neighbouring rail
+            sections handled emptiness two different ways and one left a titled
+            void.
+
+            Shown and hidden by renderViews(), which is the only writer.
+          -->
+          <p id="views-empty" class="rail-empty">Save a search to keep it here.</p>
         </section>
 
         <nav id="cats" aria-label="Categories"><!-- built once by app.js --></nav>
@@ -237,7 +249,7 @@
                 </svg>
                 <p id="empty-title">You're all caught up</p>
                 <p id="empty-sub">Nothing in this view.</p>
-                <button id="empty-action" class="ghost" type="button" hidden></button>
+                <button id="empty-action" class="ghost" type="button" aria-label="Suggested action" hidden></button>
               </div>
 
               <!--
@@ -574,7 +586,17 @@
       -->
       <div id="toast" role="status" aria-live="polite" hidden>
         <span id="toast-text"></span>
-        <button id="toast-action" type="button" hidden></button>
+        <!--
+              A DEFAULT NAME IN THE MARKUP, not only one assigned by JS.
+
+              This is the Undo affordance -- the recovery control for every
+              destructive action in the product -- and it was the one button in
+              this document with no text, no title and no aria-label. It is
+              labelled at runtime, so between first paint and that assignment it
+              was unnamed, and any path that forgot to set it left it unnamed
+              permanently. JS overwrites this; it does not depend on it.
+            -->
+            <button id="toast-action" type="button" aria-label="Undo" hidden></button>
         <span id="toast-drain" aria-hidden="true"></span>
       </div>
     </div>

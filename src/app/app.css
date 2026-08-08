@@ -996,7 +996,23 @@ a.ghost {
 
 .r-date {
   font-size: var(--t-xs);
-  color: var(--fg-faint);
+  /*
+   * --fg-dim, not --fg-faint.
+   *
+   * The date and the snippet were both assigned "least important" and given
+   * the same token, so a SORTING KEY and a PREVIEW ended up on one visual
+   * layer -- 4.39 and 4.79 on the weight model, effectively indistinguishable.
+   *
+   * They do different jobs. The date is a precise datum people navigate by
+   * ("the one from Tuesday"), it is right-aligned, and it already has
+   * tabular-nums -- everything about it wants to form a scannable column. The
+   * snippet is skimmable prose that is frequently empty after cleaning.
+   *
+   * The size stays at --t-xs: small-and-clear is what makes a column scannable,
+   * and keeping the size difference preserves the hierarchy against the
+   * subject. Only the contrast moves.
+   */
+  color: var(--fg-dim);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   letter-spacing: var(--track-normal);
@@ -1279,6 +1295,61 @@ a.ghost {
   background: var(--bg-sunken);
   color: var(--fg-faint);
 }
+/*
+ * Empty-slot copy inside a rail section.
+ *
+ * Deliberately quiet: it occupies the space a list would, explains the feature
+ * at the one moment the user is looking at its absence, and never competes
+ * with the navigation above it. Same register as #reader-empty's hint.
+ */
+/*
+ * PRESSED FEEDBACK ON THE THREE CLICKABLE SURFACES THAT LACKED IT.
+ *
+ * `.tag`, `.palette-item` and `.radar-item` all responded to hover and then
+ * gave nothing back on the click itself, while `.cat` and `.snooze-opt` both
+ * had a press state. On a trackpad that gap is where an interface feels either
+ * responsive or laggy: hover says "this is clickable", :active says "I heard
+ * you". Without it a slow action reads as a missed click and the user clicks
+ * again.
+ *
+ * `.radar-item` was the worst of the three -- it opens a message, so it has a
+ * network fetch to cover and had no feedback during it.
+ *
+ * Reuses the existing scale idiom rather than inventing a treatment.
+ */
+.tag:active,
+.palette-item:active {
+  transform: scale(0.985);
+}
+
+/*
+ * `.radar-item` needs its own rule: it already carries
+ * `transform: translateX(2px)` on hover, and a bare `scale()` here would
+ * REPLACE that rather than compose with it -- so pressing a radar entry would
+ * snap it back to the left before opening. Caught by grepping for existing
+ * transforms on the selectors before adding a new one, which is the check that
+ * makes a shared idiom safe to apply.
+ */
+.radar-item:active {
+  transform: translateX(2px) scale(0.985);
+}
+
+/*
+ * The palette's no-match row is informational, not a command. It keeps the
+ * row shape so the list does not jump, but reads as quiet copy.
+ */
+.palette-empty .palette-label {
+  color: var(--fg-faint);
+}
+
+.rail-empty {
+  margin: 0 0 var(--s-2);
+  padding: 0 var(--s-3);
+  font-size: var(--t-xs);
+  color: var(--fg-faint);
+  line-height: var(--lh-body);
+}
+
 #reader-empty .hint {
   font-size: var(--t-sm);
   margin-top: var(--s-5);
@@ -1775,8 +1846,33 @@ a.ghost {
 }
 
 #brand-mark {
-  background: linear-gradient(135deg, var(--accent), var(--accent) 40%, var(--warning));
-  box-shadow: 0 2px 8px var(--glow);
+  /*
+   * THE LOGO DOES NOT GET THE APP'S SCARCEST SIGNALS.
+   *
+   * This was the only element combining a multi-hue gradient with a coloured
+   * glow, permanently, at the top-left -- the strongest position on the page.
+   * Two problems, measured in audit 21:
+   *
+   *   1. It set a high baseline of visual energy that the genuinely important
+   *      accent signals below it (the selected-category bar, Compose) then had
+   *      to compete against. Emphasis has to be earned, and a logo earns it
+   *      once on first launch and never again.
+   *
+   *   2. It put --warning on screen at ALL TIMES. A semantic colour's power is
+   *      entirely a function of its scarcity, so the amber fallback banner and
+   *      the overdue-deadline state were both being pre-habituated by the
+   *      logo. --warning now appears only where it means something.
+   *
+   * The gradient stays -- at 26px it is what makes the mark read as a mark --
+   * but it now runs accent -> accent-soft, inside one hue family, and the glow
+   * is gone. Identification without shouting.
+   *
+   * (`--accent-dim` was the first choice and does not exist; themes.js defines
+   * accentSoft, not accentDim. Caught by grepping the token list rather than
+   * by trusting the name -- an undefined custom property fails silently to
+   * `transparent`, which would have shipped an invisible logo.)
+   */
+  background: linear-gradient(135deg, var(--accent), var(--accent-soft) 140%);
 }
 
 #topbar {

@@ -6328,3 +6328,85 @@ test('changing density from the options page repaints without a reload', async (
     restore();
   }
 });
+
+/* ==========================================================================
+ * UI COMPLETENESS (audit 22)
+ *
+ * Empty states and accessible names. Each of these was a surface that
+ * rendered nothing, or a control with no name, where the rest of the product
+ * already had an idiom for the same situation.
+ * ========================================================================== */
+
+test('the saved-views section explains itself when it has no views', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // A heading over blank space is the classic unfinished signal. #radar hides
+  // when empty; #views did not, and had no copy either.
+  const { doc, settle, restore } = await boot({ storageSeed: { savedViews: { views: [], hidden: ['sv-unread','sv-direct','sv-overdue','sv-week','sv-starred','sv-stale','sv-noise','sv-attach'] } } });
+  try {
+    await settle();
+    const empty = doc.getElementById('views-empty');
+    assert.ok(empty, 'the empty slot exists');
+    assert.equal(empty.hidden, false, 'it shows when there are no views');
+    assert.match(empty.textContent, /\S/, 'and it says something');
+  } finally {
+    restore();
+  }
+});
+
+test('the saved-views empty line disappears once a view exists', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, settle, restore } = await boot();
+  try {
+    await settle();
+    // The built-in views ship enabled, so the list is non-empty by default.
+    assert.ok(doc.querySelectorAll('#views-list li').length > 0, 'built-ins render');
+    assert.equal(doc.getElementById('views-empty').hidden, true, 'the empty line is hidden');
+  } finally {
+    restore();
+  }
+});
+
+test('the palette says so when nothing matches, and offers a way forward', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * A modal, keyboard-driven surface that renders nothing is worse than an
+   * ordinary empty list: the user has committed to a flow and gets no signal
+   * about whether they mistyped or the command does not exist.
+   */
+  const { doc, win, settle, restore } = await boot();
+  try {
+    await settle();
+    win.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }));
+    await settle();
+
+    const input = doc.getElementById('palette-input');
+    assert.ok(input, 'the palette opened');
+    input.value = 'zzzznotacommand';
+    input.dispatchEvent(new win.Event('input', { bubbles: true }));
+    await settle();
+
+    const rows = doc.querySelectorAll('#palette-list .palette-item');
+    assert.equal(rows.length, 1, 'exactly one row: the empty state');
+    assert.match(rows[0].textContent, /zzzznotacommand/, 'it quotes what was typed');
+    assert.match(rows[0].textContent, /search/i, 'and offers the search fallback');
+  } finally {
+    restore();
+  }
+});
+
+test('the undo button has an accessible name in the markup, not only from JS', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * #toast-action is the recovery control for every destructive action in the
+   * product, and it was the one button in app.html with no text, no title and
+   * no aria-label -- named only at runtime, so unnamed between first paint and
+   * that assignment.
+   */
+  const { doc, restore } = await boot();
+  try {
+    const btn = doc.getElementById('toast-action');
+    assert.ok(btn.getAttribute('aria-label'), 'the undo button is named before JS touches it');
+  } finally {
+    restore();
+  }
+});
