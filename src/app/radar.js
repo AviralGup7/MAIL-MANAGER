@@ -34,12 +34,46 @@ export function renderRadar(ctx) {
 
   const now = Date.now();
   const items = [];
+
+  /*
+   * THE RADAR IS MULTI-SOURCE.
+   *
+   * It began as "messages with an extracted dueAt" and now merges three
+   * things, which is the refactor the discovery audit identified as blocking
+   * five separate features:
+   *
+   *   1. extracted deadlines, as before
+   *   2. USER OVERRIDES -- a corrected date wins over the parser, and a
+   *      dismissed one removes the entry entirely. Without this the panel
+   *      keeps showing a date the user has explicitly said is wrong, which is
+   *      how a useful surface becomes one people stop reading.
+   *   3. FOLLOW-UPS -- "no reply yet", which is a deadline the user set on
+   *      someone else rather than one imposed on them.
+   *
+   * `dueOf` is supplied by the shell rather than imported, so this module
+   * still knows nothing about the override store.
+   */
+  const dueOf = ctx.dueAtOf || ((m) => m.dueAt);
+
   for (const id of ctx.store.idsFor('all')) {
     const m = ctx.store.get(id);
-    if (!m?.dueAt) continue;
-    const u = urgency(m.dueAt, now);
+    if (!m) continue;
+    const at = dueOf(m);
+    if (typeof at !== 'number') continue;
+    const u = urgency(at, now);
     if (u === 'later') continue;
-    items.push({ m, u });
+    // Carry the effective date so the sort and the label agree with it.
+    items.push({ m: { ...m, dueAt: at }, u });
+  }
+
+  for (const f of ctx.dueFollowups ? ctx.dueFollowups() : []) {
+    const m = ctx.store.get(f.messageId);
+    if (!m) continue;
+    items.push({
+      m: { ...m, dueAt: f.dueAt },
+      u: urgency(f.dueAt, now),
+      followup: true,
+    });
   }
 
   if (items.length === 0) {

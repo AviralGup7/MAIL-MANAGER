@@ -40,6 +40,10 @@ import { audienceOf } from './direct.js';
 import * as activity from './activity.js';
 import * as outbox from './outbox.js';
 import * as suggest from './suggest.js';
+import * as followups from './followups.js';
+import * as deadlineStore from './deadline-store.js';
+import * as myCourses from './my-courses.js';
+import { detectNotice, shouldPromote, summarise } from './notices.js';
 import { rowSnippet } from './snippet.js';
 import { renderShortcuts } from './shortcuts.js';
 import { openLayer, closeTopLayer, hasLayers, closeAllLayers } from './layers.js';
@@ -80,6 +84,7 @@ import {
   SIDEBAR_ORDER,
   MUTED_CATEGORIES,
 } from '../classify/categories.js';
+import { courseNumbersIn, isAcademicSender } from './timetable-mail.js';
 
 // ---------------------------------------------------------------- constants --
 
@@ -996,6 +1001,7 @@ function buildRow(id) {
     '<div class="r-snip"></div>' +
     '</span>' +
     '<span class="r-right">' +
+    '<span class="r-course" hidden></span>' +
     '<span class="r-date"></span>' +
     '<button class="r-star" type="button" tabindex="-1" aria-label="Star"></button>' +
     '<span class="tag"></span>' +
@@ -1095,6 +1101,22 @@ function fillRow(li, m) {
    * hover-intent state machine and a positioning engine bought for nothing.
    */
   setText(q('.r-snip'), rowSnippet(m));
+
+  /*
+   * THE COURSE CHIP.
+   *
+   * Shown only for a course the user is actually enrolled in. A chip for one
+   * of the other 682 courses is a lie on a row being scanned, and the standing
+   * rule for academic detection is that a wrong badge is worse than none --
+   * it teaches people to stop reading badges.
+   */
+  const chipEl = q('.r-course');
+  if (chipEl) {
+    const chip = myCourses.courseChip(m.courses || [], enrolment);
+    setText(chipEl, chip ? chip.label + (chip.more ? ` +${chip.more}` : '') : '');
+    setAttr(chipEl, 'title', chip ? chip.title : '');
+    chipEl.hidden = !chip;
+  }
   setText(q('.r-date'), shortDate(m.date));
 
   const tag = q('.tag');
@@ -2497,6 +2519,13 @@ function ingestInto(mailboxId, messages, classified) {
        * belongs in the record rather than in the render path.
        */
       audience: audienceOf(m, state.selfEmail),
+      /*
+       * Course numbers mentioned in the message, detected ONCE here rather
+       * than re-parsed per render. Narrowed to the user's enrolment at display
+       * time -- the raw detection is cheap to keep and lets the enrolment
+       * change without a re-sync.
+       */
+      courses: courseNumbersIn(`${m.subject || ''} ${m.snippet || ''}`),
     };
     if (classified) {
       const c = classify(m);
@@ -3097,6 +3126,15 @@ $('r-actions').addEventListener('click', (e) => {
     openSnoozeMenu(state.selected, b);
     return;
   }
+  // Like snooze, these open a picker rather than acting immediately.
+  if (b.dataset.act === 'followup') {
+    openFollowupMenu(state.selected, b);
+    return;
+  }
+  if (b.dataset.act === 'deadline') {
+    openDeadlineMenu(state.selected, b);
+    return;
+  }
   act(b.dataset.act, state.selected);
 });
 
@@ -3373,6 +3411,167 @@ function themeTick() {
   return tick;
 }
 
+
+
+
+/**
+ * The snoozed rail section.
+ *
+ * Hidden when nothing is pending, like #radar and #outbox. Each row answers
+ * the two questions a snooze creates -- what did I hide, and when does it come
+ * back -- and offers the one action that was previously impossible: get it
+ * back NOW, without waiting for the alarm.
+ */
+async function renderSnoozed() {
+  const wrap = $('snoozed');
+  const list = $('snoozed-list');
+  if (!wrap || !list) return;
+
+  const all = await loadSnoozed();
+  const items = pendingSnoozes(all);
+  wrap.hidden = items.length === 0;
+  if (items.length === 0) return;
+
+  const frag = document.createDocumentFragment();
+  for (const it of items.slice(0, 8)) {
+    const li = document.createElement('li');
+    li.className = 'snoozed-item';
+
+    const what = document.createElement('span');
+    what.className = 'snoozed-what';
+    // The message may not be in the store -- it was removed from the inbox
+    // when snoozed -- so fall back to the stored subject rather than blank.
+    const m = store.get(it.id);
+    what.textContent = m?.subject || all[it.id]?.subject || 'Snoozed message';
+
+    const when = document.createElement('span');
+    when.className = 'snoozed-when';
+    when.textContent = wakeLabel(it.at);
+
+    const now = document.createElement('button');
+    now.type = 'button';
+    now.className = 'ghost small';
+    now.textContent = 'Wake';
+    now.onclick = async () => {
+      try {
+        await send('UNSNOOZE', { id: it.id });
+        activity.record({ verb: 'UNSNOOZE', ids: [it.id], actor: 'user' });
+        toast('Back in your inbox');
+        await renderSnoozed();
+        refresh({ silent: true });
+      } catch (err) {
+        toast(`Could not wake: ${err.message}`, { kind: 'error' });
+      }
+    };
+
+    li.append(what, when, now);
+    frag.appendChild(li);
+  }
+  list.replaceChildren(frag);
+}
+
+/* ========================================================================== *
+ * FOLLOW-UPS AND DEADLINE OVERRIDES
+ * ========================================================================== */
+
+/** In-memory mirrors, loaded at boot and written through on every change. */
+let followupList = [];
+let deadlineOverrides = {};
+/** The user's courses. Empty until they pick, which means no chips -- correct. */
+let enrolment = [];
+
+/**
+ * "Remind me if nobody replies."
+ *
+ * Distinct from snooze, which hides and returns regardless, and from a
+ * deadline, which is imposed from outside. A follow-up is the only one of the
+ * three that RESOLVES ITSELF -- if a reply arrives, it disappears without the
+ * user doing anything. That is the whole feature.
+ */
+function openFollowupMenu(id, anchor) {
+  const m = store.get(id);
+  if (!m) return;
+  const existing = followups.hasFollowup(followupList, m.threadId);
+
+  const items = followups.PRESETS.map((p) => ({
+    text: p.label,
+    run: async () => {
+      followupList = followups.setFollowup(followupList, {
+        threadId: m.threadId,
+        messageId: id,
+        dueAt: Date.now() + p.ms,
+      });
+      await followups.saveFollowups(followupList);
+      activity.record({ verb: 'FOLLOWUP_SET', ids: [id], actor: 'user' });
+      renderRadar(ctx);
+      toast(`Will remind you ${p.label.toLowerCase()}`);
+    },
+  }));
+
+  if (existing) {
+    items.push({
+      text: 'Clear follow-up',
+      run: async () => {
+        followupList = followups.clearFollowup(followupList, m.threadId);
+        await followups.saveFollowups(followupList);
+        renderRadar(ctx);
+        toast('Follow-up cleared');
+      },
+    });
+  }
+
+  openMenu({ anchor, name: 'followup', label: 'Remind me', items });
+}
+
+/**
+ * Set, correct or dismiss a deadline.
+ *
+ * The dismissal is the important one. It is stored as an override with a null
+ * date rather than by deleting, because deleting would let the extractor
+ * re-add the same false deadline on the next ingest and the user would have to
+ * dismiss it forever.
+ */
+function openDeadlineMenu(id, anchor) {
+  const m = store.get(id);
+  if (!m) return;
+  const DAY = 86_400_000;
+  const eff = deadlineStore.effectiveDeadline(m, deadlineOverrides);
+
+  const set = async (at, origin) => {
+    deadlineOverrides = origin === 'dismiss'
+      ? deadlineStore.dismiss(deadlineOverrides, id, { wasText: m.dueText, wasAt: m.dueAt })
+      : deadlineStore.setManual(deadlineOverrides, id, at);
+    await deadlineStore.saveOverrides(deadlineOverrides);
+    activity.record({ verb: 'DEADLINE_SET', ids: [id], actor: 'user' });
+    renderRadar(ctx);
+    renderList();
+    toast(origin === 'dismiss' ? 'Not a deadline' : 'Deadline set');
+  };
+
+  const items = [
+    { text: 'Today', run: () => set(endOfDay(Date.now())) },
+    { text: 'Tomorrow', run: () => set(endOfDay(Date.now() + DAY)) },
+    { text: 'In 3 days', run: () => set(endOfDay(Date.now() + 3 * DAY)) },
+    { text: 'Next week', run: () => set(endOfDay(Date.now() + 7 * DAY)) },
+  ];
+
+  // Only offer to remove what is actually there.
+  if (eff.at !== null) {
+    items.push({
+      text: eff.source === 'extracted' ? 'Not a deadline' : 'Clear',
+      run: () => set(null, 'dismiss'),
+    });
+  }
+
+  openMenu({ anchor, name: 'deadline', label: 'Deadline', items });
+}
+
+/** End of the given day, local time -- the same convention deadlines.js uses. */
+function endOfDay(ms) {
+  const d = new Date(ms);
+  d.setHours(23, 59, 0, 0);
+  return d.getTime();
+}
 
 /* ========================================================================== *
  * THE OUTBOX RUNNER
@@ -4436,6 +4635,12 @@ const ctx = {
   flushOutbox: () => pumpOutbox(),
   // Templates fill {{name}} from the signed-in account.
   profileName: () => (state.selfEmail || '').split('@')[0].replace(/[._]/g, ' '),
+  /*
+   * The radar reads deadlines through here rather than off `m.dueAt`, so a
+   * user correction or dismissal is honoured everywhere the panel looks.
+   */
+  dueAtOf: (m) => deadlineStore.dueAtOf(m, deadlineOverrides),
+  dueFollowups: () => followups.dueFollowups(followupList, store, state.selfEmail),
   undoSendMs: () => settings.get('undoSendSeconds') * 1000,
 };
 
@@ -4498,6 +4703,20 @@ async function start() {
   // The empty search box offers what was searched before, so the history has
   // to be in memory before the field is first focused.
   suggest.loadHistory().then((h) => { queryHistory = h; });
+  renderSnoozed();
+  myCourses.loadEnrolment().then((list) => {
+    enrolment = list;
+    if (list.length) renderList();
+  });
+
+  // The radar merges these, so they must be in memory before it first paints.
+  Promise.all([followups.loadFollowups(), deadlineStore.loadOverrides()])
+    .then(([f, d]) => {
+      followupList = f;
+      deadlineOverrides = d;
+      renderRadar(ctx);
+    })
+    .catch(() => { /* the radar degrades to extracted deadlines only */ });
 
   /*
    * The timetable loads from storage and then looks at the mail we already

@@ -75,6 +75,7 @@ export const EXPORTED_KEYS = [
   'markReadDelayMs',
   'autoRefreshMs',
   'signature',
+  'undoSendSeconds',
   /*
    * `clientId` is IN the schema and deliberately NOT here. It is the user's
    * own Google Cloud OAuth client id -- not a secret in the way a token is,

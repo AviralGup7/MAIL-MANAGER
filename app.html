@@ -78,6 +78,20 @@
           follows. A permanently-visible empty section is the "heading over
           dead whitespace" problem the completeness audit found in Views.
         -->
+        <!--
+          SNOOZED.
+
+          SNOOZE and UNSNOOZE both had UI; WAKE_DUE did not, so the feature was
+          two-thirds surfaced. Mail the user deliberately hid was unreachable by
+          ANY route -- not in a view, not in search -- until its alarm fired,
+          which is a trust gap in the one feature whose promise is "it comes
+          back".
+        -->
+        <section id="snoozed" aria-labelledby="snoozed-title" hidden>
+          <h2 id="snoozed-title">Snoozed</h2>
+          <ul id="snoozed-list"></ul>
+        </section>
+
         <section id="outbox" aria-labelledby="outbox-title" hidden>
           <h2 id="outbox-title">Outbox</h2>
           <ul id="outbox-list"></ul>
@@ -348,6 +362,21 @@
                   <button data-act="unread" class="ghost" type="button" title="Mark unread (u)">Mark unread</button>
                   <button data-act="snooze" class="ghost" type="button" title="Snooze (z)">Snooze</button>
                   <button data-act="archive" class="ghost" type="button" title="Archive (e)">Archive</button>
+                  <!--
+                    FOLLOW-UP. "I mailed a professor and never heard back" is
+                    the highest-cost silent failure in a student mailbox, and
+                    no mail client surfaces it: a client that only looks at the
+                    inbox cannot see the absence of a thing.
+                  -->
+                  <button data-act="followup" class="ghost" type="button"
+                          title="Remind me if there is no reply">Follow up</button>
+                  <!--
+                    Deadline correction. The extractor WILL be wrong sometimes,
+                    and a silently wrong radar entry is worse than an empty
+                    radar because the user stops trusting the panel.
+                  -->
+                  <button data-act="deadline" class="ghost" type="button"
+                          title="Set or correct the deadline">Deadline</button>
                   <!--
                     Spam. The label flips inside the Spam mailbox, where
                     "report" is meaningless and "rescue" is what you want.

@@ -121,6 +121,11 @@ async function save() {
 
 const fmtDelay = (ms) => (ms === 0 ? 'off' : `${(ms / 1000).toFixed(1)}s`);
 
+/** "Off" reads better than "0s" for a window that has been disabled. */
+function fmtHold(sec) {
+  return sec === 0 ? 'off' : `${sec}s`;
+}
+
 (async function wirePreferences() {
   await settings.loadSettings();
 
@@ -131,6 +136,8 @@ const fmtDelay = (ms) => (ms === 0 ? 'off' : `${(ms / 1000).toFixed(1)}s`);
   const threaded = $('threaded');
   const auto = $('autoRefreshMs');
   const autoLabel = $('autoRefreshLabel');
+  const undoSend = $('undoSendSeconds');
+  const undoSendLabel = $('undoSendLabel');
   if (!markRead || !delay || !images) return;
 
   // Reflect stored state.
@@ -142,6 +149,19 @@ const fmtDelay = (ms) => (ms === 0 ? 'off' : `${(ms / 1000).toFixed(1)}s`);
   if (auto) {
     auto.value = String(settings.get('autoRefreshMs'));
     autoLabel.textContent = fmtEvery(Number(auto.value));
+  }
+  if (undoSend) {
+    undoSend.value = String(settings.get('undoSendSeconds'));
+    undoSendLabel.textContent = fmtHold(Number(undoSend.value));
+
+    // `input` for the label, `change` for the write -- same reasoning as the
+    // read-delay slider below.
+    undoSend.addEventListener('input', () => {
+      undoSendLabel.textContent = fmtHold(Number(undoSend.value));
+    });
+    undoSend.addEventListener('change', async () => {
+      await settings.set('undoSendSeconds', Number(undoSend.value));
+    });
   }
 
   /*

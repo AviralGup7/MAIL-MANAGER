@@ -205,11 +205,27 @@ const feat = ['features.js','undo-actions.js','radar.js','palette.js','compose.j
   .map((f) => readFileSync(new URL(`../src/app/${f}`, import.meta.url), 'utf8')).join('\n');
 const app = readFileSync(new URL('../src/app/app.js', import.meta.url), 'utf8');
 
-test('the recovery copy is cleared only AFTER a send succeeds', () => {
-  const fn = feat.slice(feat.indexOf('async function doSend'), feat.indexOf('async function doDraft'));
-  const sendAt = fn.indexOf("ctx.send('SEND'");
+test('the recovery copy is cleared only AFTER the message is durable', () => {
+  /*
+   * THE BOUNDARY MOVED, THE GUARANTEE DID NOT.
+   *
+   * This used to require `discard()` to come after `ctx.send('SEND')`, because
+   * a direct send that failed would otherwise have destroyed the only copy.
+   *
+   * Sending is now QUEUED: doSend persists the draft to the outbox, which
+   * survives a tab close and retries with backoff, and the worker is called
+   * later by the runner. So the moment the message becomes safe is the
+   * `saveOutbox` call, not the network round trip -- and clearing after the
+   * enqueue is correct rather than premature.
+   *
+   * The property being protected is unchanged: the local recovery copy must
+   * never be dropped while the message exists nowhere else.
+   */
+  const fn = feat.slice(feat.indexOf('async function doSend'), feat.indexOf('async function openTemplateMenu'));
+  const queueAt = fn.indexOf('saveOutbox');
   const clearAt = fn.indexOf('discard()');
-  assert.ok(sendAt > 0 && clearAt > sendAt, 'clearing before the send would destroy the message on failure');
+  assert.ok(queueAt > 0, 'the draft must be handed to the durable queue');
+  assert.ok(clearAt > queueAt, 'clearing before the queue write would lose the message');
   // And it must be inside the try, not the catch.
   assert.ok(!fn.slice(fn.indexOf('} catch')).includes('discard()'));
 });
