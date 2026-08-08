@@ -37,6 +37,8 @@ import { parseQuery, buildReply } from './query.js';
 import * as settings from './settings.js';
 import { addressOf } from './contacts.js';
 import { audienceOf } from './direct.js';
+import * as activity from './activity.js';
+import * as outbox from './outbox.js';
 import { rowSnippet } from './snippet.js';
 import { renderShortcuts } from './shortcuts.js';
 import { openLayer, closeTopLayer, hasLayers, closeAllLayers } from './layers.js';
@@ -2171,15 +2173,26 @@ function flagAction({
    */
   const sent = send(verb, { id, ...payload }).then(
     () => {
+      /*
+       * THE ACTIVITY LOG IS WRITTEN HERE, ON THE SETTLED BRANCH.
+       *
+       * Same reasoning as the undo entry directly below: logging at dispatch
+       * time records actions that never happened. The log's whole value is
+       * answering "what actually changed", so an optimistic entry would make
+       * it lie in exactly the situation it exists to explain.
+       */
+      activity.record({ verb, ids: [id], actor: 'user' });
       recordUndo(ctx, past, async () => {
         store.patch(id, undoPatch);
         if (id === state.selected) syncContextActions(store.get(id));
         await send(undoVerb || verb, { id, ...undoPayload });
+        activity.record({ verb: undoVerb || verb, ids: [id], actor: 'user', detail: 'undo' });
       });
     },
-    () => {
+    (err) => {
       store.patch(id, undoPatch);
       if (id === state.selected) syncContextActions(store.get(id));
+      activity.record({ verb, ids: [id], actor: 'user', outcome: 'failed', error: err?.message });
       toast(failed, { kind: 'error' });
     }
   );
@@ -2231,17 +2244,22 @@ function optimistic({
    */
   const sent = run().then(
     () => {
+      activity.record({ verb, ids: [id], actor: 'user' });
       if (undoVerb) {
         recordUndo(ctx, past, async () => {
           if (undoBefore) await undoBefore(id);
           store.upsert(snapshot);
           await send(undoVerb, { id });
+          activity.record({ verb: undoVerb, ids: [id], actor: 'user', detail: 'undo' });
           renderList();
         });
       }
       if (done) toast(done);
     },
-    rollback
+    (err) => {
+      activity.record({ verb, ids: [id], actor: 'user', outcome: 'failed', error: err?.message });
+      return rollback(err);
+    }
   );
 
   return sent;
@@ -3186,6 +3204,105 @@ function themeTick() {
   return tick;
 }
 
+
+/* ========================================================================== *
+ * THE OUTBOX RUNNER
+ * ========================================================================== *
+ *
+ * The queue is the source of truth and lives in storage; this is only the
+ * thing that pokes it. It runs in the PAGE rather than the worker because MV3
+ * workers are evicted aggressively -- this project spent ten rounds on one
+ * that would not even register -- and a queue that stops draining when Chrome
+ * reclaims memory is worse than no queue, since the user believes their mail
+ * is pending.
+ *
+ * One timer, rescheduled from `nextWakeIn`, rather than a poll: a queue that
+ * wakes every second to discover it has nothing to do is a battery bug.
+ */
+let outboxTimer = 0;
+
+async function pumpOutbox() {
+  clearTimeout(outboxTimer);
+  outboxTimer = 0;
+
+  const result = await outbox.flushOutbox({
+    send: (draft) => send('SEND', { draft }),
+    onChange: () => renderOutbox(),
+  });
+
+  if (result.sent) {
+    activity.record({ verb: 'SEND', ids: [], actor: 'user' });
+    toast(result.sent === 1 ? 'Message sent' : `${result.sent} messages sent`, { kind: 'success' });
+  }
+  if (result.failed) {
+    activity.record({ verb: 'SEND', ids: [], actor: 'user', outcome: 'failed' });
+  }
+
+  const items = await outbox.loadOutbox();
+  renderOutbox(items);
+
+  const wake = outbox.nextWakeIn(items);
+  if (wake !== null) {
+    outboxTimer = setTimeout(pumpOutbox, Math.max(250, wake));
+  }
+}
+
+/**
+ * The outbox rail row.
+ *
+ * Appears only when the queue is non-empty, the same rule #radar follows --
+ * a permanent empty section is the "heading over dead whitespace" problem the
+ * completeness audit found in the saved-views list.
+ */
+async function renderOutbox(known) {
+  const wrap = $('outbox');
+  const list = $('outbox-list');
+  if (!wrap || !list) return;
+
+  const items = known || (await outbox.loadOutbox());
+  wrap.hidden = items.length === 0;
+  if (items.length === 0) return;
+
+  const frag = document.createDocumentFragment();
+  for (const it of items) {
+    const li = document.createElement('li');
+    li.className = 'outbox-item' + (outbox.isStuck(it) ? ' outbox-stuck' : '');
+
+    const who = document.createElement('span');
+    who.className = 'outbox-to';
+    who.textContent = displayName(it.draft?.to || '(no recipient)');
+
+    const status = document.createElement('span');
+    status.className = 'outbox-status';
+    status.textContent = outbox.statusOf(it);
+
+    li.append(who, status);
+
+    /*
+     * A stuck message needs a way out that is not "wait". Both actions are
+     * offered because they answer different questions: retry now for a network
+     * that has come back, discard for a message that is no longer wanted.
+     */
+    if (outbox.isStuck(it)) {
+      const retry = document.createElement('button');
+      retry.type = 'button';
+      retry.className = 'ghost small';
+      retry.textContent = 'Retry';
+      retry.onclick = async () => { await outbox.retryNow(it.id); pumpOutbox(); };
+
+      const drop = document.createElement('button');
+      drop.type = 'button';
+      drop.className = 'ghost small';
+      drop.textContent = 'Discard';
+      drop.onclick = async () => { await outbox.cancel(it.id); renderOutbox(); };
+
+      li.append(retry, drop);
+    }
+    frag.appendChild(li);
+  }
+  list.replaceChildren(frag);
+}
+
 /**
  * Push the density setting onto the root element.  (Feature 28.)
  *
@@ -3942,9 +4059,12 @@ async function bulkAct(kind, explicitIds = null) {
     store.batch(() => {
       for (const m of snapshots) store.upsert(m);
     });
+    activity.record({ verb: `BULK_${kind.toUpperCase()}`, ids, actor: 'user', outcome: 'failed', error: err?.message });
     toast(`Could not ${kind}: ${err.message}`, { kind: 'error' });
     return;
   }
+
+  activity.record({ verb: `BULK_${kind.toUpperCase()}`, ids, actor: 'user' });
 
   recordUndo(ctx, `${verb} ${n} ${noun}`, async () => {
     store.batch(() => {
@@ -3952,6 +4072,7 @@ async function bulkAct(kind, explicitIds = null) {
     });
     // The inverse is DERIVED, never typed: swap add and remove.
     await send('BULK', { ids, add: remove, remove: add });
+    activity.record({ verb: `BULK_${kind.toUpperCase()}`, ids, actor: 'user', detail: 'undo' });
   });
 }
 
@@ -4141,6 +4262,12 @@ const ctx = {
   // failure channel for a storage write.
   toast,
   openMessage,
+  // Compose hands a queued send back to the runner so the hold starts ticking
+  // immediately rather than on the next scheduled wake.
+  flushOutbox: () => pumpOutbox(),
+  // Templates fill {{name}} from the signed-in account.
+  profileName: () => (state.selfEmail || '').split('@')[0].replace(/[._]/g, ' '),
+  undoSendMs: () => settings.get('undoSendSeconds') * 1000,
 };
 
 /*
@@ -4151,6 +4278,12 @@ const ctx = {
  */
 window.__bmmAutoRefreshPending = () => autoRefreshTimer !== 0;
 window.__bmmIngest = ingest;
+/*
+ * Test seam. Sending is queued behind an undo-send hold, so a harness cannot
+ * observe SEND on the wire without either waiting out a real timer or driving
+ * the runner. Driving it is deterministic.
+ */
+window.__bmmPumpOutbox = () => pumpOutbox();
 // Same live-binding hazard as ctx.store: defined as a getter so a harness
 // inspecting it after a mailbox switch sees the ACTIVE store, not the inbox.
 Object.defineProperty(window, '__bmmStore', { get: () => store, configurable: true });
@@ -4162,6 +4295,13 @@ Object.defineProperty(window, '__bmmStore', { get: () => store, configurable: tr
  * nothing can catch. Real browsers get the same cleanup via `pagehide`; tests
  * need to be able to ask for it directly.
  */
+/*
+ * The activity log batches its writes on a 1.5s timer. A tab closed inside
+ * that window would lose the tail of a triage session, which is exactly the
+ * stretch someone would be trying to reconstruct.
+ */
+window.addEventListener('pagehide', () => { activity.flush(); });
+
 window.__bmmTeardown = cancelPendingWork;
 
 // ------------------------------------------------------------------- start --
@@ -4179,6 +4319,12 @@ async function start() {
   // lands, and behaves exactly as before until it does. Not awaited, because
   // nothing on screen depends on it.
   refreshLabels(ctx);
+
+  /*
+   * Drain anything the last session left queued -- a send that was still held
+   * when the tab closed, or one that failed and is due a retry.
+   */
+  pumpOutbox();
 
   /*
    * The timetable loads from storage and then looks at the mail we already

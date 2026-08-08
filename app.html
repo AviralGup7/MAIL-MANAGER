@@ -71,6 +71,18 @@
           inbox rather than leading it. Still hidden when empty, so a
           non-academic user never sees it at all.
         -->
+        <!--
+          THE OUTBOX.
+
+          Hidden until the queue has something in it, the same rule #radar
+          follows. A permanently-visible empty section is the "heading over
+          dead whitespace" problem the completeness audit found in Views.
+        -->
+        <section id="outbox" aria-labelledby="outbox-title" hidden>
+          <h2 id="outbox-title">Outbox</h2>
+          <ul id="outbox-list"></ul>
+        </section>
+
         <section id="radar" aria-labelledby="radar-title" hidden>
           <h2 id="radar-title">Due soon</h2>
           <ul id="radar-list"></ul>
@@ -527,6 +539,12 @@
           <button id="c-attach" class="ghost small" type="button"
                   title="Attach a file">Attach</button>
           <button id="c-draft" class="ghost small" type="button">Save draft</button>
+          <!--
+            Templates. The leave request, the extension request, the mess
+            rebate -- the same four mails every semester, retyped each time.
+          -->
+          <button id="c-template" class="ghost small" type="button"
+                  title="Insert a template">Template</button>
           <!--
             Same reasoning as #gate-error. This carries "Add a recipient",
             "Check the address: ..." and whatever a failed send returned.

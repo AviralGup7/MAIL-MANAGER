@@ -8,6 +8,9 @@
  */
 
 import { buildReply } from './query.js';
+import { openMenu } from './menu.js';
+import * as outbox from './outbox.js';
+import * as templates from './templates.js';
 import { createDraftSaver, loadDraft, isMeaningful } from './draft-store.js';
 import * as settings from './settings.js';
 import { invalidAddresses } from './contacts.js';
@@ -381,6 +384,7 @@ export function wireCompose(ctx) {
 
   $('c-send').addEventListener('click', () => doSend(ctx));
   $('c-draft').addEventListener('click', () => doDraft(ctx));
+  $('c-template')?.addEventListener('click', (e) => openTemplateMenu(ctx, e.currentTarget));
 
   // Ctrl+Enter sends, which is the convention in every mail client.
   panel.addEventListener('keydown', (e) => {
@@ -422,18 +426,117 @@ async function doSend(ctx) {
   const btn = $('c-send');
   btn.disabled = true;
   setStatus('Sending…', '');
+
+  /*
+   * SENDING GOES THROUGH THE OUTBOX, NOT STRAIGHT TO THE WORKER.
+   *
+   * Two things fall out of that, and neither is possible with a direct call:
+   *
+   *   UNDO-SEND. The message sits in `held` for a few seconds and simply does
+   *   not leave. That is a real recall, not a fake one -- the Gmail API cannot
+   *   unsend, so the only honest implementation is to not have sent yet.
+   *
+   *   SURVIVING A FAILURE. A direct send that failed left the composed message
+   *   in a panel the user had already been told to close, and a dropped
+   *   connection lost it. Queued, it persists and retries with backoff.
+   *
+   * The panel closes immediately either way: the user's job is done, and
+   * holding a modal open to watch a progress state is the thing the queue
+   * exists to avoid.
+   */
   try {
-    await ctx.send('SEND', { draft });
-    // Clear the recovery copy only AFTER the send is confirmed. Clearing
-    // first and then failing would destroy the message.
+    const item = outbox.enqueue(draft, {
+      holdMs: ctx.undoSendMs ? ctx.undoSendMs() : outbox.DEFAULT_HOLD_MS,
+      threadId: composeMeta.threadId,
+    });
+    const queue = await outbox.loadOutbox();
+    await outbox.saveOutbox([...queue, item]);
+
     await ensureDraftSaver().discard();
     closeCompose();
-    ctx.toast(`Sent to ${draft.to.split(',')[0].trim()}`, { kind: 'success' });
+
+    const who = draft.to.split(',')[0].trim();
+    ctx.toast(`Sending to ${who}`, {
+      kind: 'undo',
+      // The toast contract is {label, run} -- checked against toast() rather
+      // than assumed, after first writing an `actionLabel` that nothing reads.
+      action: {
+        label: 'Undo',
+        run: async () => {
+          const cancelled = await outbox.cancel(item.id);
+          if (cancelled) {
+            // Put the message back exactly as it was, rather than claiming
+            // success on a send that is not going to happen.
+            openCompose(ctx, cancelled.draft);
+            ctx.toast('Send cancelled');
+          } else {
+            ctx.toast('Too late to cancel — it has gone', { kind: 'error' });
+          }
+        },
+      },
+    });
+    ctx.flushOutbox?.();
   } catch (err) {
     setStatus(err.message, 'err');
   } finally {
     btn.disabled = false;
   }
+}
+
+/**
+ * The template picker.
+ *
+ * Built on the shared `menu.js` rather than a bespoke dropdown, so it inherits
+ * focus management, Escape handling and the z-layer the other four menus use.
+ *
+ * Values are filled from the message being replied to where they are known --
+ * `autoValues()` supports `subject`, `sender` and `course` and had no caller
+ * until now, which is why the completeness audit listed it as shipped but
+ * unreachable.
+ */
+async function openTemplateMenu(ctx, anchor) {
+  const list = await templates.loadTemplates();
+  const values = templates.autoValues({
+    profileName: ctx.profileName?.() || '',
+    message: composeMeta.replyTo || null,
+  });
+
+  openMenu({
+    anchor,
+    name: 'templates',
+    label: 'Insert a template',
+    // The menu contract is `text`, not `label` -- read from menu.js rather
+    // than guessed, after first writing `label` and getting blank rows.
+    items: list.map((t) => ({
+      text: t.name,
+      run: () => {
+        const draft = collectDraft();
+        const next = templates.applyTemplate(t, draft, values);
+        $('c-subject').value = next.subject || '';
+        $('c-text').value = next.body;
+
+        /*
+         * PUT THE CARET ON THE FIRST GAP.
+         *
+         * applyTemplate returns `_unfilled` and nothing consumed it, so the
+         * user had to hunt for the {{reason}} themselves -- which is how a
+         * template ends up sent with a placeholder still in it. Selecting the
+         * first one makes the gap impossible to miss and typing replaces it.
+         */
+        const first = next._unfilled?.[0];
+        const area = $('c-text');
+        area.focus();
+        if (first) {
+          const needle = `{{${first}}}`;
+          const at = area.value.indexOf(needle);
+          if (at >= 0) area.setSelectionRange(at, at + needle.length);
+        }
+        if (next._unfilled?.length) {
+          setStatus(`Fill in: ${next._unfilled.map((p) => `{{${p}}}`).join(', ')}`, '');
+        }
+      },
+    })),
+  });
 }
 
 async function doDraft(ctx) {

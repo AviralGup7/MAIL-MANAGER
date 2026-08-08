@@ -53,6 +53,11 @@ export const SCHEMA = {
    * They were removed rather than stubbed. They are specified in
    * audits/08-GMAIL-COMPETITIVE-V2.md and each returns HERE on the commit that
    * implements it, not before. A test enforces this.
+   *
+   * `density` returned when the token remap shipped. `undoSendSeconds` returns
+   * on THIS commit, which routes sending through the outbox -- the hold window
+   * is the feature, and it is now real. `autoSyncMinutes` is still absent and
+   * still specified rather than stubbed.
    */
 
   // ---- appearance ----
@@ -65,6 +70,18 @@ export const SCHEMA = {
    * existing profile sees no change until it asks for one.
    */
   density: { type: 'enum', def: 'comfortable', values: ['comfortable', 'cosy', 'compact'] },
+
+  // ---- sending ----
+  /*
+   * How long a sent message is HELD before it actually goes.
+   *
+   * 0 disables undo-send entirely, which is a legitimate preference: some
+   * people would rather the mail leave immediately than wait five seconds for
+   * a safety net they never use. `outbox.enqueue` treats a 0 hold as "due
+   * now", so the queue path is identical either way -- there is no separate
+   * unqueued branch to drift.
+   */
+  undoSendSeconds: { type: 'int', def: 5, min: 0, max: 30 },
 
   // ---- reading ----
   /*

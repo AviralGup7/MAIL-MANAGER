@@ -1342,6 +1342,54 @@ a.ghost {
   color: var(--fg-faint);
 }
 
+/* ---- outbox ------------------------------------------------------------- */
+
+#outbox {
+  padding: var(--s-3) var(--s-2) var(--s-1);
+  border-top: 1px solid var(--line);
+}
+
+#outbox-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.outbox-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-2);
+  align-items: baseline;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-md);
+}
+
+.outbox-to {
+  font-size: var(--t-sm);
+  color: var(--fg);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.outbox-status {
+  font-size: var(--t-xs);
+  color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * A message that has given up retrying is the one state here that needs the
+ * user. It gets the danger colour and keeps its buttons, rather than sitting
+ * quietly in the same grey as a message that is merely waiting -- which is the
+ * distinction the completeness audit found missing on #c-status.
+ */
+.outbox-stuck .outbox-status {
+  color: var(--danger);
+}
+
 .rail-empty {
   margin: 0 0 var(--s-2);
   padding: 0 var(--s-3);

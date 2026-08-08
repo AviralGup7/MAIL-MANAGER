@@ -31,6 +31,35 @@ try {
   test('app integration (skipped: jsdom not installed)', { skip: true }, () => {});
 }
 
+
+/**
+ * Sending is queued, not immediate.
+ *
+ * `doSend` puts the draft in the outbox with a hold window (undo-send) and
+ * returns. The worker only sees SEND when the hold expires and the runner
+ * pumps. Tests that assert on the wire therefore have to drain the queue
+ * rather than wait out a five-second timer.
+ *
+ * Seeding `undoSendSeconds: 0` makes the item due immediately -- `enqueue`
+ * treats a zero hold as "send now", so the queue path is identical and there
+ * is no special unqueued branch being exercised instead.
+ */
+async function drainOutbox(win, settle) {
+  await win.__bmmPumpOutbox?.();
+  await settle(6);
+}
+
+/**
+ * Boot with undo-send off, for tests that assert on what reaches the worker.
+ *
+ * `enqueue` treats a zero hold as "due now", so the item goes through the
+ * SAME queue path -- claim, dispatch, remove -- with no separate unqueued
+ * branch. Only the wait is removed. Tests that care about the hold itself set
+ * it explicitly instead.
+ */
+const bootSending = (opts = {}) =>
+  boot({ ...opts, storageSeed: { undoSendSeconds: 0, ...(opts.storageSeed || {}) } });
+
 /** Synthetic mail, deliberately spanning several BITS categories. */
 const MESSAGES = [
   {
@@ -3824,7 +3853,7 @@ test('DELIGHT: failures are visually distinct from successes', async (t) => {
 test('DELIGHT: sending names the recipient rather than confirming a mechanism', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');
   // The fear after sending is "who did that go to", not "did the button work".
-  const { doc, settle, restore } = await boot();
+  const { doc, win, settle, restore } = await boot();
   try {
     doc.getElementById('btn-compose').click();
     await settle(4);
@@ -3833,9 +3862,22 @@ test('DELIGHT: sending names the recipient rather than confirming a mechanism', 
     doc.getElementById('c-send').click();
     await settle(12);
 
+    /*
+     * The toast now appears BEFORE the wire, not after, and its kind changed
+     * from 'success' to 'undo'.
+     *
+     * Both follow from sending being queued. There is nothing to confirm yet
+     * -- the message is held, not sent -- so claiming success would be a lie,
+     * and the toast's job changed from confirmation to offering the recall.
+     * 'undo' is the kind that carries an action button and a longer dwell.
+     *
+     * The property this test exists to protect is unchanged and still checked:
+     * the toast names the RECIPIENT rather than confirming a mechanism.
+     */
     const text = doc.getElementById('toast-text').textContent;
     assert.match(text, /augsd@pilani/, `expected the recipient in "${text}"`);
-    assert.equal(doc.getElementById('toast').dataset.kind, 'success');
+    assert.equal(doc.getElementById('toast').dataset.kind, 'undo');
+    assert.ok(!doc.getElementById('toast-action').hidden, 'and offers Undo');
   } finally {
     restore();
   }
@@ -5084,7 +5126,7 @@ test('MAIL: compose can Bcc, and the address reaches the wire', async (t) => {
    *
    * Verified before building: grep for bcc across src/app returned nothing.
    */
-  const { doc, win, calls, settle, restore } = await boot();
+  const { doc, win, calls, settle, restore } = await bootSending();
   try {
     press(doc, win, 'c');
     await settle(6);
@@ -5105,6 +5147,8 @@ test('MAIL: compose can Bcc, and the address reaches the wire', async (t) => {
     doc.getElementById('c-text').value = 'Body';
     doc.getElementById('c-send').click();
     await settle(10);
+    // Sending is queued behind the undo-send hold; drain it to reach the wire.
+    await drainOutbox(win, settle);
 
     const sent = calls.find((c) => c.type === 'SEND');
     assert.ok(sent, 'the message must be sent');
@@ -5256,7 +5300,7 @@ test('MAIL: a file can be attached and travels with the message', async (t) => {
    * that cannot attach forces the user back to Gmail -- which defeats the
    * product entirely.
    */
-  const { doc, win, calls, settle, restore } = await boot();
+  const { doc, win, calls, settle, restore } = await bootSending();
   try {
     press(doc, win, 'c');
     await settle(6);
@@ -5282,6 +5326,8 @@ test('MAIL: a file can be attached and travels with the message', async (t) => {
     doc.getElementById('c-text').value = 'See attached';
     doc.getElementById('c-send').click();
     await settle(10);
+    // Sending is queued behind the undo-send hold; drain it to reach the wire.
+    await drainOutbox(win, settle);
 
     const sent = calls.find((c) => c.type === 'SEND');
     assert.ok(sent, 'the message must be sent');
@@ -5303,7 +5349,7 @@ test('MAIL: attachments do not leak into the next message', async (t) => {
    * would silently attach the previous file to an unrelated recipient, which
    * is a data-disclosure bug, not a tidiness one.
    */
-  const { doc, win, calls, settle, restore } = await boot();
+  const { doc, win, calls, settle, restore } = await bootSending();
   try {
     press(doc, win, 'c');
     await settle(6);
@@ -5330,6 +5376,8 @@ test('MAIL: attachments do not leak into the next message', async (t) => {
     doc.getElementById('c-text').value = 'hi';
     doc.getElementById('c-send').click();
     await settle(10);
+    // Sending is queued behind the undo-send hold; drain it to reach the wire.
+    await drainOutbox(win, settle);
 
     const sent = calls.filter((c) => c.type === 'SEND').pop();
     assert.deepEqual(
