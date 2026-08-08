@@ -184,3 +184,22 @@ the undo button — which was the one control in the document with no name at al
 
 Two findings were retracted after checking (mailbox rows and the reader header
 both already complete), and one fix was wrong on the first attempt.
+
+
+## Audit 23 — micro-interactions
+
+Measured from the stylesheet parsed as a rule table, cross-referenced against
+the markup and the JS that binds handlers. Seven findings, all applied.
+
+The product was already strong here — 17 keyframes, a four-step duration scale,
+`--ease-spring` used only on arrivals — so the findings are about **drift**
+rather than absence: places where two surfaces doing the same job had come
+apart.
+
+The largest was `.ghost`, which changed three properties on hover with no
+transition while its own link variant `a.ghost` had one. That is **45 of the 48
+buttons in the product** — every toolbar and reader action — fixed by one
+declaration.
+
+Four of the seven were drift I introduced in the wiring pass: new rail sections
+that matched their neighbours' layout but not their motion.

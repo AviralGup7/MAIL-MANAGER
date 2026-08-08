@@ -2289,3 +2289,108 @@ test('COMPLEXITY: removal actions share one optimistic helper', () => {
     'the shared optimistic-mutation helper must exist'
   );
 });
+
+
+/* ==========================================================================
+ * MICRO-INTERACTION CONSISTENCY (audit 23)
+ *
+ * These are DRIFT guards, not motion mandates. Each pins a case where two
+ * surfaces doing the same job had drifted apart, so the next surface added
+ * cannot quietly land without the feedback its peers have.
+ * ========================================================================== */
+
+test('every interactive surface that hovers also transitions', () => {
+  /*
+   * `.ghost` -- 45 of the 48 buttons in the product -- changed three
+   * properties on hover with no transition, while its own link variant
+   * `a.ghost` and `.primary` both had one. The same visual control, faded in
+   * one form and snapping in the other.
+   */
+  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({
+    sel: m[1].trim().split('\n').pop().trim(),
+    body: m[2],
+  }));
+
+  const blocksFor = (base) =>
+    rules.filter((r) => r.sel.split(',').some((s) => s.trim().startsWith(base)));
+
+  const missing = [];
+  for (const base of ['.ghost', '.primary', '.cat', '.row', '.att-chip', '.palette-item',
+    '.snooze-opt', '.radar-item', '.suggest-item', '.outbox-item', '.snoozed-item', '.notice']) {
+    const blocks = blocksFor(base);
+    if (blocks.length === 0) continue;
+    const hovers = blocks.some((r) => r.sel.includes(':hover'));
+    const moves = blocks.some((r) => r.body.includes('transition'));
+    if (hovers && !moves) missing.push(base);
+  }
+  assert.deepEqual(missing, [], 'these change on hover with no transition');
+});
+
+test('read and unread text transitions colour but never weight', () => {
+  /*
+   * Read/unread is the most frequent visual change in the app and snapped.
+   * The fix must stay colour-only: font-weight cannot be interpolated, so
+   * transitioning it produces reflow jitter rather than a fade.
+   */
+  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  for (const sel of ['.r-subj', '.r-from']) {
+    const m = css.match(new RegExp(`\\n\\${sel} \\{([^}]*)\\}`));
+    assert.ok(m, `${sel} must have a base rule`);
+    assert.match(m[1], /transition:\s*color/, `${sel} must ease its colour`);
+    assert.doesNotMatch(m[1], /transition:[^;]*font-weight/, `${sel} must not animate weight`);
+  }
+});
+
+test('every rail list shares one entrance animation', () => {
+  /*
+   * The radar animated its rows in; outbox, snoozed, notices and the search
+   * suggestions did not. Same job, two behaviours.
+   *
+   * Parsed as a rule table rather than pattern-matched against the raw text --
+   * the first version of this test used a regex over `row-in var...` blocks
+   * and reported a false failure because it could not see a selector that had
+   * been reformatted across lines.
+   */
+  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const animated = new Set();
+  for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    if (!/animation:\s*row-in/.test(m[2])) continue;
+    for (const sel of m[1].split(',')) animated.add(sel.trim().split(/\s+/).pop());
+  }
+  for (const sel of ['.radar-item', '.outbox-item', '.snoozed-item', '.notice', '.suggest-item']) {
+    assert.ok(animated.has(sel), `${sel} must animate in like the radar`);
+  }
+});
+
+test('every overlay animates in', () => {
+  /*
+   * #help-box popped in while palette, compose, gate and menus all eased.
+   *
+   * Also parsed rather than regexed: the first version built a pattern from
+   * the selector string and could not match `.snooze-menu`, which is a class
+   * rather than an id -- it reported a surface that WAS animated as missing.
+   */
+  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const animated = new Set();
+  for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    if (!/animation:/.test(m[2])) continue;
+    for (const sel of m[1].split(',')) animated.add(sel.trim().split(/\s+/).pop());
+  }
+  for (const sel of ['#palette-box', '#compose', '#gate', '#help-box', '.snooze-menu']) {
+    assert.ok(animated.has(sel), `${sel} must ease in like its peers`);
+  }
+});
+
+test('a slow bulk action raises the busy state', () => {
+  /*
+   * The optimistic update hides the request: rows leave instantly and nothing
+   * says work is outstanding. `aria-busy` already drives the topbar sweep, so
+   * this reuses it rather than adding an indicator -- and clears in `finally`
+   * so the error path cannot strand it.
+   */
+  const src = read('src/app/app.js');
+  const fn = src.slice(src.indexOf('async function bulkAct'), src.indexOf('function decorate'));
+  assert.match(fn, /setBusy\(true\)/, 'a large batch must show it is working');
+  assert.match(fn, /finally\s*\{[^}]*setBusy\(false\)/s, 'and must clear it on every path');
+});

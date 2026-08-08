@@ -4605,6 +4605,22 @@ async function bulkAct(kind, explicitIds = null) {
 
   const { verb, add = [], remove = [] } = BULK_ACTIONS[kind];
 
+  /*
+   * A LONG BULK OPERATION HAS TO LOOK LIKE WORK.
+   *
+   * The optimistic update is so effective that it hides the request: the rows
+   * leave instantly, and then for a second or more over campus wifi nothing
+   * happens and nothing says anything is outstanding. A user who closes the
+   * tab in that window loses the operation.
+   *
+   * `aria-busy` already drives the topbar sweep used for sync, so this is the
+   * existing idiom applied to the operation with the largest blast radius --
+   * not a new indicator. Only for batches big enough to be slow: raising it
+   * for a two-message archive would be a flicker.
+   */
+  const slow = ids.length >= 10;
+  if (slow) setBusy(true);
+
   try {
     await send('BULK', { ids, add, remove });
   } catch (err) {
@@ -4616,6 +4632,10 @@ async function bulkAct(kind, explicitIds = null) {
     activity.record({ verb: `BULK_${kind.toUpperCase()}`, ids, actor: 'user', outcome: 'failed', error: err?.message });
     toast(`Could not ${kind}: ${err.message}`, { kind: 'error' });
     return;
+  } finally {
+    // `finally`, so an early return on the error path cannot strand the busy
+    // state and leave the topbar sweeping forever.
+    if (slow) setBusy(false);
   }
 
   activity.record({ verb: `BULK_${kind.toUpperCase()}`, ids, actor: 'user' });

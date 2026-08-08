@@ -516,6 +516,26 @@ a.ghost {
 }
 
 .ghost {
+  /*
+   * THE SAME TRANSITION `a.ghost` ALREADY HAD.
+   *
+   * `.ghost:hover` changes THREE properties -- colour, border-colour and
+   * background -- and had no transition, so every one of them snapped. This is
+   * the dominant control in the product: measured from the markup, 45 `.ghost`
+   * buttons against 3 `.primary`. Every toolbar action, every reader action,
+   * Cc, Bcc, Attach, Save draft, Template, Sign out.
+   *
+   * The drift is what makes it a defect rather than a preference: `a.ghost`
+   * and `button.ghost` are the same visual control -- one happens to be a link
+   * -- and one faded while the other flicked. Nobody chose that.
+   *
+   * Colour only. No transform: these sit in dense toolbars where a scale on
+   * hover would make the row feel unstable.
+   */
+  transition:
+    background-color var(--dur-instant) linear,
+    color var(--dur-instant) linear,
+    border-color var(--dur-instant) linear;
   background: var(--bg-raised);
   border: 1px solid var(--line);
   color: var(--fg-dim);
@@ -931,6 +951,22 @@ a.ghost {
 .r-from {
   font-size: var(--t-sm);
   /*
+   * COLOUR EASES, WEIGHT DOES NOT.  (See the matching rule on .r-subj.)
+   *
+   * Read/unread is the most frequent visual change in the product, and it
+   * changes five things at once -- row background, subject colour AND weight,
+   * sender colour AND weight, plus the category dot's scale. All of it landed
+   * in a single frame, so the row "blinked" into its read state rather than
+   * settling into it.
+   *
+   * Only `color` is transitioned. font-weight cannot be interpolated
+   * smoothly -- browsers snap between the two faces and reflow the text on the
+   * way -- so animating it produces jitter, not a fade. Colour carries the
+   * motion and the weight simply arrives underneath it, which reads as one
+   * settling change.
+   */
+  transition: color var(--dur-fast) linear;
+  /*
    * REGULAR, NOT MEDIUM, ON A READ ROW.
    *
    * Measured: read sender scored 6.93 and read subject 6.95 on Daylight --
@@ -970,6 +1006,8 @@ a.ghost {
 
 .r-subj {
   font-size: var(--t-md);
+  /* Colour only -- see the note on .r-from. */
+  transition: color var(--dur-fast) linear;
   color: var(--fg-dim);
   white-space: nowrap;
   overflow: hidden;
@@ -1320,8 +1358,31 @@ a.ghost {
  * Reuses the existing scale idiom rather than inventing a treatment.
  */
 .tag:active,
-.palette-item:active {
+.palette-item:active,
+.suggest-item:active,
+.outbox-item:active,
+.snoozed-item:active,
+.r-check:active {
   transform: scale(0.985);
+}
+
+/*
+ * `.suggest-item` is the one of these that matters most: accepting a
+ * suggestion runs a query and re-renders the whole list, so it has the longest
+ * gap between press and result and had nothing covering it. On a trackpad that
+ * gap is where an interface feels responsive or laggy -- hover says "this is
+ * clickable", :active says "I heard you", and without it a slow action reads
+ * as a missed click and gets clicked again.
+ *
+ * `.r-check` is the tick on every message row -- the entry point to every bulk
+ * operation, and a REPETITIVE gesture: ten or twenty rows in sequence. It is
+ * exactly where per-click acknowledgement compounds, and it was the only
+ * control in the app giving none. The row beneath it responds, but that is the
+ * row's feedback, not the tick's, and on a small target the difference is felt.
+ */
+.outbox-item:hover,
+.snoozed-item:hover {
+  background: var(--bg-sunken);
 }
 
 /*
@@ -1560,6 +1621,11 @@ a.ghost {
 }
 
 .snoozed-item {
+  /* Folded in here rather than a second `.snoozed-item` block: the
+     duplicate-selector guard correctly rejected defining it twice. */
+  transition:
+    background-color var(--dur-instant) linear,
+    transform var(--dur-fast) var(--ease-spring);
   display: flex;
   gap: var(--s-2);
   align-items: baseline;
@@ -1597,6 +1663,11 @@ a.ghost {
 }
 
 .outbox-item {
+  /* Press/hover feedback folded in here -- a second `.outbox-item` block is
+     what the duplicate-selector guard exists to reject. */
+  transition:
+    background-color var(--dur-instant) linear,
+    transform var(--dur-fast) var(--ease-spring);
   display: flex;
   flex-wrap: wrap;
   gap: var(--s-1) var(--s-2);
@@ -2706,14 +2777,26 @@ html[data-theme='contrast'] .row[aria-selected='true'] {
     transform: translate3d(-14px, 0, 0);
     max-height: 0;
   }
-}
-
-/*
- * The radar items get the same treatment, offset so the sidebar settles a
- * beat after the list. Layered timing is what makes an interface feel
- * composed rather than simultaneous.
+}/*
+ * ONE ENTRANCE FOR EVERY RAIL LIST.
+ *
+ * The radar animated its rows in; the four surfaces added in the wiring pass
+ * -- outbox, snoozed, notices and the search suggestions -- did not, so
+ * sections that do the same job appeared in two different ways.
+ *
+ * The outbox was the worst of them: it materialises BECAUSE the user just
+ * pressed Send, so it is the one case where the appearance is a direct answer
+ * to an action, and it arrived with no motion while the toast beside it sprang
+ * in.
+ *
+ * Reusing `row-in` rather than authoring anything new is the point -- the fix
+ * for drift is not a fifth animation.
  */
-#radar-list .radar-item {
+#radar-list .radar-item,
+#outbox-list .outbox-item,
+#snoozed-list .snoozed-item,
+#notices .notice,
+#search-suggest .suggest-item {
   animation: row-in var(--dur-base) var(--ease-out) both;
 }
 #radar-list .radar-item:nth-child(2) { animation-delay: 40ms; }
@@ -3714,6 +3797,13 @@ html[data-scheme='dark'] .snooze-menu {
 }
 
 #help-box {
+  /*
+   * Every other overlay in the app eases in -- palette, compose, gate, menus.
+   * This one appeared instantly, which read as a cruder surface, and it is the
+   * screen a new user is most likely to open first. Reuses `palette-in`, its
+   * closest analogue: a centred overlay opened by a keystroke.
+   */
+  animation: palette-in var(--dur-base) var(--ease-out) both;
   width: min(760px, 100%);
   max-height: 84vh;
   overflow: auto;
