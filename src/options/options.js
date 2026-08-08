@@ -21,6 +21,7 @@ function fmtEvery(ms) {
 
 import * as settings from '../app/settings.js';
 import * as bk from '../app/backup.js';
+import * as engine from '../app/rule-engine.js';
 
 /**
  * The client ID version 1 shipped with. Offered as a convenience because the
@@ -326,4 +327,151 @@ function fmtHold(sec) {
       file.value = '';
     }
   });
+})();
+
+
+/* ========================================================================== *
+ * RULES
+ * ========================================================================== *
+ *
+ * The editor lives on the options page and the ENGINE lives in the app, which
+ * is the right split: the app has the mailbox in memory, so a dry run costs
+ * nothing there and would cost a full sync here.
+ *
+ * The preview reads the message cache directly. That is a deliberate
+ * compromise -- the options page cannot ask the running tab for its store --
+ * and it is honest about it: the count says "of the N messages cached here".
+ */
+
+(function wireRules() {
+  const list = document.getElementById('rule-list');
+  const empty = document.getElementById('rule-empty');
+  const query = document.getElementById('rule-query');
+  const action = document.getElementById('rule-action');
+  const testBtn = document.getElementById('rule-test');
+  const addBtn = document.getElementById('rule-add');
+  const preview = document.getElementById('rule-preview');
+  if (!list || !query || !addBtn) return;
+
+  const say = (msg, bad = false) => {
+    preview.textContent = msg;
+    preview.dataset.bad = String(bad);
+  };
+
+  /** The locally cached messages, which is what a dry run can see from here. */
+  async function cachedMessages() {
+    try {
+      const { loadCache } = await import('../app/cache.js');
+      const blob = await loadCache();
+      return blob?.messages || [];
+    } catch {
+      return [];
+    }
+  }
+
+  async function render() {
+    const rules = await engine.loadRuleList();
+    empty.hidden = rules.length > 0;
+    list.replaceChildren();
+
+    for (const r of rules) {
+      const li = document.createElement('li');
+      li.className = 'rule-row';
+
+      const on = document.createElement('input');
+      on.type = 'checkbox';
+      on.checked = r.enabled;
+      on.setAttribute('aria-label', `Enable ${r.name}`);
+      on.addEventListener('change', async () => {
+        const all = await engine.loadRuleList();
+        await engine.saveRuleList(
+          all.map((x) => (x.id === r.id ? { ...x, enabled: on.checked } : x))
+        );
+      });
+
+      const text = document.createElement('span');
+      text.className = 'rule-text';
+      text.textContent = `${r.query} → ${r.actions.map((a) => a.type).join(', ')}`;
+
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'ghost small';
+      del.textContent = 'Remove';
+      del.addEventListener('click', async () => {
+        const all = await engine.loadRuleList();
+        await engine.saveRuleList(all.filter((x) => x.id !== r.id));
+        render();
+      });
+
+      li.append(on, text, del);
+      list.appendChild(li);
+    }
+  }
+
+  /** Build a candidate rule from the form, without saving it. */
+  function candidate() {
+    return engine.makeRule({
+      name: query.value.trim(),
+      query: query.value.trim(),
+      actions: [{ type: action.value }],
+    });
+  }
+
+  async function dryRun() {
+    const rule = candidate();
+    if (!rule) {
+      say('A rule needs a condition and an action.', true);
+      return null;
+    }
+    const check = engine.validateRule(rule);
+    if (!check.ok) {
+      say(check.reason, true);
+      return null;
+    }
+
+    const msgs = await cachedMessages();
+    const byId = new Map(msgs.map((m) => [m.id, m]));
+    const out = engine.dryRun(rule, [...byId.keys()], (id) => byId.get(id));
+
+    if (out.count === 0) {
+      say(`Matches nothing among the ${msgs.length} messages cached here.`);
+    } else {
+      const sample = out.sample.slice(0, 3).map((x) => x.subject).filter(Boolean).join(' · ');
+      say(
+        `${out.warning ? out.warning + ' ' : ''}` +
+        `Would ${action.value} ${out.count} of ${msgs.length} cached messages` +
+        (sample ? `: ${sample}` : '')
+      );
+    }
+    return { rule, out };
+  }
+
+  testBtn?.addEventListener('click', dryRun);
+
+  addBtn.addEventListener('click', async () => {
+    /*
+     * SAVING RUNS THE DRY RUN FIRST, ALWAYS.
+     *
+     * Not as a convenience -- as the gate. A rule cannot be saved without its
+     * effect having been computed and shown, which is the whole argument for
+     * shipping the two together.
+     */
+    const result = await dryRun();
+    if (!result) return;
+
+    if (result.out.destructive && result.out.count > 0) {
+      if (!confirm(`This will ${action.value} ${result.out.count} messages now and on arrival. Continue?`)) {
+        say('Not saved.');
+        return;
+      }
+    }
+
+    const all = await engine.loadRuleList();
+    await engine.saveRuleList([...all, result.rule]);
+    query.value = '';
+    say('Rule saved. It applies to mail as it arrives.');
+    render();
+  });
+
+  render();
 })();

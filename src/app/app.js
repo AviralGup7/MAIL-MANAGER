@@ -41,6 +41,7 @@ import * as activity from './activity.js';
 import * as outbox from './outbox.js';
 import * as suggest from './suggest.js';
 import * as lanes from './lanes.js';
+import * as engine from './rule-engine.js';
 import * as followups from './followups.js';
 import * as deadlineStore from './deadline-store.js';
 import * as myCourses from './my-courses.js';
@@ -2605,6 +2606,9 @@ function ingest(messages) {
   }
   store.upsertMany(records); // one batch -> one notification -> one frame
   autoArchive(records);
+  // User rules run after the category auto-archive, so a hand-written rule can
+  // act on anything the category sweep left behind.
+  applyRules(records);
 }
 
 /**
@@ -2617,6 +2621,60 @@ function ingest(messages) {
  * Only ever touches UNREAD, newly-arrived mail: re-archiving something the
  * user has already dealt with would fight them.
  */
+/**
+ * Run the user's rules over newly-arrived mail.
+ *
+ * At INGEST, so a rule affects what the user sees on arrival rather than after
+ * a manual sweep. The plan is batched per verb by `batchPlan`, so twelve
+ * matching messages are one request and one undo entry, not twelve.
+ *
+ * Every application is logged with actor 'rule' and the rule's name, which is
+ * what makes the activity log able to answer "why did this get archived".
+ */
+async function applyRules(records) {
+  if (automationRules.length === 0 || records.length === 0) return;
+
+  const { batches, fired } = engine.planFor(automationRules, records);
+  if (batches.length === 0) return;
+
+  const named = new Map(automationRules.map((r) => [r.id, r.name]));
+
+  for (const batch of batches) {
+    const spec = BULK_ACTIONS[batch.type === 'markRead' ? 'read' : batch.type];
+    if (!spec) continue;
+    try {
+      await send('BULK', { ids: batch.ids, add: spec.add || [], remove: spec.remove || [] });
+      store.batch(() => {
+        for (const id of batch.ids) {
+          if (batch.type === 'archive') store.remove(id);
+          else if (batch.type === 'markRead') store.patch(id, { unread: false });
+          else if (batch.type === 'star') store.patch(id, { starred: true });
+        }
+      });
+      const who = Object.keys(fired).map((id) => named.get(id)).filter(Boolean)[0];
+      activity.record({
+        verb: `RULE_${batch.type.toUpperCase()}`,
+        ids: batch.ids,
+        actor: 'rule',
+        detail: who,
+      });
+    } catch (err) {
+      /*
+       * A failed rule is reported and then LEFT ALONE. Retrying automation the
+       * user cannot see would be the worst kind of surprise, and the log entry
+       * is what makes the failure findable.
+       */
+      activity.record({
+        verb: `RULE_${batch.type.toUpperCase()}`,
+        ids: batch.ids,
+        actor: 'rule',
+        outcome: 'failed',
+        error: err?.message,
+      });
+    }
+  }
+}
+
 function autoArchive(records) {
   if (!rules.autoArchive.length) return;
   const targets = new Set(rules.autoArchive);
@@ -3605,6 +3663,8 @@ let followupList = [];
 let deadlineOverrides = {};
 /** The user's courses. Empty until they pick, which means no chips -- correct. */
 let enrolment = [];
+/** User-authored automation. Empty until the options page writes some. */
+let automationRules = [];
 
 /**
  * "Remind me if nobody replies."
@@ -4830,6 +4890,7 @@ async function start() {
   // to be in memory before the field is first focused.
   suggest.loadHistory().then((h) => { queryHistory = h; });
   renderSnoozed();
+  engine.loadRuleList().then((r) => { automationRules = r; });
   myCourses.loadEnrolment().then((list) => {
     enrolment = list;
     if (list.length) renderList();

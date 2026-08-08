@@ -1418,6 +1418,56 @@ a.ghost {
   flex: none;
 }
 
+#rule-list {
+  list-style: none;
+  margin: 0 0 var(--s-3);
+  padding: 0;
+}
+
+.rule-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.rule-text {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--t-sm);
+  /*
+   * The same stack kbd uses.
+   *
+   * My first attempt referenced a mono-font custom property that does not
+   * exist. The theme-token guard rejected it rather than letting an undefined
+   * property ship as an empty value -- and it caught the name even inside this
+   * comment, since it scans the file as text. Reusing the literal keeps one
+   * mono stack in the file rather than inventing a token for two uses.
+   */
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--fg-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * The dry-run readout. Neutral by default and danger-toned only when the rule
+ * is invalid, so "this matches 312 messages" reads as information and "that
+ * condition matches everything" reads as a stop.
+ */
+#rule-preview,
+#backup-status {
+  font-size: var(--t-sm);
+  color: var(--fg-dim);
+  min-height: 1.4em;
+}
+
+#rule-preview[data-bad='true'],
+#backup-status[data-bad='true'] {
+  color: var(--danger);
+}
+
 /*
  * A lane header.
  *

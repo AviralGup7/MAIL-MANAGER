@@ -114,6 +114,40 @@
     </fieldset>
 
     <fieldset>
+      <legend>Rules</legend>
+      <p class="hint">
+        A condition in the search language, and what to do when it matches.
+        Anything you can type in the search box works here — including
+        <code>-from:bot</code> and <code>(a OR b)</code>.
+      </p>
+
+      <ul id="rule-list"></ul>
+      <p id="rule-empty" class="hint">No rules yet.</p>
+
+      <div class="row">
+        <input id="rule-query" type="text" placeholder="category:clubs -is:starred"
+               aria-label="Rule condition" autocomplete="off" spellcheck="false" />
+        <select id="rule-action" aria-label="Action">
+          <option value="archive">Archive it</option>
+          <option value="star">Star it</option>
+          <option value="markRead">Mark it read</option>
+        </select>
+        <button id="rule-test" class="ghost" type="button">Test</button>
+        <button id="rule-add" class="ghost" type="button">Add rule</button>
+      </div>
+
+      <!--
+        THE DRY RUN IS NOT OPTIONAL.
+
+        A rule engine without one is "a feature that silently archives mail
+        from a Dean". The count and a sample of what WOULD be touched are shown
+        before anything can be saved, and the same matcher produces both, so the
+        preview and the real run cannot disagree.
+      -->
+      <div id="rule-preview" role="alert"></div>
+    </fieldset>
+
+    <fieldset>
       <legend>Backup</legend>
       <p class="hint">
         Everything you have taught this extension — rules, corrections, saved

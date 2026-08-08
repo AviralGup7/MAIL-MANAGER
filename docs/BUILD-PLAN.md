@@ -134,3 +134,50 @@ logic and wiring land in different sessions and the suite is green either way.
 5. `lanes.js` + `suggest.js` — both are list/search surfaces.
 6. `rule-engine.js` — needs an editor, and must ship with its dry run.
 7. `backup.js` — needs two buttons in options.
+
+
+## RESOLVED — all thirteen modules are wired
+
+Verified by grepping the import graph, not asserted:
+
+```
+snippet         app.js
+direct          app.js, lanes.js
+lanes           app.js            (behind the `lanes` setting)
+suggest         app.js
+templates       compose.js
+followups       app.js
+my-courses      app.js
+notices         app.js
+deadline-store  app.js
+rule-engine     app.js, options.js
+outbox          app.js, compose.js
+activity        app.js
+backup          options.js
+```
+
+### What a user can now actually do
+
+| Surface | Where |
+|---|---|
+| Undo send | toast after Send, window configurable 0–30s |
+| Outbox with retry | rail section, appears only when non-empty |
+| Templates | compose toolbar, caret lands on the first `{{gap}}` |
+| Activity log | written from all three mutation paths |
+| Search suggestions | dropdown under the search field |
+| Snoozed | rail section with a Wake button |
+| Follow-ups | reader toolbar, surfaces in the radar |
+| Deadline correction | reader toolbar, overrides beat the parser |
+| Course chips | message rows, scoped to enrolment |
+| Class-change cards | pinned above the list, read-only |
+| Triage lanes | opt-in setting |
+| Rules | options page, **dry run runs before every save** |
+| Backup | options page, with a change preview |
+
+### The integration suite is now two files
+
+`app.integration.test.mjs` + `app.integration2.test.mjs`. Not organisation —
+memory. Node runs each test *file* in its own process, so splitting halves the
+peak live set. Measured before splitting: a 900MB heap died at 111 tests,
+1100MB at 143, 1400MB at ~190. That is growth, not GC pressure, so a larger
+flag was not the answer.
