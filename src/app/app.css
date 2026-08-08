@@ -80,6 +80,19 @@
   --track-wide: 0.4px;
   --track-normal: 0;
   --track-tight: -0.01em;
+  /*
+   * Completes the scale rather than extending it.
+   *
+   * Seven rules carried hardcoded letter-spacing while font-size and
+   * line-height were 100% tokenised -- this was the one typographic axis whose
+   * migration never finished. One of them set `0.4px`, which IS --track-wide
+   * written literally, by someone who did not know the token existed.
+   *
+   * The rest sat between --track-normal (0) and --track-wide (0.4px), so
+   * forcing them onto an existing step would have changed how they look. A
+   * scale missing its middle step is an incomplete scale.
+   */
+  --track-tiny: 0.02em;
 
   /* --- SPACE --------------------------------------------------------------
    * A 4px grid. Every margin, padding and gap in the file resolves to one of
@@ -234,6 +247,38 @@
   --shadow: var(--shadow-md);
 
   /*
+   * DIRECTIONAL EDGE SHADOWS.
+   *
+   * The three shadows above are omnidirectional, which is right for something
+   * floating. Structural chrome is different: a topbar casts DOWNWARD onto the
+   * list and a list pane casts RIGHTWARD onto the reader, and that direction is
+   * doing real work -- it is what makes the panes read as stacked rather than
+   * merely adjacent.
+   *
+   * #topbar and #listpane each carried a bespoke two-part shadow AND a second
+   * hardcoded override under [data-scheme='dark'] -- four rgba values
+   * maintained by hand, and the only place in the stylesheet where a theme was
+   * forked manually. The gap was in the token set, not in the components: the
+   * system had no way to say "an edge, in a direction".
+   *
+   * The hairline is part of the token. An edge shadow without its line reads
+   * as a smudge.
+   */
+  --shadow-edge-down: 0 1px 0 var(--line), 0 1px 3px rgba(0, 0, 0, 0.04);
+  --shadow-edge-right: 1px 0 0 var(--line), 2px 0 8px rgba(0, 0, 0, 0.03);
+
+  /*
+   * A hairline of light along a raised surface's top edge. On dark themes this
+   * is what stops a floating panel reading as a hole punched in the page; on
+   * light themes it is invisible and correctly absent, so the token is empty
+   * rather than the rule being duplicated per scheme.
+   *
+   * Found by the hand-forked-theme guard written for #topbar and #listpane --
+   * .snooze-menu had the same shape of override and I had not spotted it.
+   */
+  --shadow-rim: 0 0 0 0 transparent;
+
+  /*
    * ELEVATION SCALE.
    *
    * Z-index was eight magic numbers assigned per component, with nothing
@@ -271,6 +316,10 @@ html[data-scheme='dark'] {
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
   --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.45), 0 8px 24px rgba(0, 0, 0, 0.45);
   --shadow-lg: 0 8px 20px rgba(0, 0, 0, 0.5), 0 24px 56px rgba(0, 0, 0, 0.55);
+  /* Deeper on dark, exactly as the other three are. */
+  --shadow-edge-down: 0 1px 0 var(--line), 0 2px 8px rgba(0, 0, 0, 0.28);
+  --shadow-edge-right: 1px 0 0 var(--line), 3px 0 14px rgba(0, 0, 0, 0.24);
+  --shadow-rim: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 * {
@@ -355,7 +404,7 @@ kbd {
 }
 #brand-text strong {
   font-size: var(--t-md);
-  letter-spacing: 0.2px;
+  letter-spacing: var(--track-tiny);
 }
 #account {
   color: var(--fg-faint);
@@ -1842,7 +1891,7 @@ a.ghost {
   color: var(--fg-faint);
   font-size: var(--t-xs);
   text-transform: uppercase;
-  letter-spacing: 0.4px;
+  letter-spacing: var(--track-wide);
   margin-bottom: var(--s-1);
 }
 #r-timetable .r-tt-line {
@@ -2447,7 +2496,7 @@ html[data-theme='contrast'] .row[aria-selected='true'] {
 .radar-when {
   font-size: var(--t-xs);
   font-weight: var(--w-bold);
-  letter-spacing: 0.2px;
+  letter-spacing: var(--track-tiny);
 }
 .radar-what {
   font-size: var(--t-sm);
@@ -3012,9 +3061,7 @@ svg {
  * surface from a flat one -- and it costs one composited layer, not a repaint.
  */
 #topbar {
-  box-shadow:
-    0 1px 0 var(--line),
-    0 1px 3px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-edge-down);
   border-bottom: 0;
 }
 
@@ -3022,21 +3069,8 @@ svg {
   /* The divider between list and reader gets the same treatment, so the two
      panes read as adjacent sheets rather than as one box with a line in it. */
   border-right: 0;
-  box-shadow:
-    1px 0 0 var(--line),
-    2px 0 8px rgba(0, 0, 0, 0.03);
+  box-shadow: var(--shadow-edge-right);
   z-index: var(--z-base);
-}
-
-html[data-scheme='dark'] #topbar {
-  box-shadow:
-    0 1px 0 var(--line),
-    0 2px 8px rgba(0, 0, 0, 0.28);
-}
-html[data-scheme='dark'] #listpane {
-  box-shadow:
-    1px 0 0 var(--line),
-    3px 0 14px rgba(0, 0, 0, 0.24);
 }
 
 /*
@@ -3050,12 +3084,6 @@ html[data-scheme='dark'] #listpane {
 html[data-scheme='dark'] #compose,
 html[data-scheme='dark'] #palette-box,
 html[data-scheme='dark'] #gate-card,
-html[data-scheme='dark'] .snooze-menu {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.05),
-    var(--shadow-lg);
-}
-
 /* ------------------------------------------------ degraded-mode banner -- */
 
 /*
@@ -3826,7 +3854,7 @@ html[data-scheme='dark'] .snooze-menu {
   background: var(--bg-raised);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-rim), var(--shadow-lg);
   animation: menu-in var(--dur-fast) var(--ease-out) both;
 }
 
@@ -3942,7 +3970,7 @@ html[data-scheme='dark'] .snooze-menu {
   font-size: var(--t-xs);
   font-weight: var(--w-semi);
   text-transform: uppercase;
-  letter-spacing: 0.07em;
+  letter-spacing: var(--track-wide);
   color: var(--fg-dim);
 }
 
@@ -4065,7 +4093,21 @@ kbd {
   background: var(--bg-raised);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.28);
+  /*
+   * `--shadow-lg`, like the other seven overlays.
+   *
+   * This was `0 24px 64px rgba(0, 0, 0, 0.28)` -- the only overlay in the app
+   * with its own shadow, and the only one that did not participate in the
+   * theme system. `--shadow-lg` is redefined per scheme (rgba(16,24,40,...) on
+   * light, near-black on dark); a hardcoded near-black cast the DARK shadow on
+   * the four light themes, which is why this panel read as sitting higher than
+   * every other surface and slightly dirty against a pale background.
+   *
+   * It is also the largest academic surface, so it was the one place the
+   * elevation language visibly broke -- exactly the "academic screens look
+   * like a different app" failure the product identity rule warns about.
+   */
+  box-shadow: var(--shadow-lg);
   animation: tt-in var(--dur-base) var(--ease-out) both;
 }
 @keyframes tt-in {
@@ -4127,7 +4169,7 @@ kbd {
   color: var(--fg-dim);
   margin: 0 0 var(--s-2);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--track-tiny);
 }
 
 /* --- search ------------------------------------------------------------- */
@@ -4354,7 +4396,7 @@ kbd {
   font-weight: var(--w-semi);
   color: var(--fg-faint);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--track-tiny);
   padding-bottom: var(--s-1);
   border-bottom: 1px solid var(--line);
 }
@@ -4691,7 +4733,7 @@ kbd {
 .tt-prov-field {
   color: var(--fg-faint);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: var(--track-tiny);
 }
 .tt-prov-value {
   font-size: var(--t-sm);

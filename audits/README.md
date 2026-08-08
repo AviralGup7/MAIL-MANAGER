@@ -225,3 +225,24 @@ Fixed with four exit keyframes and one shared helper, but only after two wrong
 attempts that the test suite caught: deferring a menu's removal made a closed
 menu still findable in the DOM, and deferring `hidden` made a closed overlay
 report itself as open. Both times the tests were encoding a real contract.
+
+
+## Audit 25 — design language consistency
+
+Every value-bearing CSS property extracted as a frequency table and compared
+against the token that already exists for it. A finding required a hardcoded
+value *and* a peer using a token for the same job.
+
+The language turned out to be coherent — `font-size` 120/120 tokenised,
+`line-height` 13/13, radius and spacing complete, one button system, one menu
+primitive. What it had was **four unfinished migrations**: `letter-spacing`
+(9/16), shadows (12/22), hand-written icon strokes spanning 1.00–1.60px
+effective, and `.tt-panel`, the only overlay of eight that opted out of the
+theme system and therefore cast a dark shadow on the four light themes.
+
+Both findings with real user-visible consequences were on academic surfaces —
+the identity rule failing in the direction it warns about.
+
+A guard written for one finding immediately caught a fifth instance
+(`.snooze-menu` hand-forking its dark theme) that I had missed by looking at
+shadows and theme overrides separately rather than at their intersection.

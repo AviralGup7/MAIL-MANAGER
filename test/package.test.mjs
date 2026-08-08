@@ -2523,3 +2523,106 @@ test('no animation is declared twice with different easings', () => {
     }
   }
 });
+
+
+/* ==========================================================================
+ * DESIGN LANGUAGE CONSISTENCY (audit 25)
+ *
+ * Migration guards. Each pins a migration that had stopped at ~90%, so the
+ * next component cannot land outside the system.
+ * ========================================================================== */
+
+test('every overlay uses the same elevation token', () => {
+  /*
+   * `.tt-panel` was the only overlay of eight with its own shadow, and the
+   * only one that did not participate in the theme system: --shadow-lg is
+   * redefined per scheme, so a hardcoded near-black cast the DARK shadow on
+   * the four light themes. The largest academic surface was the one place the
+   * elevation language visibly broke.
+   */
+  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
+  const shadowOf = (want) => {
+    let got = null;
+    for (const m of rules) {
+      const sel = m[1].trim().split('\n').pop().trim();
+      if (!sel.split(',').map((x) => x.trim()).includes(want)) continue;
+      const d = m[2].match(/box-shadow:\s*([^;]+)/);
+      if (d) got = d[1].trim();
+    }
+    return got;
+  };
+  for (const sel of ['#palette-box', '#compose', '#help-box', '.snooze-menu',
+    '#gate-card', '.ac-list', '.tt-panel', '#toast']) {
+    const s = shadowOf(sel);
+    if (s === null) continue;
+    assert.match(s, /var\(--shadow/, `${sel} must use an elevation token`);
+  }
+});
+
+test('no shadow is hardcoded outside the token definitions', () => {
+  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const bad = [];
+  for (const m of css.matchAll(/box-shadow:\s*([^;]+);/g)) {
+    const v = m[1].trim();
+    if (v.includes('var(--') || v === 'none') continue;
+    // The theme swatch ring is deliberately neutral grey so it reads on any
+    // colour, which no theme token can express.
+    if (v.includes('rgba(128, 128, 128')) continue;
+    bad.push(v.replace(/\s+/g, ' ').slice(0, 60));
+  }
+  assert.deepEqual(bad, [], 'these shadows bypass the elevation tokens');
+});
+
+test('no theme is forked by hand in the stylesheet', () => {
+  /*
+   * #topbar and #listpane each carried a bespoke shadow AND a second
+   * hardcoded override under [data-scheme='dark'] -- four rgba values
+   * maintained by hand. The gap was in the token set: the system had three
+   * omnidirectional shadows and no directional ones, and structural chrome
+   * needs direction to read as stacked rather than adjacent.
+   */
+  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const forks = [];
+  for (const m of css.matchAll(/html\[data-scheme='dark'\]\s+([^{,]+)\{([^{}]*)\}/g)) {
+    if (/rgba\(/.test(m[2])) forks.push(m[1].trim());
+  }
+  assert.deepEqual(forks, [], 'these components hand-fork their dark theme');
+});
+
+test('letter-spacing comes from the tracking scale', () => {
+  // The one typographic axis whose migration never finished: font-size and
+  // line-height were 100% tokenised while seven letter-spacing values were
+  // literals -- one of them `0.4px`, which IS --track-wide written out.
+  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const bad = [...css.matchAll(/letter-spacing:\s*([^;]+);/g)]
+    .map((m) => m[1].trim())
+    .filter((v) => !v.startsWith('var(--track'));
+  assert.deepEqual(bad, [], 'these bypass the tracking scale');
+});
+
+test('hand-written icons match the generated icon weight optically', () => {
+  /*
+   * Stroke weight is felt in RENDERED pixels, not in the attribute:
+   * effective = stroke-width x (rendered / viewBox).
+   *
+   * icons.js is internally perfect -- one stroke, one viewBox -- and renders
+   * at 1.20px. The hand-written SVGs in app.html spanned 1.00px to 1.60px, a
+   * 60% range across icons meant to be one family. The two empty states were
+   * the worst pair: same job, same viewBox, 28% apart.
+   */
+  const html = read('app.html');
+  const off = [];
+  for (const m of html.matchAll(/<svg([^>]*)>([\s\S]{0,500}?)<\/svg>/g)) {
+    const attrs = m[1].replace(/\s+/g, ' ');
+    const vb = attrs.match(/viewBox="0 0 (\d+)/);
+    if (!vb) continue;
+    const w = attrs.match(/width="(\d+)"/);
+    const rendered = w ? Number(w[1]) : Number(vb[1]);
+    for (const sw of new Set([...(attrs + ' ' + m[2]).matchAll(/stroke-width="([\d.]+)"/g)].map((x) => x[1]))) {
+      const eff = Number(sw) * rendered / Number(vb[1]);
+      if (Math.abs(eff - 1.2) > 0.15) off.push(`${eff.toFixed(2)}px (sw=${sw}, ${rendered}/${vb[1]})`);
+    }
+  }
+  assert.deepEqual(off, [], 'these icons are optically off the 1.20px family weight');
+});
