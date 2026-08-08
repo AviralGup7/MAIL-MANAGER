@@ -9,6 +9,7 @@
 
 import { buildReply } from './query.js';
 import { openMenu } from './menu.js';
+import { middleTruncate } from './icons.js';
 import { closeWithMotion, cancelExit } from './layers.js';
 import * as outbox from './outbox.js';
 import * as templates from './templates.js';
@@ -214,7 +215,9 @@ function renderFiles() {
 
     const name = document.createElement('span');
     name.className = 'c-file-name';
-    name.textContent = f.filename;
+    // See middleTruncate: end-truncation would hide the extension, which is
+    // the part that says whether this is the right file.
+    name.textContent = middleTruncate(f.filename);
     name.title = `${f.filename} · ${fmtBytes(f.size)}`;
 
     const size = document.createElement('span');

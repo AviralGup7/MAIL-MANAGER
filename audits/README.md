@@ -246,3 +246,27 @@ the identity rule failing in the direction it warns about.
 A guard written for one finding immediately caught a fifth instance
 (`.snooze-menu` hand-forking its dark theme) that I had missed by looking at
 shadows and theme overrides separately rather than at their intersection.
+
+
+## Audit 26 — premium feel
+
+Craftsmanship rather than polish. After twenty-five audits the type scale,
+spacing rhythm, motion system and token compliance were already fixed, so this
+pass looked where none of the others had: at **what happens when real content
+meets the layout**.
+
+The finding was that **seven `text-overflow: ellipsis` declarations could never
+fire** — flex children with no `min-width: 0`, which means they grow past their
+container instead of truncating. The symptom is a deadline title shoving the
+date off the edge of the rail: the layout losing control of its own content,
+which is the loudest "unfinished" signal a UI can emit. Five components had the
+pattern right and seven did not.
+
+Also: three sender-controlled strings in the reader (`Subject:`, `From:`, a
+filename) had no overflow defence at all; `user-select` appeared zero times, so
+dragging across the message list smeared selection highlight over the UI; and
+filenames truncated at the end, hiding the extension — the one part that says
+whether it is the file you wanted.
+
+The reading surface, by contrast, was already excellent: 15px/1.65 at a 68ch
+measure with a written rationale, constrained images, `pre-wrap`, capped tables.

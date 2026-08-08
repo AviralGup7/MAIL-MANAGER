@@ -28,7 +28,7 @@ import { Store } from './store.js';
 import { loadCache, saveCache, clearCache, createSaver, CACHE_MAX } from './cache.js';
 import { sanitizeHtml, escapeHtml } from './sanitize.js';
 import { THEMES, applyTheme, getTheme, DEFAULT_THEME } from './themes.js';
-import { icon, setIcon } from './icons.js';
+import { icon, setIcon, middleTruncate } from './icons.js';
 import { Selection, selectionLabel } from './selection.js';
 import { loadViews, saveView, removeView } from './views.js';
 import { extractDeadline, relativeLabel, urgency } from './deadlines.js';
@@ -1880,7 +1880,9 @@ function renderAttachments(body) {
 
     const name = document.createElement('span');
     name.className = 'att-name';
-    name.textContent = a.filename;
+    // Middle-truncated so the extension survives; the chip's `title` above
+    // carries the full name, so nothing is lost.
+    name.textContent = middleTruncate(a.filename);
 
     const size = document.createElement('span');
     size.className = 'att-size';

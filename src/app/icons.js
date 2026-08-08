@@ -97,3 +97,37 @@ export function setIcon(el, name, opts) {
 }
 
 export const ICON_NAMES = Object.keys(PATHS);
+
+/**
+ * Shorten a filename from the MIDDLE, keeping the extension visible.
+ *
+ * CSS can only truncate at the end, which removes the highest-information part
+ * of a filename. "Comprehensive_Examination_Timetable_Semester_II_FINAL.pdf"
+ * becomes "Comprehensive_Examination_Time…" -- and on institutional mail,
+ * where filenames are long, formulaic and differ only near the end, that
+ * strips the discriminating information from every chip on screen.
+ *
+ * Finder, Mail.app and Slack all middle-truncate for this reason. Head and
+ * tail both survive: "Comprehensive_Exam…_FINAL.pdf".
+ *
+ * Callers still set the full name as a `title`, so nothing is lost.
+ *
+ * @param {string} name
+ * @param {number} [max] characters to keep before eliding
+ */
+export function middleTruncate(name, max = 34) {
+  const s = String(name || '');
+  if (s.length <= max) return s;
+
+  /*
+   * The tail is the extension plus enough of the stem to disambiguate. Sized
+   * from the actual extension rather than fixed, so ".pdf" and ".pptx" both
+   * survive intact instead of one of them losing a character.
+   */
+  const dot = s.lastIndexOf('.');
+  const ext = dot > 0 && s.length - dot <= 8 ? s.slice(dot) : '';
+  const tail = Math.min(12, ext.length + 6);
+  const head = Math.max(4, max - tail - 1);
+
+  return `${s.slice(0, head)}…${s.slice(-tail)}`;
+}

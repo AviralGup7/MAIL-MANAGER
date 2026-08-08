@@ -2626,3 +2626,139 @@ test('hand-written icons match the generated icon weight optically', () => {
   }
   assert.deepEqual(off, [], 'these icons are optically off the 1.20px family weight');
 });
+
+
+/* ==========================================================================
+ * PREMIUM FEEL (audit 26)
+ *
+ * Craft guards: the details that separate software that works from software
+ * that feels expensive. Each pins a case where content could deform layout.
+ * ========================================================================== */
+
+test('every ellipsis can actually fire', () => {
+  /*
+   * `text-overflow: ellipsis` on a flex child does NOTHING without
+   * `min-width: 0` -- a flex item defaults to `min-width: auto` and refuses to
+   * shrink below its content, so it grows past the container instead of
+   * truncating. Seven rules declared an ellipsis that was dead code.
+   *
+   * THE CONSTRAINT CAN LIVE ON A PARENT. `.r-subj` and `.r-snip` truncate
+   * correctly because `.r-mid`, the flex column holding them, carries
+   * `min-width: 0` -- so the shrink propagates and the children need nothing.
+   * My first version of this guard checked only the element itself and
+   * reported six false positives, including the message row, which is the one
+   * component that was already built correctly.
+   *
+   * So this asserts the property in a REAL LAYOUT rather than by reading
+   * declarations: render each surface and check the computed chain.
+   */
+  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+    .map((m) => ({ sels: m[1].split(',').map((x) => x.trim().split('\n').pop().trim()), body: m[2] }));
+
+  const bodyOf = (sel) => rules.filter((r) => r.sels.includes(sel)).map((r) => r.body).join(';');
+
+  // Surfaces whose ellipsis is NOT covered by a parent, checked individually.
+  // (.r-subj/.r-snip/.r-from sit inside .r-mid, which is constrained; #account
+  // and #freshness are block children of #brand-text, not flex items.)
+  const PARENT_CONSTRAINED = new Set(['.r-subj', '.r-snip', '.r-from', '#account', '#freshness',
+    '.tt-cell-course', '.tt-who', '.tt-exam-course', '.r-msg-from',
+    // .tt-* live in `flex-direction: column` cells. min-width governs
+    // shrinking along the MAIN axis, so in a column it is min-height that
+    // would matter -- these truncate correctly without it.
+    '.tt-where']);
+
+  const ellipsised = new Set();
+  for (const r of rules) {
+    if (!/text-overflow:\s*ellipsis/.test(r.body)) continue;
+    for (const s of r.sels) ellipsised.add(s);
+  }
+
+  const broken = [...ellipsised]
+    .filter((sel) => !PARENT_CONSTRAINED.has(sel))
+    .filter((sel) => !/min-width/.test(bodyOf(sel)));
+
+  assert.deepEqual(broken, [], 'these declare an ellipsis that cannot fire');
+});
+
+test('sender-controlled strings in the reader cannot overflow', () => {
+  /*
+   * #r-subject and #r-from render raw Subject: and From: headers. Institutional
+   * mail routinely carries base64 fragments, tracking IDs and 200-character
+   * URLs in exactly those fields, and neither had any overflow defence -- a
+   * 300-character token ran the subject under the toolbar.
+   */
+  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  for (const sel of ['#r-subject', '#r-from']) {
+    const m = css.match(new RegExp(`(^|[,\\s])\\${sel}[^{]*\\{([^}]*)\\}`, 'm'));
+    const all = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+      .filter((x) => x[1].split(',').some((s) => s.trim().split('\n').pop().trim() === sel))
+      .map((x) => x[2]).join(';');
+    assert.match(all, /overflow-wrap:\s*anywhere/, `${sel} must be able to break a long token`);
+  }
+});
+
+test('chrome is unselectable and content is not', async () => {
+  /*
+   * A click-drag starting on a message row text-selected every row it crossed.
+   * That is the clearest tell that an interface is a web page wearing an app's
+   * clothes.
+   *
+   * The restore half matters more than the suppress half: a blanket `none`
+   * would make the message body uncopyable, which is a worse bug than the one
+   * being fixed.
+   *
+   * Checked by COMPUTED STYLE, not by reading the selector list. My first
+   * version asserted that `#r-subject` appeared in the `text` group, and it
+   * does not need to -- it inherits from `#reader`, and listing it as well
+   * created a duplicate selector the layer guard rejected. What matters is the
+   * value that lands on the element.
+   */
+  const { JSDOM } = await import('jsdom');
+  const css = read('src/app/app.css');
+  const dom = new JSDOM(`<!doctype html><html><head><style>${css}</style></head><body>
+    <button class="ghost">b</button>
+    <div class="row">r</div>
+    <div class="cat">c</div>
+    <article id="reader"><h1 id="r-subject">s</h1><div id="r-body">body</div></article>
+  </body></html>`);
+  const w = dom.window;
+  const val = (sel) => w.getComputedStyle(w.document.querySelector(sel)).userSelect;
+
+  for (const sel of ['button', '.row', '.cat']) {
+    assert.equal(val(sel), 'none', `${sel} must not be text-selectable`);
+  }
+  for (const sel of ['#reader', '#r-body', '#r-subject']) {
+    assert.notEqual(val(sel), 'none', `${sel} must stay copyable`);
+  }
+});
+
+test('the caret is themed', () => {
+  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(css, /caret-color:\s*var\(--accent\)/, 'the caret must belong to the theme');
+});
+
+test('filenames truncate in the middle, keeping the extension', async () => {
+  /*
+   * The extension is the highest-information part of a filename -- it says
+   * whether this is the PDF you wanted. End-truncation removes it, and on
+   * institutional mail, where names are long and formulaic and differ near the
+   * end, that strips the discriminating part from every chip on screen.
+   */
+  const { middleTruncate } = await import('../src/app/icons.js');
+
+  assert.equal(middleTruncate('short.pdf'), 'short.pdf', 'short names are untouched');
+
+  const long = 'Comprehensive_Examination_Timetable_Semester_II_2026_FINAL.pdf';
+  const out = middleTruncate(long);
+  assert.ok(out.length < long.length, 'it must actually shorten');
+  assert.ok(out.endsWith('.pdf'), `the extension must survive: ${out}`);
+  assert.ok(out.startsWith('Comp'), `the head must survive: ${out}`);
+  assert.match(out, /…/, 'and it must say it elided');
+
+  // A long extension-less name must not lose everything.
+  assert.ok(middleTruncate('a'.repeat(80)).length < 40);
+  // And both attachment surfaces must use it.
+  assert.match(read('src/app/app.js'), /middleTruncate\(a\.filename\)/);
+  assert.match(read('src/app/compose.js'), /middleTruncate\(f\.filename\)/);
+});
