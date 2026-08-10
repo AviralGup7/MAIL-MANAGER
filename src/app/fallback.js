@@ -150,12 +150,12 @@ function makeHandler({ auth, gmail, sync, snooze, mime }) {
         // Capability parity with the worker (cross-audit H5): Gmail-side
         // label move in-page; the local schedule was already written by the
         // caller's optimistic() `before` hook.
-        const labelId = await gmail.ensureLabel('Snoozed');
+        const labelId = await gmail.ensureLabel(snooze.SNOOZE_LABEL);
         await gmail.modify(msg.id, [labelId], ['INBOX']);
         return { ok: true };
       }
       case 'UNSNOOZE': {
-        const labelId = await gmail.ensureLabel('Snoozed');
+        const labelId = await gmail.ensureLabel(snooze.SNOOZE_LABEL);
         await gmail.modify(msg.id, ['INBOX', 'UNREAD'], [labelId]);
         return { ok: true };
       }
@@ -163,15 +163,44 @@ function makeHandler({ auth, gmail, sync, snooze, mime }) {
         // Due snoozes are woken at boot and on every refresh in-page; the
         // verb degrades to a no-op rather than a silent hole.
         return { woke: 0 };
-      case 'GET_INLINE': return [];
+      case 'GET_INLINE': {
+        // Parity with the worker (V2 code audit): silently empty inline
+        // resolution made the fallback render image-less bodies forever.
+        // Same bounds as the worker: part cap plus a byte budget.
+        const parts = Array.isArray(msg.parts) ? msg.parts.slice(0, 20) : [];
+        const out = [];
+        let budget = 2 * 1024 * 1024;
+        for (const part of parts) {
+          if (!part?.attachmentId || !part?.contentId) continue;
+          if ((part.size || 0) > budget) continue;
+          try {
+            const dataUrl = await gmail.getAttachment(msg.messageId || msg.id, part.attachmentId, part.mimeType);
+            budget -= part.size || 0;
+            out.push({ contentId: part.contentId, filename: part.filename || '', dataUrl });
+          } catch { /* one bad part must not blank the body */ }
+        }
+        return out;
+      }
 
       case 'LIST_LABELS': return gmail.listLabels();
       case 'CREATE_LABEL': return gmail.createLabel(msg.name);
-      case 'GET_ATTACHMENT': return gmail.getAttachment(msg.id, msg.attachmentId);
-      case 'GET_DRAFT':
-        // The app sends `{ id }`; the worker reads `msg.id`. The fallback
-        // used to read a field nobody sends (cross-audit H5).
-        return gmail.getDraftForMessage(msg.id || msg.messageId);
+      case 'GET_ATTACHMENT':
+        // Same arg contract and response shape as the worker (V2 code audit).
+        return { dataUrl: await gmail.getAttachment(msg.messageId || msg.id, msg.attachmentId, msg.mimeType) };
+      case 'GET_DRAFT': {
+        // Same shape as the worker: parsed beside extractBody, never a
+        // second parser.
+        const d = await gmail.getDraftForMessage(msg.id || msg.messageId);
+        if (!d) return null;
+        return { draftId: d.draftId, ...mime.extractBody(d.message) };
+      }
+
+      // Compose verbs: the fallback used to lack the product's core mail
+      // operations entirely (V2 C-class). Same builders as the worker.
+      case 'SEND':
+        return gmail.sendMessage(gmail.buildMime(msg.draft), msg.draft.threadId);
+      case 'SAVE_DRAFT':
+        return gmail.saveDraft(gmail.buildMime(msg.draft), msg.draft.threadId, msg.draftId);
 
       default:
         if (WORKER_ONLY.has(type)) {

@@ -52,10 +52,13 @@
  * SCOPES
  * ============================================================================
  *
- * `gmail.modify` covers read, label, archive, star and delete-to-trash. We do
- * NOT request `gmail.send` or full `https://mail.google.com/` -- this build
- * does not compose, and asking for send access we never use is both a review
- * risk and a straightforward breach of least privilege.
+ * `gmail.modify` covers read, label, archive, star and delete-to-trash.
+ * `gmail.send` is requested because compose/send/undo-send ARE shipped
+ * features (V2 C-01 found the scope missing while the UI sent mail --
+ * every send 403'd). Least privilege is honoured by asking for exactly the
+ * two scopes the product uses and no more; adding `gmail.send` means the
+ * next interactive consent (prompt=consent) re-asks the user, which is the
+ * forced re-consent the audit requires.
  */
 
 const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -63,6 +66,7 @@ const REVOKE_ENDPOINT = 'https://oauth2.googleapis.com/revoke';
 
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.modify',
+  'https://www.googleapis.com/auth/gmail.send',
 ].join(' ');
 
 /**

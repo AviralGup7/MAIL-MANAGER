@@ -195,7 +195,9 @@ export function openMenu({
    * audit 34, fixed here for ALL four menus at once. Measure after mount and
    * pull the menu up by exactly the overflow; a static margin, no animation.
    */
-  requestAnimationFrame(() => {
+  const raf = typeof requestAnimationFrame === 'function'
+    ? requestAnimationFrame : (fn) => setTimeout(fn, 0);
+  raf(() => {
     const r = node.getBoundingClientRect();
     const over = r.bottom - (window.innerHeight - 8);
     if (over > 0) node.style.marginTop = `-${Math.ceil(over)}px`;

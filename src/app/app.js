@@ -408,21 +408,32 @@ function degradeToFallback(why) {
   scheduleWorkerProbe();
 }
 
-let probeArmed = false;
+let probeTimer = 0;
+/*
+ * ONE-SHOT CHAINED PROBES, not a permanent interval (V2 stress/UX). A
+ * forever-60s timer pinned the MV3 worker awake and hung test teardowns.
+ * Invariant: while the worker is healthy, no recovery timer exists at all.
+ * Failure schedules exactly one next probe; success stops the chain.
+ */
 function scheduleWorkerProbe() {
-  if (probeArmed) return;
-  probeArmed = true;
+  if (probeTimer) return;
   const check = async () => {
-    if (!workerDown) return;
-    try {
-      if (await probeWorker()) {
-        workerDown = false;
-        toast('Background worker recovered');
-      }
-    } catch { /* stay degraded; the next probe decides */ }
+    probeTimer = 0;
+    if (!workerDown) return; // recovered elsewhere: chain ends
+    let alive = false;
+    try { alive = await probeWorker(); } catch { alive = false; }
+    if (alive) {
+      workerDown = false;
+      toast('Background worker recovered');
+      return; // chain ends
+    }
+    // Still degraded: one next probe, unref'd where the runtime allows.
+    probeTimer = setTimeout(check, 60000);
+    probeTimer.unref?.();
   };
-  window.addEventListener('online', check, { once: true });
-  setInterval(check, 60000).unref?.();
+  window.addEventListener('online', () => { clearTimeout(probeTimer); probeTimer = 0; check(); }, { once: true });
+  probeTimer = setTimeout(check, 5000);
+  probeTimer.unref?.();
 }
 
 let toastTimer = 0;
