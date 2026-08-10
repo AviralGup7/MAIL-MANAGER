@@ -3106,9 +3106,11 @@ function withDeadline(m) {
 
 /** Fetch and ingest one page. Throws; callers own the error reporting. */
 async function fetchPage(pageToken) {
+  const epoch = opEpoch;
   const { messages, nextPageToken } = await send('SYNC_PAGE', {
     opts: { pageToken, max: PAGE },
   });
+  if (epoch !== opEpoch) return; // signed out / switched while in flight
   ingest(messages);
   state.nextPageToken = nextPageToken;
   // Reached only if send() resolved, so this genuinely means "Gmail answered".
@@ -3181,8 +3183,10 @@ async function refresh({ silent = false } = {}) {
   if (ims.loading) return;
   ims.loading = true;
   syncBusy();
+  const epoch = opEpoch;
   try {
     const res = await send('SYNC_DELTA');
+    if (epoch !== opEpoch) return 'stale';
 
     if (res.kind === 'resync' || res.kind === 'none') {
       // The history cursor expired (Gmail keeps about a week) or we never had
@@ -3250,6 +3254,7 @@ function reportError(err) {
     toast('Sign-in renewal paused — it will retry when your connection returns.');
   } else if (/401|invalid_grant|No refresh token/i.test(msg)) {
     state.signedIn = false;
+  opEpoch++; // late responses from this session are now stale
     showGate('Session expired. Sign in again.');
   } else if (isOffline() || /failed to fetch|networkerror|load failed|fetch failed/i.test(msg)) {
     /*
@@ -3579,6 +3584,7 @@ async function selectMailbox(id) {
 
   const mb = getMailbox(id);
   state.mailbox = id;
+  opEpoch++; // in-flight loads belong to the previous mailbox
   store = wireStore(id);
   // Category is an inbox-only concept; entering Sent with `category:library`
   // still applied would show an empty list for no visible reason.
@@ -3630,6 +3636,7 @@ async function loadMailboxPage(id, pageToken = '') {
    * The flag is now per-mailbox, so two different mailboxes can load
    * concurrently while the same mailbox still cannot be double-fetched.
    */
+  const epoch = opEpoch;
   const ms = mbState(id);
   if (!state.signedIn) return; // never fetch for a session that has ended
   if (ms.loading) return;
@@ -3642,6 +3649,7 @@ async function loadMailboxPage(id, pageToken = '') {
     else opts.labelIds = mb.labelIds;
 
     const { messages, nextPageToken } = await send('SYNC_PAGE', { opts });
+    if (epoch !== opEpoch) return; // stale generation
     ingestInto(id, messages, mb.classified);
     mbState(id).nextPageToken = nextPageToken || '';
     mbState(id).loaded = true;
@@ -3928,6 +3936,7 @@ $('btn-signout').addEventListener('click', async () => {
   await clearCache();
   resetView({ allMailboxes: true });
   state.signedIn = false;
+  opEpoch++; // late responses from this session are now stale
   // A signed-out app that keeps polling is a privacy problem, not just a bug.
   stopAutoRefresh();
   showGate('Signed out.');
@@ -4101,6 +4110,15 @@ let followupList = [];
 let deadlineOverrides = {};
 /** The user's courses. Empty until they pick, which means no chips -- correct. */
 let enrolment = [];
+
+/*
+ * OPERATION EPOCH (V2 P1-13/P1-7). Async sync results carry the generation
+ * they were requested in; sign-out and mailbox switches advance the epoch so
+ * a late response from account A can never land in account B's Store, and a
+ * mailbox A page load cannot paint over mailbox B. One primitive for every
+ * async boundary instead of a guard per call site.
+ */
+let opEpoch = 0;
 /** User-authored automation. Empty until the options page writes some. */
 let automationRules = [];
 
