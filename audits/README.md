@@ -28,6 +28,7 @@ are retracted in place rather than deleted.
 | [15](15-CONSISTENCY.md) | Product consistency | 6 + 1 retracted | Star/unread undoable in bulk but not one at a time; Options settings never reached the running app |
 | [16](16-FEATURE-DISCOVERY.md) | Feature discovery (no elimination) | 100 ideas | Three verbs implemented and unreachable; five features are waiting on one popover primitive and one multi-source radar |
 | [17](17-FEATURE-ELIMINATION.md) | Feature elimination | 36 keep / 24 maybe / 40 cut | Every proposed new *screen* was cut; ten of eighteen academic ideas failed the identity filter; the rule engine may not ship without its dry run |
+| [28](28-COMPREHENSIVE-RATING.md) | Comprehensive rating, every way 1–10 (outside audit) | 6 (F1–F6) | F1 live PAT pasted into an AI chat; F4 compose cannot send under `gmail.modify`-only scopes. Overall **8.6/10** |
 
 Actions are consolidated and prioritised in [`../TODO.md`](../TODO.md).
 
