@@ -2378,6 +2378,46 @@ textarea {
   will-change: transform, opacity;
 }
 
+/*
+ * POLISH 7/8/10/11: glanceable affordances.
+ *
+ * The undo chip names the recovery key on the toast itself; the bulk bar
+ * carries its own escape key; the reader's prev/next arrows make j/k
+ * discoverable by mouse. All colour/layout tokens, no motion added.
+ */
+#toast-icon {
+  display: inline-flex;
+  align-items: center;
+  margin-right: var(--s-2);
+}
+/* id beats the [hidden] UA-style rule; state it or the icon never hides */
+#toast-icon[hidden] {
+  display: none;
+}
+#toast-kbd {
+  margin-left: var(--s-2);
+  padding: 0 var(--s-2);
+  border: 1px solid currentColor;
+  border-radius: var(--r-sm);
+  opacity: 0.85;
+  font-family: inherit;
+  font-size: var(--t-xs);
+}
+.bar-kbd {
+  opacity: 0.7;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 0 var(--s-1);
+  font-family: inherit;
+  font-size: var(--t-xs);
+  color: var(--fg-faint);
+}
+#r-nav {
+  display: flex;
+  gap: var(--s-1);
+  margin-left: auto;
+}
+
 /* ----------------------------------------------------------------- toast -- */
 
 #toast {

@@ -246,6 +246,10 @@ const el = {
   listCount: $('listcount'),
   account: $('account'),
   freshness: $('freshness'),
+  toastIcon: $('toast-icon'),
+  toastKbd: $('toast-kbd'),
+  rPrev: $('r-prev'),
+  rNext: $('r-next'),
   gate: $('gate'),
   gateError: $('gate-error'),
   reader: $('reader'),
@@ -419,6 +423,20 @@ function toast(text, opts = {}) {
 
   setText(el.toastText, text);
   el.toast.dataset.kind = kind;
+
+  /*
+   * POLISH 7+11: the toast's kind is legible at a glance -- an icon names the
+   * event and the undo chip names the recovery key. Both are decoration over
+   * the live region, never inside it, so announcements stay clean.
+   */
+  const KIND_ICON = { success: 'check', error: 'warning', undo: 'back' };
+  if (KIND_ICON[kind]) {
+    setIcon(el.toastIcon, KIND_ICON[kind], { size: 14 });
+    el.toastIcon.hidden = false;
+  } else {
+    el.toastIcon.hidden = true;
+  }
+  el.toastKbd.hidden = kind !== 'undo';
 
   const action = opts.action;
   el.toastAction.hidden = !action;
@@ -1345,6 +1363,15 @@ function setCount(node, unread, total) {
   setAttr(node, 'title', label);
   node.classList.toggle('unread', u > 0);
   return label;
+}
+
+/*
+ * POLISH 12: double-click is the muscle memory for "open the real thing".
+ * One row, the exact message, in Gmail's own tab -- the escape hatch a
+ * takeover must keep visible, not hidden.
+ */
+function openInGmail(id) {
+  window.open(`https://mail.google.com/mail/u/0/#inbox/${id}`, '_blank');
 }
 
 function patchRow(id) {
@@ -3250,6 +3277,10 @@ el.rThread?.addEventListener('click', (e) => {
 });
 
 el.list.addEventListener('click', (e) => {
+  el.list.addEventListener('dblclick', (e) => {
+    const row = e.target.closest('.row');
+    if (row?.dataset.id) openInGmail(row.dataset.id);
+  });
   const row = e.target.closest('.row');
   if (!row) return;
   const id = row.dataset.id;
@@ -5317,6 +5348,20 @@ async function boot() {
      */
     if (key === 'density') {
       applyDensity();
+
+  /*
+   * POLISH 17 (coach mark): one-time, dismissible, never again. A toast is
+   * the right surface because it is the surface every other transient
+   * already uses -- a coach mark widget of its own would be a second
+   * transient system.
+   */
+  if (!settings.get('coachDone')) {
+    settings.set('coachDone', true);
+    toast('Every verb has a key -- press ? to see them all', {
+      ms: 7000,
+      action: { label: 'Got it', run: () => {} },
+    });
+  }
       // The bloom's clip condition depends on line width; a density change
       // re-decides every row rather than leaving stale classes behind.
       refreshSubjectClip();
@@ -5382,6 +5427,10 @@ async function boot() {
 
   // Bulk bar.
   setIcon($('bulk-cancel'), 'close', { size: 14 });
+  setIcon($('r-prev'), 'back', { size: 15 });
+  setIcon($('r-next'), 'forward', { size: 15 });
+  $('r-prev').addEventListener('click', () => move(-1));
+  $('r-next').addEventListener('click', () => move(1));
   /*
    * Icon-only action buttons (audit 33). Five text verbs needed 423px in a
    * ~318px pane and left three of themselves unreachable; the icons reuse the

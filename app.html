@@ -267,6 +267,7 @@
                 <button id="bulk-spam" class="ghost icon" type="button" title="Report spam" aria-label="Report spam"></button>
                 <button id="bulk-trash" class="ghost icon danger" type="button" title="Delete" aria-label="Delete"></button>
               </div>
+              <kbd class="bar-kbd" aria-hidden="true">Esc</kbd>
               <button id="bulk-cancel" class="ghost icon" type="button" aria-label="Clear selection"></button>
             </div>
             </div>
@@ -365,6 +366,15 @@
                   <span id="r-date"></span>
                 </div>
                 <div id="r-tags"></div>
+                <!--
+                  POLISH 10: j/k work everywhere, but a visible affordance is
+                  how a mouse-first user DISCOVERS j/k. The titles carry the
+                  keys; the arrows carry the meaning.
+                -->
+                <div id="r-nav">
+                  <button id="r-prev" class="ghost icon" type="button" title="Previous (k)" aria-label="Previous message"></button>
+                  <button id="r-next" class="ghost icon" type="button" title="Next (j)" aria-label="Next message"></button>
+                </div>
                 <!--
                   What this message did to the timetable. Empty and hidden
                   unless the message actually changed something, so it costs
@@ -689,7 +699,9 @@
         hint buried in a sentence.
       -->
       <div id="toast" role="status" aria-live="polite" hidden>
+        <span id="toast-icon" hidden></span>
         <span id="toast-text"></span>
+        <kbd id="toast-kbd" hidden>Ctrl+Z</kbd>
         <!--
               A DEFAULT NAME IN THE MARKUP, not only one assigned by JS.
 

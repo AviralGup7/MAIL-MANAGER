@@ -109,6 +109,7 @@ export const SCHEMA = {
    * one to impose on someone who opened their inbox expecting Gmail.
    */
   lanes: { type: 'bool', def: false },
+  coachDone: { type: 'bool', def: false },
   /*
    * Delay before a message opened in the reader is marked read. A mis-click
    * should not consume the unread state, which is the one bit of triage the
