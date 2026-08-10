@@ -1,5 +1,14 @@
 # BITS Mail Manager
 
+## Contents
+
+- What it does (below)
+- [Contributing / quick start](CONTRIBUTING.md)
+- [Documentation index](docs/README.md) — architecture, threading, worker, timetable
+- [Audits](audits/) — ten audits + cross-audit consolidation; the priced roadmap
+- [Security posture](SECURITY.md) and [known work](TODO.md)
+
+
 A Chrome extension that takes over the Gmail tab and replaces it with a faster,
 cleaner mail client. One click (or `Alt+Shift+M`), Gmail slides out, this
 slides in. `Esc` gives the page back.
