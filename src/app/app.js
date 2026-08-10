@@ -33,6 +33,11 @@ import { Selection, selectionLabel } from './selection.js';
 import { loadViews, saveView, removeView } from './views.js';
 import { extractDeadline, relativeLabel, urgency } from './deadlines.js';
 import { runInPage, probeWorker } from './fallback.js';
+import { closeHelp, toggleHelp, helpOpen } from './help.js';
+import { openSnoozeMenu, wireSnoozeMenu } from './snooze-menu.js';
+import { openCategoryMenu, wireCategoryMenu } from './category-menu.js';
+import { renderNotices, wireNotices } from './notices-rail.js';
+import { wireBulkbar } from './bulkbar.js';
 import { parseQuery, buildReply } from './query.js';
 import * as settings from './settings.js';
 import { addressOf } from './contacts.js';
@@ -4056,53 +4061,6 @@ function insertLaneHeaders(frag) {
  * and never pins itself, because a false pin teaches people to ignore the pin
  * and that is the whole delivery mechanism.
  */
-function renderNotices() {
-  const wrap = $('notices');
-  if (!wrap) return;
-
-  const found = [];
-  for (const id of visibleIds().slice(0, 60)) {
-    const m = store.get(id);
-    if (!m) continue;
-    const mine = myCourses.mineAmong(m.courses || [], enrolment);
-    const notice = detectNotice(m, {
-      courses: mine,
-      isAcademicSender: isAcademicSender(m.from),
-    });
-    if (shouldPromote(notice)) found.push({ m, notice });
-    if (found.length >= 3) break;
-  }
-
-  wrap.hidden = found.length === 0;
-  if (found.length === 0) return;
-
-  const frag = document.createDocumentFragment();
-  for (const { m, notice } of found) {
-    const li = document.createElement('li');
-    li.className = `notice notice-${notice.kind}`;
-
-    const what = document.createElement('span');
-    what.className = 'notice-what';
-    what.textContent = summarise(notice);
-
-    const why = document.createElement('span');
-    why.className = 'notice-why';
-    // Quote the sentence it read, so a wrong card can be judged at a glance
-    // rather than taken on faith.
-    why.textContent = notice.evidence;
-
-    li.append(what, why);
-    li.tabIndex = 0;
-    li.setAttribute('role', 'button');
-    li.onclick = () => openMessage(m.id);
-    li.onkeydown = (e) => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openMessage(m.id); }
-    };
-    frag.appendChild(li);
-  }
-  wrap.replaceChildren(frag);
-}
-
 /* ========================================================================== *
  * FOLLOW-UPS AND DEADLINE OVERRIDES
  * ========================================================================== */
@@ -4532,48 +4490,6 @@ function reclassifyAll() {
   if (open) syncContextActions(open);
 }
 
-function openCategoryMenu(category, anchor) {
-  const label = CATEGORY_LABELS[category] || category;
-
-  openMenu({
-    name: 'category-menu',
-    label: `${label} rules`,
-    anchor,
-    className: 'cat-menu',
-    items: [
-      {
-        text: `Mute ${label}`,
-        hint: 'Hide from the inbox list. Still searchable, nothing deleted.',
-        checked: isMuted(rules, category),
-        trailing: isMuted(rules, category) ? 'On' : '',
-        run: async () => {
-          rules = toggleMute(rules, category);
-          await saveRules(rules);
-          renderList();
-          renderSidebar();
-          toast(isMuted(rules, category) ? `${label} muted` : `${label} unmuted`);
-        },
-      },
-      {
-        text: `Auto-archive ${label}`,
-        hint: 'Archive new mail in this category as it arrives.',
-        checked: isAutoArchived(rules, category),
-        trailing: isAutoArchived(rules, category) ? 'On' : '',
-        run: async () => {
-          rules = toggleAutoArchive(rules, category);
-          await saveRules(rules);
-          renderSidebar();
-          toast(
-            isAutoArchived(rules, category)
-              ? `New ${label} mail will be archived`
-              : `Auto-archive off for ${label}`
-          );
-        },
-      },
-    ],
-  });
-}
-
 // ----------------------------------------------------------------- snooze --
 
 /**
@@ -4586,39 +4502,6 @@ function openCategoryMenu(category, anchor) {
  * Rendered on demand and torn down on dismiss, so there is no persistent menu
  * in the DOM listening for clicks.
  */
-function closeSnoozeMenu() {
-  closeMenu();
-}
-
-function openSnoozeMenu(id, anchor) {
-  const m = store.get(id);
-  if (!m) return;
-
-  // The deadline the radar already parsed feeds an option Gmail cannot offer.
-  let deadline;
-  try {
-    deadline = extractDeadline(m)?.at;
-  } catch {
-    deadline = undefined;
-  }
-
-  openMenu({
-    name: 'snooze-menu',
-    label: 'Snooze until',
-    anchor,
-    // Hangs off the reader's action bar rather than the row, so the menu is
-    // not clipped by the list's overflow.
-    mountTo: anchor?.closest('#r-actions') || el.reader || document.body,
-    items: snoozePresets(Date.now(), { deadline }).map((opt) => ({
-      text: opt.label,
-      trailing: new Date(opt.at).toLocaleString(undefined, {
-        weekday: 'short', hour: 'numeric', minute: '2-digit',
-      }),
-      run: () => snoozeMessage(id, opt.at, opt.label),
-    })),
-  });
-}
-
 // ------------------------------------------------------------------- help --
 
 /**
@@ -4629,8 +4512,6 @@ function openSnoozeMenu(id, anchor) {
  * reads, presses Escape, and their next `j` goes nowhere because focus is on
  * `<body>`.
  */
-/** The open help layer, or null. Lifecycle belongs to layers.js. */
-let helpLayer = null;
 
 /** Pending `g` prefix for the two-key category jump. Expires; see the handler. */
 let goPending = null;
@@ -4643,26 +4524,6 @@ let goPending = null;
  * reduced to what is actually specific to help: render the shortcut table,
  * reveal the node, move focus in.
  */
-function openHelp() {
-  if (!el.help || helpLayer) return;
-  renderShortcuts(el.helpBody, document);
-  cancelExit(el.help);
-  el.help.hidden = false;
-  helpLayer = openLayer({
-    name: 'help',
-    node: el.help,
-    onClose: () => {
-      closeWithMotion(el.help);
-      helpLayer = null;
-    },
-  });
-  el.helpClose.focus();
-}
-
-function closeHelp() {
-  helpLayer?.close();
-}
-
 /** Hand the page back to Gmail. The content script does the actual unwind. */
 function release() {
   // Flush before the frame is destroyed, so triage done in this session is on
@@ -4749,14 +4610,13 @@ document.addEventListener('keydown', (e) => {
    */
   if (e.key === '?') {
     e.preventDefault();
-    if (helpLayer) closeHelp();
-    else openHelp();
+    toggleHelp();
     return;
   }
 
   // While help is open, swallow the single-letter shortcuts. Acting on a
   // message the user cannot see is the worst kind of surprise.
-  if (helpLayer) return;
+  if (helpOpen()) return;
 
   /*
    * `g` then a digit jumps to a category — Gmail's two-key "go to" idiom.
@@ -5607,43 +5467,27 @@ async function boot() {
   }
   el.scroller.addEventListener('scroll', onScrollerScroll, { passive: true });
 
-  // Bulk bar.
-  setIcon($('bulk-cancel'), 'close', { size: 14 });
-  setIcon($('r-prev'), 'back', { size: 15 });
-  setIcon($('r-next'), 'forward', { size: 15 });
-  $('r-prev').addEventListener('click', () => move(-1));
-  $('r-next').addEventListener('click', () => move(1));
-  /*
-   * Icon-only action buttons (audit 33). Five text verbs needed 423px in a
-   * ~318px pane and left three of themselves unreachable; the icons reuse the
-   * glyphs the context bar already uses for the same verbs, and the labels
-   * live on aria-label/title in app.html. `warning` IS the spam glyph — the
-   * triangle, deliberately, because spam is a place you visit, not an action
-   * you take.
-   */
-  setIcon($('bulk-read'), 'mail', { size: 15 });
-  setIcon($('bulk-star'), 'star', { size: 15 });
-  setIcon($('bulk-archive'), 'archive', { size: 15 });
-  setIcon($('bulk-spam'), 'warning', { size: 15 });
-  setIcon($('bulk-trash'), 'trash', { size: 15 });
-  $('bulk-cancel').addEventListener('click', () => {
-    selection.clear();
-    renderSelection();
+  // Extracted tenants (architecture audit phase 9): wiring only; state
+  // ownership stays with the shell.
+  wireSnoozeMenu({ getMessage: (id) => store.get(id), snoozeMessage });
+  wireCategoryMenu({
+    getRules: () => rules,
+    setRules: (r) => { rules = r; },
+    saveRules: () => saveRules(rules),
+    renderList, renderSidebar, toast,
   });
-  el.bulkAll.addEventListener('change', () => {
-    if (el.bulkAll.checked) selection.selectAll(renderedIds);
-    else selection.clear();
-    renderSelection();
+  wireNotices({
+    visibleIds,
+    getMessage: (id) => store.get(id),
+    openMessage,
+    getEnrolment: () => enrolment,
   });
-  for (const [id, kind] of [
-    ['bulk-read', 'read'],
-    ['bulk-star', 'star'],
-    ['bulk-archive', 'archive'],
-    ['bulk-spam', 'spam'],
-    ['bulk-trash', 'trash'],
-  ]) {
-    $(id).addEventListener('click', () => bulkAct(kind));
-  }
+  wireBulkbar({
+    move, bulkAct, renderSelection,
+    clearSelection: () => { selection.clear(); renderSelection(); },
+    selectAll: () => selection.selectAll(renderedIds),
+    getBulkAll: () => el.bulkAll,
+  });
 
   // Saved views.
   el.viewsList.addEventListener('click', async (e) => {
