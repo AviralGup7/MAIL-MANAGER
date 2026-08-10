@@ -54,7 +54,7 @@ export const ACTORS = /** @type {const} */ (['user', 'rule', 'sync', 'system']);
  * @property {string} actor
  * @property {string[]} ids       truncated
  * @property {number} count       the real number, before truncation
- * @property {'ok'|'failed'|'undone'} outcome
+ * @property {'ok'|'failed'|'partial'|'undone'} outcome
  * @property {string} [error]
  * @property {string} [detail]    short, non-sensitive; e.g. a rule name
  */
@@ -72,7 +72,7 @@ export function normaliseLog(raw) {
       actor: ACTORS.includes(e.actor) ? e.actor : 'system',
       ids: Array.isArray(e.ids) ? e.ids.filter((x) => typeof x === 'string').slice(0, MAX_IDS) : [],
       count: Number.isFinite(e.count) ? e.count : (Array.isArray(e.ids) ? e.ids.length : 0),
-      outcome: ['ok', 'failed', 'undone'].includes(e.outcome) ? e.outcome : 'ok',
+      outcome: ['ok', 'failed', 'partial', 'undone'].includes(e.outcome) ? e.outcome : 'ok',
       ...(typeof e.error === 'string' ? { error: e.error.slice(0, 200) } : {}),
       ...(typeof e.detail === 'string' ? { detail: e.detail.slice(0, 120) } : {}),
     });
@@ -224,6 +224,8 @@ export function describe(entry) {
   const verb = entry.verb.toLowerCase().replace(/_/g, ' ');
   const by = entry.actor === 'rule' ? ` by rule${entry.detail ? ` "${entry.detail}"` : ''}` : '';
   const status =
-    entry.outcome === 'failed' ? ' — failed' : entry.outcome === 'undone' ? ' — undone' : '';
+    entry.outcome === 'failed' ? ' — failed'
+    : entry.outcome === 'partial' ? ' — partial'
+    : entry.outcome === 'undone' ? ' — undone' : '';
   return `${verb} · ${what}${by}${status}`;
 }

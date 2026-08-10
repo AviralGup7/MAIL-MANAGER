@@ -148,6 +148,17 @@ test('a corrupt stored log loads as empty rather than throwing', async () => {
 
 // ----------------------------------------------------------------- undone --
 
+test('a partial outcome (bulk half-applied) survives the round trip', async () => {
+  // The app records outcome 'partial' when a chunked BULK partly fails;
+  // the log must not coerce it back to 'ok' on reload (cross-audit P7).
+  const s = fakeStorage();
+  record({ verb: 'ARCHIVE', ids: ['a', 'b'], outcome: 'partial', error: '1 failed' }, { storage: s });
+  await flush({ storage: s });
+  const [entry] = await loadLog(s);
+  assert.equal(entry.outcome, 'partial');
+  assert.match(describe(entry), /partial/);
+});
+
 test('an entry can be marked undone', async () => {
   const s = fakeStorage();
   record({ verb: 'ARCHIVE', ids: ['a'] }, { storage: s });

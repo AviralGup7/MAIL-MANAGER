@@ -175,7 +175,13 @@ export class Store {
       if (tset.size === 0) this.byThread.delete(tid);
     }
 
-    this.byCategory.get(msg.category)?.delete(msg.id);
+    const catSet = this.byCategory.get(msg.category);
+    if (catSet) {
+      catSet.delete(msg.id);
+      // Same discipline as byThread: an empty Set would make counts() walk
+      // a phantom category entry forever.
+      if (catSet.size === 0) this.byCategory.delete(msg.category);
+    }
     for (const tok of Store.tokenize(msg)) {
       const ids = this.searchIndex.get(tok);
       if (!ids) continue;
@@ -334,6 +340,11 @@ export class Store {
 
   get size() {
     return this.byId.size;
+  }
+
+  /** True when the store hit its cap: what it holds is NOT the whole mailbox. */
+  get isFull() {
+    return this.order.length >= MAX_MESSAGES;
   }
 
   get(id) {

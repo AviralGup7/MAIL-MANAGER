@@ -719,11 +719,24 @@ export async function sendMessage(mime, threadId) {
  * payload -- a second parser is how two readers drift.
  */
 export async function getDraftForMessage(messageId) {
-  const list = await api('/drafts?maxResults=500');
-  const hit = (list.drafts || []).find((d) => d.message?.id === messageId);
-  if (!hit) return null;
-  const full = await api(`/drafts/${encodeURIComponent(hit.id)}?format=full`);
-  return { draftId: hit.id, message: full.message || {} };
+  // Page through ALL drafts, not just the first 500: a heavy draft folder
+  // used to make "continue drafting" silently fail to find the message
+  // (cross-audit P6). The reply path calls this per message, so the common
+  // case (hit on page 1) costs the same single request as before.
+  let pageToken = '';
+  for (;;) {
+    const q = pageToken
+      ? `/drafts?maxResults=500&pageToken=${encodeURIComponent(pageToken)}`
+      : '/drafts?maxResults=500';
+    const list = await api(q);
+    const hit = (list.drafts || []).find((d) => d.message?.id === messageId);
+    if (hit) {
+      const full = await api(`/drafts/${encodeURIComponent(hit.id)}?format=full`);
+      return { draftId: hit.id, message: full.message || {} };
+    }
+    pageToken = list.nextPageToken;
+    if (!pageToken) return null;
+  }
 }
 
 /** Save a draft rather than sending. */

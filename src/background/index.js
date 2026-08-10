@@ -252,6 +252,10 @@ async function handle(msg) {
        * restores only those.
        */
       const ids = msg.ids || [];
+      // An empty selection is a no-op, not "failed for all messages" — the
+      // app never sends one, but a stale click or a race that already
+      // applied the action elsewhere must not surface as an error.
+      if (ids.length === 0) return { failed: [] };
       const failed = [];
       for (let i = 0; i < ids.length; i += 1000) {
         try {
@@ -441,7 +445,10 @@ async function scheduleWake() {
     await chrome.alarms.clear(WAKE_ALARM);
     return;
   }
-  const next = Math.min(...times);
+  // Reduce, not spread: a thousand snoozed messages would overflow the
+  // argument list. Loop is O(n) either way and cannot throw.
+  let next = Infinity;
+  for (const t of times) if (t < next) next = t;
   // Never schedule in the past; Chrome fires those immediately and repeatedly.
   await chrome.alarms.create(WAKE_ALARM, { when: Math.max(next, Date.now() + 5000) });
 }

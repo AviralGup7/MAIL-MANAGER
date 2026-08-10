@@ -1698,7 +1698,9 @@ test('A11Y: the tab order is constant, not proportional to message count', async
   };
   const stops = (doc) =>
     [...doc.querySelectorAll('a[href],button,input,textarea,select,[tabindex]')]
-      .filter((e) => visible(e, doc) && e.tabIndex >= 0);
+      // Transient chrome (toasts) is not part of the persistent tab order —
+      // the coach toast's action button lives for 7s then leaves the DOM.
+      .filter((e) => visible(e, doc) && e.tabIndex >= 0 && !e.closest('.toast, #toast'));
 
   const small = await boot({ messages: MESSAGES });
   const nSmall = stops(small.doc).length;

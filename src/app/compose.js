@@ -266,7 +266,11 @@ function readAsBase64(file) {
 async function addFiles(ctx, fileList) {
   for (const file of [...(fileList || [])]) {
     const total = pendingFiles.reduce((n, f) => n + f.size, 0);
-    if (total + file.size > MAX_ATTACH_BYTES) {
+    // Gmail's limit is on the MIME message: base64 inflates raw bytes by
+    // 4/3 plus per-part headers, so the check must count that overhead or
+    // the upload fails AFTER the user assembled the mail.
+    const wire = (size) => Math.ceil(size * 1.37);
+    if (wire(total + file.size) > MAX_ATTACH_BYTES) {
       ctx?.toast?.(
         `${file.name} would take this over Gmail's 25MB limit`,
         { kind: 'error' }

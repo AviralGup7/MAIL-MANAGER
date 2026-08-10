@@ -39,6 +39,7 @@ function buildCommands(ctx) {
     { id: 'undo', icon: 'back', label: 'Undo last action', hint: 'ctrl+z', run: () => performUndo(ctx) },
     { id: 'search', icon: 'search', label: 'Search mail', hint: '/', run: () => $('search')?.focus() },
     { id: 'gmail', icon: 'back', label: 'Back to Gmail', hint: 'esc', run: () => ctx.release() },
+    { id: 'shortcuts', icon: 'keyboard', label: 'Show keyboard shortcuts', hint: '?', run: () => ctx.toggleHelp?.() },
   ];
 
   if (sel) {

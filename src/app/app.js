@@ -67,7 +67,7 @@ import {
   MAILBOXES, DEFAULT_MAILBOX, getMailbox, isMailbox, showsCategories, actionsFor,
 } from './mailboxes.js';
 import {
-  emptyRules, loadRules, saveRules, toggleMute, toggleAutoArchive,
+  emptyRules, loadRules, saveRules, pruneThreadMutes, toggleMute, toggleAutoArchive,
   isMuted, isAutoArchived, applyCorrection, correctSender, clearCorrection,
   mutedCount,
 } from './rules.js';
@@ -1469,6 +1469,15 @@ function ensureCountParts(node) {
  * loaded yet", which renders nothing at all rather than asserting a zero we
  * have not checked.
  */
+/**
+ * Build a Gmail URL for the CURRENT account index.
+ * The old code hardcoded u/0, sending every "Open in Gmail" to the first
+ * signed-in account (cross-audit P0-01). Every escape hatch must share this.
+ */
+function gmailUrl(threadId, mailbox = 'inbox') {
+  return `https://mail.google.com/mail/u/${ACCOUNT_INDEX}/#${mailbox}/${threadId}`;
+}
+
 function setCount(node, unread, total) {
   const { un, tot, sr } = ensureCountParts(node);
   const known = total !== null && total !== undefined;
@@ -1495,7 +1504,7 @@ function setCount(node, unread, total) {
  * takeover must keep visible, not hidden.
  */
 function openInGmail(id) {
-  window.open(`https://mail.google.com/mail/u/0/#inbox/${id}`, '_blank');
+  window.open(gmailUrl(id), '_blank');
 }
 
 /*
@@ -3655,6 +3664,14 @@ async function loadMailboxPage(id, pageToken = '') {
     ingestInto(id, messages, mb.classified);
     mbState(id).nextPageToken = nextPageToken || '';
     mbState(id).loaded = true;
+    // PRUNE after a full sync — but ONLY when the store now holds the whole
+    // mailbox: the first page of a fresh sync with no further pages and a
+    // store that never hit its cap. Pruning against a partial store would
+    // silently delete overrides/mutes/follow-ups for messages that are simply
+    // not loaded yet (e.g. a 3000-message inbox where only 100 are in memory).
+    if (id === 'inbox' && !pageToken && !nextPageToken && !store.isFull) {
+      pruneAfterFullSync();
+    }
     if (state.mailbox === id) {
       state.nextPageToken = mbState(id).nextPageToken;
       $('btn-more').disabled = !mbState(id).nextPageToken;
@@ -3667,6 +3684,39 @@ async function loadMailboxPage(id, pageToken = '') {
     ms.loading = false;
     syncBusy();
   }
+}
+
+/**
+ * Sweep storage blobs that grow with every muted/overridden/followed-up
+ * thread after the threads leave the mailbox. These were written but never
+ * called (cross-audit P4); the sweep is only safe when the store is complete.
+ */
+async function pruneAfterFullSync() {
+  const liveIds = new Set(store.idsFor('all'));
+  const liveThreads = new Set(
+    [...liveIds].map((id) => store.get(id)?.threadId).filter(Boolean)
+  );
+  try {
+    const o = deadlineStore.pruneOverrides(deadlineOverrides, liveIds);
+    if (o !== deadlineOverrides) {
+      deadlineOverrides = o;
+      await deadlineStore.saveOverrides(deadlineOverrides);
+    }
+  } catch { /* a failed sweep must never break the sync that just succeeded */ }
+  try {
+    const r = pruneThreadMutes(rules, liveThreads);
+    if (r !== rules) {
+      rules = r;
+      await saveRules(rules);
+    }
+  } catch { /* best-effort, like every persistence call in this file */ }
+  try {
+    const f = followups.pruneFollowups(followupList, store, state.selfEmail);
+    if (f !== followupList) {
+      followupList = f;
+      await followups.saveFollowups(followupList);
+    }
+  } catch { /* best-effort */ }
 }
 
 el.rAttachments.addEventListener('click', (e) => {
@@ -4116,6 +4166,8 @@ function insertLaneHeaders(frag) {
 /** In-memory mirrors, loaded at boot and written through on every change. */
 let followupList = [];
 let deadlineOverrides = {};
+/** Coach toast: once per page load, regardless of setting writes. */
+let coachShown = false;
 /** The user's courses. Empty until they pick, which means no chips -- correct. */
 let enrolment = [];
 
@@ -5218,6 +5270,7 @@ const ctx = {
   openMessage,
   refresh: () => refresh(),
   release: () => release(),
+  toggleHelp,
   setTheme: (id) => setTheme(id),
   themes: () => THEMES,
   categoryList: () => [['all', 'All mail'], ...SIDEBAR_ORDER.map((c) => [c, CATEGORY_LABELS[c] || c])],
@@ -5435,25 +5488,30 @@ async function boot() {
     if (key === 'density') {
       applyDensity();
 
-  /*
-   * POLISH 17 (coach mark): one-time, dismissible, never again. A toast is
-   * the right surface because it is the surface every other transient
-   * already uses -- a coach mark widget of its own would be a second
-   * transient system.
-   */
-  if (!settings.get('coachDone')) {
-    settings.set('coachDone', true);
-    toast('Every verb has a key -- press ? to see them all', {
-      ms: 7000,
-      action: { label: 'Got it', run: () => {} },
-    });
-  }
       // The bloom's clip condition depends on line width; a density change
       // re-decides every row rather than leaving stale classes behind.
       refreshSubjectClip();
     }
     if (key === 'lanes') renderList();
   });
+
+  /*
+   * POLISH 17 (coach mark): one-time per SESSION, dismissible, never again.
+   * Deliberately NOT inside settings.subscribe above — that handler runs on
+   * every setting change, so a write triggered by sign-out/reset re-fired the
+   * toast for a user who had already dismissed it (cross-audit 6.1). Boot
+   * runs once per page load, which is the only moment it may appear.
+   */
+  if (!coachShown) {
+    coachShown = true;
+    if (!settings.get('coachDone')) {
+      settings.set('coachDone', true);
+      toast('Press j to move between messages — ? for every key', {
+        ms: 7000,
+        action: { label: 'Got it', run: () => {} },
+      });
+    }
+  }
 
   // Theme next, before anything paints, so there is no flash of the wrong
   // palette. `applyTheme` falls back to the default for an unknown id, which

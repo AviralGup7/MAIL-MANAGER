@@ -136,6 +136,16 @@ test('counts and unread counts are per category', () => {
   assert.deepEqual(s.unreadCounts(), { augsd: 1, clubs: 1 });
 });
 
+test('removing the last message of a category drops the map entry', () => {
+  // A leftover empty Set would keep counts() walking a phantom category
+  // forever — byThread got this discipline, byCategory must too.
+  const s = new Store();
+  s.upsert(msg(1, { category: 'clubs' }));
+  assert.equal(s.counts().clubs, 1);
+  s.remove('m1');
+  assert.deepEqual(s.counts(), {}, 'no phantom category after the last removal');
+});
+
 test('idsFor returns newest-first within a category', () => {
   const s = new Store();
   s.upsertMany([
