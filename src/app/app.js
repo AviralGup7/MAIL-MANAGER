@@ -4670,7 +4670,7 @@ function release() {
   saver.flush();
   flushDraft();
   cancelPendingWork();
-  parent.postMessage({ type: 'BMM_RELEASE' }, '*');
+  parent.postMessage({ type: 'BMM_RELEASE' }, 'https://mail.google.com');
 }
 
 // Keyboard. Gmail-compatible where it makes sense, so muscle memory survives.
@@ -5693,7 +5693,7 @@ async function boot() {
   // Tell the content script we have painted. It waits for this before it
   // reveals the takeover, which is what prevents the white flash the old
   // separate-tab approach had.
-  requestAnimationFrame(() => parent.postMessage({ type: 'BMM_READY' }, '*'));
+  requestAnimationFrame(() => parent.postMessage({ type: 'BMM_READY' }, 'https://mail.google.com'));
 
   try {
     const { signedIn } = await send('AUTH_STATUS');

@@ -200,7 +200,11 @@ export function sanitizeHtml(html, doc = globalThis.document, opts = {}) {
 function resolveCid(raw, cid) {
   const key = raw.slice(4).trim();
   if (!key) return '';
-  const candidates = [key, decodeURIComponent(key)];
+  // A malformed `cid:%zz` must throw URIError nowhere (PoC'd in the security
+  // audit): decode is best-effort, the raw key always stays a candidate.
+  let decoded = key;
+  try { decoded = decodeURIComponent(key); } catch { /* stay raw */ }
+  const candidates = [key, decoded];
   for (const c of candidates) {
     const hit = cid.get(c) || cid.get(c.replace(/^<|>$/g, ''));
     if (hit) return hit;

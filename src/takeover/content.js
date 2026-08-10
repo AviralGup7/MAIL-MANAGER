@@ -277,7 +277,11 @@ function onEntered() {
   };
   window.addEventListener('keydown', escHandler, true);
 
-  frame.contentWindow?.postMessage({ type: 'BMM_SHOWN' }, '*');
+  // The frame is our own extension page; name its origin instead of '*'.
+  frame.contentWindow?.postMessage(
+    { type: 'BMM_SHOWN' },
+    new URL(chrome.runtime.getURL('')).origin
+  );
 }
 
 function release() {
@@ -369,6 +373,7 @@ window.addEventListener('keydown', (e) => {
 // The app asks to be closed (its own back button).
 window.addEventListener('message', (e) => {
   if (e.source !== frame?.contentWindow) return;
+  if (e.origin !== new URL(chrome.runtime.getURL('')).origin) return;
   if (e.data?.type === 'BMM_RELEASE') release();
 });
 

@@ -38,9 +38,7 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "app.html",
-        "src/*",
-        "icons/*"
+        "app.html"
       ],
       "matches": [
         "https://mail.google.com/*"

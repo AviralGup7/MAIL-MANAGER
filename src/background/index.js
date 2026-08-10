@@ -181,7 +181,10 @@ async function toggleIn(tabId) {
  * The app never holds an access token. It asks the worker, the worker calls
  * Gmail. That keeps the token out of a document that renders untrusted mail.
  */
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  // Cross-audit hardening: only first-party extension contexts may reach the
+  // verb router. Anything else gets silence, not an error surface.
+  if (sender?.id && sender.id !== chrome.runtime.id) return false;
   handle(msg)
     .then((data) => sendResponse({ ok: true, data }))
     .catch((err) => sendResponse({ ok: false, error: String(err?.message || err) }));
