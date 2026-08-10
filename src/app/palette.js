@@ -40,6 +40,7 @@ function buildCommands(ctx) {
     { id: 'search', icon: 'search', label: 'Search mail', hint: '/', run: () => $('search')?.focus() },
     { id: 'gmail', icon: 'back', label: 'Back to Gmail', hint: 'esc', run: () => ctx.release() },
     { id: 'shortcuts', icon: 'keyboard', label: 'Show keyboard shortcuts', hint: '?', run: () => ctx.toggleHelp?.() },
+    { id: 'activity', icon: 'clock', label: 'Activity log', hint: '', run: () => ctx.openActivityLog?.() },
   ];
 
   if (sel) {

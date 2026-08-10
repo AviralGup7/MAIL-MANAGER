@@ -2,7 +2,14 @@
 
 ## Contents
 
-- What it does (below)
+- [What it does](#what-it-does) — the mail client, then the BITS-aware parts
+- [Themes](#themes)
+- [Install (unpacked)](#install-unpacked) · [Getting a client ID](#getting-a-client-id) · [Why the implicit flow](#why-the-implicit-flow-and-not-pkce)
+- [Why it is fast](#why-it-is-fast)
+- [The takeover](#the-takeover)
+- [Classification](#classification)
+- [Layout](#layout) · [Seeing it without installing it](#seeing-it-without-installing-it)
+- [Security](#security) · [Status](#status) · [Known gaps](#known-gaps) · [Audited, then fixed](#audited-then-fixed)
 - [Contributing / quick start](CONTRIBUTING.md)
 - [Documentation index](docs/README.md) — architecture, threading, worker, timetable
 - [Audits](audits/) — ten audits + cross-audit consolidation; the priced roadmap
@@ -391,7 +398,7 @@ src/
 timetable/data.json         GENERATED. 688 courses, 119 change rows.
 timetable/sources/          The two official documents, verbatim.
 tools/parse-timetable.mjs   Offline parser. Never runs in the extension.
-test/                       859 tests. `npm test` · `npm run test:ci` (fails on skips)
+test/                       1339 tests. `npm test` · `npm run test:ci` (fails on skips)
   app.integration.test.mjs  Boots the real app.html in jsdom and drives it.
   resilience.test.mjs       Failure injection across every persistence module.
   package.test.mjs          Lints the manifest, tokens, motion rules, hit targets.
@@ -412,7 +419,7 @@ No build step and no runtime dependencies. `npm test` runs `node --test test/`.
 
 `jsdom` is an optional devDependency used only by the integration tests. Without
 it they skip and the suite still passes; with it, `npm install && npm test`
-runs all 633.
+runs all 1339.
 
 ### Seeing it without installing it
 
@@ -451,7 +458,7 @@ mis-file something the preview mis-files it too.
 
 ## Status
 
-**859 tests pass, 0 skipped.** 167 of them boot the real `app.html` in a real
+**1339 tests pass, 0 skipped.** Many of them boot the real `app.html` in a real
 DOM and drive it as a user would — click a row, type in search, press `j`/`k`,
 archive, snooze, sign out. All six themes pass WCAG AA in CI.
 

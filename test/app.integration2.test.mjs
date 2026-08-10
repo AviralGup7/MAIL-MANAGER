@@ -1289,20 +1289,55 @@ test('DELIGHT: failures are visually distinct from successes', async (t) => {
    */
   const { doc, win, settle, restore } = await boot();
   try {
-    // A saved-view success. jsdom has no `prompt`, so it is supplied.
-    globalThis.prompt = () => 'My view';
-    win.prompt = globalThis.prompt;
+    // The save-view flow goes through the in-app dialog (audit 39 P1), not
+    // a browser prompt — the dialog must accept a name and land a success.
     const search = doc.getElementById('search');
     search.value = 'zzz-unique-query';
     search.dispatchEvent(new win.Event('input'));
     await settle(4);
     doc.getElementById('btn-save-view').click();
+    await settle(4);
+
+    const input = doc.querySelector('.prompt-box input');
+    assert.ok(input, 'the in-app dialog opens instead of prompt()');
+    input.value = 'My view';
+    input.dispatchEvent(new win.Event('input'));
+    doc.querySelector('.prompt-actions button.primary').click();
     await settle(8);
 
     assert.equal(doc.getElementById('toast').dataset.kind, 'success');
     assert.equal(doc.getElementById('toast-action').hidden, true, 'no action on a plain success');
+    assert.equal(doc.querySelector('.prompt-box'), null, 'dialog closes after saving');
   } finally {
-    delete globalThis.prompt;
+    restore();
+  }
+});
+
+test('DELIGHT: a duplicate view name stays INSIDE the dialog, not a toast', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, win, settle, restore } = await boot();
+  try {
+    const search = doc.getElementById('search');
+    search.value = 'is:unread';
+    search.dispatchEvent(new win.Event('input'));
+    await settle(4);
+    doc.getElementById('btn-save-view').click();
+    await settle(4);
+    const input = doc.querySelector('.prompt-box input');
+    input.value = 'Mine';
+    doc.querySelector('.prompt-actions button.primary').click();
+    await settle(8);
+    // Save the same name again — the validation error must appear in the
+    // dialog, which stays open, not as a dismissive toast.
+    doc.getElementById('btn-save-view').click();
+    await settle(4);
+    const input2 = doc.querySelector('.prompt-box input');
+    input2.value = 'Mine';
+    doc.querySelector('.prompt-actions button.primary').click();
+    await settle(8);
+    assert.ok(doc.querySelector('.prompt-box'), 'dialog stays open on a duplicate name');
+    assert.match(doc.querySelector('.prompt-err').textContent, /already exists/);
+  } finally {
     restore();
   }
 });

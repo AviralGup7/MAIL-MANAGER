@@ -55,6 +55,8 @@ import { rowSnippet } from './snippet.js';
 import { renderShortcuts } from './shortcuts.js';
 import { openLayer, closeTopLayer, hasLayers, closeAllLayers, closeWithMotion, cancelExit } from './layers.js';
 import { openMenu, closeMenu, menuIsOpen } from './menu.js';
+import { promptDialog } from './dialog.js';
+import { openActivityLog } from './activity-ui.js';
 import {
   scheduleServerSearch, wireServerSearch, _resetServerSearch,
   overlayIds, overlayGet, clearSearchOverlay,
@@ -5279,6 +5281,7 @@ const ctx = {
   refresh: () => refresh(),
   release: () => release(),
   toggleHelp,
+  openActivityLog: () => openActivityLog(ctx),
   setTheme: (id) => setTheme(id),
   themes: () => THEMES,
   categoryList: () => [['all', 'All mail'], ...SIDEBAR_ORDER.map((c) => [c, CATEGORY_LABELS[c] || c])],
@@ -5634,16 +5637,22 @@ async function boot() {
   $('btn-save-view').addEventListener('click', async () => {
     const q = state.query.trim();
     if (!q) return;
-    const name = prompt('Name this view:', suggestViewName(q));
+    // In-app dialog, not prompt() (audit 39 P1): shows the query, validates
+    // inline, and keeps duplicate-name errors INSIDE the dialog.
+    const name = await promptDialog({
+      title: 'Save this view',
+      label: 'Name',
+      value: suggestViewName(q),
+      hint: `Saves the current search: ${q}`,
+      submit: async (n) => {
+        const res = await saveView(n, q);
+        return res.ok ? { ok: true } : { ok: false, error: res.error };
+      },
+    });
     if (name === null) return;
-    const res = await saveView(name, q);
-    if (!res.ok) {
-      toast(res.error);
-      return;
-    }
     await refreshViews();
     updateSaveAffordance();
-    toast(`Saved "${res.view.name}"`, { kind: 'success' });
+    toast(`Saved "${name}"`, { kind: 'success' });
   });
 
   wirePalette(ctx);

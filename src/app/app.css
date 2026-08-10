@@ -5308,6 +5308,83 @@ body.composing #main {
   animation: reorient-pulse 700ms var(--ease-out) 1;
 }
 
+
+/* ---------------- prompt dialog (replaces native prompt()) ----------------
+ * Design-system compliant: every value below is a token (audit 25 gate).
+ * Inserted BEFORE the prefers-reduced-motion block, which must stay last. */
+.prompt-backdrop, .activity-backdrop {
+  position: fixed; inset: 0; z-index: var(--z-toast);
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  display: grid; place-items: center;
+}
+.prompt-box, .activity-box {
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  padding: var(--s-6);
+  width: min(420px, calc(100vw - var(--s-10)));
+  max-height: 70vh; overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.prompt-box h3, .activity-box h3 {
+  font-size: var(--t-lg); letter-spacing: var(--track-wide);
+  margin-bottom: var(--s-4);
+}
+.prompt-box label {
+  display: block; font-size: var(--t-xs); color: var(--fg-dim);
+  letter-spacing: var(--track-wide); margin-bottom: var(--s-1);
+}
+.prompt-box input {
+  width: 100%; padding: var(--s-3) var(--s-3); margin-top: var(--s-2);
+  border-radius: var(--r-md); border: 1px solid var(--line);
+  background: var(--bg-sunken); color: var(--fg);
+  font: inherit; font-size: var(--t-md);
+}
+.prompt-box input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.prompt-hint {
+  margin-top: var(--s-3); font-size: var(--t-xs); color: var(--fg-faint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  word-break: break-all; max-height: var(--s-10); overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.prompt-err {
+  min-height: var(--s-4); margin-top: var(--s-2); font-size: var(--t-xs);
+  color: var(--danger);
+}
+.prompt-actions { display: flex; gap: var(--s-2); justify-content: flex-end; margin-top: var(--s-3); }
+.prompt-actions button {
+  padding: var(--s-2) var(--s-4); border-radius: var(--r-md); border: 1px solid var(--line);
+  background: var(--bg-sunken); color: var(--fg);
+  font: inherit; font-size: var(--t-sm); font-weight: var(--w-semi); cursor: pointer;
+}
+.prompt-actions button.primary {
+  background: var(--accent); color: var(--accent-fg); border: none;
+}
+.prompt-actions button:disabled { opacity: 0.5; cursor: default; }
+
+/* ---------------- activity log viewer ---------------- */
+.activity-box {
+  width: min(560px, calc(100vw - var(--s-10)));
+  overscroll-behavior: contain;
+}
+.activity-list { list-style: none; margin: 0 0 var(--s-3); padding: 0; }
+.activity-row {
+  padding: var(--s-2) var(--s-3); border-radius: var(--r-md); font-size: var(--t-sm);
+  color: var(--fg-dim); border-left: 3px solid transparent;
+}
+.activity-row:nth-child(odd) { background: color-mix(in srgb, var(--bg) 40%, transparent); }
+.activity-row.outcome-failed { border-left-color: var(--danger); }
+.activity-row.outcome-partial { border-left-color: var(--warning); }
+.activity-row.outcome-undone { border-left-color: var(--accent-soft); }
+.activity-empty { padding: var(--s-4) var(--s-3); font-size: var(--t-sm); color: var(--fg-faint); }
+.activity-foot { font-size: var(--t-xs); color: var(--fg-faint); margin: 0 0 var(--s-3); }
+.activity-box > button.primary {
+  float: right; padding: var(--s-2) var(--s-4); border-radius: var(--r-md); border: none;
+  background: var(--accent); color: var(--accent-fg);
+  font: inherit; font-size: var(--t-sm); font-weight: var(--w-semi); cursor: pointer;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -5328,3 +5405,4 @@ body.composing #main {
     transition-delay: 0ms !important;
   }
 }
+
