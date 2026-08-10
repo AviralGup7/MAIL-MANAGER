@@ -688,6 +688,21 @@ function visibleIds() {
  * refresh, which threw away scroll position, focus and the selection, and
  * forced a full style+layout pass over the whole list.
  */
+/**
+ * Re-measure which subjects are actually clipped (audit 35 bloom gate).
+ *
+ * Runs after the rows are attached (a detached element reports scrollWidth
+ * 0) and after density changes, where the clip condition changes. Reads
+ * are one per row per render -- the same order of cost the ghost rect
+ * measurement in audit 36 priced at 0.004ms each.
+ */
+function refreshSubjectClip() {
+  for (const [, node] of nodeById) {
+    const s = node.querySelector('.r-subj');
+    if (s) node.classList.toggle('subj-clip', s.scrollWidth > s.clientWidth);
+  }
+}
+
 function renderList() {
   // EVERY visible message is rendered. There is no cap.
   //
@@ -830,6 +845,11 @@ function renderList() {
   }
 
   el.list.replaceChildren(frag);
+
+  // Freshly built rows measured their subject's clip while DETACHED, where
+  // scrollWidth is 0; now that they are in the document the condition is
+  // decidable. One pass per render, not per frame.
+  refreshSubjectClip();
 
   // Stagger the FIRST populated render only.
   //
@@ -1108,6 +1128,18 @@ function fillRow(li, m) {
   const subject = isConv ? conv.subject : m.subject;
   setText(subjEl, subject);
   setAttr(subjEl, 'title', subject);
+
+  /*
+   * ATTENTION BLOOM gate (audit 35): only a subject that is ACTUALLY clipped
+   * may bloom when attended, so the class records the measured condition
+   * rather than a blanket rule. jsdom reports zero for both widths, so tests
+   * never bloom by accident — the bloom is a browser behaviour, verified in
+   * one. Re-measured on density change, where the clip condition changes.
+   */
+  const clipped = subjEl.scrollWidth > subjEl.clientWidth;
+  if (li.classList.contains('subj-clip') !== clipped) {
+    li.classList.toggle('subj-clip', clipped);
+  }
 
   /*
    * THE SNIPPET IS CLEANED, NOT PRINTED RAW.  (Feature 29.)
@@ -5178,7 +5210,12 @@ async function boot() {
      * than in the options page so the two stay in step through the same
      * channel `threaded` already uses.
      */
-    if (key === 'density') applyDensity();
+    if (key === 'density') {
+      applyDensity();
+      // The bloom's clip condition depends on line width; a density change
+      // re-decides every row rather than leaving stale classes behind.
+      refreshSubjectClip();
+    }
     if (key === 'lanes') renderList();
   });
 

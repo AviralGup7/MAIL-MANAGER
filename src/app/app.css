@@ -1130,6 +1130,44 @@ a.ghost {
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: var(--lh-snug);
+  /* the bloom swaps this line's allegiance; only its opacity may move */
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+/*
+ * ATTENTION BLOOM (audit 35, concept #3) — comfortable density ONLY.
+ *
+ * The attended row spends its second line on the rest of the subject instead
+ * of the snippet: `.r-subj` goes from one clamped line to two, and the
+ * snippet — itself 100% clipped on real mail — yields the space. Nothing is
+ * added, nothing moves; the row re-prioritises its own pixels, which is the
+ * honest sense of a bloom.
+ *
+ * Gates, each deliberate:
+ *   - `[aria-selected]` drives it, so j/k gets the bloom for free and a
+ *     keyboard user is not second-class. No :hover bloom: two attended rows
+ *     at once read as a broken list, and selection must win outright.
+ *   - `.subj-clip` is MEASURED (scrollWidth > clientWidth in fillRow), so a
+ *     subject that fits never costs its row the snippet.
+ *   - comfortable only: compact already hides the snippet line and cosy is
+ *     left intentionally unchanged — both densities traded detail for
+ *     density, and the row contract is why the list is fast.
+ *
+ * The clamp/display switch is not a transition (it cannot be); the only
+ * animated property is the snippet's opacity. Row height is fixed at
+ * --row-h with paint containment, so geometry never changes and there is
+ * nothing for prefers-reduced-motion to disable — the information remains
+ * with motion off.
+ */
+:root[data-density='comfortable'] .row[aria-selected='true'].subj-clip .r-subj {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  text-overflow: clip;
+}
+:root[data-density='comfortable'] .row[aria-selected='true'].subj-clip .r-snip {
+  opacity: 0;
 }
 
 .r-right {
