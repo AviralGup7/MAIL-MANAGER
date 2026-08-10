@@ -2305,6 +2305,9 @@ textarea {
   position: fixed;
   z-index: var(--z-menu);
   max-width: 240px;
+  /* the ellipsis guard: if this ever lands inside a flex, min-width auto
+     would grow it past the container instead of truncating */
+  min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
