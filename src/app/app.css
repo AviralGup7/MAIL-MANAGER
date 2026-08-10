@@ -212,6 +212,42 @@
 }
 
 /*
+ * POLISH 13/14/16/20: search hits show their hit; deadline views wear the
+ * urgency colour; a minimised compose with words in it carries a dot; the
+ * freshness line is a sync button. Tokens only, colour only.
+ */
+mark {
+  background: var(--accent-soft);
+  color: inherit;
+  border-radius: var(--r-sm);
+  padding: 0 1px;
+}
+.cat.hot-danger .c-unread { color: var(--danger); }
+.cat.hot-warm .c-unread { color: var(--warning); }
+body.draft-dirty #compose.minimised::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-full);
+  background: var(--warning);
+}
+.fresh-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--fg-faint);
+  font-size: var(--t-xs);
+  cursor: pointer;
+}
+.fresh-btn:hover {
+  color: var(--fg);
+  text-decoration: underline;
+}
+
+/*
  * POLISH 6: recency is a decision input on unread mail; the date earns the
  * same weight the sender already gets. Colour/weight only -- no motion.
  */

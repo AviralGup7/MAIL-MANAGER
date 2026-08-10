@@ -190,6 +190,17 @@ export function openMenu({
     }
   });
 
+  /*
+   * POLISH 17: menus used to clip at the viewport's bottom edge -- filed in
+   * audit 34, fixed here for ALL four menus at once. Measure after mount and
+   * pull the menu up by exactly the overflow; a static margin, no animation.
+   */
+  requestAnimationFrame(() => {
+    const r = node.getBoundingClientRect();
+    const over = r.bottom - (window.innerHeight - 8);
+    if (over > 0) node.style.marginTop = `-${Math.ceil(over)}px`;
+  });
+
   const layer = openLayer({
     name,
     node,

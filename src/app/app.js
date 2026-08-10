@@ -1206,7 +1206,7 @@ function fillRow(li, m) {
   const isConv = !!conv && conv.count > 1;
 
   const fromEl = q('.r-from');
-  setText(fromEl, isConv ? conv.participants.join(', ') : displayName(m.from));
+  setHighlighted(fromEl, isConv ? conv.participants.join(', ') : displayName(m.from), state.query);
   setAttr(fromEl, 'title', isConv
     ? `${conv.count} messages · ${conv.participants.join(', ')}`
     : m.from);
@@ -1221,7 +1221,7 @@ function fillRow(li, m) {
   // The ORIGINAL subject on a conversation: it is named for what it is about,
   // not for the last reply, which is almost always "Re: ...".
   const subject = isConv ? conv.subject : m.subject;
-  setText(subjEl, subject);
+  setHighlighted(subjEl, subject, state.query);
   setAttr(subjEl, 'title', subject);
 
   /*
@@ -1306,6 +1306,31 @@ function setAttr(node, name, value) {
 function setText(node, value) {
   const v = value || '';
   if (node.textContent !== v) node.textContent = v;
+}
+
+/*
+ * POLISH 13: a search hit should SHOW its hit. `mark` chunks are built as
+ * text nodes plus mark elements -- never innerHTML -- so a subject that
+ * contains literal query text cannot become markup. Operators (:, ") skip
+ * highlighting entirely; matching "is:overdue" against prose is a lie.
+ */
+function setHighlighted(node, text, query) {
+  if (!query || /[:"]/.test(query)) { setText(node, text); return; }
+  const q = query.trim().toLowerCase();
+  const hay = text.toLowerCase();
+  let pos = q ? hay.indexOf(q) : -1;
+  if (pos === -1) { setText(node, text); return; }
+  node.textContent = '';
+  let i = 0;
+  while (pos !== -1) {
+    if (pos > i) node.append(text.slice(i, pos));
+    const mk = document.createElement('mark');
+    mk.textContent = text.slice(pos, pos + q.length);
+    node.append(mk);
+    i = pos + q.length;
+    pos = hay.indexOf(q, i);
+  }
+  node.append(text.slice(i));
 }
 
 /*
@@ -1558,6 +1583,13 @@ function renderSidebar() {
 
     const key = b.dataset.cat;
     const u = key === 'all' ? totalUnread : unread[key] || 0;
+    /*
+     * POLISH 14: a deadline view in the red is a different animal from an
+     * inbox with unread mail. The count earns the urgency colour; nothing
+     * else moves.
+     */
+    b.classList.toggle('hot-danger', key === 'sv-overdue' && u > 0);
+    b.classList.toggle('hot-warm', key === 'sv-week' && u > 0);
     /*
      * Same rule as the mailboxes above: count CONVERSATIONS when the list is
      * showing conversations, or the rail disagrees with the header beside it.
@@ -1863,6 +1895,7 @@ function renderThreadStrip(rootId) {
     const when = document.createElement('span');
     when.className = 'r-msg-date';
     when.textContent = shortDate(msg.date);
+    setAttr(when, 'title', fullDate(msg.date));
 
     const peek = document.createElement('span');
     peek.className = 'r-msg-snip';
@@ -2221,6 +2254,13 @@ function renderBody(body, { allowRemote = false, stats = {} } = {}) {
    * needs. Beyond ~70 characters the eye loses its place returning to the
    * next line, which is the single most common failure in mail rendering.
    */
+  /* POLISH 18b: a link that leaves the message says so before the click. */
+  a[target="_blank"]::after{
+    content:"";display:inline-block;width:10px;height:10px;margin-inline-start:4px;
+    background:currentColor;opacity:.55;
+    -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath fill='none' stroke='black' stroke-width='2' d='M8 5H4v11h11v-4M12 4h4v4M16 4 9 11'/%3E%3C/svg%3E") no-repeat center/contain;
+    mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath fill='none' stroke='black' stroke-width='2' d='M8 5H4v11h11v-4M12 4h4v4M16 4 9 11'/%3E%3C/svg%3E") no-repeat center/contain;
+  }
   body{
     font:15px/1.65 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
     color:${ink};background:${surface};
@@ -3720,6 +3760,7 @@ $('search-suggest')?.addEventListener('mousedown', (e) => {
 
 
 $('btn-refresh').addEventListener('click', () => refresh());
+  $('freshness').addEventListener('click', () => refresh());
 el.helpClose?.addEventListener('click', closeHelp);
 // Clicking the backdrop closes, clicking the panel does not.
 el.help?.addEventListener('mousedown', (e) => {
@@ -5373,7 +5414,13 @@ async function boot() {
   // palette. `applyTheme` falls back to the default for an unknown id, which
   // covers the old binary 'light'/'dark' values from before the picker.
   const theme = settings.get('theme');
-  state.theme = applyTheme(theme || DEFAULT_THEME).id;
+  /*
+   * POLISH 18: first run honours the OS. A student whose machine is dark
+   * gets midnight instead of a flashbang; an explicit saved choice always
+   * wins, so this only ever decides the FIRST impression.
+   */
+  const osDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  state.theme = applyTheme(theme || (osDark ? 'midnight' : DEFAULT_THEME)).id;
   applyDensity();
 
   buildSidebar();

@@ -118,6 +118,7 @@ export function openCompose(ctx, prefill = {}) {
 }
 
 export function closeCompose() {
+  document.body.classList.remove('draft-dirty');
   const panel = $('compose');
   if (panel) closeWithMotion(panel);
   composeMeta = {};
@@ -363,6 +364,13 @@ export function wireCompose(ctx) {
    * so adding a field later cannot forget to be saved.
    */
   panel.addEventListener('input', () => ensureDraftSaver().schedule());
+  /*
+   * POLISH 16: a minimised compose with words in it must not look identical
+   * to an empty one -- that is state the user can currently only remember.
+   */
+  panel.addEventListener('input', () => {
+    document.body.classList.toggle('draft-dirty', isMeaningful(collectDraft()));
+  });
 
   wireAutocomplete('c-to', 'c-to-list');
   wireAutocomplete('c-cc', 'c-cc-list');
