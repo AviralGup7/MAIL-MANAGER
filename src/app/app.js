@@ -250,6 +250,7 @@ const el = {
   toastKbd: $('toast-kbd'),
   rPrev: $('r-prev'),
   rNext: $('r-next'),
+  newpill: $('newpill'),
   gate: $('gate'),
   gateError: $('gate-error'),
   reader: $('reader'),
@@ -593,6 +594,9 @@ function resetView({ allMailboxes = false } = {}) {
     }
     state.mailbox = DEFAULT_MAILBOX;
     store = wireStore(DEFAULT_MAILBOX);
+    pendingScrollRestore = 0;
+    lastUserScroll = 0;
+    el.scroller.scrollTop = 0;
     // Freshness belongs to a SESSION. Leaving it set would tell the next
     // person to sign in that we had spoken to Gmail on their behalf.
     state.lastSync = 0;
@@ -862,7 +866,29 @@ function renderList() {
     insertLaneHeaders(frag);
   }
 
+  // SPATIAL MEMORY (audit 38): a structural render must not yank the
+  // viewport. Without this, every delta sync snapped a scrolled user back
+  // to the top -- the anchor held at the store level and died at the DOM
+  // level. Explicit resets (category switch, resync, search) assign
+  // scrollTop themselves after this runs.
   el.list.replaceChildren(frag);
+  /*
+   * Restore on the NEXT frame from the position captured at the last real
+   * scroll event: the rebuild task clamps the live position before a
+   * same-task read can see it (measured). One deferred restore, cancellable
+   * by every explicit reset, is the whole mechanism.
+   */
+  if (lastUserScroll > 40) pendingScrollRestore = lastUserScroll;
+  if (pendingScrollRestore > 0 && !restoreQueued) {
+    restoreQueued = true;
+    requestAnimationFrame(() => {
+      restoreQueued = false;
+      if (pendingScrollRestore > 0 && el.scroller.scrollTop < 40) {
+        el.scroller.scrollTop = pendingScrollRestore;
+      }
+      pendingScrollRestore = 0;
+    });
+  }
 
   // Freshly built rows measured their subject's clip while DETACHED, where
   // scrollWidth is 0; now that they are in the document the condition is
@@ -1397,6 +1423,30 @@ function setCount(node, unread, total) {
  */
 function openInGmail(id) {
   window.open(`https://mail.google.com/mail/u/0/#inbox/${id}`, '_blank');
+}
+
+/*
+ * SPATIAL MEMORY (audit 38, concept #6): returning from any detour drops the
+ * eye back where it was. The scroll is the information; the pulse is the
+ * confirmation, and reduced motion keeps the former and drops the latter.
+ */
+const scrollMemory = new Map();
+let newCount = 0;
+let preQueryScroll = 0;
+let pendingScrollRestore = 0;
+let restoreQueued = false;
+let lastUserScroll = 0;
+function reorientTo(id) {
+  const node = nodeById.get(id);
+  if (!node) return;
+  if (typeof node.scrollIntoView === 'function') {
+    node.scrollIntoView({ block: 'nearest' });
+  }
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  node.classList.remove('reorient');
+  void node.offsetWidth;
+  node.classList.add('reorient');
+  setTimeout(() => node.classList.remove('reorient'), 800);
 }
 
 function patchRow(id) {
@@ -2343,6 +2393,8 @@ function closeReader() {
   el.rBody.srcdoc = '';
   el.rAttachments.hidden = true;
   el.rAttachments.replaceChildren();
+  // R1: the eye returns to the row it was reading, not to the top.
+  if (prev) reorientTo(prev);
   el.rImages.hidden = true;
 }
 
@@ -2541,6 +2593,7 @@ function optimistic({
           await send(undoVerb, { id });
           activity.record({ verb: undoVerb, ids: [id], actor: 'user', detail: 'undo' });
           renderList();
+          requestAnimationFrame(() => reorientTo(id));
         });
       }
       if (done) toast(done);
@@ -3115,7 +3168,14 @@ async function refresh({ silent = false } = {}) {
 
     state.lastSync = Date.now();
     const n = res.added.length;
-    if (n) toast(`${n} new message${n > 1 ? 's' : ''}`);
+    if (n && el.scroller.scrollTop > 200) {
+      // R3: the anchor held, but the arrival must not be invisible. The
+      // pill is the toast's spatial cousin: it says how many and takes you
+      // to them.
+      newCount += n;
+      el.newpill.hidden = false;
+      el.newpill.textContent = `${newCount} new — jump up`;
+    } else if (n) toast(`${n} new message${n > 1 ? 's' : ''}`);
     else if (!silent) toast('Up to date');
     return 'delta';
   } catch (err) {
@@ -3433,13 +3493,19 @@ el.cats.addEventListener('contextmenu', (e) => {
  * visible control must match the applied state.
  */
 function selectCategory(key) {
+  // R4: each mailbox keeps its place; returning is returning, not resetting.
+  scrollMemory.set(state.category, el.scroller.scrollTop);
   state.category = key;
   if (state.query) {
     state.query = '';
     el.search.value = '';
   }
-  el.scroller.scrollTop = 0;
   renderList();
+  // After the render: restoring before it would be overwritten by the
+  // rebuild's own scroll preservation.
+  pendingScrollRestore = 0;
+  lastUserScroll = 0;
+  el.scroller.scrollTop = scrollMemory.get(key) || 0;
   renderSidebar();
   // Clearing the query also clears whichever saved view was active. Leaving it
   // highlighted would claim a filter is applied when it is not.
@@ -3576,8 +3642,12 @@ el.search.addEventListener('input', () => {
   if (searchFrame) return;
   searchFrame = requestAnimationFrame(() => {
     searchFrame = 0;
+    if (!state.query && el.search.value) preQueryScroll = el.scroller.scrollTop;
     state.query = el.search.value;
-    el.scroller.scrollTop = 0;
+    // R5: clearing a search returns you to where the search began.
+    pendingScrollRestore = 0;
+    lastUserScroll = 0;
+    el.scroller.scrollTop = state.query ? 0 : preQueryScroll;
     renderList();
     renderViews();
     updateSaveAffordance();
@@ -3776,6 +3846,13 @@ $('search-suggest')?.addEventListener('mousedown', (e) => {
 
 $('btn-refresh').addEventListener('click', () => refresh());
   $('freshness').addEventListener('click', () => refresh());
+  $('newpill').addEventListener('click', () => {
+    pendingScrollRestore = 0;
+    lastUserScroll = 0;
+    el.scroller.scrollTop = 0;
+    el.newpill.hidden = true;
+    newCount = 0;
+  });
 el.helpClose?.addEventListener('click', closeHelp);
 // Clicking the backdrop closes, clicking the panel does not.
 el.help?.addEventListener('mousedown', (e) => {
@@ -5029,6 +5106,9 @@ async function bulkAct(kind, explicitIds = null) {
     store.batch(() => {
       for (const m of snapshots) store.upsert(m);
     });
+    // R2: recovery is a disorienting moment by definition; the first
+    // restored row pulses back into view once the render lands.
+    requestAnimationFrame(() => reorientTo(snapshots[0]?.id));
     // The inverse is DERIVED, never typed: swap add and remove.
     await send('BULK', { ids, add: remove, remove: add });
     activity.record({ verb: `BULK_${kind.toUpperCase()}`, ids, actor: 'user', detail: 'undo' });
@@ -5480,10 +5560,21 @@ async function boot() {
     'scroll',
     () => {
       const on = el.scroller.scrollTop > 4;
+      // Spatial memory: the user's last real scroll position, captured at
+      // the event, because the rebuild task that follows a delta can clamp
+      // the live position before renderList gets to read it (measured).
+      lastUserScroll = el.scroller.scrollTop;
       if (on !== scrolledOn) {
         scrolledOn = on;
         el.listpane.classList.toggle('scrolled', on);
         document.body.classList.toggle('list-scrolled', on);
+        // The rebuild's clamp emits a scrollTop-0 event milliseconds before
+        // the deferred restore lands; never treat that as "user went home".
+        if (on === false && el.scroller.scrollTop < 80 && !el.newpill.hidden
+            && pendingScrollRestore === 0) {
+          el.newpill.hidden = true;
+          newCount = 0;
+        }
       }
     },
     { passive: true }

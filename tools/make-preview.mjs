@@ -236,8 +236,13 @@ function respond(msg) {
     case 'PROFILE': return { ok: true, data: { emailAddress: 'f20240294@pilani.bits-pilani.ac.in' } };
     case 'SYNC_PAGE':
       return { ok: true, data: { messages: msg.opts?.pageToken ? [] : MESSAGES, nextPageToken: '' } };
-    case 'SYNC_DELTA':
-      return { ok: true, data: { kind: 'delta', added: [], removed: [], patched: [] } };
+    case 'SYNC_DELTA': {
+      // Review seam: queued messages arrive as a delta, so the new-mail pill
+      // (concept #6 R3) is exercisable in the preview.
+      const q = globalThis.__bmmDeltaQueue || [];
+      globalThis.__bmmDeltaQueue = [];
+      return { ok: true, data: { kind: 'delta', added: q, removed: [], patched: [] } };
+    }
     case 'GET_BODY': {
       const m = MESSAGES.find((x) => x.id === msg.id);
       // One message carries an attachment, so the chip and its download path
