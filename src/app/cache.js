@@ -325,5 +325,18 @@ export function createSaver(getMessages, storage = chrome.storage.local, opts = 
     get isPending() {
       return pending;
     },
+
+    /**
+     * Cancel any pending save so a stale write cannot resurrect data after
+     * `clearCache()` (sign-out, resync). A save already scheduled by a store
+     * notification would otherwise fire AFTER the cache was cleared and write
+     * a fresh blob back. Subsequent `schedule()` calls still work normally.
+     */
+    invalidate() {
+      cancel(handle);
+      handle = null;
+      handleKind = null;
+      pending = false;
+    },
   };
 }

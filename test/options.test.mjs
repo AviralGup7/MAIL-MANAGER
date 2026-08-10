@@ -281,8 +281,11 @@ test('every setting in the schema has a control on this page', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');
   /*
    * `clientId` and `theme` are handled elsewhere (its own fieldset, and the
-   * in-app theme picker). Everything else must be reachable, or it is a
-   * setting the user cannot change -- which is how dead schema entries start.
+   * in-app theme picker). `coachDone` is an internal one-time flag (the
+   * coach toast) that deliberately has no user-facing control; it is
+   * schema-backed so backup/restore round-trips it. Everything else must be
+   * reachable, or it is a setting the user cannot change -- which is how
+   * dead schema entries start.
    */
   const { doc, restore } = await bootOptions();
   try {
@@ -290,7 +293,7 @@ test('every setting in the schema has a control on this page', async (t) => {
     const declared = [...schema.matchAll(/^ {2}([a-zA-Z][a-zA-Z0-9]*): \{ type:/gm)]
       .map((m) => m[1]);
 
-    const ELSEWHERE = new Set(['clientId', 'theme']);
+    const ELSEWHERE = new Set(['clientId', 'theme', 'coachDone']);
     const missing = declared
       .filter((k) => !ELSEWHERE.has(k))
       .filter((k) => !doc.getElementById(k));

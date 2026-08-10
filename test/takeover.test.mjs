@@ -31,7 +31,21 @@ try {
   test('takeover (skipped: jsdom not installed)', { skip: true }, () => {});
 }
 
-const SRC = readFileSync(join(ROOT, 'src/takeover/content.js'), 'utf8');
+const SRC = readFileSync(join(ROOT, 'src/takeover/content.js'), 'utf8')
+  // TEST-SPEED: the animation durations are incidental to every assertion
+  // here (mount, suspension, style restore); waiting 380ms per mount in
+  // wall clock was pure overhead. Shrink the windows, keep the logic.
+  .replace('const ENTER_MS = 380', 'const ENTER_MS = 25')
+  .replace('const EXIT_MS = 260', 'const EXIT_MS = 25')
+  .replace('const EXIT_MS = 25', 'const EXIT_MS = 25')
+  // Node's URL returns origin 'null' for the chrome-extension:// scheme
+  // (non-special scheme), which makes BMM_SHOWN postMessage throw inside
+  // jsdom and makes the release listener compare e.origin '' vs 'null'.
+  // In Chrome extension origins are real; pin a valid one for jsdom.
+  .replaceAll("new URL(chrome.runtime.getURL('')).origin", "'chrome-extension://test'")
+  // The crashed-app fallback is 2s of wall clock; the contract under test
+  // is 'the frame is revealed without BMM_READY', not the specific delay.
+  .replace('function waitForAppReady(timeoutMs = 2000)', 'function waitForAppReady(timeoutMs = 40)');
 
 /**
  * A stand-in for Gmail's page.
@@ -58,6 +72,16 @@ function mount({ reducedMotion = false, url = 'https://mail.google.com/mail/u/0/
     pretendToBeVisual: true,
   });
   const { window: win } = dom;
+
+  /* TEST-SPEED: replace jsdom's real ~16ms rAF with a microtask frame.
+   * The app coalesces renders through rAF and every test settles through it,
+   * so each settle previously cost ~55ms of wall clock per frame for work
+   * jsdom cannot paint anyway. Ordering is preserved: the frame still fires
+   * after the current macrotask, so one-render-per-settled-state holds.
+   * A rAF loop would now hang instead of tick — which doubles as a liveness
+   * check for the "no animation runs forever" doctrine. */
+  win.requestAnimationFrame = (fn) => { queueMicrotask(() => fn(performance.now())); return 1; };
+  win.cancelAnimationFrame = () => {};
 
   /** @type {Array<(msg:any, sender:any, respond:Function)=>void>} */
   const messageListeners = [];
@@ -135,7 +159,7 @@ async function enter(h) {
   await h.tick();
   h.appReady();
   await h.tick();
-  await h.tick(400); // past ENTER_MS
+  await h.tick(60); // past ENTER_MS
 }
 
 // ---------------------------------------------------------------------------
@@ -181,7 +205,7 @@ test('CRITICAL: release restores every inline style byte-identically', async (t)
 
   await enter(h);
   h.send({ type: 'BMM_TOGGLE' }); // release
-  await h.tick(400);
+  await h.tick(60);
 
   assert.deepEqual(h.styleSnapshot(), before, 'inline styles must round-trip exactly');
   assert.equal(host(h.doc), null, 'host must be removed');
@@ -196,7 +220,7 @@ test('CRITICAL: repeated toggles do not accumulate damage', async (t) => {
   for (let i = 0; i < 3; i++) {
     await enter(h);
     h.send({ type: 'BMM_TOGGLE' });
-    await h.tick(400);
+    await h.tick(60);
   }
 
   assert.deepEqual(h.styleSnapshot(), before, 'three cycles must leave no residue');
@@ -213,7 +237,7 @@ test('a toggle mid-animation is ignored rather than half-mounting', async (t) =>
 
   h.appReady();
   await h.tick();
-  await h.tick(400);
+  await h.tick(60);
 
   assert.equal(h.doc.querySelectorAll('#bmm-takeover-host').length, 1, 'exactly one host');
 });
@@ -224,8 +248,8 @@ test('the frame is revealed even if the app never signals readiness', async (t) 
   // staring at a hidden frame over a hidden Gmail.
   const h = mount();
   h.send({ type: 'BMM_TOGGLE' });
-  await h.tick(2100); // never call appReady()
-  await h.tick(400);
+  await h.tick(120); // never call appReady()
+  await h.tick(60);
 
   const el = host(h.doc);
   assert.ok(el, 'host must still be present');
@@ -253,9 +277,10 @@ test('BMM_RELEASE from the app iframe releases; a forged one does not', async (t
     new h.win.MessageEvent('message', {
       data: { type: 'BMM_RELEASE' },
       source: frame.contentWindow,
+      origin: 'chrome-extension://test',
     })
   );
-  await h.tick(400);
+  await h.tick(60);
   assert.equal(host(h.doc), null, 'the app may close itself');
 });
 
@@ -403,7 +428,7 @@ test('Gmail nodes added AFTER mount are inerted, and only those', async (t) => {
   );
 
   h.send({ type: 'BMM_TOGGLE' });
-  await h.tick(400);
+  await h.tick(60);
   assert.equal(late.hasAttribute('inert'), false, 'release must undo it');
 });
 
@@ -417,7 +442,7 @@ test("release does not clear an inert attribute Gmail set itself", async (t) => 
 
   await enter(h);
   h.send({ type: 'BMM_TOGGLE' });
-  await h.tick(400);
+  await h.tick(60);
 
   assert.equal(own.hasAttribute('inert'), true, "Gmail's own inert must survive");
 });
@@ -467,7 +492,7 @@ test('LONG SESSION: 15 round trips with late Gmail nodes leave no residue', asyn
     await h.tick();
 
     h.send({ type: 'BMM_TOGGLE' });
-    await h.tick(400);
+    await h.tick(60);
   }
 
   assert.equal(h.doc.querySelectorAll('#bmm-takeover-host').length, 0, 'a host was stranded');
@@ -503,7 +528,7 @@ test('LONG SESSION: the late-node observer is not duplicated across cycles', asy
   for (let i = 0; i < 5; i++) {
     await enter(h);
     h.send({ type: 'BMM_TOGGLE' });
-    await h.tick(400);
+    await h.tick(60);
   }
 
   await enter(h);
@@ -519,7 +544,7 @@ test('LONG SESSION: the late-node observer is not duplicated across cycles', asy
 
   assert.equal(marks, 1, `the node was processed ${marks} times — duplicate observers`);
   h.send({ type: 'BMM_TOGGLE' });
-  await h.tick(400);
+  await h.tick(60);
 });
 
 
@@ -551,7 +576,7 @@ test('TAKEOVER: Alt+Shift+M opens the takeover without any worker message', asyn
   await h.tick();
   h.appReady();
   await h.tick();
-  await h.tick(400);
+  await h.tick(60);
 
   assert.ok(host(h.doc), 'Alt+Shift+M must open the takeover with no worker involved');
 });
@@ -575,7 +600,7 @@ test('TAKEOVER: the key fallback does not double-toggle alongside the worker', a
   await h.tick();
   h.appReady();
   await h.tick();
-  await h.tick(400);
+  await h.tick(60);
 
   assert.ok(host(h.doc), 'the takeover must be open, not opened-then-closed');
   assert.equal(

@@ -19,6 +19,9 @@ try {
 
 const { SHORTCUTS, allShortcuts, renderShortcuts } = await import('../src/app/shortcuts.js');
 const appSrc = readFileSync(new URL('../src/app/app.js', import.meta.url), 'utf8');
+// Help moved out of the shell (architecture audit phase 9); its lifecycle
+// rules now live in the module that owns it.
+const helpSrc = readFileSync(new URL('../src/app/help.js', import.meta.url), 'utf8');
 
 test('every group has a title and at least one shortcut', () => {
   assert.ok(SHORTCUTS.length >= 3);
@@ -175,9 +178,9 @@ test('help delegates its lifecycle to the layer stack', () => {
    * app.integration.test.mjs. What is worth asserting HERE is the structural
    * rule: help must not hand-roll a lifecycle again.
    */
-  assert.match(appSrc, /helpLayer = openLayer\(/, 'help must use the layer primitive');
+  assert.match(helpSrc, /helpLayer = openLayer\(/, 'help must use the layer primitive');
   assert.ok(
-    !/helpReturnFocus/.test(appSrc),
+    !/helpReturnFocus/.test(helpSrc),
     'help should not manage focus itself; the primitive owns that'
   );
 });
@@ -194,8 +197,10 @@ test('the layer primitive restores focus, and checks the node still exists', () 
 test('single-letter shortcuts are swallowed while help is open', () => {
   // Archiving a message the user cannot see is the worst kind of surprise.
   // Keyed on the layer now rather than on the element's hidden attribute.
+  // The shell's key handler guards through the module's accessor; the
+  // single-letter shortcuts must never fire behind the overlay.
   assert.ok(
-    /if \(helpLayer\) return;/.test(appSrc),
+    /if \(helpOpen\(\)\) return;/.test(appSrc),
     'shortcuts still fire behind the help overlay'
   );
 });

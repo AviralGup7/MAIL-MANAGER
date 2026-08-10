@@ -97,6 +97,16 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
     pretendToBeVisual: true, // gives us requestAnimationFrame
   });
   const { window: win } = dom;
+
+  /* TEST-SPEED: replace jsdom's real ~16ms rAF with a microtask frame.
+   * The app coalesces renders through rAF and every test settles through it,
+   * so each settle previously cost ~55ms of wall clock per frame for work
+   * jsdom cannot paint anyway. Ordering is preserved: the frame still fires
+   * after the current macrotask, so one-render-per-settled-state holds.
+   * A rAF loop would now hang instead of tick — which doubles as a liveness
+   * check for the "no animation runs forever" doctrine. */
+  win.requestAnimationFrame = (fn) => { queueMicrotask(() => fn(performance.now())); return 1; };
+  win.cancelAnimationFrame = () => {};
   const calls = [];
   const storage = { ...storageSeed };
   /** chrome.storage.onChanged listeners registered by the app. */
@@ -356,6 +366,17 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
       // Never mask the real result.
     }
     Object.assign(globalThis, prev);
+
+    // LATE-RAF NO-OP: a deferred app timer (mark-read grace, refresh sweep)
+    // can fire after restore() and resolve the bare global
+    // requestAnimationFrame, which node:test leaves undefined — an
+    // uncaughtException that fails the FILE, not the test that leaked.
+    // The app's own teardown should cancel everything; this only keeps a
+    // leftover from crashing the runner.
+    if (globalThis.requestAnimationFrame === undefined) {
+      globalThis.requestAnimationFrame = () => 0;
+      globalThis.cancelAnimationFrame = () => {};
+    }
 
     /*
      * CLOSE THE WINDOW. This was missing, and it is why the suite eventually

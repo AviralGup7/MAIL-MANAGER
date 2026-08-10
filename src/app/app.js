@@ -3195,9 +3195,11 @@ async function refresh({ silent = false } = {}) {
       // Same hazard as sign-out: the store notification only schedules a
       // render, so the view must be reset synchronously before refilling.
       resetView();
+      saver.invalidate();
       // The cache is stale in the same way the store was; drop it so a failed
       // reload cannot resurrect archived mail on the next open.
       await clearCache();
+      saver.invalidate();
       if (res.kind === 'none') return 'none';
       await fetchPage('');
       return 'resync';
@@ -3933,8 +3935,14 @@ $('btn-signout').addEventListener('click', async () => {
   // mailbox on screen. `allMailboxes` clears every store, because Sent, Trash
   // and the rest stayed fully populated in memory and were one click away
   // after the gate appeared.
+  // The saver defers writes to idle; a save scheduled by the store
+  // notifications below would otherwise resurrect an (empty) cache blob
+  // AFTER clearCache() removed it. Invalidate before AND after resetView —
+  // clearing the stores schedules one last save that must never land.
+  saver.invalidate();
   await clearCache();
   resetView({ allMailboxes: true });
+  saver.invalidate();
   state.signedIn = false;
   opEpoch++; // late responses from this session are now stale
   // A signed-out app that keeps polling is a privacy problem, not just a bug.

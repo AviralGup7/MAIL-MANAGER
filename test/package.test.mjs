@@ -17,7 +17,12 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const read = (p) => readFileSync(join(ROOT, p), 'utf8');
+// TEST-SPEED: 99 tests read the same multi-KB sources; cache them.
+const _fileCache = new Map();
+const read = (p) => {
+  if (!_fileCache.has(p)) _fileCache.set(p, readFileSync(join(ROOT, p), 'utf8'));
+  return _fileCache.get(p);
+};
 const manifest = JSON.parse(read('manifest.json'));
 
 const has = (p) => existsSync(join(ROOT, p));
@@ -244,7 +249,10 @@ test('scopes stayed minimal', () => {
   const auth = read('src/background/auth.js');
   const scopes = auth.match(/const SCOPES = \[([\s\S]*?)\]/)[1];
   assert.ok(scopes.includes('gmail.modify'));
-  for (const banned of ['gmail.send', 'gmail.labels', 'userinfo']) {
+  // gmail.send is INTENTIONAL since compose shipped (see parity.test.mjs,
+  // which is the canonical scope assertion); only scopes the product never
+  // uses may be banned here.
+  for (const banned of ['gmail.labels', 'userinfo']) {
     assert.ok(!scopes.includes(banned), `scope ${banned} came back`);
   }
   const hosts = JSON.stringify(manifest.host_permissions);

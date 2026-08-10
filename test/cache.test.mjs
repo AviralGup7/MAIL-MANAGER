@@ -225,6 +225,24 @@ test('flush() with nothing pending does not write', async () => {
   assert.equal(writes, 0);
 });
 
+test('invalidate() cancels a scheduled save so it cannot resurrect a cleared cache', async () => {
+  // Sign-out clears the cache, then resetView() clears the store, whose
+  // notifications schedule one last save. That save must never land after
+  // clearCache() — it would write an empty blob back over the removal.
+  const s = fakeStorage();
+  let writes = 0;
+  const wrapped = { ...s, async set(o) { writes++; return s.set(o); } };
+  const saver = createSaver(() => [], wrapped, { minIntervalMs: 0 });
+  saver.schedule();          // scheduled by the pre-sign-out store
+  saver.invalidate();        // sign-out: nothing pending may write
+  await new Promise((r) => setTimeout(r, 80)); // long past the idle fallback
+  assert.equal(writes, 0, 'no write after invalidate');
+  // And a later schedule still works — the next session is a fresh saver era.
+  saver.schedule();
+  await saver.flush();
+  assert.equal(writes, 1, 'schedule() after invalidate() still writes');
+});
+
 test('the saver reads the store lazily, so it persists the FINAL state', async () => {
   // It takes a getter, not a snapshot: a save scheduled during a sync must
   // write what the store settled on, not what it held mid-flight.

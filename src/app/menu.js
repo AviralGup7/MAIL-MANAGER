@@ -198,6 +198,10 @@ export function openMenu({
   const raf = typeof requestAnimationFrame === 'function'
     ? requestAnimationFrame : (fn) => setTimeout(fn, 0);
   raf(() => {
+    // Non-browser context guard: in tests the window global may already be
+    // detached when this one-shot clamp timer fires; a crash there fails the
+    // whole file. In a browser window.innerHeight is always defined.
+    if (typeof window === 'undefined' || !Number.isFinite(window.innerHeight)) return;
     const r = node.getBoundingClientRect();
     const over = r.bottom - (window.innerHeight - 8);
     if (over > 0) node.style.marginTop = `-${Math.ceil(over)}px`;
