@@ -63,14 +63,16 @@ const DEADLINE_CUES = [
  * into a deadline.
  */
 const DEADLINE_VERB_BY = [
-  /\bsubmit\b[^.]{0,40}?\bby\b/,
-  /\bapply\b[^.]{0,40}?\bby\b/,
-  /\bregister\b[^.]{0,40}?\bby\b/,
-  /\bcomplete\b[^.]{0,40}?\bby\b/,
-  /\brespond\b[^.]{0,40}?\bby\b/,
-  /\breturn\b[^.]{0,40}?\bby\b/,
-  /\bconfirm\b[^.]{0,40}?\bby\b/,
-  /\bpay\b[^.]{0,40}?\bby\b/,
+  // 80 chars, not 40: "submit the final version of your project report by
+  // Friday" reads as one clause and used to fall through the old gap (M-05).
+  /\bsubmit\b[^.]{0,80}?\bby\b/,
+  /\bapply\b[^.]{0,80}?\bby\b/,
+  /\bregister\b[^.]{0,80}?\bby\b/,
+  /\bcomplete\b[^.]{0,80}?\bby\b/,
+  /\brespond\b[^.]{0,80}?\bby\b/,
+  /\breturn\b[^.]{0,80}?\bby\b/,
+  /\bconfirm\b[^.]{0,80}?\bby\b/,
+  /\bpay\b[^.]{0,80}?\bby\b/,
 ];
 
 /** Cues that mean an event, which is worth showing but is not a deadline. */
@@ -80,6 +82,17 @@ const EVENT_CUES = [
 ];
 
 export const DAY_MS = 86_400_000;
+
+/**
+ * How far into the PAST a deadline may sit before the parse is judged wrong.
+ *
+ * One constant, two uses (M-06): the plausibility gate in extractDeadline and
+ * the roll-forward window in inferYear used 30 and 31 days respectively — a
+ * date 30-31 days back passed one check and rolled a full year in the other.
+ * They are the same question ("is this date plausibly this year's?") and now
+ * share one answer.
+ */
+const PAST_TOLERANCE = 30 * DAY_MS;
 
 /**
  * Find a deadline in a message.
@@ -116,7 +129,7 @@ export function extractDeadline(msg, now = Date.now()) {
   // Reject anything implausible. A parse that lands two years out is a parse
   // that went wrong, and showing it would be worse than showing nothing.
   const delta = found.at - anchor;
-  if (delta < -30 * DAY_MS || delta > 400 * DAY_MS) return null;
+  if (delta < -PAST_TOLERANCE || delta > 400 * DAY_MS) return null;
 
   return { at: found.at, kind, text: found.text };
 }
@@ -134,19 +147,40 @@ function hasCue(text, cues) {
  * as an hour and every such deadline silently landed at 14:00 instead of end
  * of day. A deadline that is eight hours early is worse than no deadline.
  */
-function withTime(y, m, d, text, dateAt = 0) {
+function withTime(y, m, d, text, dateEnd = 0) {
   /*
-   * The hour must live in the SAME SENTENCE as the date (cross-audit B-06).
-   * "Submit by 25 Nov. Office hours 10am-5pm" used to bind 10am to 25 Nov
-   * because the first time token anywhere won. Sentence-local matching makes
-   * the office-hours sentence irrelevant to the deadline's date.
+   * The hour must live NEAR the date, not anywhere in the message (B-06, R5).
+   * Two attempts at this failed for opposite reasons: a global search bound
+   * "Office hours 10am-5pm" in a footer to a deadline in the subject, and a
+   * sentence-local search treated the abbreviation period in "25 Nov. at 5pm"
+   * as a sentence end and dropped the time entirely. A fixed window around
+   * the date match does both: it cannot see a distant footer, and it does not
+   * care about punctuation.
    */
-  const bounds = [text.lastIndexOf('.', dateAt), text.lastIndexOf('!', dateAt),
-                  text.lastIndexOf('?', dateAt), text.lastIndexOf('\n', dateAt)];
-  const start = Math.max(...bounds) + 1;
-  const endM = text.slice(dateAt).match(/[.!?\n]/);
-  const end = endM ? dateAt + endM.index : text.length;
-  const t = text.slice(start, end).match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|hrs|hours)\b/);
+  const CONTEXT = 60; // chars either side of the date — the audit's own fix
+  const TIGHT = 8;    // bare times within 8 chars AFTER the date always count
+  const start = Math.max(0, dateEnd - CONTEXT);
+  const end = Math.min(text.length, dateEnd + CONTEXT);
+  const seg = text.slice(start, end);
+  const rel = dateEnd - start;
+  /*
+   * Two-tier proximity (B-06 + R5): a bare "5 pm" a few chars after the date
+   * is the deadline's time ("Apply by 1 December, 5 pm"). A time deeper in
+   * the window must be INTRODUCED by a time preposition ("submit by 25 Nov.
+   * at 5pm") — a distant "Visit us 10am to 4pm" clause carries no
+   * preposition and cannot bind its clock to the date. Closest wins.
+   */
+  const timeRe = /\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|hrs|hours)\b/g;
+  let mt = null, best = null, bestDist = Infinity;
+  while ((mt = timeRe.exec(seg)) !== null) {
+    const dist = Math.abs(rel - mt.index);
+    const prefix = seg.slice(Math.max(0, mt.index - 12), mt.index);
+    const introduced = /\b(?:at|by|before|until|till|on)\s*$/i.test(prefix);
+    if (dist <= TIGHT || introduced) {
+      if (dist < bestDist) { bestDist = dist; best = mt; }
+    }
+  }
+  const t = best;
   if (!t) return Date.UTC(y, m, d, 23, 59, 0);
 
   const raw = Number(t[1]);
@@ -157,6 +191,9 @@ function withTime(y, m, d, text, dateAt = 0) {
   else if (suffix === 'am') hh = raw === 12 ? 0 : raw;
   else hh = raw;
 
+  // "0 hrs" carries no information; an ambiguous hour must not turn the
+  // deadline into midnight (end of day is the conservative reading).
+  if (hh === 0 && suffix === 'hrs') return Date.UTC(y, m, d, 23, 59, 0);
   if (hh > 23 || min > 59) return Date.UTC(y, m, d, 23, 59, 0);
   return Date.UTC(y, m, d, hh, min, 0);
 }
@@ -171,6 +208,12 @@ function withTime(y, m, d, text, dateAt = 0) {
 function matchNumericDate(text, anchor) {
   const m = text.match(/\b(\d{1,2})[/\-.](\d{1,2})(?:[/\-.](\d{2,4}))?\b/);
   if (!m) return null;
+  // A dash-separated PAIR with no year is ambiguous (P10): "due on 2-3" is a
+  // range of days, not 2 March. Slash and dot stay day/month — the Indian
+  // convention this tool is built for — but a bare "2-3" parses as a phantom
+  // deadline far too often to trust. Require the year for dashes.
+  const sep = m[0].match(/[/\-.]/)?.[0];
+  if (sep === '-' && !m[3]) return null;
   const day = Number(m[1]);
   const month = Number(m[2]) - 1;
   if (day < 1 || day > 31 || month < 0 || month > 11) return null;
@@ -183,7 +226,7 @@ function matchNumericDate(text, anchor) {
     year = inferYear(month, day, anchor);
   }
   if (!isRealDate(year, month, day)) return null;
-  return { at: withTime(year, month, day, text, m.index), text: m[0] };
+  return { at: withTime(year, month, day, text, m.index + m[0].length), text: m[0] };
 }
 
 /** `14 November`, `November 14`, `14th Nov 2025`. */
@@ -202,7 +245,7 @@ function matchTextualDate(text, anchor) {
   if (day < 1 || day > 31 || month === undefined) return null;
   const year = m[3] ? Number(m[3]) : inferYear(month, day, anchor);
   if (!isRealDate(year, month, day)) return null;
-  return { at: withTime(year, month, day, text, m.index), text: m[0] };
+  return { at: withTime(year, month, day, text, m.index + m[0].length), text: m[0] };
 }
 
 /** `today`, `tomorrow`, `in 3 days`. */
@@ -242,7 +285,7 @@ function inferYear(month, day, anchor) {
   const a = new Date(anchor);
   const y = a.getUTCFullYear();
   const candidate = Date.UTC(y, month, day, 23, 59);
-  if (candidate < anchor - 31 * DAY_MS) return y + 1;
+  if (candidate < anchor - PAST_TOLERANCE) return y + 1;
   return y;
 }
 

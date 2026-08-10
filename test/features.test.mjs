@@ -73,6 +73,54 @@ test('dates are read day-first, because this is an Indian tool', () => {
   assert.equal(dl('Deadline 11/12/2025').at, Date.UTC(2025, 11, 11, 23, 59));
 });
 
+test('a dash-separated pair without a year is a range, not a date', () => {
+  // "due on 2-3" reads as "the 2nd to the 3rd" — parsing it as 2 March
+  // manufactures a phantom deadline (stress P10). With a year present the
+  // dash form is unambiguous and stays valid.
+  assert.equal(dl('Submit on 2-3'), null, 'bare pair is a range');
+  assert.equal(dl('Last date 2-3-2026').at, Date.UTC(2026, 2, 2, 23, 59));
+  // Slash is the Indian day/month convention and stays accepted. 2/12 is
+  // after the anchor (Nov) so it stays in the sent year; 2/3 is past and
+  // rolls forward — both by the same tolerance rule.
+  assert.equal(dl('Last date 2/12').at, Date.UTC(2025, 11, 2, 23, 59));
+  assert.equal(dl('Last date 2/3').at, Date.UTC(2026, 2, 2, 23, 59));
+});
+
+test('the verb-by gap covers a long clause (M-05)', () => {
+  // 40 chars used to miss real phrasing; 80 catches it while a bare "by"
+  // still cannot promote a stray date.
+  const r = dl('Submit the final version of your project report by Friday');
+  assert.ok(r, 'long verb-by clause must be a deadline');
+  assert.equal(r.at, Date.UTC(2025, 10, 14, 23, 59), 'and land on Friday');
+  assert.equal(dl('Meeting on Friday'), null, 'bare by is still required');
+});
+
+test('an abbreviation period does not swallow the time (R5)', () => {
+  // "25 Nov. at 5pm": the period after "Nov" is an abbreviation, not a
+  // sentence end. The old sentence-local search ended there and dropped the
+  // time; the window search finds it.
+  assert.equal(dl('Submit by 25 Nov. at 5pm').at, Date.UTC(2025, 10, 25, 17, 0));
+});
+
+test('a time in a distant footer is still ignored (B-06)', () => {
+  // The window is local to the date; a footer clause cannot bind its clock.
+  const r = extractDeadline(
+    { subject: 'Submit PS report by 25 Nov', snippet: 'Visit us 10am to 4pm in the office', date: SENT },
+    SENT
+  );
+  assert.equal(r.at, Date.UTC(2025, 10, 25, 23, 59), 'end of day, not 10am');
+});
+
+test('a comma time after a dated year is honoured', () => {
+  // "25 Nov 2025, 5 pm" — the year extends the date match; the time sits
+  // right after it and must still be found.
+  assert.equal(dl('Submit by 25 Nov 2025, 5 pm').at, Date.UTC(2025, 10, 25, 17, 0));
+});
+
+test('an ambiguous 0 hrs does not become midnight', () => {
+  assert.equal(dl('Last date 14 November at 0 hrs').at, Date.UTC(2025, 10, 14, 23, 59));
+});
+
 test('impossible dates are rejected rather than rolled over', () => {
   // new Date(2025, 1, 31) silently becomes 3 March. Showing that would be
   // worse than showing nothing.
