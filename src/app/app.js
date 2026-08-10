@@ -5556,29 +5556,26 @@ async function boot() {
    * not write to the DOM on every one of its hundred events.
    */
   let scrolledOn = false;
-  el.scroller.addEventListener(
-    'scroll',
-    () => {
-      const on = el.scroller.scrollTop > 4;
-      // Spatial memory: the user's last real scroll position, captured at
-      // the event, because the rebuild task that follows a delta can clamp
-      // the live position before renderList gets to read it (measured).
-      lastUserScroll = el.scroller.scrollTop;
-      if (on !== scrolledOn) {
-        scrolledOn = on;
-        el.listpane.classList.toggle('scrolled', on);
-        document.body.classList.toggle('list-scrolled', on);
-        // The rebuild's clamp emits a scrollTop-0 event milliseconds before
-        // the deferred restore lands; never treat that as "user went home".
-        if (on === false && el.scroller.scrollTop < 80 && !el.newpill.hidden
-            && pendingScrollRestore === 0) {
-          el.newpill.hidden = true;
-          newCount = 0;
-        }
+  function onScrollerScroll() {
+    const on = el.scroller.scrollTop > 4;
+    // Spatial memory: the user's last real scroll position, captured at
+    // the event, because the rebuild task that follows a delta can clamp
+    // the live position before renderList gets to read it (measured).
+    lastUserScroll = el.scroller.scrollTop;
+    if (on !== scrolledOn) {
+      scrolledOn = on;
+      el.listpane.classList.toggle('scrolled', on);
+      document.body.classList.toggle('list-scrolled', on);
+      // The rebuild's clamp emits a scrollTop-0 event milliseconds before
+      // the deferred restore lands; never treat that as "user went home".
+      if (on === false && el.scroller.scrollTop < 80 && !el.newpill.hidden
+          && pendingScrollRestore === 0) {
+        el.newpill.hidden = true;
+        newCount = 0;
       }
-    },
-    { passive: true }
-  );
+    }
+  }
+  el.scroller.addEventListener('scroll', onScrollerScroll, { passive: true });
 
   // Bulk bar.
   setIcon($('bulk-cancel'), 'close', { size: 14 });
