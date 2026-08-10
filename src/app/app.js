@@ -417,7 +417,7 @@ function scheduleWorkerProbe() {
     } catch { /* stay degraded; the next probe decides */ }
   };
   window.addEventListener('online', check, { once: true });
-  setInterval(check, 60000);
+  setInterval(check, 60000).unref?.();
 }
 
 let toastTimer = 0;

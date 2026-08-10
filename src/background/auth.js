@@ -352,7 +352,9 @@ function scheduleRenewRetry() {
     try { await getToken(); } catch { /* stays transient until next event */ }
   };
   globalThis.addEventListener?.('online', fire, { once: true });
-  setTimeout(fire, 60000);
+  // unref where the runtime allows (Node tests), so a pending retry never
+  // pins the event loop open.
+  setTimeout(fire, 60000).unref?.();
 }
 
 export async function signOut() {
