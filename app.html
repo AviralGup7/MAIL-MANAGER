@@ -227,6 +227,16 @@
 
         <section id="panes">
           <div id="listpane">
+            <!--
+              LIST BAR — one fixed-height slot holding both header states.
+
+              The header and the bulk bar are two states of the same surface
+              (LEFT action · CENTRE label · RIGHT actions), so they share one
+              container of fixed height and cross-fade inside it. The scroller
+              top never moves when the mode changes; measured 0.00px shift in
+              all 18 density and theme combinations (audit 33).
+            -->
+            <div id="listbar">
             <div id="listhead">
               <span id="listtitle">Inbox</span>
               <span id="listcount"></span>
@@ -239,6 +249,11 @@
               that appears in addition to the header pushes the list down and
               costs a reflow of everything below; swapping in place keeps the
               rows exactly where the user's eye already is.
+
+              Icon buttons, not text: five text verbs needed 423px in a pane
+              that is ~318px wide, wrapped, and left Archive/Spam/Delete
+              unreachable at every viewport. The icons reuse the glyphs the
+              context bar already uses for the same verbs (audit 33).
             -->
             <div id="bulkbar" hidden>
               <label id="bulk-all-wrap">
@@ -246,13 +261,14 @@
               </label>
               <span id="bulk-count" aria-live="polite">0 selected</span>
               <div id="bulk-actions">
-                <button id="bulk-read" class="ghost small" type="button">Mark read</button>
-                <button id="bulk-star" class="ghost small" type="button">Star</button>
-                <button id="bulk-archive" class="ghost small" type="button">Archive</button>
-                <button id="bulk-spam" class="ghost small" type="button">Report spam</button>
-                <button id="bulk-trash" class="ghost small danger" type="button">Delete</button>
+                <button id="bulk-read" class="ghost icon" type="button" title="Mark read" aria-label="Mark read"></button>
+                <button id="bulk-star" class="ghost icon" type="button" title="Star" aria-label="Star"></button>
+                <button id="bulk-archive" class="ghost icon" type="button" title="Archive" aria-label="Archive"></button>
+                <button id="bulk-spam" class="ghost icon" type="button" title="Report spam" aria-label="Report spam"></button>
+                <button id="bulk-trash" class="ghost icon danger" type="button" title="Delete" aria-label="Delete"></button>
               </div>
               <button id="bulk-cancel" class="ghost icon" type="button" aria-label="Clear selection"></button>
+            </div>
             </div>
             <!--
               The scroller is the only element with overflow. Row height is

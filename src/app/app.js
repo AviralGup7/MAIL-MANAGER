@@ -5240,6 +5240,19 @@ async function boot() {
 
   // Bulk bar.
   setIcon($('bulk-cancel'), 'close', { size: 14 });
+  /*
+   * Icon-only action buttons (audit 33). Five text verbs needed 423px in a
+   * ~318px pane and left three of themselves unreachable; the icons reuse the
+   * glyphs the context bar already uses for the same verbs, and the labels
+   * live on aria-label/title in app.html. `warning` IS the spam glyph — the
+   * triangle, deliberately, because spam is a place you visit, not an action
+   * you take.
+   */
+  setIcon($('bulk-read'), 'mail', { size: 15 });
+  setIcon($('bulk-star'), 'star', { size: 15 });
+  setIcon($('bulk-archive'), 'archive', { size: 15 });
+  setIcon($('bulk-spam'), 'warning', { size: 15 });
+  setIcon($('bulk-trash'), 'trash', { size: 15 });
   $('bulk-cancel').addEventListener('click', () => {
     selection.clear();
     renderSelection();

@@ -143,6 +143,12 @@
   /* --- LAYOUT ------------------------------------------------------------- */
   --row-h: 68px;
   --sidebar-w: 244px;
+  /*
+   * The one fixed-height slot that holds #listhead and #bulkbar (audit 33).
+   * Measured in Chrome, not computed: 41/37/33px, identical in all six themes.
+   * Lives here with the other density tokens so it cannot drift from them.
+   */
+  --listbar-h: 41px;
 }
 
 /*
@@ -180,6 +186,7 @@
   --s-5: 16px;
   --s-6: 20px;
   --row-h: 56px;
+  --listbar-h: 37px;
 }
 
 :root[data-density='compact'] {
@@ -189,6 +196,7 @@
   --s-5: 12px;
   --s-6: 16px;
   --row-h: 44px;
+  --listbar-h: 33px;
 }
 
 /*
@@ -770,7 +778,23 @@ a.ghost {
   border-right: 1px solid var(--line);
 }
 
+/*
+ * LIST BAR — the morphing slot (audit 33, concept #1).
+ *
+ * Both header states are absolutely positioned inside one fixed-height box,
+ * so the scroller top is the same number in both states and the mode change
+ * never reflows the list. The container height is a token per density,
+ * measured in Chrome: 41 / 37 / 33px.
+ */
+#listbar {
+  position: relative;
+  height: var(--listbar-h);
+  flex: none;
+}
+
 #listhead {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: baseline;
   gap: var(--s-2);
@@ -778,6 +802,19 @@ a.ghost {
   font-size: var(--t-sm);
   color: var(--fg-faint);
   border-bottom: 1px solid var(--line);
+}
+/*
+ * The header is the INCOMING surface when a selection clears; the outgoing
+ * bar hides synchronously (jsdom never fires animationend, and the existing
+ * integration assertions require `hidden` to be set at once), so only the
+ * arriving side ever animates. Opacity only — the box never moves.
+ */
+#listhead:not([hidden]) {
+  animation: head-in var(--dur-fast) var(--ease-out) both;
+}
+@keyframes head-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 #listtitle {
   font-weight: var(--w-bold);
@@ -3459,13 +3496,44 @@ html[data-scheme='dark'] #gate-card,
  * moment the user is aiming at one.
  */
 #bulkbar {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
   gap: var(--s-2);
   padding: var(--s-2) var(--s-3);
   border-bottom: 1px solid var(--line);
   background: var(--accent-soft);
-  animation: bulk-in var(--dur-fast) var(--ease-spring) both;
+}
+
+/*
+ * THE MORPH — "the header takes over" (audit 33).
+ *
+ * The centre label is the pivot: it never fades and never moves, so the eye
+ * stays locked on one point while the two ends of the bar populate around
+ * it. The checkbox arrives first (scale .6 -> 1, spring) and the actions
+ * follow 40ms later (slide 8px -> 0), because the tick is the CAUSE of the
+ * actions; simultaneous arrival reads as a panel, the stagger reads as a
+ * consequence. Transform, opacity and colour only — nothing here is in the
+ * forbidden layout-property list enforced by test/package.test.mjs.
+ *
+ * The outgoing bar hides synchronously (see #listhead note), so only these
+ * entrance animations exist; exits are the stylesheet's doctrine: fast,
+ * ease-in, not the entrance reversed.
+ */
+#bulkbar:not([hidden]) #bulk-all-wrap {
+  animation: bar-check-in var(--dur-fast) var(--ease-spring) both;
+}
+#bulkbar:not([hidden]) #bulk-actions {
+  animation: bar-actions-in var(--dur-fast) var(--ease-out) 40ms both;
+}
+@keyframes bar-check-in {
+  from { opacity: 0; transform: scale(0.6); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes bar-actions-in {
+  from { opacity: 0; transform: translate3d(8px, 0, 0); }
+  to   { opacity: 1; transform: none; }
 }
 @keyframes bulk-in {
   from { opacity: 0; transform: translate3d(0, -6px, 0); }
@@ -3493,6 +3561,8 @@ html[data-scheme='dark'] #gate-card,
   color: var(--accent);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  /* the morph's pivot: same sentence, new tense; a colour move, never a blink */
+  transition: color var(--dur-fast) linear;
 }
 
 #bulk-actions {

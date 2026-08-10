@@ -71,6 +71,24 @@ function bundle(entry) {
         .join('\n');
     });
 
+    // `import * as ns from './x.js'` — namespace import. Twelve modules use
+    // this shape; left in the bundle it is a SyntaxError (`Unexpected token
+    // '*'`). The registry entry IS the namespace, for preview purposes.
+    src = src.replace(/^\s*import\s+\*\s+as\s+([A-Za-z_$][\w$]*)\s+from\s+['"]([^'"]+)['"];?\s*$/gm, (_m, name, from) => {
+      const dep = join(dirname(p), from).replace(/\\/g, '/');
+      return `const ${name} = __m[${JSON.stringify(dep)}];`;
+    });
+
+    // Bare `export { a, b };` — a deliberate idiom in rules.js (re-exporting
+    // a local binding with no `from`). Unhandled it survives as the word
+    // `export` inside the closure: `Unexpected token 'export'`.
+    src = src.replace(/^\s*export\s+\{([^}]*)\}\s*;?\s*$/gm, (_m, names) => {
+      for (const n of names.split(',').map((x) => x.trim()).filter(Boolean)) {
+        exported.push(n.split(/\s+as\s+/).pop().trim());
+      }
+      return '';
+    });
+
     // Bare side-effect imports.
     src = src.replace(/^\s*import\s+['"][^'"]+['"];?\s*$/gm, '');
 
@@ -110,22 +128,37 @@ function bundle(entry) {
   }
 }
 
+export { bundle };
+
+// Building is a side effect of RUNNING this file, not of importing it:
+// the bundle-parse test imports `bundle` and must not rewrite preview.html.
+const IS_MAIN = Boolean(process.argv[1]) &&
+  resolve(process.argv[1]) === join(ROOT, 'tools', 'make-preview.mjs');
+if (IS_MAIN) {
 const appJs = bundle('src/app/app.js');
 const css = read('src/app/app.css');
 
 let html = read('app.html');
-html = html.replace(/<link rel="stylesheet"[^>]*>/, `<style>\n${css}\n</style>`);
+/*
+ * FUNCTION REPLACERS, not template strings. The replacement text is the
+ * bundle, and the bundle contains the standard regex-escape idiom `'$&'`
+ * (contacts.js); in a string replacement `$&` means "the matched text", so
+ * the builder used to splice the very tag it was replacing into the middle
+ * of a string literal — a SyntaxError before the first statement. Audit 33.
+ */
+html = html.replace(/<link rel="stylesheet"[^>]*>/, () => `<style>\n${css}\n</style>`);
 html = html.replace(
   /<script type="module" src="src\/app\/app\.js"><\/script>/,
-  `<script type="module">\n${MOCK()}\n${appJs}\n</script>`
+  () => `<script type="module">\n${MOCK()}\n${appJs}\n</script>`
 );
 html = html.replace(
   '<title>BITS Mail Manager</title>',
-  '<title>BITS Mail Manager — preview (synthetic data)</title>'
+  () => '<title>BITS Mail Manager — preview (synthetic data)</title>'
 );
 
 writeFileSync(join(ROOT, 'preview.html'), html);
 console.log(`preview.html  ${(html.length / 1024).toFixed(1)} KB`);
+}
 
 // ---------------------------------------------------------------- the mock --
 
