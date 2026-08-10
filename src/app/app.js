@@ -5103,10 +5103,21 @@ async function bulkAct(kind, explicitIds = null) {
   if (slow) setBusy(true);
 
   try {
-    await send('BULK', { ids, add, remove });
+    const res = await send('BULK', { ids, add, remove });
+    const failed = res?.failed || [];
+    if (failed.length) {
+      // Partial failure: restore ONLY what Gmail rejected (H6), so the list
+      // agrees with the server on both halves and the toast tells the truth.
+      const doomed = new Set(failed);
+      store.batch(() => {
+        for (const m of snapshots) if (doomed.has(m.id)) store.upsert(m);
+      });
+      activity.record({ verb: `BULK_${kind.toUpperCase()}`, ids: failed, actor: 'user', outcome: 'partial', error: `${failed.length} failed` });
+      toast(`${kind}: ${n - failed.length} of ${n} applied`, { kind: 'error' });
+      return;
+    }
   } catch (err) {
-    // Roll the whole batch back. A partial apply would leave the list
-    // disagreeing with Gmail with no indication which half won.
+    // Total failure: roll the whole batch back.
     store.batch(() => {
       for (const m of snapshots) store.upsert(m);
     });

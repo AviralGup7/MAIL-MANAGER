@@ -240,8 +240,26 @@ async function handle(msg) {
       return modify(msg.id, [], ['INBOX']);
     case 'TRASH':
       return trash(msg.id);
-    case 'BULK':
-      return batchModify(msg.ids, msg.add || [], msg.remove || []);
+    case 'BULK': {
+      /*
+       * CHUNK AT GMAIL'S 1000-ID LIMIT, RECONCILE PER CHUNK (cross-audit H6).
+       * A 1200-message selection used to 400 as one request and roll the
+       * whole operation back. Now each chunk stands alone: successes stay,
+       * the failure report names exactly what didn't apply, and the app
+       * restores only those.
+       */
+      const ids = msg.ids || [];
+      const failed = [];
+      for (let i = 0; i < ids.length; i += 1000) {
+        try {
+          await batchModify(ids.slice(i, i + 1000), msg.add || [], msg.remove || []);
+        } catch {
+          failed.push(...ids.slice(i, i + 1000));
+        }
+      }
+      if (failed.length === ids.length) throw new Error('bulk action failed for all messages');
+      return { failed };
+    }
     case 'UNARCHIVE':
       // The inverse of archive, for undo. Gmail has no such button.
       return modify(msg.id, ['INBOX'], []);

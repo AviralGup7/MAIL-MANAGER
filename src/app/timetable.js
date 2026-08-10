@@ -555,6 +555,9 @@ export function manualEdit(state, id, field, value, at = Date.now(), ref = 'user
 export function restoreFromSource(state, id, field, course, at = Date.now()) {
   const entry = state.entries.find((e) => e.id === id);
   if (!entry) return { state, applied: false, reason: 'no such entry' };
+  // B-08: the lock guarantee must not be bypassable through the restore
+  // action; unlocking first is the deliberate path.
+  if (entry.locked) return { state, applied: false, reason: `${entry.courseNo} ${entry.section} is locked against updates` };
   const section = (course?.sections || []).find((s) => s.section === entry.section);
   if (!section) return { state, applied: false, reason: 'this section is not in the official timetable' };
 

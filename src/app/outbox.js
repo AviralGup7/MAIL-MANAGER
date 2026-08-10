@@ -68,6 +68,13 @@ export function normaliseOutbox(raw) {
   const out = [];
   for (const it of raw) {
     if (!it || typeof it !== 'object' || !it.draft || typeof it.draft !== 'object') continue;
+    // B-10: a record persisted as `sent` must never re-enter the queue
+    // (resurrection = duplicate send), and an unrecognised state degrades to
+    // `failed` -- visible and cancellable -- never to `held`.
+    if (it.state === 'sent') continue;
+    const unknownState = typeof it.state === 'string'
+      ? !['held', 'sending', 'failed'].includes(it.state)
+      : !!it.state;
     out.push({
       id: typeof it.id === 'string' && it.id ? it.id : makeId(),
       /*
@@ -81,7 +88,7 @@ export function normaliseOutbox(raw) {
        * that silently never went is worse, and the user can see and cancel a
        * failed record.
        */
-      state: it.state === 'held' ? 'held' : it.state === 'sending' ? 'failed' : it.state === 'failed' ? 'failed' : 'held',
+      state: it.state === 'held' ? 'held' : 'failed',
       draft: it.draft,
       queuedAt: Number.isFinite(it.queuedAt) ? it.queuedAt : Date.now(),
       releaseAt: Number.isFinite(it.releaseAt) ? it.releaseAt : 0,
@@ -89,6 +96,7 @@ export function normaliseOutbox(raw) {
       nextAttempt: Number.isFinite(it.nextAttempt) ? it.nextAttempt : 0,
       ...(typeof it.error === 'string' ? { error: it.error.slice(0, 200) } : {}),
       ...(typeof it.threadId === 'string' ? { threadId: it.threadId } : {}),
+      ...(unknownState ? { error: 'unrecognised persisted state; held back from sending' } : {}),
     });
   }
   return out;
@@ -256,6 +264,30 @@ const dispatching = new Set();
  * @param {(items:OutboxItem[])=>void} [deps.onChange]  render hook
  * @returns {Promise<{sent:number, failed:number, skipped:boolean}>}
  */
+const TAB_ID = Math.random().toString(36).slice(2);
+const CLAIM_KEY = 'outboxClaims';
+const CLAIM_TTL = 90000;
+
+/*
+ * CROSS-TAB DOUBLE-SEND GUARD (cross-audit M3). Two Gmail tabs used to both
+ * release the same undo-send hold and send the mail twice: `inFlight` is
+ * per-tab, so nothing coordinated them. A claim in shared storage, renewed
+ * per dispatch and respected while fresh, makes the second tab stand down.
+ */
+async function claim(storage, id, now) {
+  try {
+    const got = (await storage.get(CLAIM_KEY)) || {};
+    const claims = got[CLAIM_KEY] || {};
+    const c = claims[id];
+    if (c && c.tab !== TAB_ID && now - c.at < CLAIM_TTL) return false;
+    claims[id] = { tab: TAB_ID, at: now };
+    await storage.set({ [CLAIM_KEY]: claims });
+    return true;
+  } catch {
+    return true; // storage broken: fall back to per-tab behaviour
+  }
+}
+
 export async function flushOutbox({ send, storage = chrome.storage?.local, now = Date.now(), onChange } = {}) {
   if (inFlight) return { sent: 0, failed: 0, skipped: true };
   inFlight = true;
@@ -270,6 +302,7 @@ export async function flushOutbox({ send, storage = chrome.storage?.local, now =
     for (const item of due) {
       // Claim it before awaiting, so a concurrent load cannot pick it up.
       dispatching.add(item.id);
+      if (!(await claim(storage, item.id, now))) continue; // another tab owns it
       items = items.map((x) => (x.id === item.id ? { ...x, state: 'sending' } : x));
       await saveOutbox(items, storage);
       onChange?.(items);

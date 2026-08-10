@@ -60,6 +60,9 @@ export class UndoStack {
    */
   push(label, undo) {
     if (typeof undo !== 'function') return;
+    // EXPIRE BEFORE TRIM (cross-audit B-12): stale heads used to count
+    // toward the cap, evicting the newest valid entry instead of themselves.
+    this._expire();
     this.entries.push({ label, undo, at: this.now() });
     // Trim from the front: the oldest entry is the least likely to be wanted
     // and the most likely to be stale.

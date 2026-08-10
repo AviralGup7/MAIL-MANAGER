@@ -105,6 +105,9 @@ export async function loadSnoozed(storage = chrome.storage.local) {
 }
 
 export async function addSnooze(id, wakeAt, storage = chrome.storage.local, now = Date.now()) {
+  // A past-due snooze is due on the next tick and vanishes -- the presets
+  // filter `> now`; the writer must enforce the same contract (B-09).
+  if (!Number.isFinite(wakeAt) || wakeAt <= now) return null;
   const all = await loadSnoozed(storage);
   all[id] = { at: wakeAt, snoozedAt: now };
   try {

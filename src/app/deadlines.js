@@ -134,8 +134,19 @@ function hasCue(text, cues) {
  * as an hour and every such deadline silently landed at 14:00 instead of end
  * of day. A deadline that is eight hours early is worse than no deadline.
  */
-function withTime(y, m, d, text) {
-  const t = text.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|hrs|hours)\b/);
+function withTime(y, m, d, text, dateAt = 0) {
+  /*
+   * The hour must live in the SAME SENTENCE as the date (cross-audit B-06).
+   * "Submit by 25 Nov. Office hours 10am-5pm" used to bind 10am to 25 Nov
+   * because the first time token anywhere won. Sentence-local matching makes
+   * the office-hours sentence irrelevant to the deadline's date.
+   */
+  const bounds = [text.lastIndexOf('.', dateAt), text.lastIndexOf('!', dateAt),
+                  text.lastIndexOf('?', dateAt), text.lastIndexOf('\n', dateAt)];
+  const start = Math.max(...bounds) + 1;
+  const endM = text.slice(dateAt).match(/[.!?\n]/);
+  const end = endM ? dateAt + endM.index : text.length;
+  const t = text.slice(start, end).match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|hrs|hours)\b/);
   if (!t) return Date.UTC(y, m, d, 23, 59, 0);
 
   const raw = Number(t[1]);
@@ -172,7 +183,7 @@ function matchNumericDate(text, anchor) {
     year = inferYear(month, day, anchor);
   }
   if (!isRealDate(year, month, day)) return null;
-  return { at: withTime(year, month, day, text), text: m[0] };
+  return { at: withTime(year, month, day, text, m.index), text: m[0] };
 }
 
 /** `14 November`, `November 14`, `14th Nov 2025`. */
@@ -191,7 +202,7 @@ function matchTextualDate(text, anchor) {
   if (day < 1 || day > 31 || month === undefined) return null;
   const year = m[3] ? Number(m[3]) : inferYear(month, day, anchor);
   if (!isRealDate(year, month, day)) return null;
-  return { at: withTime(year, month, day, text), text: m[0] };
+  return { at: withTime(year, month, day, text, m.index), text: m[0] };
 }
 
 /** `today`, `tomorrow`, `in 3 days`. */
