@@ -207,17 +207,17 @@
  * screen, which is self-defeating. Dropping the second line keeps every
  * remaining character at full size.
  */
-:root[data-density='compact'] /*
+:root[data-density='compact'] .r-snip {
+  display: none;
+}
+
+/*
  * POLISH 6: recency is a decision input on unread mail; the date earns the
  * same weight the sender already gets. Colour/weight only -- no motion.
  */
 .row.unread .r-date {
   color: var(--fg);
   font-weight: var(--w-semi);
-}
-
-.r-snip {
-  display: none;
 }
 
 /*
@@ -2351,7 +2351,7 @@ textarea {
 }
 #scroller::-webkit-scrollbar-thumb, #cats::-webkit-scrollbar-thumb, #views::-webkit-scrollbar-thumb {
   background: var(--line);
-  border-radius: 4px;
+  border-radius: var(--r-sm);
 }
 #scroller::-webkit-scrollbar-track, #cats::-webkit-scrollbar-track, #views::-webkit-scrollbar-track {
   background: transparent;
