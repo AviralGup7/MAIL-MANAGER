@@ -21,7 +21,9 @@ const BASE = 'https://gmail.googleapis.com/gmail/v1/users/me';
 const BATCH_URL = 'https://gmail.googleapis.com/batch/gmail/v1';
 
 /** Headers we need for the list view. Anything else is wasted bandwidth. */
-const META_HEADERS = ['From', 'Subject', 'Date', 'List-Unsubscribe'];
+// V2 P0-3: the canonical model promises to/cc/list-headers; the wire layer
+// must actually fetch them or audienceOf sees every record as direct.
+const META_HEADERS = ['From', 'Subject', 'Date', 'List-Unsubscribe', 'To', 'Cc', 'List-Id', 'Mailing-List'];
 
 /** Gmail's own limit. Do not raise it; the endpoint rejects >100. */
 export const BATCH_SIZE = 100;
@@ -227,6 +229,22 @@ export function parseBatch(text) {
  * in the store, which meant every render walked an array of ~20 header objects
  * per message just to find the subject.
  */
+/**
+ * Attachment presence from the payload, without fetching bodies.
+ * Inline images (contentId + inline disposition) do NOT count -- V2 stress
+ * verified hasAttachment was always falsy, which made has:attachment dead.
+ */
+function payloadHasAttachment(payload) {
+  const stack = payload?.parts ? [...payload.parts] : [];
+  while (stack.length) {
+    const part = stack.pop();
+    if (part?.parts?.length) { stack.push(...part.parts); continue; }
+    if (part?.filename && part?.body?.attachmentId &&
+        String(part.body.disposition || '').toLowerCase() !== 'inline') return true;
+  }
+  return false;
+}
+
 export function normalise(g) {
   if (!g?.id) return null;
 
@@ -261,6 +279,12 @@ export function normalise(g) {
     unread: labels.includes('UNREAD'),
     starred: labels.includes('STARRED'),
     important: labels.includes('IMPORTANT'),
+    // V2 P0-3: recipient + list headers ride along so the canonical shaper
+    // and audienceOf see real data on every sync path.
+    to: h.to || '',
+    cc: h.cc || '',
+    headers: h,
+    hasAttachment: payloadHasAttachment(g.payload),
     labels,
   };
 }
