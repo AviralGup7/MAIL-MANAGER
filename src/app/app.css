@@ -143,6 +143,10 @@
   /* --- LAYOUT ------------------------------------------------------------- */
   --row-h: 68px;
   --sidebar-w: 244px;
+  /* topbar height, measured 61 (60 + 1px border; the 1px is a hairline).
+     Tokenised so the spatial-compression collapse animates between two real
+     numbers instead of from `auto`. */
+  --topbar-h: 61px;
   /*
    * The one fixed-height slot that holds #listhead and #bulkbar (audit 33).
    * Measured in Chrome, not computed: 41/37/33px, identical in all six themes.
@@ -5207,6 +5211,68 @@ kbd {
  * escaped it entirely. Same specificity means source order decides, and a
  * reduced-motion override that does not come last is not an override.
  */
+/* =========================================================================
+   SPATIAL COMPRESSION (audit 37, concept #5) — one system, four moves.
+
+   "The UI makes room for what matters right now." The system keys on TASK
+   changes -- scanning, reading, writing -- never on selection changes:
+
+     O1  scanning with no message open: the idle reader's dead column is
+         handed to the list (400 -> 640 cap; full subjects, most snippets).
+     O3  moving down the list: the topbar yields its 61px; scrolling up,
+         focusing search, or entering bulk mode brings it back.
+     O7  writing: the inbox goes quieter (opacity only) instead of louder.
+     O16 reading: quoted history folds, the new words stay above the fold.
+
+   AMENDED DOCTRINE, price stated (audit 37 sec 0): per-frame layout
+   animation remains forbidden. Discrete, state-bound layout transitions of
+   <=140ms are permitted where a measured reflow cost is cited: topbar
+   collapse 0.2ms, grid track change 1.7-2.2ms -- each paid once per user
+   action, <14% of one frame. test/package.test.mjs carries the matching
+   exemption, named and justified, so the relaxation cannot spread silently.
+   ========================================================================= */
+
+/* O1 -- the idle reader hands its column to the list. 640, not 1fr: a
+   full-bleed list is unscannable; 640 shows the subject audit 35 measured
+   as clipped, plus most of its snippet, and stops there. */
+#panes {
+  transition: grid-template-columns var(--dur-fast) var(--ease-out);
+}
+#panes:has(#reader[hidden]) {
+  grid-template-columns: minmax(300px, 640px) 0;
+}
+
+/* O3 -- the topbar yields while the list is in motion. The guards are the
+   design: never while searching (the bar owns the search field), never
+   while a selection is live (bulk mode is aiming, not travelling). */
+/* `body #topbar`, not `#topbar`: the collapse lives in this layer and the
+   element already has a rule in it; same-layer duplicates are the drift
+   this guard exists to catch. */
+body #topbar {
+  height: var(--topbar-h);
+  overflow: hidden;
+  transition:
+    height var(--dur-fast) var(--ease-out),
+    padding var(--dur-fast) var(--ease-out),
+    opacity var(--dur-fast) linear;
+}
+body.list-scrolled:not(.searching):not(.selecting) #topbar {
+  height: 0;
+  padding-block: 0;
+  opacity: 0;
+}
+
+/* O7 -- composing quiets the surroundings. Opacity only: the sanctioned
+   half of the doctrine. Pointer events stay live -- quieting, not locking. */
+#sidebar,
+#main {
+  transition: opacity var(--dur-fast) linear;
+}
+body.composing #sidebar,
+body.composing #main {
+  opacity: 0.5;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

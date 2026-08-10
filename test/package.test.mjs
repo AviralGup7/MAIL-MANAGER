@@ -2151,9 +2151,17 @@ test('only one animation is allowed to force layout, and it is documented', () =
     `unexpected layout-animating keyframes: ${offenders.join(', ')}`
   );
 
-  // And no transition may animate one at all.
-  const badTransitions = [...css.matchAll(/transition:\s*([^;]+);/g)]
-    .flatMap(([, v]) => v.split(',').map((p) => p.trim().split(/\s+/)[0]))
+  // And no transition may animate one at all -- EXCEPT the named spatial
+  // compression system (audit 37), whose discrete layout transitions are a
+  // measured, priced relaxation of this doctrine: #topbar collapse reflows
+  // in 0.2ms and the #panes track change in 1.7-2.2ms, each paid once per
+  // user action. The exemption is selector-scoped so the relaxation cannot
+  // spread; a fifth surface must add its name here AND its measurement to
+  // audit 37.
+  const COMPRESSION_EXEMPT = new Set(['#topbar', 'body #topbar', '#panes']);
+  const badTransitions = [...css.matchAll(/([^{}]+)\{[^}]*transition:\s*([^;]+);/g)]
+    .filter(([ , sel]) => !COMPRESSION_EXEMPT.has(sel.trim().split(',').pop().trim()))
+    .flatMap(([, , v]) => v.split(',').map((p) => p.trim().split(/\s+/)[0]))
     .filter((p) => LAYOUT.includes(p));
   assert.deepEqual(badTransitions, [], 'transitions must not animate layout');
 });

@@ -111,6 +111,7 @@ export function openCompose(ctx, prefill = {}) {
   cancelExit(panel);
   panel.hidden = false;
   panel.classList.remove('minimised');
+  document.body.classList.add('composing');
   // Focus the first EMPTY field: a reply already has a recipient and a
   // subject, so landing in "To" would make the user tab past both.
   (prefill.to ? $('c-text') : $('c-to')).focus();
@@ -119,6 +120,7 @@ export function openCompose(ctx, prefill = {}) {
 
 export function closeCompose() {
   document.body.classList.remove('draft-dirty');
+  document.body.classList.remove('composing');
   const panel = $('compose');
   if (panel) closeWithMotion(panel);
   composeMeta = {};
@@ -378,7 +380,12 @@ export function wireCompose(ctx) {
   // that cannot complete an address is a field people avoid.
   wireAutocomplete('c-bcc', 'c-bcc-list');
 
-  $('compose-min').addEventListener('click', () => panel.classList.toggle('minimised'));
+  $('compose-min').addEventListener('click', () => {
+    panel.classList.toggle('minimised');
+    // O7: quieting follows the TASK. A minimised compose is writing no
+    // longer; the inbox comes back up.
+    document.body.classList.toggle('composing', !panel.classList.contains('minimised'));
+  });
   for (const [toggleId, rowId, inputId] of [
     ['c-cc-toggle', 'c-cc-row', 'c-cc'],
     ['c-bcc-toggle', 'c-bcc-row', 'c-bcc'],

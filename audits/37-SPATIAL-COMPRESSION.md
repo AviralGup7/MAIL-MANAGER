@@ -223,3 +223,40 @@ Phase 1 (bucket 1): O1 + O3 + O7 + O16, with the doctrine amendment
 the stylesheet header and its test.
 Phase 2 (optional): O2 + O8.
 Everything else recorded here so it is never re-proposed blind.
+
+---
+
+# IMPLEMENTATION RESULT #5
+
+Shipped as one system (`SPATIAL COMPRESSION` section, app.css; state wiring
+in app.js/compose.js; fold in sanitize.js). Verified in real Chrome 148:
+
+| move | measured |
+|---|---|
+| O1 list width idle/open | 640 / 400 at 1280, identical in compact + midnight |
+| O3 topbar rest / scrolled / search-focus | 61 / 0 / 61 |
+| O7 sidebar rest / composing / after | 1 / 0.5 / 1 |
+| O16 fold | one fold per >480-char quote; short quotes untouched; `foldQuotes:false` opt-out |
+| reduced motion | states apply instantly (topbar 0 in 60ms sample) |
+
+5 contract tests + doctrine exemption in package.test (selector-scoped,
+measurements cited). 4 sabotages caught (cap removed, guards dropped,
+quote-fold threshold zeroed, quieting turned into locking).
+
+## O2 and O8, evaluated during implementation as instructed
+
+**O2 (icon rail while reading) — rejected, with a measurement.** At 1280 the
+open reader's body text is already ~78ch; collapsing the rail would push it
+to ~102ch — the wrong direction for a product whose own measure is 68ch.
+The rail's width buys line-length the reader does not want. Quieting while
+reading remains available via the O7 pattern if a future round wants it.
+
+**O8 (focus mode) — rejected this round.** Its measurable benefit is
+immersion, and the measurable cost is a third transient chrome state plus a
+shortcut-policy change; O7 delivered the quieting half without hiding
+anything. Documented, not deleted: if a round adds reader-side line-length
+capping (a `68ch` max-width on the body), O2's width argument reverses and
+both should be re-evaluated together.
+
+Everything that "feels mechanically compressed" was checked against the
+noise warning: all four moves key on task changes; none fires on selection.

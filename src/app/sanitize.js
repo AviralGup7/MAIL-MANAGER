@@ -164,6 +164,28 @@ export function sanitizeHtml(html, doc = globalThis.document, opts = {}) {
   ctx.stats.inlineMissing = 0;
 
   walk(parsed.body, out, doc, ctx);
+
+  /*
+   * SPATIAL COMPRESSION O16 (audit 37): long quoted history folds behind a
+   * native <details>. The new words stay above the fold; the old ones stay
+   * one click away. Native disclosure means the sandbox needs no script and
+   * screen readers get a real control. Threshold ~6 lines of prose; shorter
+   * quotes are part of the conversation and stay open.
+   */
+  if (opts.foldQuotes !== false) {
+    for (const bq of [...out.querySelectorAll('blockquote')]) {
+      if ((bq.textContent || '').trim().length <= 480) continue;
+      if (bq.closest('details')) continue;
+      const det = doc.createElement('details');
+      det.className = 'quote-fold';
+      const sum = doc.createElement('summary');
+      sum.textContent = 'Show quoted text';
+      det.appendChild(sum);
+      bq.parentNode.insertBefore(det, bq);
+      det.appendChild(bq);
+    }
+  }
+
   return out.innerHTML;
 }
 

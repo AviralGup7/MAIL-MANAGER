@@ -2254,6 +2254,18 @@ function renderBody(body, { allowRemote = false, stats = {} } = {}) {
    * needs. Beyond ~70 characters the eye loses its place returning to the
    * next line, which is the single most common failure in mail rendering.
    */
+  /* SPATIAL COMPRESSION O16 (audit 37): quoted history folds behind a
+     native <details>; no script needed inside the sandbox. */
+  details.quote-fold>summary{
+    cursor:pointer;display:inline-block;margin:10px 0 4px;padding:3px 10px;
+    font-size:13px;color:inherit;opacity:.72;border:1px solid currentColor;
+    border-radius:6px;list-style:none;
+  }
+  details.quote-fold>summary::-webkit-details-marker{display:none}
+  details.quote-fold>summary::before{content:"+ ";}
+  details.quote-fold[open]>summary::before{content:"\\2212  ";}
+  details.quote-fold blockquote{margin-top:6px}
+
   /* POLISH 18b: a link that leaves the message says so before the click. */
   a[target="_blank"]::after{
     content:"";display:inline-block;width:10px;height:10px;margin-inline-start:4px;
@@ -3557,6 +3569,9 @@ $('r-actions').addEventListener('click', (e) => {
 // Search: debounced by ONE frame, not by a timer. Typing feels instant and
 // still costs at most one render per frame.
 let searchFrame = 0;
+/* O3 guard: the topbar may never yield while the bar owns the search. */
+el.search.addEventListener('focus', () => document.body.classList.add('searching'));
+el.search.addEventListener('blur', () => document.body.classList.remove('searching'));
 el.search.addEventListener('input', () => {
   if (searchFrame) return;
   searchFrame = requestAnimationFrame(() => {
@@ -4875,6 +4890,7 @@ function renderSelection() {
   const n = ids.length;
   el.bulkbar.hidden = n === 0;
   el.listhead.hidden = n > 0;
+  document.body.classList.toggle('selecting', n > 0);
 
   for (const [id, node] of nodeById) {
     /*
@@ -5467,6 +5483,7 @@ async function boot() {
       if (on !== scrolledOn) {
         scrolledOn = on;
         el.listpane.classList.toggle('scrolled', on);
+        document.body.classList.toggle('list-scrolled', on);
       }
     },
     { passive: true }
