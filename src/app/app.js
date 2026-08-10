@@ -1481,6 +1481,16 @@ function renderSidebar() {
   let totalUnread = 0;
   for (const n of Object.values(unread)) totalUnread += n;
 
+  /*
+   * POLISH 19: the tab is where a student looks when the app is buried.
+   * A parenthesised count is the one glanceable unread convention that
+   * survives every mail client, so the tab agrees with the rail instead
+   * of staying frozen at the app name.
+   */
+  document.title = totalUnread
+    ? `(${totalUnread}) BITS Mail Manager`
+    : 'BITS Mail Manager';
+
   // querySelectorAll, not `children`: the rail is grouped now, so the buttons
   // are grandchildren and `children` would iterate two wrapper divs.
   for (const b of el.cats.querySelectorAll('.cat')) {
@@ -5490,6 +5500,14 @@ function shortDate(ms) {
   if (!ms) return '';
   const d = new Date(ms);
   const now = Date.now();
+  /*
+   * POLISH 13: under an hour, "14:52" makes the eye do subtraction the
+   * interface already did. "12m" is the recency a triaging brain wants;
+   * the same-day clock returns after an hour, when wall time matters more.
+   */
+  if (now - ms < 3600000) {
+    return `${Math.max(1, Math.floor((now - ms) / 60000))}m`;
+  }
   if (now - ms < DAY && d.getDate() === new Date(now).getDate()) {
     return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   }

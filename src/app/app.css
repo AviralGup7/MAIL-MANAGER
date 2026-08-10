@@ -207,7 +207,16 @@
  * screen, which is self-defeating. Dropping the second line keeps every
  * remaining character at full size.
  */
-:root[data-density='compact'] .r-snip {
+:root[data-density='compact'] /*
+ * POLISH 6: recency is a decision input on unread mail; the date earns the
+ * same weight the sender already gets. Colour/weight only -- no motion.
+ */
+.row.unread .r-date {
+  color: var(--fg);
+  font-weight: var(--w-semi);
+}
+
+.r-snip {
   display: none;
 }
 
@@ -1511,8 +1520,36 @@ a.ghost {
 .suggest-item:active,
 .outbox-item:active,
 .snoozed-item:active,
+/*
+ * POLISH 14: hovering the star previews the filled state with a soft fill,
+ * so the click is a confirmation rather than a gamble. Colour only.
+ */
+.r-star:hover svg path {
+  fill: var(--accent-soft);
+}
+
 .r-check:active {
   transform: scale(0.985);
+}
+
+/*
+ * POLISH 2 (20-improvement round): the tick is noise while scanning and
+ * signal while aiming. Reveal it on hover/focus/selection -- colour-free
+ * opacity only -- but only where hover EXISTS; a touch device has no
+ * hover, so there the tick stays put. Keyboard gets it via focus-within,
+ * and a ticked row never hides its own tick.
+ */
+@media (hover: hover) {
+  .row .r-check {
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease-out);
+  }
+  .row:hover .r-check,
+  .row:focus-within .r-check,
+  .row.picked .r-check,
+  .row[aria-selected='true'] .r-check {
+    opacity: 1;
+  }
 }
 
 /*
@@ -2301,6 +2338,25 @@ textarea {
  * node is never created under prefers-reduced-motion. Static styles only
  * here, so nothing animates while the app is idle.
  */
+/*
+ * POLISH 9: native scrollbars in six themes read as an OS wearing our app.
+ * Thin, themed, both engines; the colour tokens keep contrast honest.
+ */
+#scroller, #cats, #views, .snooze-menu, .help-body {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+#scroller::-webkit-scrollbar, #cats::-webkit-scrollbar, #views::-webkit-scrollbar {
+  width: 8px;
+}
+#scroller::-webkit-scrollbar-thumb, #cats::-webkit-scrollbar-thumb, #views::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 4px;
+}
+#scroller::-webkit-scrollbar-track, #cats::-webkit-scrollbar-track, #views::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 .travel-ghost {
   position: fixed;
   z-index: var(--z-menu);
