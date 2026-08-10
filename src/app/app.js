@@ -982,6 +982,83 @@ function setSkeleton(on) {
 }
 
 /**
+ * SHARED-ELEMENT TRAVEL (audit 36, concept #4) — the archived row condenses
+ * into the Undo toast.
+ *
+ * One body-level fixed ghost, ~200ms, transform/opacity only, overlapping the
+ * existing row-out so it adds no state-transition latency: it occupies the
+ * dead gap between "row gone" and "toast appears" that the audit measured at
+ * 34ms. The destination is the toast's LIVE rect, measured at flight time by
+ * laying it out invisibly -- never a hardcoded coordinate, so a future toast
+ * move carries the travel with it.
+ *
+ * Deliberate limits, each from the audit:
+ *   - single archive only; bulkAct never calls optimistic(), so bulk gets no
+ *     ghost by construction;
+ *   - under prefers-reduced-motion the node is NOT CREATED at all, not run at
+ *     1ms -- creating motion to hide it is the wrong instinct;
+ *   - exactly one ghost: a second archive cancels and replaces the first, the
+ *     same ownership rule closeWithMotion uses;
+ *   - pointer-events none and aria-hidden; the toast already announces;
+ *   - removed on finish AND by a fallback timer, so no path leaks a node.
+ *
+ * The arc is restrained: one 24px mid-offset on a 200ms ease-in. A 400x68
+ * rectangle flying across the screen is a cartoon; a condensed chip reads as
+ * the message being filed.
+ */
+let travelGhostEl = null;
+function travelGhost(fromRect, text) {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  // Live destination: lay the toast out invisibly, read it, put it back.
+  const wasHidden = el.toast.hidden;
+  const savedVis = el.toast.style.visibility;
+  if (wasHidden) { el.toast.hidden = false; el.toast.style.visibility = 'hidden'; }
+  const to = el.toast.getBoundingClientRect();
+  if (wasHidden) { el.toast.hidden = true; }
+  el.toast.style.visibility = savedVis;
+
+  if (travelGhostEl) { // single owner: cancel-and-replace
+    travelGhostEl.getAnimations?.().forEach((a) => a.cancel());
+    travelGhostEl.remove();
+    travelGhostEl = null;
+  }
+
+  const g = document.createElement('div');
+  g.className = 'travel-ghost';
+  g.setAttribute('aria-hidden', 'true');
+  g.textContent = text;
+  g.style.left = `${fromRect.left + 8}px`;
+  g.style.top = `${fromRect.top + fromRect.height / 2 - 14}px`;
+  document.body.appendChild(g);
+  travelGhostEl = g;
+
+  const s = g.getBoundingClientRect();
+  const dx = to.left + to.width / 2 - (s.left + s.width / 2);
+  const dy = to.top + to.height / 2 - (s.top + s.height / 2);
+
+  const finish = () => {
+    if (travelGhostEl === g) travelGhostEl = null;
+    g.remove(); // idempotent; the fallback timer may race onfinish
+  };
+  const fallback = setTimeout(finish, 400);
+
+  if (typeof g.animate === 'function') {
+    const anim = g.animate([
+      { transform: 'translate3d(0,0,0) scale(1)', opacity: 1 },
+      { transform: `translate3d(${dx * 0.5}px,${dy * 0.5 - 24}px,0) scale(0.6)`, opacity: 0.9, offset: 0.5 },
+      { transform: `translate3d(${dx}px,${dy}px,0) scale(0.32)`, opacity: 0 },
+    ], { duration: 200, easing: 'cubic-bezier(0.4, 0, 1, 1)' });
+    anim.onfinish = () => { clearTimeout(fallback); finish(); };
+    anim.oncancel = () => { if (travelGhostEl === g) finish(); };
+  } else {
+    // No Web Animations (jsdom): the contract under test is create/cleanup,
+    // not the flight.
+    setTimeout(finish, 220);
+  }
+}
+
+/**
  * Let a removed row leave, instead of deleting it mid-frame.
  *
  * CORRECTNESS FIRST: the node is removed on `animationend`, but that event is
@@ -2312,8 +2389,26 @@ function optimistic({
   if (!m) return Promise.resolve();
   const snapshot = { ...m };
 
+  /*
+   * Shared-element travel (audit 36): capture the departing row's box BEFORE
+   * the removal re-renders, and only for ARCHIVE -- trash and spam depart
+   * without a travel because their destination story is different, and bulk
+   * never reaches this function at all.
+   */
+  let travel = null;
+  if (verb === 'ARCHIVE') {
+    const node = nodeById.get(id);
+    if (node) {
+      travel = {
+        rect: node.getBoundingClientRect(),
+        text: node.querySelector('.r-from')?.textContent || m.from,
+      };
+    }
+  }
+
   selectNeighbourThen(id);
   store.remove(id);
+  if (travel) travelGhost(travel.rect, travel.text);
 
   const rollback = async () => {
     /*
