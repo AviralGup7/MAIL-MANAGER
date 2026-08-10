@@ -146,12 +146,32 @@ function makeHandler({ auth, gmail, sync, snooze, mime }) {
        * what happens today when a part is over budget -- a path the reader
        * already handles.
        */
+      case 'SNOOZE': {
+        // Capability parity with the worker (cross-audit H5): Gmail-side
+        // label move in-page; the local schedule was already written by the
+        // caller's optimistic() `before` hook.
+        const labelId = await gmail.ensureLabel('Snoozed');
+        await gmail.modify(msg.id, [labelId], ['INBOX']);
+        return { ok: true };
+      }
+      case 'UNSNOOZE': {
+        const labelId = await gmail.ensureLabel('Snoozed');
+        await gmail.modify(msg.id, ['INBOX', 'UNREAD'], [labelId]);
+        return { ok: true };
+      }
+      case 'WAKE_DUE':
+        // Due snoozes are woken at boot and on every refresh in-page; the
+        // verb degrades to a no-op rather than a silent hole.
+        return { woke: 0 };
       case 'GET_INLINE': return [];
 
       case 'LIST_LABELS': return gmail.listLabels();
       case 'CREATE_LABEL': return gmail.createLabel(msg.name);
       case 'GET_ATTACHMENT': return gmail.getAttachment(msg.id, msg.attachmentId);
-      case 'GET_DRAFT': return gmail.getDraftForMessage(msg.messageId);
+      case 'GET_DRAFT':
+        // The app sends `{ id }`; the worker reads `msg.id`. The fallback
+        // used to read a field nobody sends (cross-audit H5).
+        return gmail.getDraftForMessage(msg.id || msg.messageId);
 
       default:
         if (WORKER_ONLY.has(type)) {

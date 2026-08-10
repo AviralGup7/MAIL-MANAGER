@@ -157,7 +157,9 @@ async function authorize(interactive) {
 
   const error = frag.get('error') || query.get('error');
   if (error) {
-    if (!interactive) throw new Error('SILENT_FAILED');
+    // Carry the code: renew() must tell revocation from a dead network, and
+    // SILENT_FAILED alone erases exactly that distinction (cross-audit H3).
+    if (!interactive) throw new Error(`SILENT_FAILED:${error}`);
     throw new Error(friendlyAuthError(error, frag.get('error_description')));
   }
 
@@ -322,9 +324,35 @@ async function renew() {
     // cleared it, and a sign-IN may since have populated it afresh. Wiping
     // here would sign the user back out immediately after they signed in.
     if (epoch !== sessionEpoch) throw new Error('NOT_SIGNED_IN');
-    await chrome.storage.local.remove(['accessToken', 'expiresAt', 'authorized']);
-    throw new Error('NOT_SIGNED_IN');
+    /*
+     * A RENEWAL FAILURE IS NOT A REVOCATION (cross-audit H3). A wifi dropout
+     * during the hourly silent renewal used to delete `authorized`, turning
+     * a transient blip into "you have never signed in". Only an explicit
+     * rejection from Google ends consent; everything else keeps the flag,
+     * surfaces as transient, and retries when the network returns.
+     */
+    const msg = String((err && err.message) || err);
+    const revoked = /access_denied|invalid_client|invalid_grant|deleted_client|interaction_required|login_required/.test(msg);
+    if (revoked) {
+      await chrome.storage.local.remove(['accessToken', 'expiresAt', 'authorized']);
+      throw new Error('NOT_SIGNED_IN');
+    }
+    scheduleRenewRetry();
+    throw new Error('AUTH_RENEW_TRANSIENT');
   }
+}
+
+/* Retry the renewal once on the next `online`, plus one slow idle retry. */
+let renewRetryArmed = false;
+function scheduleRenewRetry() {
+  if (renewRetryArmed) return;
+  renewRetryArmed = true;
+  const fire = async () => {
+    renewRetryArmed = false;
+    try { await getToken(); } catch { /* stays transient until next event */ }
+  };
+  globalThis.addEventListener?.('online', fire, { once: true });
+  setTimeout(fire, 60000);
 }
 
 export async function signOut() {

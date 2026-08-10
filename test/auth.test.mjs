@@ -493,11 +493,23 @@ test('concurrent getToken() calls still share ONE authorization flow', async () 
   assert.deepEqual([...new Set(results)], ['ONE'], 'callers disagreed on the token');
 });
 
-test('a failed renewal clears authorized so the gate appears', async () => {
+test('a NETWORK-failed renewal keeps consent and reports transient (H3)', async () => {
+  // A wifi dropout during the hourly silent renewal must not look like
+  // "you never signed in": consent survives, the error is transient, and the
+  // retry is scheduled rather than a loop.
   const h = await load({
     storage: { clientId: CLIENT_ID, authorized: true, accessToken: 'old', expiresAt: Date.now() - 1000 },
   });
   h.setReply(() => new Error('silent failed'));
-  await assert.rejects(() => h.mod.getToken());
-  assert.ok(!h.store.authorized, 'a dead session must stop retrying silently');
+  await assert.rejects(() => h.mod.getToken(), /AUTH_RENEW_TRANSIENT/);
+  assert.equal(h.store.authorized, true, 'consent must survive a network blip');
+});
+
+test('a REVOKED renewal clears authorized so the gate appears', async () => {
+  const h = await load({
+    storage: { clientId: CLIENT_ID, authorized: true, accessToken: 'old', expiresAt: Date.now() - 1000 },
+  });
+  h.setReply(() => `${REDIRECT}#error=access_denied`);
+  await assert.rejects(() => h.mod.getToken(), /NOT_SIGNED_IN/);
+  assert.ok(!h.store.authorized, 'confirmed revocation must end consent');
 });

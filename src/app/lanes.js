@@ -161,7 +161,7 @@ export function partition(ids, get, ctx = {}) {
 
   for (const id of ids) {
     const m = get(id);
-    if (!m) continue;
+    if (!m || m.fromSearch) continue; // render-only; never triage truth (H4)
     buckets[laneOf(m, ctx)].push(id);
   }
 

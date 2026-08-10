@@ -83,14 +83,24 @@ function isQuota403(body) {
  *
  * Returns the successful Response. Throws with the last status on give-up.
  */
+/*
+ * EVERY FETCH CARRIES ITS OWN ABORT BUDGET (cross-audit H2). A connection
+ * that accepts but never answers used to hang the fallback path forever --
+ * `fetch` without a signal neither rejects nor times out. The abort turns a
+ * blackhole proxy into an ordinary retryable network error.
+ */
+const FETCH_BUDGET_MS = 30000;
 async function fetchRetrying(url, init, label) {
   let lastErr;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     let res;
     try {
-      res = await fetch(url, init);
+      // AbortSignal.timeout: the hang budget without a setTimeout the test
+      // timer-stub could collapse (and Chrome 116+ / Node both support it).
+      res = await fetch(url, { ...init, signal: AbortSignal.timeout(FETCH_BUDGET_MS) });
     } catch (err) {
-      // Network-level failure (offline, DNS, connection reset). Retryable.
+      // Network-level failure (offline, DNS, connection reset, our own
+      // abort). Retryable.
       lastErr = new Error(`Network error on ${label}: ${err.message}`);
       if (attempt === MAX_ATTEMPTS) break;
       await sleep(backoffMs(attempt, null));

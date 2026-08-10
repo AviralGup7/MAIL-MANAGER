@@ -478,9 +478,13 @@ export class Store {
   }
 
   counts() {
+    // `fromSearch` records are render-only citizens (cross-audit H4): they
+    // answer the query on screen and must never move the rail's truth.
     const out = {};
     for (const [cat, set] of this.byCategory) {
-      if (set.size) out[cat] = set.size;
+      let n = 0;
+      for (const id of set) if (!this.byId.get(id)?.fromSearch) n++;
+      if (n) out[cat] = n;
     }
     return out;
   }
@@ -489,7 +493,10 @@ export class Store {
     const out = {};
     for (const [cat, set] of this.byCategory) {
       let n = 0;
-      for (const id of set) if (this.byId.get(id)?.unread) n++;
+      for (const id of set) {
+        const m = this.byId.get(id);
+        if (m?.unread && !m.fromSearch) n++;
+      }
       if (n) out[cat] = n;
     }
     return out;

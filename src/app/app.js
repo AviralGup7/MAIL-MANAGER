@@ -32,7 +32,7 @@ import { icon, setIcon, middleTruncate } from './icons.js';
 import { Selection, selectionLabel } from './selection.js';
 import { loadViews, saveView, removeView } from './views.js';
 import { extractDeadline, relativeLabel, urgency } from './deadlines.js';
-import { runInPage } from './fallback.js';
+import { runInPage, probeWorker } from './fallback.js';
 import { parseQuery, buildReply } from './query.js';
 import * as settings from './settings.js';
 import { addressOf } from './contacts.js';
@@ -393,6 +393,31 @@ function degradeToFallback(why) {
   } catch {
     // The banner is a courtesy; never let it break the fallback itself.
   }
+  /*
+   * DEGRADED IS A STATE, NOT A VERDICT (cross-audit H1). One slow response
+   * used to latch the session into fallback forever while probeWorker()
+   * sat uncalled. Now the worker is re-probed on every `online` event and
+   * on a slow idle interval, and a live worker restores worker mode — the
+   * user's snooze alarms and shortcuts come back without a reload.
+   */
+  scheduleWorkerProbe();
+}
+
+let probeArmed = false;
+function scheduleWorkerProbe() {
+  if (probeArmed) return;
+  probeArmed = true;
+  const check = async () => {
+    if (!workerDown) return;
+    try {
+      if (await probeWorker()) {
+        workerDown = false;
+        toast('Background worker recovered');
+      }
+    } catch { /* stay degraded; the next probe decides */ }
+  };
+  window.addEventListener('online', check, { once: true });
+  setInterval(check, 60000);
 }
 
 let toastTimer = 0;
@@ -550,7 +575,7 @@ function wireStore(id) {
  */
 const saver = createSaver(() => {
   const inbox = stores.get('inbox');
-  return inbox.idsFor('all').slice(0, CACHE_MAX).map((id) => inbox.get(id)).filter(Boolean);
+  return inbox.idsFor('all').slice(0, CACHE_MAX).map((id) => inbox.get(id)).filter((m) => m && !m.fromSearch);
 });
 
 wireStore('inbox');
@@ -680,6 +705,18 @@ function applyMute(ids) {
 function collapseThreads(ids) {
   if (!settings.get('threaded')) return ids;
   return store.rootIds(ids);
+}
+
+/*
+ * Server-search results live in the store ONLY while a query is active, so
+ * they can render and open like anything else. The moment the query clears
+ * they are purged (cross-audit H4): they were never inbox mail, and leaving
+ * them behind is how archived mail ended up in unread counts and lanes.
+ */
+function purgeSearchOnlyRecords() {
+  const doomed = store.idsFor('all').filter((id) => store.get(id)?.fromSearch);
+  if (!doomed.length) return;
+  store.batch(() => { for (const id of doomed) store.remove(id); });
 }
 
 function visibleIds() {
@@ -2904,6 +2941,9 @@ function ingest(messages) {
  */
 async function applyRules(records) {
   if (automationRules.length === 0 || records.length === 0) return;
+  // Search results never trigger automation (cross-audit H4).
+  records = records.filter((m) => !m.fromSearch);
+  if (records.length === 0) return;
 
   const { batches, fired } = engine.planFor(automationRules, records);
   if (batches.length === 0) return;
@@ -2949,7 +2989,7 @@ async function applyRules(records) {
 function autoArchive(records) {
   if (!rules.autoArchive.length) return;
   const targets = new Set(rules.autoArchive);
-  const hits = records.filter((m) => targets.has(m.category) && m.unread);
+  const hits = records.filter((m) => targets.has(m.category) && m.unread && !m.fromSearch);
   if (!hits.length) return;
 
   const ids = hits.map((m) => m.id);
@@ -3170,6 +3210,8 @@ function reportError(err) {
   const msg = String(err?.message || err);
   if (/client ID/i.test(msg)) {
     showGate(msg);
+  } else if (/AUTH_RENEW_TRANSIENT/.test(msg)) {
+    toast('Sign-in renewal paused — it will retry when your connection returns.');
   } else if (/401|invalid_grant|No refresh token/i.test(msg)) {
     state.signedIn = false;
     showGate('Session expired. Sign in again.');
@@ -3473,6 +3515,7 @@ function selectCategory(key) {
   if (state.query) {
     state.query = '';
     el.search.value = '';
+    purgeSearchOnlyRecords(); // H4: search citizens leave with the query
   }
   renderList();
   // After the render: restoring before it would be overwritten by the
@@ -3617,7 +3660,9 @@ el.search.addEventListener('input', () => {
   searchFrame = requestAnimationFrame(() => {
     searchFrame = 0;
     if (!state.query && el.search.value) preQueryScroll = el.scroller.scrollTop;
+    const hadQuery = !!state.query;
     state.query = el.search.value;
+    if (hadQuery && !state.query) purgeSearchOnlyRecords();
     // R5: clearing a search returns you to where the search began.
     pendingScrollRestore = 0;
     lastUserScroll = 0;
