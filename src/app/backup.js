@@ -77,6 +77,9 @@ export const EXPORTED_KEYS = [
   'autoRefreshMs',
   'signature',
   'undoSendSeconds',
+  // Spatial-compression coach mark (concept #6 polish): a preference like
+  // any other, and the SCHEMA-walk test fails if the export list lags.
+  'coachDone',
   /*
    * `clientId` is IN the schema and deliberately NOT here. It is the user's
    * own Google Cloud OAuth client id -- not a secret in the way a token is,

@@ -33,7 +33,7 @@
  * all is 'direct', never 'broadcast' -- absent data must never cause a hide.
  */
 
-import { addressOf } from './contacts.js';
+import { addressOf, parseAddressList } from './contacts.js';
 
 /**
  * Headers that prove a message came from a mailing list.
@@ -46,20 +46,9 @@ export const LIST_HEADERS = ['list-id', 'list-post', 'list-unsubscribe', 'mailin
 
 /** Split a recipient header into bare addresses, respecting quoted names. */
 export function splitRecipients(value) {
-  const out = [];
-  let cur = '';
-  let quoted = false;
-  for (const ch of String(value || '')) {
-    if (ch === '"') quoted = !quoted;
-    if (ch === ',' && !quoted) {
-      if (cur.trim()) out.push(cur.trim());
-      cur = '';
-      continue;
-    }
-    cur += ch;
-  }
-  if (cur.trim()) out.push(cur.trim());
-  return out.map((a) => addressOf(a)).filter(Boolean);
+  // Canonical parser, canonical lowercasing -- one truth for "who is this
+  // addressed to" (cross-audit B-05).
+  return parseAddressList(value).map((a) => a.address).filter(Boolean);
 }
 
 /**

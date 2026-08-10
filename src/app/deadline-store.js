@@ -72,15 +72,19 @@ export function normaliseOverrides(raw) {
 }
 
 export async function loadOverrides(storage = chrome.storage?.local) {
+  // Stash as the session canonical; dueAtOfNow serves every reader.
   try {
     const got = (await storage.get(KEY)) || {};
-    return normaliseOverrides(got[KEY]);
+    currentOverrides = normaliseOverrides(got[KEY]);
+    return currentOverrides;
   } catch {
-    return {};
+    currentOverrides = {};
+    return currentOverrides;
   }
 }
 
 export async function saveOverrides(map, storage = chrome.storage?.local) {
+  currentOverrides = map || {};
   try {
     await storage.set({ [KEY]: normaliseOverrides(map) });
     return true;
@@ -161,6 +165,24 @@ export function clearOverride(map, messageId) {
  *
  * @returns {{at:number|null, source:'user'|'extracted'|'none', origin?:string, text?:string}}
  */
+/*
+ * THE loaded override map, module-owned (cross-audit B-03). Every consumer
+ * of "does this message have a deadline" reads through dueAtOfNow, so a
+ * dismissal or correction propagates to lanes, search, rules and saved
+ * views in one hop -- previously each reader picked raw `m.dueAt` and
+ * disagreed with the radar.
+ */
+let currentOverrides = {};
+
+/** @returns {object} the override map loaded for this session */
+export function overridesNow() { return currentOverrides; }
+
+/** Canonical deadline accessor: user override beats extraction, always. */
+export function dueAtOfNow(msg) {
+  const e = effectiveDeadline(msg, currentOverrides);
+  return e && Number.isFinite(e.at) ? e.at : undefined;
+}
+
 export function effectiveDeadline(msg, map = {}) {
   const o = msg && map[msg.id];
   if (o) {

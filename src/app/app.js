@@ -689,7 +689,7 @@ function visibleIds() {
   // scanning every message. The index still does the fast token lookup; the
   // parser only narrows it. That keeps `from:augsd registration` as cheap as
   // `registration` was.
-  const parsed = parseQuery(state.query);
+  const parsed = parseQuery(state.query, Date.now(), { dueAtOf: (m) => deadlineStore.dueAtOf(m, deadlineOverrides) });
   const base = parsed.terms.length
     ? store.search(parsed.terms.join(' '), state.category)
     : store.idsFor(state.category);
@@ -2810,8 +2810,18 @@ function selectNeighbourThen(id) {
  * running the classifier over Trash wastes work on messages that are leaving.
  * Those views get a flat, date-ordered list, which is what they are for.
  */
-function ingestInto(mailboxId, messages, classified) {
-  const target = storeFor(mailboxId);
+/**
+ * THE canonical record shaper (audit 40 / cross-audit B-01).
+ *
+ * One pipeline shapes every ingested message, whichever mailbox or caller it
+ * arrives through: recipient headers, audience and courses are stamped HERE,
+ * once, where the headers and the signed-in address are in hand. The legacy
+ * second shaper dropped exactly those fields, which made `is:direct`, lanes
+ * and course chips disagree depending on which path loaded the mail -- the
+ * root pattern behind findings B-01/B-02/B-07. There is now no second truth
+ * to drift.
+ */
+function shapeRecords(messages, classified) {
   const records = new Array(messages.length);
   for (let i = 0; i < messages.length; i++) {
     const m = messages[i];
@@ -2827,23 +2837,8 @@ function ingestInto(mailboxId, messages, classified) {
       starred: m.starred,
       hasAttachment: !!m.hasAttachment,
       cc: m.cc,
-      /*
-       * Stamped ONCE, here, where the recipient headers are in hand and the
-       * signed-in address is known. Feature 32.
-       *
-       * The alternative -- deriving it in the query operator and in the lane
-       * assigner and in the list filter -- would parse the same header three
-       * times per message per render. This is a pure function of data that
-       * never changes after ingest, which is the definition of something that
-       * belongs in the record rather than in the render path.
-       */
+      headers: m.headers,
       audience: audienceOf(m, state.selfEmail),
-      /*
-       * Course numbers mentioned in the message, detected ONCE here rather
-       * than re-parsed per render. Narrowed to the user's enrolment at display
-       * time -- the raw detection is cheap to keep and lets the enrolment
-       * change without a re-sync.
-       */
       courses: courseNumbersIn(`${m.subject || ''} ${m.snippet || ''}`),
     };
     if (classified) {
@@ -2856,8 +2851,8 @@ function ingestInto(mailboxId, messages, classified) {
         dueAt: d ? d.at : undefined,
         dueKind: d ? d.kind : undefined,
         // The phrase the date was read FROM. Kept so the reader can show its
-        // working -- see the deadline tag -- rather than asserting a date the
-        // user has to take on faith.
+        // working -- see the deadline tag -- rather than asserting a date it
+        // has to take on faith.
         dueText: d ? d.text : undefined,
         category: c.category,
         confidence: c.confidence,
@@ -2868,39 +2863,18 @@ function ingestInto(mailboxId, messages, classified) {
       records[i] = { ...base, category: 'other', confidence: 1, source: 'mailbox' };
     }
   }
-  target.upsertMany(records);
+  return records;
+}
+
+function ingestInto(mailboxId, messages, classified) {
+  storeFor(mailboxId).upsertMany(shapeRecords(messages, classified));
 }
 
 function ingest(messages) {
   if (!messages.length) return;
-  const records = new Array(messages.length);
-  for (let i = 0; i < messages.length; i++) {
-    const m = messages[i];
-    const c = classify(m);
-    // Deadline extraction rides along with classification: same pass, same
-    // data, measured at a few microseconds per message. Doing it here rather
-    // than at render time means search operators (is:due, is:overdue) can use
-    // it without re-parsing on every keystroke.
-    const d = extractDeadline(m);
-    records[i] = applyCorrection(rules, {
-      dueAt: d ? d.at : undefined,
-      dueKind: d ? d.kind : undefined,
-      dueText: d ? d.text : undefined,
-      hasAttachment: !!m.hasAttachment,
-      id: m.id,
-      threadId: m.threadId,
-      from: m.from,
-      subject: m.subject,
-      snippet: m.snippet,
-      date: m.date,
-      unread: m.unread,
-      starred: m.starred,
-      category: c.category,
-      confidence: c.confidence,
-      source: c.source,
-      reason: c.reason,
-    });
-  }
+  // The inbox arrival pipeline: same canonical shaper as every other path,
+  // then the arrival-only consequences (auto-archive, user rules).
+  const records = shapeRecords(messages, true);
   store.upsertMany(records); // one batch -> one notification -> one frame
   autoArchive(records);
   // User rules run after the category auto-archive, so a hand-written rule can
@@ -3994,7 +3968,7 @@ function insertLaneHeaders(frag) {
   if (rows.length === 0) return;
 
   const answered = lanes.answeredPredicate(store, state.selfEmail);
-  const ctxArgs = { self: state.selfEmail, isAnswered: answered };
+  const ctxArgs = { self: state.selfEmail, isAnswered: answered, dueAtOf: (m) => deadlineStore.dueAtOf(m, deadlineOverrides) };
 
   const byLane = new Map();
   for (const node of rows) {

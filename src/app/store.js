@@ -119,7 +119,10 @@ export class Store {
    * user did not mean.
    */
   static tokenize(msg) {
-    const text = `${msg.subject || ''} ${msg.from || ''}`.toLowerCase();
+    // ONE definition of searchable text (cross-audit B-04): the index and
+    // the free-text predicate scan the same three fields, so counts, lanes
+    // and results cannot disagree about what a term matches.
+    const text = `${msg.subject || ''} ${msg.from || ''} ${msg.snippet || ''}`.toLowerCase();
     const out = new Set();
     // Split on anything that is not a letter, digit or @ . -
     for (const raw of text.split(/[^a-z0-9@.\-]+/)) {

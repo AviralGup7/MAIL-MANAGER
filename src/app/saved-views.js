@@ -12,6 +12,7 @@
  * called FROM the loop rather than subscribing on its own.
  */
 
+import { dueAtOfNow } from './deadline-store.js';
 import { loadViews } from './views.js';
 import { parseQuery } from './query.js';
 import { icon } from './icons.js';
@@ -113,7 +114,7 @@ export async function refreshViews() {
 /** How many messages a saved query currently matches. */
 function countFor(query) {
   try {
-    const parsed = parseQuery(query);
+    const parsed = parseQuery(query, Date.now(), { dueAtOf: dueAtOfNow });
     const base = parsed.terms.length
       ? ctx.store.search(parsed.terms.join(' '), 'all')
       : ctx.store.idsFor('all');
@@ -138,7 +139,7 @@ const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
  * user do work the query has already described.
  */
 export function suggestViewName(q) {
-  const parsed = parseQuery(q);
+  const parsed = parseQuery(q, Date.now(), { dueAtOf: dueAtOfNow });
   const bits = [];
   for (const o of parsed.operators) {
     if (o.key === 'is' || o.key === 'has') bits.push(cap(o.value));

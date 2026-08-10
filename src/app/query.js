@@ -24,6 +24,7 @@
  * the store is implemented, and the store never needs to know about operators.
  */
 
+import { parseAddressList } from './contacts.js';
 import { DAY_MS } from './deadlines.js';
 import { addressOf as addr } from './contacts.js';
 
@@ -82,7 +83,7 @@ function parseSpan(v) {
  *   `terms` is the free text for the inverted index; `predicate` applies
  *   everything the index cannot express.
  */
-export function parseQuery(q, now = Date.now()) {
+export function parseQuery(q, now = Date.now(), ctx = {}) {
   const tokens = tokenize(String(q || '').trim());
 
   /*
@@ -100,7 +101,7 @@ export function parseQuery(q, now = Date.now()) {
    */
   if (hasGrouping(tokens)) return parseGrouped(tokens, now);
 
-  return compileFlat(tokens, now);
+  return compileFlat(tokens, now, {}, ctx);
 }
 
 /** Cheap pre-check: is there anything the flat parser cannot handle? */
@@ -219,7 +220,7 @@ function parseGrouped(tokens, now) {
  * @param {{textAsPredicate?:boolean}} [opts] when set, free text becomes a
  *   predicate instead of an index term -- required under an OR, see above.
  */
-function compileFlat(tokens, now, { textAsPredicate = false } = {}) {
+function compileFlat(tokens, now, { textAsPredicate = false } = {}, ctx = {}) {
   /** @type {Array<(m:object)=>boolean>} */
   const checks = [];
   const terms = [];
@@ -256,7 +257,7 @@ function compileFlat(tokens, now, { textAsPredicate = false } = {}) {
     const value = body.slice(colon + 1).replace(/^"|"$/g, '').toLowerCase();
     if (!value) continue;
 
-    const check = buildCheck(key, value, now);
+    const check = buildCheck(key, value, now, ctx);
     if (!check) {
       // Unknown operator: treat the whole token as free text rather than
       // silently dropping it. Dropping is how a search quietly returns the
@@ -276,7 +277,7 @@ function compileFlat(tokens, now, { textAsPredicate = false } = {}) {
   };
 }
 
-function buildCheck(key, value, now) {
+function buildCheck(key, value, now, ctx = {}) {
   switch (key) {
     case 'from':
       return (m) => (m.from || '').toLowerCase().includes(value);
@@ -319,8 +320,13 @@ function buildCheck(key, value, now) {
         case 'read': return (m) => !m.unread;
         case 'starred': return (m) => !!m.starred;
         case 'unstarred': return (m) => !m.starred;
-        case 'due': return (m) => typeof m.dueAt === 'number';
-        case 'overdue': return (m) => typeof m.dueAt === 'number' && m.dueAt < now;
+        // Canonical deadline reads (cross-audit B-03): the override-aware
+        // accessor when the caller has one, never raw `m.dueAt` alone.
+        case 'due': return (m) => Number.isFinite(ctx.dueAtOf ? ctx.dueAtOf(m) : m.dueAt);
+        case 'overdue': return (m) => {
+          const at = ctx.dueAtOf ? ctx.dueAtOf(m) : m.dueAt;
+          return Number.isFinite(at) && at < now;
+        };
         case 'important': return (m) => (m.confidence ?? 0) >= 0.9;
 
         /*
@@ -347,7 +353,7 @@ function buildCheck(key, value, now) {
     case 'has':
       switch (value) {
         case 'attachment': return (m) => !!m.hasAttachment;
-        case 'deadline': return (m) => typeof m.dueAt === 'number';
+        case 'deadline': return (m) => Number.isFinite(ctx.dueAtOf ? ctx.dueAtOf(m) : m.dueAt);
         default: return null;
       }
     case 'before': {
@@ -389,21 +395,13 @@ export function describeQuery(parsed) {
 // `addr` is contacts.js's addressOf, imported above — one definition.
 
 /** Split a comma-separated address header, respecting quoted display names. */
+/*
+ * ONE address-list parser (cross-audit B-05). contacts.parseAddressList is
+ * the RFC-aware canonical (quotes + angle brackets); reply-all reconstruction
+ * keeps the display name so recipients stay human-readable.
+ */
 function splitAddrs(v) {
-  const out = [];
-  let cur = '';
-  let quoted = false;
-  for (const ch of String(v || '')) {
-    if (ch === '"') quoted = !quoted;
-    if (ch === ',' && !quoted) {
-      if (cur.trim()) out.push(cur.trim());
-      cur = '';
-      continue;
-    }
-    cur += ch;
-  }
-  if (cur.trim()) out.push(cur.trim());
-  return out;
+  return parseAddressList(v).map((a) => (a.name ? `${a.name} <${a.address}>` : a.address));
 }
 
 /**

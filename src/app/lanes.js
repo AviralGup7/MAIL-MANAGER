@@ -95,7 +95,7 @@ const ASKS_SOMETHING =
  * @param {(m:object)=>boolean} [ctx.isAnswered] did we already reply in this thread
  * @returns {'needsReply'|'deadlines'|'announcements'|'newsletters'}
  */
-export function laneOf(m, { self, now = Date.now(), isAnswered = () => false } = {}) {
+export function laneOf(m, { self, now = Date.now(), isAnswered = () => false, dueAtOf = null } = {}) {
   if (!m) return 'announcements';
 
   const category = String(m.category || '');
@@ -109,12 +109,15 @@ export function laneOf(m, { self, now = Date.now(), isAnswered = () => false } =
    * point it is history rather than a task.
    */
   const WEEK = 7 * 24 * 60 * 60 * 1000;
-  if (typeof m.dueAt === 'number' && m.dueAt > now - WEEK) return 'deadlines';
+  const due = dueAtOf ? dueAtOf(m) : m.dueAt;
+  if (Number.isFinite(due) && due > now - WEEK) return 'deadlines';
 
   // Promotional mail is never in a working lane, however it is addressed.
   if (BROADCAST_CATEGORIES.has(category)) return 'newsletters';
 
-  const audience = audienceOf(m, self);
+  // Stamped at ingest where possible; live derivation only as the fallback
+  // for records that predate the stamp (cross-audit B-02).
+  const audience = m.audience || audienceOf(m, self);
 
   /*
    * NEEDS-REPLY.

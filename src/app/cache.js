@@ -94,6 +94,21 @@ export const CACHE_MAX = 500;
 const AUD_CODE = { direct: 'd', cc: 'c', broadcast: 'b' };
 const AUD_NAME = { d: 'direct', c: 'cc', b: 'broadcast' };
 
+/*
+ * RECIPIENT-DEPENDENT FIELDS SURVIVE THE CACHE (cross-audit B-07).
+ *
+ * `to`/`cc` and the list headers are what `audienceOf` re-derives from when
+ * the stamp is absent, and `courses` is what the course chip renders. None
+ * of them existed in the packed row, so a warm start hydrated records that
+ * behaved differently from the cold-synced originals -- the B-01 pattern,
+ * one layer down. Widened rows degrade like the flags byte did: an old blob
+ * yields undefined and self-corrects on the next sync.
+ *
+ * Headers are slimmed to the keys audience decisions actually read
+ * (LIST_HEADERS); a full header dump would bloat 500 rows for nothing.
+ */
+import { LIST_HEADERS } from './direct.js';
+
 function pack(m) {
   return [
     m.id,
@@ -108,7 +123,27 @@ function pack(m) {
     m.source || '',
     m.reason || '',
     AUD_CODE[m.audience] || '',
+    m.to || '',
+    m.cc || '',
+    (m.courses || []).join(','),
+    headersJSON(m.headers),
   ];
+}
+
+function headersJSON(headers) {
+  const slim = slimHeaders(headers);
+  // Empty means absent, exactly like the other widened fields: an old or
+  // headerless record round-trips to NO key, keeping deep-equality honest.
+  return Object.keys(slim).length ? JSON.stringify(slim) : '';
+}
+
+function slimHeaders(headers) {
+  if (!headers || typeof headers !== 'object') return {};
+  const out = {};
+  for (const k of Object.keys(headers)) {
+    if (LIST_HEADERS.includes(k.toLowerCase())) out[k] = String(headers[k]);
+  }
+  return out;
 }
 
 function unpack(a) {
@@ -137,7 +172,21 @@ function unpack(a) {
      * the same reasoning the flags byte used when `hasAttachment` was added.
      */
     ...(AUD_NAME[a[11]] ? { audience: AUD_NAME[a[11]] } : {}),
+    // 12..15 are the B-07 widening; absent on old blobs, self-correcting.
+    ...(a[12] ? { to: a[12] } : {}),
+    ...(a[13] ? { cc: a[13] } : {}),
+    ...(a[14] ? { courses: a[14].split(',') } : {}),
+    ...(a[15] ? { headers: safeHeaders(a[15]) } : {}),
   };
+}
+
+function safeHeaders(json) {
+  try {
+    const o = JSON.parse(json);
+    return o && typeof o === 'object' ? o : {};
+  } catch {
+    return {};
+  }
 }
 
 /**

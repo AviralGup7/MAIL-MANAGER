@@ -45,6 +45,7 @@
  * without booting jsdom.
  */
 
+import { dueAtOfNow } from './deadline-store.js';
 import { parseQuery } from './query.js';
 
 const KEY = 'automationRules';
@@ -171,7 +172,7 @@ export function validateRule(rule) {
   if (!rule || typeof rule.query !== 'string' || !rule.query.trim()) {
     return { ok: false, reason: 'A rule needs a condition.' };
   }
-  const parsed = parseQuery(rule.query);
+  const parsed = parseQuery(rule.query, Date.now(), { dueAtOf: dueAtOfNow });
   if (parsed.isEmpty || (!parsed.predicate && parsed.terms.length === 0)) {
     return {
       ok: false,
@@ -200,7 +201,7 @@ export function validateRule(rule) {
  * for, in an engine whose whole risk is matching too much.
  */
 export function compileCondition(query, now = Date.now()) {
-  const parsed = parseQuery(query, now);
+  const parsed = parseQuery(query, now, { dueAtOf: dueAtOfNow });
   const terms = parsed.terms.map((t) => t.toLowerCase());
   const pred = parsed.predicate;
 
