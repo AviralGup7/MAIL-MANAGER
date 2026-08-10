@@ -142,8 +142,10 @@ test('results already on screen are not duplicated', () => {
   assert.ok(fn.includes('before.has(m.id)') || fn.includes('!before.has'), 'must diff against what is shown');
 });
 
-test('server results are marked so they are distinguishable later', () => {
-  assert.match(serverSearchFn(), /fromSearch: true/);
+test('server results live in an ephemeral overlay, never the Store (V2 P0-4)', () => {
+  const fn = serverSearchFn();
+  assert.match(fn, /overlay\.set\(m\.id, m\)/, 'results go to the overlay');
+  assert.ok(!fn.includes('ctx.ingest'), 'the Store must never receive search-only records');
 });
 
 test('a failed fallback does not read as "no results"', () => {

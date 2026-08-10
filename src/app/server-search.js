@@ -47,6 +47,23 @@ const SERVER_SEARCH_MIN = 3;
 let serverSearchTimer = 0;
 let serverSearchToken = 0;
 
+/*
+ * THE EPHEMERAL SEARCH BOUNDARY (V2 P0-4). Server results used to be
+ * ingested into the mailbox Store with a `fromSearch` flag, which is a
+ * boolean trying to act like a data model: every consumer had to remember
+ * the flag, and several didn't. Now the results live in a module-owned
+ * overlay the Store never sees; the list merges them while a query is
+ * active, and clearing the query simply drops the overlay. There is
+ * nothing to purge because nothing ever entered the mailbox state.
+ */
+const overlay = new Map();
+export function overlayIds() { return [...overlay.keys()]; }
+export function overlayGet(id) { return overlay.get(id); }
+export function clearSearchOverlay() {
+  if (overlay.size) { overlay.clear(); return true; }
+  return false;
+}
+
 export function scheduleServerSearch() {
   clearTimeout(serverSearchTimer);
   const q = ctx.state.query.trim();
@@ -54,6 +71,7 @@ export function scheduleServerSearch() {
   // Nothing typed, or too short to be worth a round trip.
   if (q.length < SERVER_SEARCH_MIN) {
     serverSearchToken++; // cancel anything in flight
+    if (clearSearchOverlay()) ctx.renderList();
     setSearchNote('');
     return;
   }
@@ -81,16 +99,20 @@ async function runServerSearch() {
     // what stops results from an old query flashing over a newer one.
     if (token !== serverSearchToken) return;
 
+    // Replace, don't append: a newer query's results supersede the old
+    // overlay wholesale.
+    overlay.clear();
+    for (const m of ctx.shape(messages)) overlay.set(m.id, m);
     const fresh = messages.filter((m) => !before.has(m.id));
     if (!fresh.length) {
       setSearchNote(before.size ? '' : 'No matches in your mail.');
+      ctx.renderList();
       return;
     }
 
-    // Merged into the inbox store so they render, sort and open exactly like
-    // any other message. They carry `fromSearch` so a later refresh can tell
-    // them apart from genuine inbox mail.
-    ctx.ingest(fresh.map((m) => ({ ...m, fromSearch: true })));
+    // The overlay is merged by visibleIds(); the Store never sees these
+    // records, so counts, lanes, rules and cache cannot be polluted.
+    ctx.renderList();
     setSearchNote(
       `${fresh.length} more found by searching message bodies in Gmail.`
     );

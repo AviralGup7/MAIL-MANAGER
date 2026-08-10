@@ -57,6 +57,7 @@ import { openLayer, closeTopLayer, hasLayers, closeAllLayers, closeWithMotion, c
 import { openMenu, closeMenu, menuIsOpen } from './menu.js';
 import {
   scheduleServerSearch, wireServerSearch, _resetServerSearch,
+  overlayIds, overlayGet, clearSearchOverlay,
 } from './server-search.js';
 import {
   renderViews, refreshViews, suggestViewName, updateSaveAffordance, currentViews,
@@ -729,12 +730,6 @@ function collapseThreads(ids) {
  * they are purged (cross-audit H4): they were never inbox mail, and leaving
  * them behind is how archived mail ended up in unread counts and lanes.
  */
-function purgeSearchOnlyRecords() {
-  const doomed = store.idsFor('all').filter((id) => store.get(id)?.fromSearch);
-  if (!doomed.length) return;
-  store.batch(() => { for (const id of doomed) store.remove(id); });
-}
-
 function visibleIds() {
   if (!state.query) return collapseThreads(applyMute(store.idsFor(state.category)));
 
@@ -747,6 +742,23 @@ function visibleIds() {
     ? store.search(parsed.terms.join(' '), state.category)
     : store.idsFor(state.category);
 
+  const local = applyPredicate(base, parsed);
+  if (!state.query) return local;
+  // The ephemeral overlay (V2 P0-4): server hits live outside the Store and
+  // are merged here, under the same predicate/terms, only while querying.
+  const seen = new Set(local);
+  const out = [...local];
+  for (const id of overlayIds()) {
+    if (seen.has(id)) continue;
+    const m = overlayGet(id);
+    if (!m) continue;
+    if (!matchesQuery(m, parsed)) continue;
+    out.push(id);
+  }
+  return out;
+}
+
+function applyPredicate(base, parsed) {
   if (!parsed.predicate) return base;
   const out = [];
   for (const id of base) {
@@ -754,6 +766,14 @@ function visibleIds() {
     if (m && parsed.predicate(m)) out.push(id);
   }
   return out;
+}
+
+/** Same term semantics as the Store index: subject + from + snippet. */
+function matchesQuery(m, parsed) {
+  if (parsed.predicate && !parsed.predicate(m)) return false;
+  if (!parsed.terms.length) return true;
+  const hay = `${m.subject || ''} ${m.from || ''} ${m.snippet || ''}`.toLowerCase();
+  return parsed.terms.every((t) => hay.includes(String(t).toLowerCase()));
 }
 
 /**
@@ -2015,7 +2035,7 @@ function renderThreadStrip(rootId) {
 }
 
 async function openMessage(id) {
-  const m = store.get(id);
+  const m = store.get(id) || overlayGet(id);
   if (!m) return;
 
   const prev = state.selected;
@@ -3531,7 +3551,7 @@ function selectCategory(key) {
   if (state.query) {
     state.query = '';
     el.search.value = '';
-    purgeSearchOnlyRecords(); // H4: search citizens leave with the query
+    clearSearchOverlay(); // V2 P0-4: search citizens leave with the query
   }
   renderList();
   // After the render: restoring before it would be overwritten by the
@@ -3678,7 +3698,7 @@ el.search.addEventListener('input', () => {
     if (!state.query && el.search.value) preQueryScroll = el.scroller.scrollTop;
     const hadQuery = !!state.query;
     state.query = el.search.value;
-    if (hadQuery && !state.query) purgeSearchOnlyRecords();
+    if (hadQuery && !state.query) clearSearchOverlay();
     // R5: clearing a search returns you to where the search began.
     pendingScrollRestore = 0;
     lastUserScroll = 0;
@@ -5188,6 +5208,8 @@ const ctx = {
   // genuinely new hits) and how to merge what Gmail returns.
   visibleIds: () => visibleIds(),
   ingest: (msgs) => ingest(msgs),
+  shape: (msgs) => shapeRecords(msgs, true),
+  renderList: () => renderList(),
   runQuery: (q) => {
     el.search.value = q;
     state.query = q;
