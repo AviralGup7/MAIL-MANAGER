@@ -32,7 +32,7 @@
  *     the everyday targets.
  */
 
-import { SNOOZE_LABEL } from './snooze.js';
+import { SNOOZE_LABEL } from '../shared/labels.js';
 
 /**
  * @typedef {Object} Mailbox

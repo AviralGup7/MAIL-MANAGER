@@ -186,6 +186,13 @@ const state = {
 };
 
 /** Ids currently rendered, in order. The diff baseline. */
+/*
+ * COHERENCE INVARIANT (R-2): `renderedIds` and `nodeById` describe the SAME
+ * snapshot. They must be cleared together, SYNCHRONOUSLY, before any queued
+ * frame fires — resetView() is the only sanctioned path; bulk operations
+ * must resolve through it, never through `store.idsFor('all')`, or a stale
+ * frame repopulates the list after a clear (the sign-out render bug).
+ */
 let renderedIds = [];
 /** When the reader last animated a swap, so rapid j/k can skip it. See openMessage. */
 let lastSwapAt = 0;
@@ -2333,6 +2340,7 @@ function renderBodyInto(body, forceRemote = false) {
   }
 }
 
+/** SECURITY BOUNDARY, not duplication (see background/index.js:extractBody). */
 function renderBody(body, { allowRemote = false, stats = {} } = {}) {
   // cid -> data: URL, from the parts we just fetched.
   const cid = new Map();

@@ -14,7 +14,8 @@ import {
   buildMime, sendMessage, saveDraft, getDraftForMessage,
   listLabels, createLabel, getAttachment, ensureLabel, headerMap,
 } from './gmail.js';
-import { SNOOZE_LABEL, loadSnoozed, removeSnooze, due } from '../app/snooze.js';
+import { SNOOZE_LABEL } from '../shared/labels.js';
+import { loadSnoozed, removeSnooze, due } from '../app/snooze.js';
 import { syncPage, syncDelta } from './sync.js';
 import { api } from './gmail.js';
 // The MIME parser lives in its own module so the in-page fallback can reuse

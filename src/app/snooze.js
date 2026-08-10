@@ -32,7 +32,9 @@
  * deadline parser already found in the message.
  */
 
-export const SNOOZE_LABEL = 'BMM/Snoozed';
+// Single source of truth lives in src/shared/labels.js so the
+// service worker can import it without crossing into the app layer (R-5).
+export { SNOOZE_LABEL } from '../shared/labels.js';
 const KEY = 'snoozed';
 
 /** Round to a sensible hour, never to "now + 8h and 37 minutes". */
