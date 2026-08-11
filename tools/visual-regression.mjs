@@ -96,7 +96,7 @@ try {
         const page = await browser.newPage({ viewport: { width, height: 800 } });
         await page.addInitScript(chromeStub.replaceAll('__THEME__', theme).replaceAll('__DENSITY__', density));
         await page.goto(APP_URL);
-        await page.waitForTimeout(250);
+        await page.waitForTimeout(450);
         const file = join(OUT, `${theme}.${density}.${width}.png`);
         await page.screenshot({ path: file });
         taken++;
