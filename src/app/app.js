@@ -2090,7 +2090,13 @@ async function openMessage(id) {
   el.rSubject.textContent = m.subject;
   el.rFrom.textContent = m.from;
   el.rDate.textContent = fullDate(m.date);
-  el.rOpen.href = `https://mail.google.com/mail/u/${ACCOUNT_INDEX}/#inbox/${m.threadId}`;
+  /*
+   * MAILBOX-AWARE (round 45 M1): the deep link lands where the message
+   * LIVES. Snoozed has no Gmail fragment of its own, so it lands in All
+   * Mail, where the message is actually reachable.
+   */
+  const urlMailbox = state.mailbox === 'snoozed' ? 'all' : state.mailbox;
+  el.rOpen.href = gmailUrl(m.threadId, urlMailbox);
 
   /*
    * The classifier's own confidence is DIAGNOSTIC, not something a reader
@@ -3283,7 +3289,17 @@ async function refresh({ silent = false } = {}) {
 
     // If the open message was archived or deleted elsewhere, the reading pane
     // is now showing something that is no longer in the list.
-    if (state.selected && !store.get(state.selected)) closeReader();
+    if (state.selected && !store.get(state.selected)) {
+      closeReader();
+    } else if (state.selected) {
+      /*
+       * LIVE THREAD STRIP (round 45 M6). A reply that lands while you are
+       * reading changes the conversation; the strip must say so without a
+       * reopen. Cheap: it hides itself for single-message threads, so the
+       * common case costs one lookup.
+       */
+      renderThreadStrip(state.selected);
+    }
 
     state.lastSync = Date.now();
     const n = res.added.length;
@@ -5203,40 +5219,91 @@ async function bulkAct(kind, explicitIds = null) {
   const slow = ids.length >= 10;
   if (slow) setBusy(true);
 
+  /*
+   * CHUNKED WITH PROGRESS AND CANCEL (round 45 M2). A 4000-message run is
+   * four requests, and a spinner is not an answer to "is it working?" -- so
+   * each chunk reports its place in the run and offers a stop. Cancelling
+   * between chunks leaves what already landed landed (undo covers it) and
+   * restores what was never sent; nothing is half-sent silently. Batches of
+   * one chunk behave exactly as before: no progress toast, no cancel.
+   */
+  const CHUNK = 1000;
+  const PROGRESS_VERB = {
+    archive: 'Archiving', trash: 'Deleting', spam: 'Reporting spam',
+    read: 'Marking read', star: 'Starring',
+  };
+  const chunked = ids.length > CHUNK;
+  let cancelled = false;
+  const appliedIds = [];
+  const appliedSnapshots = [];
+  const failedIds = [];
   try {
-    const res = await send('BULK', { ids, add, remove });
-    const failed = reconcileBulk(res, snapshots);
-    if (failed.length) {
-      activity.record({ verb: `BULK_${kind.toUpperCase()}`, ids: failed, actor: 'user', outcome: 'partial', error: `${failed.length} failed` });
-      toast(`${kind}: ${n - failed.length} of ${n} applied`, { kind: 'error' });
-      return;
+    for (let i = 0; i < ids.length && !cancelled; i += CHUNK) {
+      const sliceIds = ids.slice(i, i + CHUNK);
+      const sliceSnaps = snapshots.slice(i, i + CHUNK);
+      if (chunked) {
+        const done = Math.min(i + CHUNK, ids.length);
+        toast(`${PROGRESS_VERB[kind] || kind} ${done.toLocaleString()} of ${n.toLocaleString()}…`, {
+          kind: 'info', ms: 2500,
+          action: { label: 'Cancel', run: () => { cancelled = true; } },
+        });
+      }
+      try {
+        const res = await send('BULK', { ids: sliceIds, add, remove });
+        const failed = reconcileBulk(res, sliceSnaps);
+        const failedSet = new Set(failed);
+        failedIds.push(...failed);
+        for (let j = 0; j < sliceIds.length; j++) {
+          if (!failedSet.has(sliceIds[j])) {
+            appliedIds.push(sliceIds[j]);
+            appliedSnapshots.push(sliceSnaps[j]);
+          }
+        }
+      } catch {
+        // The whole chunk failed: put those rows back on screen and count
+        // them failed. The NEXT chunk still gets its chance -- one bad
+        // request is not a verdict on the whole run.
+        store.batch(() => { for (const m of sliceSnaps) store.upsert(m); });
+        failedIds.push(...sliceIds);
+      }
     }
-  } catch (err) {
-    // Total failure: roll the whole batch back.
-    store.batch(() => {
-      for (const m of snapshots) store.upsert(m);
-    });
-    activity.record({ verb: `BULK_${kind.toUpperCase()}`, ids, actor: 'user', outcome: 'failed', error: err?.message });
-    toast(`Could not ${kind}: ${err.message}`, { kind: 'error' });
-    return;
+
+    if (cancelled) {
+      // Rows never sent come back; rows already applied stay (undo covers
+      // them) and rows that failed already came back chunk by chunk.
+      const touched = new Set([...appliedIds, ...failedIds]);
+      const unsent = snapshots.filter((m) => !touched.has(m.id));
+      store.batch(() => { for (const m of unsent) store.upsert(m); });
+    }
+
+    if (failedIds.length) {
+      activity.record({ verb: `BULK_${kind.toUpperCase()}`, ids: failedIds, actor: 'user', outcome: 'partial', error: `${failedIds.length} failed` });
+      toast(`${kind}: ${appliedIds.length} of ${n} applied${cancelled ? ' (cancelled)' : ''}`, { kind: 'error' });
+      if (!appliedIds.length) return;
+    } else if (cancelled) {
+      toast(`${kind} stopped — ${appliedIds.length} of ${n} applied`, { kind: 'info' });
+      activity.record({ verb: `BULK_${kind.toUpperCase()}`, ids: appliedIds, actor: 'user', detail: 'cancelled' });
+      if (!appliedIds.length) return;
+    }
   } finally {
     // `finally`, so an early return on the error path cannot strand the busy
     // state and leave the topbar sweeping forever.
     if (slow) setBusy(false);
   }
 
-  activity.record({ verb: `BULK_${kind.toUpperCase()}`, ids, actor: 'user' });
+  activity.record({ verb: `BULK_${kind.toUpperCase()}`, ids: appliedIds, actor: 'user' });
 
-  recordUndo(ctx, `${verb} ${n} ${noun}`, async () => {
+  const appliedNoun = appliedIds.length === 1 ? 'message' : 'messages';
+  recordUndo(ctx, `${verb} ${appliedIds.length} ${appliedNoun}`, async () => {
     store.batch(() => {
-      for (const m of snapshots) store.upsert(m);
+      for (const m of appliedSnapshots) store.upsert(m);
     });
     // R2: recovery is a disorienting moment by definition; the first
     // restored row pulses back into view once the render lands.
-    requestAnimationFrame(() => reorientTo(snapshots[0]?.id));
+    requestAnimationFrame(() => reorientTo(appliedSnapshots[0]?.id));
     // The inverse is DERIVED, never typed: swap add and remove.
-    await send('BULK', { ids, add: remove, remove: add });
-    activity.record({ verb: `BULK_${kind.toUpperCase()}`, ids, actor: 'user', detail: 'undo' });
+    await send('BULK', { ids: appliedIds, add: remove, remove: add });
+    activity.record({ verb: `BULK_${kind.toUpperCase()}`, ids: appliedIds, actor: 'user', detail: 'undo' });
   });
 }
 

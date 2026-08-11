@@ -44,6 +44,8 @@ const MAX_ATTACH_BYTES = 25 * 1024 * 1024;
 
 let composeCtx = null;
 let composeMeta = {};
+/** The panel title before minimisation rewrote it (round 45 M4). */
+let baseTitle = '';
 
 /**
  * Debounced local autosave. Created lazily on first compose so that a session
@@ -257,6 +259,33 @@ function renderFiles() {
       : '';
   }
 
+  /*
+   * SIZE BUDGET METER (round 45 M3). Gmail's 25MB ceiling used to surface
+   * only at send time, after the undo window, as an opaque outbox error.
+   * Now the budget is visible while the user is still choosing files — the
+   * same wire-size factor addFiles enforces, so the meter and the limit
+   * cannot disagree.
+   */
+  if (pendingFiles.length) {
+    const wire = (n) => Math.ceil(n * 1.37);
+    const used = wire(pendingFiles.reduce((t, f) => t + (f.size || 0), 0));
+    const pct = Math.min(100, Math.round((used / MAX_ATTACH_BYTES) * 100));
+    const meter = document.createElement('span');
+    meter.className = 'c-budget';
+    meter.dataset.kind = pct >= 100 ? 'over' : pct >= 80 ? 'warn' : 'ok';
+    meter.setAttribute('role', 'meter');
+    meter.setAttribute('aria-valuemin', '0');
+    meter.setAttribute('aria-valuemax', '100');
+    meter.setAttribute('aria-valuenow', String(pct));
+    meter.setAttribute('aria-label', 'Attachment size against the 25MB limit');
+    meter.title = `${fmtBytes(used)} of ${fmtBytes(MAX_ATTACH_BYTES)} (wire size)`;
+    const fill = document.createElement('span');
+    fill.className = 'c-budget-fill';
+    fill.style.width = `${pct}%`;
+    meter.appendChild(fill);
+    box.appendChild(meter);
+  }
+
   pendingFiles.forEach((f, i) => {
     const chip = document.createElement('span');
     chip.className = 'c-file';
@@ -449,10 +478,27 @@ export function wireCompose(ctx) {
   ctx.wireAutocomplete?.('c-bcc', 'c-bcc-list');
 
   $('compose-min').addEventListener('click', () => {
-    panel.classList.toggle('minimised');
+    const minimised = panel.classList.toggle('minimised');
     // O7: quieting follows the TASK. A minimised compose is writing no
     // longer; the inbox comes back up.
-    document.body.classList.toggle('composing', !panel.classList.contains('minimised'));
+    document.body.classList.toggle('composing', !minimised);
+    /*
+     * A MINIMISED DRAFT KEEPS ITS IDENTITY (round 45 M4). The collapsed bar
+     * used to be just a dirty dot — the user had to reopen to remember what
+     * was parked there. The title bar now says who it is for and what it is
+     * about; expanding restores the real panel title.
+     */
+    const title = $('compose-title');
+    if (minimised) {
+      if (!baseTitle) baseTitle = title.textContent;
+      const to = ($('c-to').value || '').trim();
+      const subj = ($('c-subject').value || '').trim();
+      const who = to ? `To: ${to.split(',')[0].trim()}` : 'No recipient';
+      title.textContent = subj ? `${who} — ${subj}` : who;
+    } else if (baseTitle) {
+      title.textContent = baseTitle;
+      baseTitle = '';
+    }
   });
   for (const [toggleId, rowId, inputId] of [
     ['c-cc-toggle', 'c-cc-row', 'c-cc'],
