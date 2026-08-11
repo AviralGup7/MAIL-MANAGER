@@ -18,14 +18,26 @@ import { cancelExit, closeWithMotion } from './layers.js';
 
 let el = null; // injected toast nodes
 let toastTimer = 0;
+// A toast fired before initToast (early boot, a boot-time error) used to be
+// silently dropped. Queue at most one and replay it on init, so the first
+// thing the app says is never lost to boot ordering.
+let pendingEarly = null;
 
 /** Called once at boot with the toast nodes from the shell's el map. */
 export function initToast(nodes) {
   el = nodes;
+  if (pendingEarly) {
+    const [text, opts] = pendingEarly;
+    pendingEarly = null;
+    toast(text, opts);
+  }
 }
 
 export function toast(text, opts = {}) {
-  if (!el) return;
+  if (!el) {
+    pendingEarly = [text, opts];
+    return;
+  }
   const kind = opts.kind || 'info';
   const ms = opts.ms || (kind === 'error' ? 4000 : kind === 'undo' ? 3600 : 2200);
 
