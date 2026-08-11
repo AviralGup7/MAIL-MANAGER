@@ -16,6 +16,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { webcrypto } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const AUTH_SRC = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), '..', 'src/background/auth.js'),
+  'utf8'
+);
 
 // ---------------------------------------------------------------- harness --
 
@@ -31,6 +39,21 @@ const CLIENT_ID = 'test-client.apps.googleusercontent.com';
  * Fresh module instance per test, so the in-flight renewal promise and the
  * fake storage never leak between cases.
  */
+/** A chrome.storage area mock over one shared backing object. */
+const areaImpl = (store) => ({
+  async get(k) {
+    if (Array.isArray(k)) {
+      const o = {};
+      for (const key of k) if (key in store) o[key] = store[key];
+      return o;
+    }
+    if (typeof k === 'string') return k in store ? { [k]: store[k] } : {};
+    return { ...store };
+  },
+  async set(o) { Object.assign(store, o); },
+  async remove(k) { for (const key of [].concat(k)) delete store[key]; },
+});
+
 async function load({ storage = { clientId: CLIENT_ID } } = {}) {
   const store = { ...storage };
   const calls = { authFlow: [], fetch: [] };
@@ -53,23 +76,11 @@ async function load({ storage = { clientId: CLIENT_ID } } = {}) {
       },
     },
     storage: {
-      local: {
-        async get(k) {
-          if (Array.isArray(k)) {
-            const o = {};
-            for (const key of k) if (key in store) o[key] = store[key];
-            return o;
-          }
-          if (typeof k === 'string') return k in store ? { [k]: store[k] } : {};
-          return { ...store };
-        },
-        async set(o) {
-          Object.assign(store, o);
-        },
-        async remove(k) {
-          for (const key of [].concat(k)) delete store[key];
-        },
-      },
+      // One shared backing store for both areas: the tests assert on the
+      // TOKEN round trip, not on which area it lands in. The area split is
+      // pinned by the source-level test at the bottom of this file.
+      local: areaImpl(store),
+      session: areaImpl(store),
     },
   };
 
@@ -512,4 +523,20 @@ test('a REVOKED renewal clears authorized so the gate appears', async () => {
   h.setReply(() => `${REDIRECT}#error=access_denied`);
   await assert.rejects(() => h.mod.getToken(), /NOT_SIGNED_IN/);
   assert.ok(!h.store.authorized, 'confirmed revocation must end consent');
+});
+
+// ------------------------------------------------------------------ SEC-5 --
+
+test('the live token lives in session storage; consent stays in local (SEC-5)', () => {
+  // The token is a live credential: session storage is memory-only and dies
+  // with the browser. The `authorized` consent flag must survive restarts so
+  // a fresh session renews SILENTLY (prompt=none) instead of popping consent.
+  assert.match(AUTH_SRC, /function tokenArea\(\)/, 'one helper decides the area');
+  assert.match(AUTH_SRC, /chrome\.storage\?\.session \|\| chrome\.storage\?\.local/,
+    'session preferred, local fallback');
+  assert.match(AUTH_SRC, /tokenArea\(\)\.set\(\{\s*accessToken/, 'token written to the area');
+  assert.match(AUTH_SRC, /chrome\.storage\.local\.get\('authorized'\)/,
+    'consent flag read from local');
+  assert.match(AUTH_SRC, /chrome\.storage\.local\.remove\(\['authorized', 'historyId'\]\)/,
+    'sign-out clears consent from local, token from the area');
 });

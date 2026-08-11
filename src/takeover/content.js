@@ -361,10 +361,23 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
  * `capture: true` matches the Escape handler above and gets ahead of Gmail's
  * own key handling, which is aggressive about swallowing keystrokes.
  */
+/**
+ * The Alt+Shift+M chord, trusted, in the page.
+ *
+ * Exported as a plain function so the trust rule is testable: jsdom cannot
+ * synthesise a trusted event, so the guard (SEC-1) is pinned here rather
+ * than only inside a listener. A synthetic keydown dispatched by page
+ * script crosses the isolated-world boundary and must never flip the
+ * takeover; `isTrusted` is the browser's own stamp on real input.
+ */
+function isTrustedChord(e) {
+  if (!e || e.isTrusted === false) return false;
+  if (!e.altKey || !e.shiftKey || e.ctrlKey || e.metaKey) return false;
+  return String(e.key).toLowerCase() === 'm';
+}
+
 window.addEventListener('keydown', (e) => {
-  // Alt+Shift+M, the same chord the manifest asks chrome.commands for.
-  if (!e.altKey || !e.shiftKey || e.ctrlKey || e.metaKey) return;
-  if (String(e.key).toLowerCase() !== 'm') return;
+  if (!isTrustedChord(e)) return;
   e.preventDefault();
   e.stopPropagation();
   toggle();

@@ -147,6 +147,7 @@ function mount({ reducedMotion = false, url = 'https://mail.google.com/mail/u/0/
 const host = (doc) => doc.getElementById('bmm-takeover-host');
 
 /** Press Alt+Shift+M in the page, the way a user does with no worker alive. */
+/** Dispatch an UNTRUSTED Alt+Shift+M (every jsdom event is untrusted). */
 function pressToggle(h) {
   h.win.dispatchEvent(new h.win.KeyboardEvent('keydown', {
     key: 'm', altKey: true, shiftKey: true, bubbles: true, cancelable: true,
@@ -552,59 +553,63 @@ test('LONG SESSION: the late-node observer is not duplicated across cycles', asy
  * THE WORKER-FREE ENTRY POINT
  * ========================================================================== */
 
-test('TAKEOVER: Alt+Shift+M opens the takeover without any worker message', async (t) => {
+test('TAKEOVER: the Alt+Shift+M chord is trusted-input-only, and opens the takeover', async (t) => {
   /*
-   * THE SECOND HALF OF THE REGISTRATION BUG.
+   * The content script is the ONLY entry point that works when the service
+   * worker is dead: it listens for the same chord chrome.commands swallows.
+   * Two properties matter and both are pinned here:
    *
-   * When the service worker would not register, removing it from the manifest
-   * made the error disappear and left an extension where, in the user's
-   * words, "nothing happens on clicking it".
+   *   1. SEC-1: the chord must be TRUSTED input. A synthetic keydown from
+   *      page script crosses the isolated-world boundary; letting it flip
+   *      the takeover would let any injected script hijack the tab. jsdom
+   *      cannot synthesise a trusted event, so the guard is asserted on the
+   *      exported predicate, and the listener wiring is proven by sending
+   *      an UNTRUSTED chord and watching nothing happen.
    *
-   * That was not a separate defect. The ONLY route into the takeover was a
-   * BMM_TOGGLE message, and only the worker sends one -- from the toolbar
-   * click and from chrome.commands. Both are worker-side events. The content
-   * script was already injected and already able to do the entire job; it
-   * simply had no way to be asked.
-   *
-   * This proves the page can now open it alone.
+   *   2. The positive path: the worker-free route exists. The predicate
+   *      accepts the real chord, and toggle() itself is covered by the
+   *      worker-route tests, so the full chain is assembled from tested
+   *      parts.
    */
   if (!JSDOM) return t.skip('jsdom not installed');
   const h = mount();
-  assert.equal(host(h.doc), null, 'precondition: no takeover yet');
+  const chord = { isTrusted: true, altKey: true, shiftKey: true, ctrlKey: false, metaKey: false, key: 'm' };
+  assert.equal(h.win.isTrustedChord(chord), true, 'a trusted Alt+Shift+M is the chord');
+  assert.equal(
+    h.win.isTrustedChord({ ...chord, isTrusted: false }), false,
+    'the identical chord, untrusted, is refused (SEC-1)'
+  );
+  assert.equal(h.win.isTrustedChord({ ...chord, key: 'x' }), false, 'wrong key');
+  assert.equal(h.win.isTrustedChord({ ...chord, ctrlKey: true }), false, 'extra modifier');
 
-  pressToggle(h);
+  assert.equal(host(h.doc), null, 'precondition: no takeover yet');
+  pressToggle(h); // untrusted by construction
   await h.tick();
   h.appReady();
   await h.tick();
   await h.tick(60);
-
-  assert.ok(host(h.doc), 'Alt+Shift+M must open the takeover with no worker involved');
+  assert.equal(host(h.doc), null, 'an untrusted chord must not open the takeover');
 });
 
-test('TAKEOVER: the key fallback does not double-toggle alongside the worker', async (t) => {
+test('TAKEOVER: an untrusted page chord cannot double-toggle alongside the worker', async (t) => {
   /*
-   * The risk of adding a second entry point is that both fire and the
-   * takeover opens then immediately closes.
-   *
-   * In a real browser chrome.commands consumes the chord before the page sees
-   * a keydown, so the two can never both run. That cannot be reproduced in
-   * jsdom, so this asserts the property that actually protects us: toggle()
-   * is idempotent while a transition is in flight. Whichever path arrives
-   * second is ignored, exactly as two rapid BMM_TOGGLEs already are.
+   * In a real browser chrome.commands consumes the chord before the page
+   * ever sees a keydown, so the two routes cannot both run. In jsdom both
+   * can be driven in the same turn, which is exactly the situation the
+   * trust guard exists for: the page chord must be a no-op next to the
+   * worker's toggle, leaving exactly one takeover.
    */
   if (!JSDOM) return t.skip('jsdom not installed');
   const h = mount();
 
   h.send({ type: 'BMM_TOGGLE' });   // the worker's route
-  pressToggle(h);                   // and the page's, in the same turn
+  pressToggle(h);                   // the page's chord — untrusted, refused
   await h.tick();
   h.appReady();
   await h.tick();
   await h.tick(60);
 
-  assert.ok(host(h.doc), 'the takeover must be open, not opened-then-closed');
-  assert.equal(
-    h.doc.querySelectorAll('#bmm-takeover-host').length, 1,
-    'and mounted exactly once'
-  );
+  const els = h.doc.querySelectorAll('#bmm-takeover-host');
+  assert.equal(els.length, 1, 'exactly one takeover host');
+  assert.ok(els[0].classList.contains('bmm-active'), 'and it is the active one');
 });

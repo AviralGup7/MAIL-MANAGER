@@ -64,6 +64,22 @@
 const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
 const REVOKE_ENDPOINT = 'https://oauth2.googleapis.com/revoke';
 
+/**
+ * Where the live access token lives.
+ *
+ * SECURITY (audit 28 F2): the access token is a live credential. Keeping it
+ * in chrome.storage.local writes it to disk with the rest of the browser
+ * profile; chrome.storage.session is memory-only and is cleared when the
+ * browser exits. The `authorized` consent flag deliberately stays in local,
+ * so a browser restart is a SILENT renewal (prompt=none) — never a consent
+ * popup, never a sign-out — because the Google session cookie is still alive.
+ * Browsers without session storage fall back to local (same behaviour as
+ * before, no worse).
+ */
+function tokenArea() {
+  return chrome.storage?.session || chrome.storage?.local;
+}
+
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.modify',
   'https://www.googleapis.com/auth/gmail.send',
@@ -255,7 +271,7 @@ function friendlyAuthError(code, description) {
 }
 
 async function persist(tok) {
-  await chrome.storage.local.set({
+  await tokenArea().set({
     accessToken: tok.access_token,
     // Renew 5 minutes early. Implicit tokens cannot be refreshed on demand,
     // so a wider margin avoids a request racing the expiry mid-sync.
@@ -293,12 +309,15 @@ let inFlight = null;
 let sessionEpoch = 0;
 
 export async function getToken() {
-  const s = await chrome.storage.local.get(['accessToken', 'expiresAt', 'authorized']);
+  const [t, a] = await Promise.all([
+    tokenArea().get(['accessToken', 'expiresAt']),
+    chrome.storage.local.get('authorized'),
+  ]);
 
-  if (s.accessToken && s.expiresAt && Date.now() < s.expiresAt) {
-    return s.accessToken;
+  if (t.accessToken && t.expiresAt && Date.now() < t.expiresAt) {
+    return t.accessToken;
   }
-  if (!s.authorized) throw new Error('NOT_SIGNED_IN');
+  if (!a.authorized) throw new Error('NOT_SIGNED_IN');
 
   if (inFlight) return inFlight;
   inFlight = renew().finally(() => {
@@ -367,7 +386,7 @@ export async function signOut() {
   sessionEpoch++;
   inFlight = null;
 
-  const { accessToken } = await chrome.storage.local.get('accessToken');
+  const { accessToken } = await tokenArea().get('accessToken');
 
   // Revoke server-side, not just locally. The implicit flow issues no refresh
   // token, so the access token IS the whole grant -- revoking it ends access
@@ -384,13 +403,10 @@ export async function signOut() {
 
   // `authorized` must go, or getToken() would keep attempting silent renewal
   // for an account the user just signed out of. historyId goes too: applying
-  // one account's deltas to the next would be silent corruption.
-  await chrome.storage.local.remove([
-    'accessToken',
-    'expiresAt',
-    'authorized',
-    'historyId',
-  ]);
+  // one account's deltas to the next would be silent corruption. The token
+  // itself comes out of the session area.
+  await tokenArea().remove(['accessToken', 'expiresAt']);
+  await chrome.storage.local.remove(['authorized', 'historyId']);
 }
 
 /**
