@@ -215,10 +215,18 @@ function renderFiles() {
   if (!box) return;
   box.replaceChildren();
   box.hidden = pendingFiles.length === 0;
+  // aria-live narration for the count change (P2-09).
+  const status = $('attach-status');
+  if (status) {
+    status.textContent = pendingFiles.length
+      ? `${pendingFiles.length} file${pendingFiles.length === 1 ? '' : 's'} attached`
+      : '';
+  }
 
   pendingFiles.forEach((f, i) => {
     const chip = document.createElement('span');
     chip.className = 'c-file';
+    chip.setAttribute('role', 'listitem');
 
     const name = document.createElement('span');
     name.className = 'c-file-name';

@@ -2206,6 +2206,7 @@ function renderAttachments(body) {
     chip.dataset.attachmentId = a.attachmentId;
     chip.dataset.filename = a.filename;
     chip.dataset.mime = a.mimeType || '';
+    chip.dataset.size = String(a.size || 0);
     chip.title = `${a.filename} — ${formatBytes(a.size)}`;
 
     const name = document.createElement('span');
@@ -2239,8 +2240,19 @@ function formatBytes(n) {
  * download with a chosen filename from an extension page.
  */
 async function downloadAttachment(chip) {
-  const { attachmentId, filename, mime } = chip.dataset;
+  const { attachmentId, filename, mime, size } = chip.dataset;
   if (!attachmentId || !state.selected) return;
+
+  // C-15 / stress P11: the worker returns the whole attachment as a base64
+  // data URL through the message channel. Past ~20MB that string is several
+  // tens of megabytes across postMessage — it stalls the worker and the tab.
+  // Gmail itself caps attachments at 25MB, so refuse the tail explicitly.
+  const MAX_CHANNEL_BYTES = 20 * 1024 * 1024;
+  const bytes = Number(size) || 0;
+  if (bytes > MAX_CHANNEL_BYTES) {
+    toast(`${filename} is ${formatBytes(bytes)} — too large to download in the takeover. Open it in Gmail instead.`, { kind: 'error' });
+    return;
+  }
 
   chip.disabled = true;
   chip.classList.add('loading');
@@ -3441,7 +3453,11 @@ function isOffline() {
   return typeof navigator !== 'undefined' && navigator.onLine === false;
 }
 
+let gateFocusFrom = null;
 function showGate(message) {
+  // Remember where focus was so hideGate() can hand it back (modal dialog
+  // lifecycle: focus in on show, focus out on hide).
+  gateFocusFrom = document.activeElement;
   el.gate.hidden = false;
   el.gateError.hidden = !message;
   el.gateError.textContent = message || '';
@@ -3471,8 +3487,15 @@ function showGate(message) {
   $('btn-signin')?.focus();
 }
 
+
 function hideGate() {
   el.gate.hidden = true;
+  // Hand focus back to wherever it was before the gate covered the app.
+  // Only when the gate was actually SHOWN: at first boot nothing was
+  // covered, so grabbing the search field would steal focus for no reason.
+  const back = gateFocusFrom && gateFocusFrom.isConnected ? gateFocusFrom : null;
+  if (back && typeof back.focus === 'function') back.focus();
+  gateFocusFrom = null;
 }
 
 // ------------------------------------------------------------------ events --
@@ -3933,8 +3956,11 @@ el.search.addEventListener('focus', () => renderSuggestions());
  * BEFORE the click lands, so hiding synchronously eats the selection. This is
  * the standard combobox hazard and the reason the delay is not a smell.
  */
+let suggestBlurTimer = 0;
 el.search.addEventListener('blur', () => {
-  setTimeout(() => {
+  clearTimeout(suggestBlurTimer);
+  suggestBlurTimer = setTimeout(() => {
+    suggestBlurTimer = 0;
     const box = $('search-suggest');
     if (box && !box.contains(document.activeElement)) {
       box.hidden = true;
@@ -5283,6 +5309,8 @@ function cancelPendingWork() {
   // document after restore.
   clearTimeout(outboxTimer);
   outboxTimer = 0;
+  clearTimeout(suggestBlurTimer);
+  suggestBlurTimer = 0;
   if (searchFrame) {
     cancelAnimationFrame(searchFrame);
     searchFrame = 0;
@@ -5398,6 +5426,7 @@ window.__bmmPumpOutbox = () => pumpOutbox();
 /* Test seam: the gate is reached through several error paths; driving it
    directly is what lets a test assert which explanation each one shows. */
 window.__bmmShowGate = (m) => showGate(m);
+window.__bmmHideGate = () => hideGate();
 // Same live-binding hazard as ctx.store: defined as a getter so a harness
 // inspecting it after a mailbox switch sees the ACTIVE store, not the inbox.
 Object.defineProperty(window, '__bmmStore', { get: () => store, configurable: true });

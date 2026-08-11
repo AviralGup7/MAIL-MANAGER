@@ -1433,6 +1433,28 @@ test('A11Y: activedescendant follows j/k and clears on close', async (t) => {
   }
 });
 
+test('A11Y: the gate moves focus in and hands it back on hide', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Modal dialog lifecycle (P2-01): focus enters the only action when the
+  // gate shows, and returns to where it was when the gate hides.
+  const { doc, win, settle, restore } = await boot({ signedIn: false });
+  try {
+    await settle(4);
+    assert.equal(doc.activeElement, doc.getElementById('btn-signin'), 'focus lands on Sign in');
+    // Simulate session expiry while the user is in search, then recovery.
+    const search = doc.getElementById('search');
+    search.focus();
+    win.__bmmShowGate?.('Session expired. Sign in again.');
+    await settle(2);
+    assert.equal(doc.activeElement, doc.getElementById('btn-signin'), 'gate reclaims focus');
+    win.__bmmHideGate?.();
+    await settle(2);
+    assert.equal(doc.activeElement, search, 'focus returns to search after hide');
+  } finally {
+    restore();
+  }
+});
+
 test('A11Y: the search field is a combobox owning the suggestion list', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');
   // The full combobox contract (40-ENG section 8): the input must announce

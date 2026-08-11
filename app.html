@@ -622,8 +622,11 @@
             so anyone who tabs back into a half-written message has nothing to
             tell them what the field is. aria-label survives typing.
           -->
-          <!-- Chosen files. Empty and hidden until something is attached. -->
-          <div id="c-files" hidden></div>
+          <!-- Chosen files. Empty and hidden until something is attached. A
+               named live region so a screen-reader user hears the count
+               change instead of discovering files only at send (P2-09). -->
+          <div id="c-files" role="list" aria-label="Attached files"
+               aria-live="polite" hidden></div>
           <label for="c-text" class="sr-only">Message body</label>
           <textarea id="c-text" aria-label="Message body"
                     placeholder="Write your message…" spellcheck="true"></textarea>
@@ -641,6 +644,7 @@
                  tabindex="-1" aria-label="Choose files to attach" />
           <button id="c-attach" class="ghost small" type="button"
                   title="Attach a file">Attach</button>
+          <span id="attach-status" class="sr-only" aria-live="polite"></span>
           <button id="c-draft" class="ghost small" type="button">Save draft</button>
           <!--
             Templates. The leave request, the extension request, the mess
