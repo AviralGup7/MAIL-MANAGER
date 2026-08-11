@@ -126,6 +126,18 @@
   --dur-fast: 140ms;     /* small state changes */
   --dur-base: 200ms;     /* panels, menus, the reader swap */
   --dur-slow: 300ms;     /* full-surface transitions */
+  /*
+   * Longer than --dur-slow on purpose: the reorient pulse must outlast the
+   * scroll that triggered it or the eye loses the beacon mid-flight. It is
+   * the only above-slow duration, and it is tokenized so nothing else grows
+   * a bespoke long value.
+   */
+  --dur-pulse: 700ms;
+  /* The conflict-marker hold: long because the user must FIND the row. */
+  --dur-flash: 1600ms;
+  /* The conflict ring's resting opacity: 0 normally; raised under
+     prefers-reduced-motion so the marker holds steady instead of fading. */
+  --flash-rest: 0;
 
   /* Two curves, plus one spring for things that should feel physical.
    * `--ease-spring` overshoots very slightly (1.02) — enough to read as
@@ -2279,7 +2291,13 @@ textarea {
   width: 100%;
   height: 100%;
   border: 0;
-  background: #fff;
+  /*
+   * THEME-AWARE, NOT WHITE (round 45 H3). The srcdoc paints its own surface,
+   * but the frame BEHIND it showed through as hardcoded white -- a flash in
+   * dark mode and a white gutter wherever sub-pixel gaps appeared. The frame
+   * now wears the raised surface of whatever theme is active.
+   */
+  background: var(--bg-raised);
 }
 
 /* Reader swap: 180ms, transform+opacity only, runs once per open. */
@@ -2512,6 +2530,53 @@ textarea {
   }
 }
 
+/* ------------------------------------------------------------------------- *
+ * RESPONSIVE CONTRACT (round 45 H1).
+ *
+ * Below 860px the layout steps down through three widths. The contract at
+ * EVERY step is the same five invariants: the list is reachable, compose is
+ * usable, the bulk bar is usable, the reader opens, and navigation stays
+ * reachable. Each block below exists only to preserve those; there is no
+ * redesign here on purpose. The layout-contract test pins the breakpoints.
+ * ------------------------------------------------------------------------- */
+@media (max-width: 720px) {
+  #panes {
+    grid-template-columns: minmax(230px, 280px) 1fr;
+  }
+}
+@media (max-width: 600px) {
+  /*
+   * The two panes STACK instead of fighting over a row neither can win.
+   * The list keeps the top and the reader the bottom, both scrollable, so
+   * opening a message still works and the list is still reachable above it.
+   */
+  #panes {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 3fr) minmax(0, 2fr);
+  }
+  #reader {
+    border-top: 1px solid var(--line);
+  }
+  #listpane {
+    border-right: 0;
+  }
+  /* Compose spans the window; a fixed 580px card overflows a narrow one. */
+  #compose {
+    right: 0;
+    width: 100%;
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+  }
+}
+@media (max-width: 480px) {
+  :root {
+    --sidebar-w: 52px;
+  }
+  /* An even split: at phone-ish widths neither pane is the subordinate. */
+  #panes {
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
 /* ========================================================================= */
 /* APPEARANCE                                                                */
 /*                                                                           */
@@ -2705,9 +2770,9 @@ textarea {
 
 /* --------------------------------------------------------------- reader -- */
 
-#r-body {
-  background: transparent;
-}
+/* #r-body's background lives with its geometry above: ONE themed rule, not
+   a transparent override here that would re-expose the page behind the
+   srcdoc (round 45 H3). */
 
 /* --------------------------------------------------------------- states -- */
 
@@ -4916,23 +4981,34 @@ kbd {
   background: var(--bg);
 }
 /*
- * The conflict "Show" jump lands here (bug-hunt 44 #53). A brief outline
- * flash says "this is the row the warning meant" without moving anything —
- * motion would fight the scroll that just positioned it. Reduced-motion
- * users get the outline held steady instead of pulsed.
+ * The conflict "Show" jump lands here (bug-hunt 44 #53). A ring says "this
+ * is the row the warning meant", fading by OPACITY on a pseudo-element —
+ * transform/opacity-only, per this file's compositor rule. Reduced-motion
+ * users get the ring HELD STEADY via --flash-rest instead of a fade, so the
+ * marker never disappears on them (and no animation is removed, only its
+ * movement).
  */
 .tt-entry.tt-flash {
-  animation: tt-flash 1.6s ease-out 1;
-  border-radius: var(--r-2, 6px);
+  position: relative;
+}
+.tt-entry.tt-flash::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-sm);
+  box-shadow: 0 0 0 2px var(--accent);
+  background: var(--accent-soft);
+  opacity: var(--flash-rest);
+  pointer-events: none;
+  animation: tt-flash var(--dur-flash) var(--ease-out) 1;
 }
 @keyframes tt-flash {
-  0% { box-shadow: 0 0 0 2px var(--accent, #4a7); background: color-mix(in srgb, var(--accent, #4a7) 12%, transparent); }
-  100% { box-shadow: 0 0 0 0 transparent; background: transparent; }
+  from { opacity: 1; }
+  to { opacity: var(--flash-rest); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .tt-entry.tt-flash {
-    animation: none;
-    box-shadow: 0 0 0 2px var(--accent, #4a7);
+  .tt-entry.tt-flash::after {
+    --flash-rest: 0.55;
   }
 }
 .tt-kind {
@@ -5325,7 +5401,7 @@ body.composing #main {
   to   { background-color: transparent; }
 }
 .row.reorient {
-  animation: reorient-pulse 700ms var(--ease-out) 1;
+  animation: reorient-pulse var(--dur-pulse) var(--ease-out) 1;
 }
 
 

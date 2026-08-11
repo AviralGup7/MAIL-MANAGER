@@ -2368,6 +2368,21 @@ function renderBody(body, { allowRemote = false, stats = {} } = {}) {
   const ink = dark ? t.fg : '#16181d';
 
   /*
+   * READER DENSITY (round 45 H2). The list obeys the density setting; the
+   * reader used to ignore it, so a compact user lived in two apps -- a dense
+   * list and a spacious body. The reading surface scales with the setting,
+   * within bounds: the measure and long-form line heights stay in the
+   * reading range at every step, because dense text that stops being readable
+   * defeats the user's own request.
+   */
+  const READER_TYPOGRAPHY = {
+    comfortable: { size: 15, line: 1.65, pad: '26px 28px 44px' },
+    cosy:        { size: 14, line: 1.6,  pad: '22px 24px 38px' },
+    compact:     { size: 13, line: 1.55, pad: '18px 20px 32px' },
+  };
+  const typo = READER_TYPOGRAPHY[settings.get('density')] || READER_TYPOGRAPHY.comfortable;
+
+  /*
    * The CSP is derived from the SAME decision the sanitiser made.
    *
    * `https:` is added only when remote images were actually emitted. This is
@@ -2413,9 +2428,9 @@ function renderBody(body, { allowRemote = false, stats = {} } = {}) {
     mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath fill='none' stroke='black' stroke-width='2' d='M8 5H4v11h11v-4M12 4h4v4M16 4 9 11'/%3E%3C/svg%3E") no-repeat center/contain;
   }
   body{
-    font:15px/1.65 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+    font:${typo.size}px/${typo.line} -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
     color:${ink};background:${surface};
-    margin:0;padding:26px 28px 44px;
+    margin:0;padding:${typo.pad};
     word-wrap:break-word;
     -webkit-font-smoothing:antialiased;
   }
