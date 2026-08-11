@@ -1226,9 +1226,7 @@ test('ARCH: overlays use the layer primitive rather than hand-rolled teardown', 
    *
    * The primitive is the only sanctioned place for that listener.
    */
-  // The rail's roving-tabindex handler moved to sidebar.js (round 52), so
-  // the shell scan covers both files.
-  const shell = (read('src/app/app.js') + read('src/app/sidebar.js'))
+  const shell = read('src/app/app.js')
     .replace(/\/\*[\s\S]*?\*\//g, ' ')
     .replace(/\/\/[^\n]*/g, ' ');
   assert.ok(
@@ -1267,7 +1265,9 @@ test('ARCH: no menu is hand-rolled beside the primitive', () => {
    * would be abstraction for its own sake. It is excluded by name below
    * rather than by loosening the pattern, so the guard stays sharp.
    */
-  const shell = read('src/app/app.js')
+  // The rail's roving-tabindex handler moved to sidebar.js (round 52), so
+  // the shell scan covers both files.
+  const shell = (read('src/app/app.js') + read('src/app/sidebar.js'))
     .replace(/\/\*[\s\S]*?\*\//g, ' ')
     .replace(/\/\/[^\n]*/g, ' ');
 
@@ -1337,9 +1337,7 @@ test('ARCH: a bulk label delta is stated once, not once per direction', () => {
    * remove: add}. This counts the literals: only the table may name a Gmail
    * label in a BULK payload.
    */
-  // The rail's roving-tabindex handler moved to sidebar.js (round 52), so
-  // the shell scan covers both files.
-  const shell = (read('src/app/app.js') + read('src/app/sidebar.js'))
+  const shell = read('src/app/app.js')
     .replace(/\/\*[\s\S]*?\*\//g, ' ')
     .replace(/\/\/[^\n]*/g, ' ');
 

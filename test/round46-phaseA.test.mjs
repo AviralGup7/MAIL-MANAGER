@@ -13,6 +13,8 @@ import { readFileSync } from 'node:fs';
 const app = readFileSync(new URL('../src/app/app.js', import.meta.url), 'utf8');
 // The reader cluster moved out of app.js in the round-51 workspace extraction.
 const reader = readFileSync(new URL('../src/app/reader.js', import.meta.url), 'utf8');
+// The list cluster moved out in round 52 (workspace sequence step 2).
+const list = readFileSync(new URL('../src/app/list.js', import.meta.url), 'utf8');
 const compose = readFileSync(new URL('../src/app/compose.js', import.meta.url), 'utf8');
 const sanitize = readFileSync(new URL('../src/app/sanitize.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../src/app/app.css', import.meta.url), 'utf8');
@@ -42,13 +44,13 @@ test('theme changes announce themselves (round 46 #3)', () => {
 });
 
 test('selection checkboxes name their message (round 46 #46)', () => {
-  assert.match(app, /aria-label', `Select \$\{m\.subject \|\| m\.from\}`/,
+  assert.match(list, /aria-label', `Select \$\{m\.subject \|\| m\.from\}`/,
     'each tick carries its subject, not a clone label');
 });
 
 test('touch gestures own deliberate motion only (round 46 #11)', () => {
-  assert.match(app, /touchStart\.moved = true/, 'a pan never triggers a swipe');
-  assert.match(app, /Math\.abs\(dx\) > 60 && Math\.abs\(dx\) > 2 \* Math\.abs\(dy\)/,
+  assert.match(list, /touchStart\.moved = true/, 'a pan never triggers a swipe');
+  assert.match(list, /Math\.abs\(dx\) > 60 && Math\.abs\(dx\) > 2 \* Math\.abs\(dy\)/,
     'horizontal dominance is required');
   assert.match(css, /touch-action: pan-y/, 'vertical pan stays with the browser');
   assert.match(css, /@media \(pointer: coarse\)/, 'coarse pointers get bigger targets');
