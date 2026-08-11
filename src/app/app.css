@@ -4669,6 +4669,14 @@ kbd {
   justify-content: space-between;
   gap: var(--s-2);
 }
+/* The timetable rail button while its workspace is the active surface:
+   the sidebar is the app's navigation, so the mark uses the same current
+   language the category rail does. */
+#btn-timetable.workspace-active {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+
 .tt-badge {
   font-size: var(--t-xs);
   font-variant-numeric: tabular-nums;
@@ -4683,35 +4691,74 @@ kbd {
   font-weight: var(--w-semi);
 }
 
-.tt-panel {
-  position: fixed;
-  inset: 0;
-  z-index: var(--z-overlay);
-  margin: auto;
-  width: min(1040px, 94vw);
-  height: min(88vh, 900px);
+/*
+ * THE TIMETABLE WORKSPACE (round 54).
+ *
+ * Promoted from a fixed 1040px dialog to the main surface: the mail chrome
+ * hides while it is open, so this fills #main instead of floating over mail
+ * it is not using. The entrance animation survives — `display: none` under
+ * [hidden] restarts it every time the workspace opens, which is exactly the
+ * one transition worth animating.
+ */
+#tt-workspace {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--bg-raised);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  /*
-   * `--shadow-lg`, like the other seven overlays.
-   *
-   * This was `0 24px 64px rgba(0, 0, 0, 0.28)` -- the only overlay in the app
-   * with its own shadow, and the only one that did not participate in the
-   * theme system. `--shadow-lg` is redefined per scheme (rgba(16,24,40,...) on
-   * light, near-black on dark); a hardcoded near-black cast the DARK shadow on
-   * the four light themes, which is why this panel read as sitting higher than
-   * every other surface and slightly dirty against a pale background.
-   *
-   * It is also the largest academic surface, so it was the one place the
-   * elevation language visibly broke -- exactly the "academic screens look
-   * like a different app" failure the product identity rule warns about.
-   */
-  box-shadow: var(--shadow-lg);
+}
+.tt-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
   animation: tt-in var(--dur-base) var(--ease-out) both;
 }
+
+/*
+ * Internal navigation. A tab bar, not a second sidebar: the workspace has
+ * four rooms at most, and tabs say all of them at once — no hidden drawers.
+ * Rooms without content never render their tab, so a bare schedule shows
+ * exactly one word.
+ */
+.tt-tabs {
+  display: flex;
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-4) 0;
+  border-bottom: 1px solid var(--line);
+}
+.tt-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: var(--t-sm);
+  font-weight: 500;
+  cursor: pointer;
+  margin-bottom: -1px;
+}
+.tt-tab:hover { color: var(--fg); }
+.tt-tab.active {
+  color: var(--fg);
+  border-bottom-color: var(--accent);
+}
+.tt-tab-count {
+  min-width: 1.4em;
+  padding: 0 0.45em;
+  border-radius: var(--r-full, 999px);
+  background: var(--accent-soft);
+  color: var(--fg);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  text-align: center;
+}
+.tt-tabpane { min-height: 0; }
+
 @keyframes tt-in {
   /* translate3d, not translateY: the 3d form promotes to its own compositor
      layer, and this is the largest animated surface in the app -- the one

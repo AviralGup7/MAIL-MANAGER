@@ -536,6 +536,20 @@
             </article>
           </div>
         </section>
+        <!--
+          THE TIMETABLE WORKSPACE (round 54).
+
+          Promoted from a layer-on-top to a first-class surface: opening the
+          timetable HIDES the mail chrome (topbar + panes) and shows this, so
+          the academic half of the product gets room to breathe instead of a
+          1040px dialog floating over mail it is not using. The sidebar stays
+          — it is the app's navigation — and Back to mail restores everything.
+          role=region, not dialog: a workspace is not a dismissable overlay,
+          and the aria-modal promise would be a lie over live mail.
+        -->
+        <section id="tt-workspace" hidden>
+          <div id="tt-panel" class="tt-panel" role="region" aria-label="Timetable"></div>
+        </section>
       </main>
 
       <!-- Sign-in gate. Shown instead of the panes when there is no token. -->

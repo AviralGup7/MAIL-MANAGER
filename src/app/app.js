@@ -98,7 +98,8 @@ import {
   wireAutocomplete, refreshContacts,
 } from './features.js';
 import {
-  initTimetable, openTimetable, scanForUpdates, deepScanMessages, _resetTimetableUI,
+  initTimetable, openTimetable, closeTimetable, timetableIsOpen,
+  scanForUpdates, deepScanMessages, _resetTimetableUI,
 } from './timetable-ui.js';
 import { classify } from '../classify/index.js';
 import {
@@ -1710,6 +1711,9 @@ function hideGate() {
  * visible control must match the applied state.
  */
 function selectCategory(key) {
+  // Clicking a category while the timetable workspace is open is a
+  // request to be back in mail first (round 54).
+  if (timetableIsOpen()) closeTimetable();
   // R4: each mailbox keeps its place; returning is returning, not resetting.
   saveScroll(state.category);
   state.category = key;
@@ -1740,6 +1744,7 @@ function selectCategory(key) {
  */
 async function selectMailbox(id) {
   if (!isMailbox(id) || id === state.mailbox) return;
+  if (timetableIsOpen()) closeTimetable();
 
   const mb = getMailbox(id);
   state.mailbox = id;
@@ -2436,6 +2441,12 @@ document.addEventListener('keydown', (e) => {
     }
     if (!$('compose').hidden) {
       $('compose-close').click();
+      return;
+    }
+    // The timetable workspace hides the mail surfaces; leaving it is one
+    // step, before any mail-level state unwinds (round 54).
+    if (timetableIsOpen()) {
+      closeTimetable();
       return;
     }
     // Selection is transient state, so it unwinds before the reader.

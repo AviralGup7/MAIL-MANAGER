@@ -16,7 +16,6 @@
  * the common case of "fix this room" feel like starting over.
  */
 
-import { openLayer } from './layers.js';
 import { confirmDialog } from './dialog.js';
 import { icon } from './icons.js';
 import {
@@ -37,18 +36,23 @@ const $ = (id) => document.getElementById(id);
 /** Module state. Reset by _resetTimetableUI for tests. */
 let state = emptyState();
 let source = null;
-let layer = null;
 let ctxRef = null;
 /** Findings awaiting the user's decision. */
 let pending = [];
+/**
+ * The active workspace tab. Module-level so re-renders (accept a finding,
+ * choose a section, persist) keep the user where they were standing.
+ */
+let tab = 'schedule';
 
 export function _resetTimetableUI() {
   state = emptyState();
   source = null;
   pending = [];
   unsavedError = '';
-  if (layer) { try { layer.close(); } catch { /* gone */ } }
-  layer = null;
+  tab = 'schedule';
+  // Leave no workspace standing over the next test's boot.
+  closeTimetable({ silent: true });
   ctxRef = null;
 }
 
@@ -303,35 +307,58 @@ export async function dismissFinding(finding, how = 'dismissed') {
  * THE PANEL
  * ========================================================================== */
 
+/**
+ * Enter the timetable WORKSPACE (round 54).
+ *
+ * This used to open a 1040px dialog floating over the mail it was not using,
+ * with the change history, conflicts, exams and the week grid stacked in one
+ * long scroll inside it. It is now a first-class surface: the mail chrome
+ * steps aside, this takes the main area, and its sections live behind tabs.
+ * The sidebar stays — it is the app's navigation.
+ */
 export function openTimetable(ctx) {
   ctxRef = ctx || ctxRef;
-  if (layer) return;
+  const host = $('tt-workspace');
+  if (!host) return;
 
-  const node = document.createElement('div');
-  node.className = 'tt-panel';
-  node.setAttribute('role', 'dialog');
-  node.setAttribute('aria-modal', 'true');
-  node.setAttribute('aria-label', 'Timetable');
-  node.id = 'tt-panel';
+  if (!host.hidden) { render(); return; }
+  tab = 'schedule';
 
-  document.body.appendChild(node);
-  // The layer traps focus by default now (round 46, arch #6); role=dialog's
-  // promise is kept by openLayer, not by each call site.
-  layer = openLayer({
-    name: 'timetable',
-    node,
-    dismissOnOutsideClick: true,
-    onClose: () => {
-      node.remove();
-      layer = null;
-    },
-  });
+  host.hidden = false;
+  $('topbar').hidden = true;
+  $('panes').hidden = true;
+  markRailButton(true);
   render();
-  node.querySelector('input, button')?.focus();
+  host.querySelector('input, button')?.focus();
 }
 
-export function closeTimetable() {
-  if (layer) layer.close();
+export function closeTimetable(opts = {}) {
+  const host = $('tt-workspace');
+  if (!host || host.hidden) return;
+
+  host.hidden = true;
+  $('topbar').hidden = false;
+  $('panes').hidden = false;
+  markRailButton(false);
+  // The test reset passes silent: there is no boot to hand focus back to.
+  if (!opts.silent) $('btn-timetable')?.focus();
+}
+
+/** Is the timetable the active workspace? The shell's Esc ladder asks. */
+export function timetableIsOpen() {
+  return !$('tt-workspace')?.hidden;
+}
+
+function markRailButton(on) {
+  const b = $('btn-timetable');
+  if (!b) return;
+  if (on) {
+    b.setAttribute('aria-current', 'page');
+    b.classList.add('workspace-active');
+  } else {
+    b.removeAttribute('aria-current');
+    b.classList.remove('workspace-active');
+  }
 }
 
 function render() {
@@ -360,7 +387,8 @@ function header() {
   const close = document.createElement('button');
   close.type = 'button';
   close.className = 'ghost small';
-  close.textContent = 'Close';
+  close.textContent = 'Back to mail';
+  close.title = 'Return to the inbox (Esc)';
   close.addEventListener('click', () => closeTimetable());
 
   h.append(title, sub);
@@ -677,7 +705,9 @@ function askForLinked(course, lecture, choices) {
 function manageView() {
   const b = el('div', 'tt-body');
 
-  if (pending.length) b.appendChild(pendingSection());
+  // A save failure concerns every tab; it hangs above them, never inside one.
+  if (unsavedError) b.appendChild(unsavedBanner());
+
   /*
    * Staleness is computed at RENDER time, not stored in `state.conflicts`.
    *
@@ -686,18 +716,74 @@ function manageView() {
    * conflict set depend on whether an async fetch had landed yet -- so a
    * reload with a slow network would silently show fewer problems.
    */
-  if (unsavedError) b.appendChild(unsavedBanner());
-
   const stale = validateAgainstSource(state, source);
   const problems = [...state.conflicts, ...stale];
-  if (problems.length) b.appendChild(conflictSection(problems));
-
-  b.appendChild(gridSection());
   const exams = examSection();
-  if (exams) b.appendChild(exams);
-  b.appendChild(listSection());
-  b.appendChild(courseSearch());
+
+  // A tab whose content just vanished (last finding accepted, last conflict
+  // resolved) must not strand the user in an empty room.
+  const rooms = {
+    schedule: true,
+    changes: pending.length > 0,
+    conflicts: problems.length > 0,
+    exams: Boolean(exams),
+  };
+  if (!rooms[tab]) tab = 'schedule';
+
+  b.appendChild(tabBar(rooms, { changes: pending.length, conflicts: problems.length }));
+
+  const pane = (name, children) => {
+    const w = el('div', 'tt-tabpane');
+    w.dataset.tab = name;
+    w.hidden = tab !== name;
+    for (const c of children) w.appendChild(c);
+    return w;
+  };
+  const changesChildren = [];
+  if (pending.length) changesChildren.push(pendingSection());
+  b.appendChild(pane('changes', changesChildren));
+  b.appendChild(pane('conflicts', problems.length ? [conflictSection(problems)] : []));
+  b.appendChild(pane('schedule', [gridSection(), listSection(), courseSearch()]));
+  b.appendChild(pane('exams', exams ? [exams] : []));
   return b;
+}
+
+/**
+ * The workspace's internal navigation (round 54). Schedule always exists;
+ * the other rooms only while they have something to hold — a tab that says
+ * nothing is the heading-over-dead-whitespace problem the rails already
+ * solved, one level up.
+ */
+function tabBar(rooms, counts) {
+  const bar = el('div', 'tt-tabs');
+  bar.setAttribute('role', 'tablist');
+  bar.setAttribute('aria-label', 'Timetable sections');
+
+  const mk = (name, label) => {
+    const t = el('button', 'tt-tab' + (tab === name ? ' active' : ''));
+    t.type = 'button';
+    t.setAttribute('role', 'tab');
+    t.setAttribute('aria-selected', String(tab === name));
+    t.textContent = label;
+    const n = counts[name] || 0;
+    if (n > 0) {
+      const c = el('span', 'tt-tab-count');
+      c.textContent = String(n);
+      t.appendChild(c);
+    }
+    t.addEventListener('click', () => {
+      if (tab === name) return;
+      tab = name;
+      render();
+    });
+    return t;
+  };
+
+  bar.appendChild(mk('schedule', 'Schedule'));
+  if (rooms.changes) bar.appendChild(mk('changes', 'Changes'));
+  if (rooms.conflicts) bar.appendChild(mk('conflicts', 'Conflicts'));
+  if (rooms.exams) bar.appendChild(mk('exams', 'Exams'));
+  return bar;
 }
 
 /** The entry a finding targets, or a harmless stand-in if it has gone. */
