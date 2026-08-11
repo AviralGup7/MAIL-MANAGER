@@ -45,7 +45,6 @@ import { addressOf } from './contacts.js';
 import { audienceOf } from './direct.js';
 import * as activity from './activity.js';
 import * as outbox from './outbox.js';
-import * as suggest from './suggest.js';
 import * as lanes from './lanes.js';
 import * as engine from './rule-engine.js';
 import * as followups from './followups.js';
@@ -58,6 +57,7 @@ import {
   wireReader, openMessage, closeReader, renderThreadStrip, syncReaderActions,
   repaintBody, cancelMarkRead, loadImageAllowList, openPartId,
 } from './reader.js';
+import { wireSuggestUI, renderSuggestions, cancelSuggestBlur } from './suggest-ui.js';
 import {
   CAT_COLOR, LOW_CONFIDENCE, displayName, shortDate, fullDate,
 } from './display.js';
@@ -3061,190 +3061,6 @@ el.search.addEventListener('input', () => {
   });
 });
 
-/* ========================================================================== *
- * SEARCH SUGGESTIONS
- * ========================================================================== */
-
-/** The live suggestion list, and which row the arrow keys are on. */
-let suggestions = [];
-let suggestIndex = -1;
-let queryHistory = [];
-
-/**
- * Values are drawn from what is ACTUALLY IN THE MAILBOX.
- *
- * A suggestion that produces no results is worse than no suggestion: it reads
- * as the search being broken rather than the query being wrong. Senders come
- * from the store, labels from the fetched label list, categories from the
- * classifier's own vocabulary.
- */
-function suggestContext() {
-  const senders = new Set();
-  for (const id of store.idsFor('all').slice(0, 400)) {
-    const m = store.get(id);
-    if (m?.from) senders.add(addressOf(m.from));
-  }
-  return {
-    history: queryHistory,
-    views: currentViews(),
-    senders: [...senders].filter(Boolean).slice(0, 40),
-    labels: labelNames(),
-    categories: SIDEBAR_ORDER.map((key) => ({ key })),
-    limit: 8,
-  };
-}
-
-function renderSuggestions() {
-  const box = $('search-suggest');
-  if (!box) return;
-
-  // Only while the field has focus. A list hanging under an unfocused input is
-  // a dropdown nobody opened.
-  if (document.activeElement !== el.search) {
-    box.hidden = true;
-    return;
-  }
-
-  suggestions = suggest.suggest(el.search.value, suggestContext());
-  suggestIndex = -1;
-  el.search.setAttribute('aria-expanded', 'false');
-  el.search.removeAttribute('aria-activedescendant');
-
-  if (suggestions.length === 0) {
-    box.hidden = true;
-    return;
-  }
-
-  const frag = document.createDocumentFragment();
-  suggestions.forEach((sg, i) => {
-    const li = document.createElement('li');
-    li.className = 'suggest-item';
-    li.id = `suggest-opt-${i}`;
-    li.setAttribute('role', 'option');
-    li.setAttribute('aria-selected', 'false');
-    li.dataset.index = String(i);
-
-    const label = document.createElement('span');
-    label.className = 'suggest-label';
-    label.textContent = sg.label;
-
-    const hint = document.createElement('span');
-    hint.className = 'suggest-hint';
-    hint.textContent = sg.hint || '';
-
-    li.append(label, hint);
-    frag.appendChild(li);
-  });
-  box.replaceChildren(frag);
-  box.hidden = false;
-  // Combobox contract (40-ENG section 8): the field announces the popup and
-  // names the list it controls, so a screen reader treats this as one widget.
-  el.search.setAttribute('aria-expanded', 'true');
-}
-
-function moveSuggestion(delta) {
-  if (suggestions.length === 0) return;
-  suggestIndex = (suggestIndex + delta + suggestions.length) % suggestions.length;
-  const box = $('search-suggest');
-  [...box.children].forEach((li, i) => {
-    li.classList.toggle('active', i === suggestIndex);
-    li.setAttribute('aria-selected', String(i === suggestIndex));
-  });
-  // aria-activedescendant moves with the arrow keys — the field is the
-  // combobox, so the reader must hear the option as the field's own value.
-  el.search.setAttribute('aria-activedescendant', `suggest-opt-${suggestIndex}`);
-}
-
-/**
- * Accept a suggestion.
- *
- * An INCOMPLETE one -- `from:` with no value yet -- leaves the caret in the
- * field and re-runs the list against the new prefix, because the user is
- * mid-thought. A complete one runs the query. Getting this backwards makes the
- * control feel broken in a way people cannot articulate.
- */
-function acceptSuggestion(i) {
-  const sg = suggestions[i];
-  if (!sg) return;
-  el.search.value = sg.value;
-  if (suggest.isComplete(sg)) {
-    ctx.runQuery(sg.value);
-    rememberQuery(sg.value);
-    $('search-suggest').hidden = true;
-  } else {
-    el.search.focus();
-    renderSuggestions();
-  }
-}
-
-/** Keep the query history, so the empty box can offer what was searched before. */
-function rememberQuery(q) {
-  queryHistory = suggest.addToHistory(queryHistory, q);
-  suggest.saveHistory(queryHistory);
-}
-
-el.search.addEventListener('focus', () => renderSuggestions());
-
-/*
- * Close on blur, but on a delay: a click on a suggestion blurs the input
- * BEFORE the click lands, so hiding synchronously eats the selection. This is
- * the standard combobox hazard and the reason the delay is not a smell.
- */
-let suggestBlurTimer = 0;
-el.search.addEventListener('blur', () => {
-  clearTimeout(suggestBlurTimer);
-  suggestBlurTimer = setTimeout(() => {
-    suggestBlurTimer = 0;
-    const box = $('search-suggest');
-    if (box && !box.contains(document.activeElement)) {
-      box.hidden = true;
-      // Keep the combobox contract honest: the popup is gone, so the field
-      // must stop announcing it.
-      el.search.setAttribute('aria-expanded', 'false');
-      el.search.removeAttribute('aria-activedescendant');
-    }
-  }, 120);
-});
-
-el.search.addEventListener('keydown', (e) => {
-  const box = $('search-suggest');
-  const open = box && !box.hidden && suggestions.length > 0;
-
-  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-    if (!open) return;
-    e.preventDefault();
-    moveSuggestion(e.key === 'ArrowDown' ? 1 : -1);
-  } else if (e.key === 'Enter') {
-    if (open && suggestIndex >= 0) {
-      e.preventDefault();
-      acceptSuggestion(suggestIndex);
-    } else {
-      // A plain Enter with nothing highlighted runs what was typed, which is
-      // what a search field is expected to do.
-      rememberQuery(el.search.value);
-      if (box) box.hidden = true;
-    }
-  } else if (e.key === 'Escape') {
-    /*
-     * Escape closes the SUGGESTIONS first and the takeover second. Without
-     * stopping propagation here, dismissing a dropdown would throw the user
-     * back to Gmail -- the same layered-Escape hazard the palette hit.
-     */
-    if (open) {
-      e.stopPropagation();
-      box.hidden = true;
-      suggestIndex = -1;
-    }
-  }
-});
-
-$('search-suggest')?.addEventListener('mousedown', (e) => {
-  // mousedown, not click: the input's blur fires first otherwise.
-  const li = e.target.closest('.suggest-item');
-  if (!li) return;
-  e.preventDefault();
-  acceptSuggestion(Number(li.dataset.index));
-});
 
 /* ========================================================================== *
  * SERVER SEARCH FALLBACK
@@ -4615,8 +4431,7 @@ function cancelPendingWork() {
   // document after restore.
   clearTimeout(outboxTimer);
   outboxTimer = 0;
-  clearTimeout(suggestBlurTimer);
-  suggestBlurTimer = 0;
+  cancelSuggestBlur();
   // The cache saver defers writes to idle/50ms. If the page is being torn
   // down, a pending write must be cancelled — otherwise it fires into
   // whatever context comes next (a test's next mock storage, or a closed
@@ -4801,9 +4616,6 @@ async function start() {
    */
   pumpOutbox();
 
-  // The empty search box offers what was searched before, so the history has
-  // to be in memory before the field is first focused.
-  suggest.loadHistory().then((h) => { queryHistory = h; });
   renderSnoozed();
   engine.loadRuleList().then((r) => { automationRules = r; });
   myCourses.loadEnrolment().then((list) => {
@@ -5008,6 +4820,11 @@ async function boot() {
 
   // Extracted tenants (architecture audit phase 9): wiring only; state
   // ownership stays with the shell.
+  wireSuggestUI({
+    get store() { return store; },
+    el,
+    runQuery: (q) => ctx.runQuery(q),
+  });
   wireReader({
     // GETTER: `store` is rebound on every mailbox switch (see ctx below).
     get store() { return store; },
