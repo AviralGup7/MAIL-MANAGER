@@ -84,6 +84,7 @@ import {
   openPalette, closePalette, wirePalette,
   openCompose, closeCompose, wireCompose, startReply,
   restoreDraftIfAny, flushDraft, refreshLabels, _setLabels, editDraft, labelNames,
+  wireAutocomplete, refreshContacts,
 } from './features.js';
 import {
   initTimetable, openTimetable, scanForUpdates, _resetTimetableUI,
@@ -5319,6 +5320,9 @@ const ctx = {
   release: () => release(),
   toggleHelp,
   openActivityLog: () => openActivityLog(ctx),
+  // R-4: the compose->autocomplete sibling edge becomes a ctx dependency.
+  wireAutocomplete: (inputId, listId) => wireAutocomplete(inputId, listId),
+  refreshContacts: (c) => refreshContacts(c),
   setTheme: (id) => setTheme(id),
   themes: () => THEMES,
   categoryList: () => [['all', 'All mail'], ...SIDEBAR_ORDER.map((c) => [c, CATEGORY_LABELS[c] || c])],

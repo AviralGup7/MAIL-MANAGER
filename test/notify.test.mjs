@@ -8,7 +8,15 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { selectNotifiable, NOTIFY_CATEGORIES, NOTIFY_BURST_CAP } from '../src/background/notify.js';
+
+const INDEX_SRC = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), '..', 'src/background/index.js'),
+  'utf8'
+);
 
 const m = (id, category, subject = 'S') => ({ id, category, subject, from: 'a@b.c' });
 
@@ -55,4 +63,17 @@ test('the subject and sender survive for the notification body', () => {
   const out = selectNotifiable([m('1', 'augsd', 'Fee payment reminder')]);
   assert.equal(out[0].subject, 'Fee payment reminder');
   assert.equal(out[0].from, 'a@b.c');
+});
+
+// --------------------------------------------------------------- bug-hunt 50 --
+
+test('notification titles scrub control chars and truncate the sender', () => {
+  // A crafted From header must not inject line breaks into the notification
+  // card, and a 200-char display name must not push the subject off it.
+  assert.match(INDEX_SRC, /shortSender\(m\.from\)/, 'title uses the scrubber');
+  const fn = INDEX_SRC.slice(INDEX_SRC.indexOf('function shortSender'));
+  // String.raw keeps the literal backslashes unambiguous through every escaping layer.
+  assert.match(fn, new RegExp(String.raw`replace\(/\[\\x00-\\x1f\\x7f\]`), 'control chars scrubbed');
+  assert.match(fn, /slice\(0, max - 1\)/, 'truncated with an ellipsis');
+  assert.match(fn, /'BITS mail'/, 'empty sender falls back');
 });

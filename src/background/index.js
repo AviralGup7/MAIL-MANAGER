@@ -513,11 +513,22 @@ async function backgroundSync() {
       .create(`bmm-${m.id}`, {
         type: 'basic',
         iconUrl: chrome.runtime.getURL('icons/icon128.png'),
-        title: `${m.category === 'augsd' ? 'AUGSD' : 'Academics'} — ${m.from || 'BITS mail'}`,
+        // Bug-hunt #50: the full display name can be 200 chars and pushes
+        // the subject off the card. Scrub control characters (a crafted
+        // From header must not inject line breaks into the card) and
+        // truncate the sender, keeping the subject as the message.
+        title: `${m.category === 'augsd' ? 'AUGSD' : 'Academics'} — ${shortSender(m.from)}`,
         message: m.subject,
       })
       .catch(() => {});
   }
+}
+
+/** Display name, control-char-scrubbed and truncated (bug-hunt #50). */
+function shortSender(from, max = 40) {
+  const clean = String(from || '').replace(/[\x00-\x1f\x7f]/g, '').trim();
+  if (!clean) return 'BITS mail';
+  return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
 }
 
 function scheduleBackgroundSync() {

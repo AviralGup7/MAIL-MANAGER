@@ -16,7 +16,6 @@ import * as templates from './templates.js';
 import { createDraftSaver, loadDraft, isMeaningful } from './draft-store.js';
 import * as settings from './settings.js';
 import { invalidAddresses } from './contacts.js';
-import { wireAutocomplete, refreshContacts } from './autocomplete.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -126,7 +125,8 @@ export function openCompose(ctx, prefill = {}) {
   $('c-status').textContent = '';
 
   // Rebuild the address book once per open, from mail already in the store.
-  refreshContacts(ctx);
+  // Injected via ctx (R-4): compose must not import autocomplete as a sibling.
+  ctx.refreshContacts?.(ctx);
 
   // Clear a half-finished exit: reply-to-reply reopens compose inside the
   // 140ms close window, and a stale `.closing` would animate it right back out.
@@ -415,11 +415,11 @@ export function wireCompose(ctx) {
     document.body.classList.toggle('draft-dirty', isMeaningful(collectDraft()));
   });
 
-  wireAutocomplete('c-to', 'c-to-list');
-  wireAutocomplete('c-cc', 'c-cc-list');
   // Bcc gets the same contact autocomplete as To and Cc. A recipient field
   // that cannot complete an address is a field people avoid.
-  wireAutocomplete('c-bcc', 'c-bcc-list');
+  ctx.wireAutocomplete?.('c-to', 'c-to-list');
+  ctx.wireAutocomplete?.('c-cc', 'c-cc-list');
+  ctx.wireAutocomplete?.('c-bcc', 'c-bcc-list');
 
   $('compose-min').addEventListener('click', () => {
     panel.classList.toggle('minimised');
