@@ -232,8 +232,10 @@ test('the recovery copy is cleared only AFTER the message is durable', () => {
 
 test('closing compose discards the recovery copy too', () => {
   // Otherwise the user is offered back the message they just threw away.
+  // The window grew when the discard confirm became a real dialog (round 48):
+  // the invariant is that discard() is still reached inside the handler.
   const fn = feat.slice(feat.indexOf("$('compose-close').addEventListener"));
-  assert.ok(fn.slice(0, 600).includes('discard()'));
+  assert.ok(fn.slice(0, 900).includes('discard()'));
 });
 
 test('autosave is wired by delegation, not per field', () => {
@@ -248,8 +250,9 @@ test('pagehide flushes the draft', () => {
 
 test('restore is offered, never automatic', () => {
   // Silently reopening compose on load is startling, and the message may
-  // already have been sent from another device.
-  assert.ok(feat.includes('confirm('), 'restore must ask');
+  // already have been sent from another device. The ask moved from confirm()
+  // to the in-app confirmDialog (round 48); the contract is that it asks.
+  assert.ok(feat.includes('confirmDialog('), 'restore must ask');
   const fn = feat.slice(feat.indexOf('export async function restoreDraftIfAny'));
   assert.ok(fn.slice(0, 800).includes('discard()'), 'declining must forget the draft');
 });

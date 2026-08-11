@@ -10,13 +10,15 @@ import { readFileSync } from 'node:fs';
 const app = readFileSync(new URL('../src/app/app.js', import.meta.url), 'utf8');
 const compose = readFileSync(new URL('../src/app/compose.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../src/app/app.css', import.meta.url), 'utf8');
+// The reader cluster moved out of app.js in the round-51 workspace extraction.
+const reader = readFileSync(new URL('../src/app/reader.js', import.meta.url), 'utf8');
 
 test('Open-in-Gmail lands where the message lives (round 45 M1)', () => {
-  assert.match(app, /el\.rOpen\.href = gmailUrl\(m\.threadId, urlMailbox\)/,
+  assert.match(reader, /el\.rOpen\.href = ctx\.gmailUrl\(m\.threadId, urlMailbox\)/,
     'the reader uses the mailbox-aware helper');
-  assert.match(app, /state\.mailbox === 'snoozed' \? 'all' : state\.mailbox/,
+  assert.match(reader, /state\.mailbox === 'snoozed' \? 'all' : state\.mailbox/,
     'snoozed maps to All Mail, where the message is reachable');
-  assert.ok(!app.includes('/#inbox/${m.threadId}'),
+  assert.ok(!reader.includes('/#inbox/${m.threadId}'),
     'no hardcoded inbox fragment remains');
 });
 

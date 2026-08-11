@@ -13,6 +13,8 @@ import { readFileSync } from 'node:fs';
 
 const css = readFileSync(new URL('../src/app/app.css', import.meta.url), 'utf8');
 const app = readFileSync(new URL('../src/app/app.js', import.meta.url), 'utf8');
+// The reader cluster moved out of app.js in the round-51 workspace extraction.
+const reader = readFileSync(new URL('../src/app/reader.js', import.meta.url), 'utf8');
 
 test('the responsive ladder is complete from 1080 down to 480', () => {
   for (const w of [1080, 860, 720, 600, 480]) {
@@ -50,7 +52,7 @@ test('reader typography follows the density setting (round 45 H2)', () => {
   for (const d of ['comfortable', 'cosy', 'compact']) {
     assert.match(rf, new RegExp(`${d}:\\s*\\{ size:`), `${d} has reading metrics`);
   }
-  assert.match(app, /READER_TYPOGRAPHY\[settings\.get\('density'\)\]/,
+  assert.match(reader, /READER_TYPOGRAPHY\[settings\.get\('density'\)\]/,
     'and the srcdoc is built from the live setting');
 });
 

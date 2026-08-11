@@ -12,10 +12,12 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const css = readFileSync(join(ROOT, 'src/app/app.css'), 'utf8');
 const js = readFileSync(join(ROOT, 'src/app/app.js'), 'utf8');
+// The reader cluster moved out of app.js in the round-51 workspace extraction.
+const reader = readFileSync(join(ROOT, 'src/app/reader.js'), 'utf8');
 
 test('R1: closing the reader reorients to the read row', () => {
-  const close = js.slice(js.indexOf('function closeReader('), js.indexOf('function closeReader(') + 1200);
-  assert.match(close, /if \(prev\) reorientTo\(prev\);/);
+  const close = reader.slice(reader.indexOf('function closeReader('), reader.indexOf('function closeReader(') + 1400);
+  assert.match(close, /if \(prev\) ctx\.reorientTo\(prev\);/);
 });
 
 test('the pulse is paint-only and reduced-motion keeps the scroll', () => {
@@ -46,5 +48,6 @@ test('R3: arrivals while scrolled surface as a pill, not a silent toast', () => 
 
 test('R2: undo restores pulse the row back into view', () => {
   assert.match(js, /requestAnimationFrame\(\(\) => reorientTo\(id\)\);/);
-  assert.match(js, /requestAnimationFrame\(\(\) => reorientTo\(snapshots\[0\]\?\.id\)\);/);
+  // The bulk path renamed its snapshot list; the pin tracks the live name.
+  assert.match(js, /requestAnimationFrame\(\(\) => reorientTo\(appliedSnapshots\[0\]\?\.id\)\);/);
 });

@@ -2508,7 +2508,8 @@ test('rapid reader navigation skips the swap animation', () => {
    * flickered through interrupted animations instead of settling. A user
    * scanning wants to arrive, not to watch five fades.
    */
-  const src = read('src/app/app.js');
+  // The reader cluster moved out of app.js in the round-51 workspace extraction.
+  const src = read('src/app/reader.js');
   const fn = src.slice(src.indexOf('async function openMessage'), src.indexOf('function renderAttachments'));
   assert.match(fn, /lastSwapAt/, 'must track when the last swap ran');
   assert.match(fn, /if \(!rapid\)/, 'and must skip the animation when stepping fast');
@@ -2784,7 +2785,8 @@ test('filenames truncate in the middle, keeping the extension', async () => {
 
   // A long extension-less name must not lose everything.
   assert.ok(middleTruncate('a'.repeat(80)).length < 40);
-  // And both attachment surfaces must use it.
-  assert.match(read('src/app/app.js'), /middleTruncate\(a\.filename\)/);
+  // And both attachment surfaces must use it. The reader's chips moved to
+  // reader.js in the round-51 workspace extraction.
+  assert.match(read('src/app/reader.js'), /middleTruncate\(a\.filename\)/);
   assert.match(read('src/app/compose.js'), /middleTruncate\(f\.filename\)/);
 });

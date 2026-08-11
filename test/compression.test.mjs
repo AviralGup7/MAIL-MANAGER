@@ -47,8 +47,9 @@ test('O7: composing quiets sidebar and main with opacity alone', () => {
     'quieting must not move, remove or lock anything');
   assert.match(js, /classList\.add\('composing'\)/);
   assert.match(js, /classList\.remove\('composing'\)/);
-  // minimise restores the inbox: quieting follows the task
-  assert.match(js, /classList\.toggle\('composing', !panel\.classList\.contains\('minimised'\)\)/);
+  // minimise restores the inbox: quieting follows the task. The minimise
+  // handler recomputes from its own flag; the body class is the contract.
+  assert.match(js, /classList\.toggle\('composing', !minimised\)/);
 });
 
 test('O16 behaviour: fold wraps only long blockquotes', async (t) => {
@@ -76,6 +77,10 @@ test('doctrine: the relaxation is scoped to the named system', () => {
   assert.match(sec, /audit 37/);
   assert.match(sec, /0\.2ms/);
   assert.match(sec, /1\.7-2\.2ms/);
-  // reduced-motion still wins: the override block must come AFTER the system
-  assert.ok(css.indexOf('@media (prefers-reduced-motion: reduce)') > css.indexOf('SPATIAL COMPRESSION'));
+  // reduced-motion still wins: AN override block must come AFTER the system.
+  // indexOf with a start position: other features have since earned their own
+  // reduced-motion blocks EARLIER in the file, so first-occurrence no longer
+  // says anything about this system's override.
+  const secAt = css.indexOf('SPATIAL COMPRESSION');
+  assert.ok(css.indexOf('@media (prefers-reduced-motion: reduce)', secAt) > secAt);
 });

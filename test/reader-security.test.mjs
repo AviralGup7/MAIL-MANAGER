@@ -14,6 +14,8 @@ import { readFileSync } from 'node:fs';
 
 const html = readFileSync(new URL('../app.html', import.meta.url), 'utf8');
 const app = readFileSync(new URL('../src/app/app.js', import.meta.url), 'utf8');
+// The reader cluster moved out of app.js in the round-51 workspace extraction.
+const reader = readFileSync(new URL('../src/app/reader.js', import.meta.url), 'utf8');
 
 test('the body iframe sandbox allows neither scripts nor same-origin', () => {
   const m = html.match(/id="r-body"[\s\S]{0,400}?sandbox="([^"]+)"/);
@@ -27,9 +29,9 @@ test('every generated srcdoc carries its CSP meta, and the policy stays strict',
   // The CSP is derived from the same decision the sanitiser makes; since
   // arch A2 it is declared in reader-frame.js and interpolated here. The
   // strictness itself is asserted against the contract module below.
-  assert.match(app, /readerCsp\(allowRemote\)/,
+  assert.match(reader, /readerCsp\(allowRemote\)/,
     'renderBody builds the policy from the reader frame contract');
-  assert.match(app, /content="\$\{csp\}"/, 'and the srcdoc carries it');
+  assert.match(reader, /content="\$\{csp\}"/, 'and the srcdoc carries it');
 });
 
 test('unhandled rejections are observed and recorded (bug-hunt 44 #67)', () => {

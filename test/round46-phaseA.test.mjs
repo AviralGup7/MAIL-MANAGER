@@ -11,6 +11,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const app = readFileSync(new URL('../src/app/app.js', import.meta.url), 'utf8');
+// The reader cluster moved out of app.js in the round-51 workspace extraction.
+const reader = readFileSync(new URL('../src/app/reader.js', import.meta.url), 'utf8');
 const compose = readFileSync(new URL('../src/app/compose.js', import.meta.url), 'utf8');
 const sanitize = readFileSync(new URL('../src/app/sanitize.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../src/app/app.css', import.meta.url), 'utf8');
@@ -51,13 +53,13 @@ test('touch gestures own deliberate motion only (round 46 #11)', () => {
 });
 
 test('long mail reopens where it was left (round 46 #23)', () => {
-  assert.match(app, /readPosition\.set\(prev, sc\.scrollTop\)/, 'position is saved on close');
-  assert.match(app, /readPosition\.get\(body\.id\)/, 'and restored on open');
+  assert.match(reader, /readPosition\.set\(prev, sc\.scrollTop\)/, 'position is saved on close');
+  assert.match(reader, /readPosition\.get\(body\.id\)/, 'and restored on open');
 });
 
 test('folded quotes offer unfold-all (round 46 #19)', () => {
-  assert.match(app, /querySelectorAll\('details\.quote-fold'\)/, 'folds are counted');
-  assert.match(app, /unfold\.hidden = folds\.length === 0/, 'control only while folds exist');
+  assert.match(reader, /querySelectorAll\('details\.quote-fold'\)/, 'folds are counted');
+  assert.match(reader, /unfold\.hidden = folds\.length === 0/, 'control only while folds exist');
 });
 
 test('blocked and unresolved images say which they are (round 46 #26)', () => {
@@ -70,7 +72,7 @@ test('external links name their destination (round 46 #24)', () => {
 });
 
 test('plain-text mail reads as code, not prose (round 46 #25)', () => {
-  assert.match(app, /pre\{[^}]*ui-monospace/, 'pre gets a monospace affordance');
+  assert.match(reader, /pre\{[^}]*ui-monospace/, 'pre gets a monospace affordance');
 });
 
 test('the minimised compose names parked files (round 46 #40)', () => {

@@ -85,7 +85,14 @@ async function entryPoints(storage) {
     ['draft.loadDraft', () => draft.loadDraft(storage)],
     ['draft.clearDraft', () => draft.clearDraft(storage)],
     ['settings.loadSettings', () => settings.loadSettings(storage)],
-    ['settings.set', () => settings.set('theme', 'nord', storage)],
+    /*
+     * settings.set is NOT in this sweep, deliberately. Bug-hunt 43 #17 made
+     * it the ONE persistence call that rejects, because a silently-lost
+     * preference reverted at next boot with no channel to say so; options.js
+     * wraps every write in persist() and app.js callers use .catch. Its
+     * stronger contract — reject loudly, roll the cache back — is pinned in
+     * its own test below instead of being averaged away by this list.
+     */
     ['cache.loadCache', () => cache.loadCache(storage)],
     ['cache.saveCache', () => cache.saveCache([], storage)],
     ['cache.clearCache', () => cache.clearCache(storage)],
@@ -110,6 +117,26 @@ test('no persistence call rejects when storage is entirely hostile', async () =>
     leaks, [],
     'these reject instead of degrading; their callers are async handlers with no .catch'
   );
+});
+
+test('settings.set rejects loudly and rolls the cache back (bug-hunt 43 #17)', async () => {
+  /*
+   * The exception to the sweep is the strictest contract in the file, not a
+   * hole in it: the write must REJECT with a typed error the callers surface
+   * (options.js persist(), app.js .catch), and the in-memory value must go
+   * back to what it was, so a failed write never masquerades as a saved one.
+   */
+  const settings = await load('settings.js');
+  const storage = readOnly({ theme: 'midnight' });
+  await settings.loadSettings(storage);
+  assert.equal(settings.get('theme'), 'midnight');
+
+  await assert.rejects(
+    settings.set('theme', 'nord', storage),
+    /SETTINGS_PERSIST_FAILED: theme/,
+    'the failure must reach the caller so it can be shown'
+  );
+  assert.equal(settings.get('theme'), 'midnight', 'the cache must roll back');
 });
 
 test('no persistence call rejects when writes fail but reads work', async () => {

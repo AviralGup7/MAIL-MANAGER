@@ -71,28 +71,44 @@ test('shared imports nothing (leaf)', () => {
   }
 });
 
-test('background never imports app statically — except the declared snooze helpers', () => {
+test('background never imports app statically — except the declared store helpers', () => {
+  /*
+   * TWO declared edges, both storage-only modules with no DOM: snooze.js for
+   * the wake alarm, outbox.js for the due-send pump. Declaring them here —
+   * named, symbol-limited, tested — is the doctrine; anything else from app
+   * is a layering violation.
+   */
+  const ALLOWED = new Set(['../app/snooze.js', '../app/outbox.js']);
   for (const f of allFiles(join(SRC, 'background'))) {
     for (const imp of staticImports(f)) {
       if (!imp.startsWith('../app/')) continue;
-      // The one declared edge: the wake alarm needs the snooze store helpers.
-      // Everything else from app is a layering violation.
       assert.ok(
-        imp === '../app/snooze.js',
-        `${rel(f)} imports from the app layer: ${imp} (only ../app/snooze.js is declared)`
+        ALLOWED.has(imp),
+        `${rel(f)} imports from the app layer: ${imp} (declared edges: ${[...ALLOWED].join(', ')})`
       );
     }
   }
-  // And even that edge is limited to the three storage helpers, not the label
+  // And even those edges are limited to their storage helpers, not the label
   // (which lives in shared/labels.js) or any UI code.
   const idx = readFileSync(join(SRC, 'background', 'index.js'), 'utf8');
-  const m = idx.match(/^import \{([^}]*)\} from '\.\.\/app\/snooze\.js'/m);
-  assert.ok(m, 'the declared snooze import must exist and be explicit');
-  for (const name of m[1].split(',').map((s) => s.trim()).filter(Boolean)) {
-    assert.ok(
-      ['loadSnoozed', 'removeSnooze', 'due'].includes(name),
-      `worker imports undeclared app symbol: ${name}`
-    );
+  const declared = [
+    ['snooze.js', ['loadSnoozed', 'removeSnooze', 'due']],
+    ['outbox.js', ['loadOutbox', 'saveOutbox', 'dueItems', 'markFailed', 'prioritizeDue']],
+  ];
+  for (const [file, symbols] of declared) {
+    const marker = `from '../app/${file}'`;
+    const at = idx.indexOf(marker);
+    assert.ok(at !== -1, `the declared ${file} import must exist and be explicit`);
+    const open = idx.lastIndexOf('import {', at);
+    const names = idx.slice(open + 'import {'.length, idx.indexOf('}', open))
+      .split(',').map((s) => s.trim()).filter(Boolean);
+    assert.ok(names.length > 0, `the declared ${file} import must name its symbols`);
+    for (const name of names) {
+      assert.ok(
+        symbols.includes(name),
+        `worker imports undeclared app symbol: ${name}`
+      );
+    }
   }
 });
 

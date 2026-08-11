@@ -58,11 +58,12 @@ test('every module path a pin suite reads actually exists', () => {
 });
 
 test('reader controls carry accessible names (round 48)', () => {
-  const app = readFileSync(join(ROOT, 'src/app/app.js'), 'utf8');
-  assert.match(app, /aria-label', `Download \$\{a\.filename\}/, 'attachment chips named');
-  assert.match(app, /aria-label', `Message body: /, 'body frame named per message');
-  assert.match(app, /aria-label', `Unfold \$\{folds\.length\}/, 'unfold names its count');
-  assert.match(app, /aria-label', `\$\{displayName\(msg\.from\)\}, /, 'strip rows named');
+  // The reader cluster moved out of app.js in the round-51 workspace extraction.
+  const reader = readFileSync(join(ROOT, 'src/app/reader.js'), 'utf8');
+  assert.match(reader, /aria-label', `Download \$\{a\.filename\}/, 'attachment chips named');
+  assert.match(reader, /aria-label', `Message body: /, 'body frame named per message');
+  assert.match(reader, /aria-label', `Unfold \$\{folds\.length\}/, 'unfold names its count');
+  assert.match(reader, /aria-label', `\$\{displayName\(msg\.from\)\}, /, 'strip rows named');
 });
 
 test('visual harness waits for the theme to land (round 48)', () => {
