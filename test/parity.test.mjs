@@ -212,3 +212,26 @@ test('the pump batch cap fits inside the verb timeout with margin (bug-hunt 43 #
     `${batch} items x ${PER_ITEM_TYPICAL_MS}ms x ${SAFETY} margin must fit in ${timeout}ms`
   );
 });
+
+test('OUTBOX_PUMP answers the ONE canonical PumpResult shape (bug-hunt 43 #50)', () => {
+  // Four producers speak this shape; the typedef in outbox.js is the single
+  // definition. Pin the contract's existence and every producer's conformance.
+  const o = read('src/app/outbox.js');
+  const w = read('src/background/index.js');
+  const f = read('src/app/fallback.js');
+  const h = read('test/helpers/worker-contract.mjs');
+
+  assert.match(o, /@typedef \{Object\} PumpResult/, 'the contract is defined once');
+  for (const field of ['sent', 'failed', 'skipped', 'sentIds']) {
+    assert.match(o, new RegExp(`@property .*${field}`), `contract names ${field}`);
+  }
+  // Worker and runner answer every field; namespaced ids on all sides.
+  assert.match(w, /return \{ sent, failed, skipped: false, sentIds, more \}/);
+  assert.match(w, /`g:\$\{res\.id\}`/, 'worker ids carry the g: namespace');
+  assert.match(o, /`g:\$\{res\.id\}` : `q:\$\{item\.id\}`/, 'runner ids are namespaced');
+  assert.match(h, /g:sent-/, 'the harness emulation speaks the same namespace');
+  // The app consumes the contract, not a guess.
+  const a = read('src/app/app.js');
+  assert.match(a, /result\.sentIds/, 'the consumer reads sentIds');
+  assert.match(a, /result\?\.more/, 'and the leftover flag');
+});

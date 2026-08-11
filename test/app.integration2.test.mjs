@@ -42,6 +42,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
+import { makeFakeWorker } from './helpers/worker-contract.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -110,7 +111,7 @@ const MESSAGES = [
  * Boot app.html in jsdom.
  * Returns { win, doc, calls, settle } — `calls` records every worker message.
  */
-async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bodyOverride = {}, syncLatency = 0, perLabel = false, emptyLabels = [], labels = [], timetableData = null, storageTimetable = undefined, deadWorker = false, failVerbs = [], draftAttachments = false } = {}) {
+async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bodyOverride = {}, syncLatency = 0, perLabel = false, emptyLabels = [], labels = [], timetableData = null, storageTimetable = undefined, deadWorker = false, failVerbs = [], draftAttachments = false, failHydration = false } = {}) {
   const html = readFileSync(join(ROOT, 'app.html'), 'utf8');
   const dom = new JSDOM(html, {
     url: 'chrome-extension://test/app.html',
@@ -223,111 +224,10 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
     await settle();
   };
 
-  function respond(msg) {
-    /*
-     * FAIL-INJECTION, so rollback paths can be exercised.
-     *
-     * Every optimistic action has a failure branch that rolls the local store
-     * back, and none of them had a test: the harness always answered ok. A
-     * rollback nobody exercises is a rollback nobody knows works -- and it is
-     * exactly where the undo/failure interaction bug lived.
-     */
-    if (failVerbs.includes(msg.type)) {
-      return { ok: false, error: `${msg.type} failed (injected)` };
-    }
-    switch (msg.type) {
-      case 'AUTH_STATUS': return { ok: true, data: { signedIn } };
-      case 'PROFILE': return { ok: true, data: { emailAddress: 'f20240294@pilani.bits-pilani.ac.in' } };
-      case 'SYNC_PAGE': {
-        if (msg.opts?.pageToken) return { ok: true, data: { messages: [], nextPageToken: '' } };
-        if (!perLabel) return { ok: true, data: { messages, nextPageToken: '' } };
-        // Distinct messages per mailbox, so a cross-mailbox leak is visible.
-        const label = (msg.opts?.labelIds || [])[0] || msg.opts?.labelName || 'INBOX';
-        // Some tests need a mailbox that is genuinely empty rather than one
-        // holding three synthetic messages.
-        if (emptyLabels.includes(label)) {
-          return { ok: true, data: { messages: [], nextPageToken: '' } };
-        }
-        const tag = { INBOX: 'inbox', SENT: 'sent', TRASH: 'trash', SPAM: 'spam',
-          DRAFT: 'draft', STARRED: 'star' }[label] || 'other';
-        const out = Array.from({ length: 3 }, (_, i) => ({
-          id: `${tag}${i}`, threadId: `t${tag}${i}`,
-          // Sender encodes the mailbox, so a cross-store leak is detectable.
-          from: `S${i} <${tag}${i}@pilani.bits-pilani.ac.in>`,
-          subject: `${tag} message ${i}`, snippet: 's',
-          date: Date.now() - i * 60000, unread: false, starred: false, labels: ['INBOX'],
-        }));
-        return { ok: true, data: { messages: out, nextPageToken: '' } };
-      }
-      case 'SYNC_DELTA':
-        return { ok: true, data: { kind: 'delta', added: [], removed: [], patched: [] } };
-      case 'GET_BODY':
-        return {
-          ok: true,
-          data: { id: msg.id, html: '<p>body</p>', text: '', attachments: [], ...bodyOverride },
-        };
-      case 'GET_ATTACHMENT':
-        return { ok: true, data: { dataUrl: 'data:application/pdf;base64,JVBER' } };
-      case 'LIST_LABELS':
-        return { ok: true, data: labels };
-      case 'GET_DRAFT':
-        // The worker resolves a MESSAGE id to a DRAFT id; the draftId is what
-        // makes a re-save an update rather than a second copy.
-        //
-        // ATTACHMENTS ride along as METADATA (bug-hunt P0): filename/type/size
-        // plus the ids needed to refetch the bytes at send. The harness also
-        // records the metadata so tests can verify what the worker would have
-        // hydrated.
-        return {
-          ok: true,
-          data: {
-            draftId: `d-${msg.id}`, to: 'someone@pilani.bits-pilani.ac.in',
-            cc: '', bcc: '', subject: 'Half-written', text: 'Unfinished thought',
-            threadId: msg.id,
-            id: msg.id,
-            attachments: draftAttachments ? [
-              { filename: 'report.pdf', mimeType: 'application/pdf', size: 1234,
-                attachmentId: 'att-1', messageId: msg.id },
-            ] : [],
-          },
-        };
-      case 'OUTBOX_PUMP': {
-        /*
-         * Emulate the worker's SOLE-OWNER pump (bug-hunt P1): the app no
-         * longer dispatches per item, it asks the worker to drain the queue.
-         * The harness reads the queue from storage, dispatches what is due,
-         * and records one synthetic SEND per message -- what the worker would
-         * hand to sendMessage -- so wire assertions stay honest.
-         */
-        const items = Array.isArray(storage.outbox) ? storage.outbox : [];
-        const now = Date.now();
-        let sent = 0;
-        let failed = 0;
-        const sentIds = [];
-        const next = [];
-        for (const it of items) {
-          const isDue =
-            (it.state === 'held' && (it.releaseAt || 0) <= now) ||
-            (it.state === 'failed' && (it.attempts || 0) < 4 && (it.nextAttempt || 0) <= now);
-          if (!isDue) { next.push(it); continue; }
-          if (failVerbs.includes('SEND') || failVerbs.includes('OUTBOX_PUMP')) {
-            next.push({
-              ...it, state: 'failed', attempts: (it.attempts || 0) + 1,
-              nextAttempt: now + 15000, error: 'injected',
-            });
-            failed++;
-          } else {
-            calls.push({ type: 'SEND', draft: it.draft });
-            sentIds.push(`sent-${it.id}`);
-            sent++;
-          }
-        }
-        storage.outbox = next;
-        return { ok: true, data: { sent, failed, skipped: false, sentIds } };
-      }
-      default: return { ok: true, data: {} };
-    }
-  }
+  const respond = makeFakeWorker({
+    calls, storage, signedIn, messages, perLabel, emptyLabels, labels,
+    bodyOverride, failVerbs, draftAttachments, failHydration,
+  });
 
   // jsdom has no matchMedia; app.css handles reduced motion, app.js does not
   // call it, but the store/classify modules must not trip over its absence.
@@ -3806,8 +3706,8 @@ test('DRAFTS: attachments survive the edit -> save round trip (bug-hunt P0)', as
     assert.ok(Array.isArray(atts) && atts.length === 1,
       'the saved draft must still list its attachment');
     assert.equal(atts[0].attachmentId, 'att-1', 'with the refetch source intact');
-    assert.equal(atts[0].data, undefined,
-      'metadata only -- the bytes are hydrated by the worker at the wire');
+    assert.equal(atts[0].data, Buffer.from('bytes-of-att-1').toString('base64'),
+      'and the worker-side hydration must have replaced metadata with bytes');
   } finally {
     restore();
   }
@@ -3871,6 +3771,102 @@ test('DRAFTS: removing a preserved chip drops it from the save (bug-hunt P0)', a
     const saves = calls.filter((c) => c.type === 'SAVE_DRAFT');
     const atts = saves[saves.length - 1].draft.attachments;
     assert.ok(!atts || atts.length === 0, 'a removed chip must stay removed');
+  } finally {
+    restore();
+  }
+});
+
+test('DRAFTS: attachment BYTES reach the wire on SEND (Phase 2 protection)', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * The strongest guard on the P0 fix: metadata leaves GET_DRAFT, rides the
+   * compose panel and the outbox, and the pump HYDRATES it -- the assertion
+   * is on the bytes at the wire, not on the metadata in flight. The harness
+   * substitutes deterministic fake bytes for the refetch, which is exactly
+   * the contract being pinned: whatever the refetch returns is what ships.
+   */
+  const { doc, win, calls, settle, restore } = await bootSending({ perLabel: true, draftAttachments: true });
+  try {
+    doc.querySelector('.cat[data-mailbox="drafts"]').click();
+    await settle(10);
+    rows(doc)[0].click();
+    await settle(8);
+    doc.querySelector('#r-actions button[data-act="edit"]').click();
+    await settle(10);
+    doc.getElementById('c-to').value = 'a@pilani.bits-pilani.ac.in';
+    doc.getElementById('c-text').value = 'Sending with its file.';
+    doc.getElementById('c-send').click();
+    await settle(10);
+    await drainOutbox(win, settle);
+
+    const sent = calls.find((c) => c.type === 'SEND');
+    assert.ok(sent, 'the message must be sent');
+    const att = sent.draft.attachments[0];
+    assert.equal(att.filename, 'report.pdf');
+    assert.equal(att.data, Buffer.from('bytes-of-att-1').toString('base64'),
+      'the hydrated bytes -- not metadata -- must be what reaches the wire');
+  } finally {
+    restore();
+  }
+});
+
+test('DRAFTS: attachment BYTES reach the wire on SAVE_DRAFT (Phase 2 protection)', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // The save path rebuilds the MIME in the worker too; the bytes contract is
+  // identical, so it gets its own test rather than sharing the SEND one.
+  const { doc, calls, settle, restore } = await boot({ perLabel: true, draftAttachments: true });
+  try {
+    doc.querySelector('.cat[data-mailbox="drafts"]').click();
+    await settle(10);
+    rows(doc)[0].click();
+    await settle(8);
+    doc.querySelector('#r-actions button[data-act="edit"]').click();
+    await settle(10);
+    doc.getElementById('c-text').value = 'Saving with its file.';
+    doc.getElementById('c-draft').click();
+    await settle(12);
+
+    const saves = calls.filter((c) => c.type === 'SAVE_DRAFT');
+    assert.ok(saves.length, 'the save must reach Gmail');
+    const att = saves[saves.length - 1].draft.attachments[0];
+    assert.equal(att.data, Buffer.from('bytes-of-att-1').toString('base64'),
+      'a re-saved draft must carry the refetched bytes');
+  } finally {
+    restore();
+  }
+});
+
+test('OUTBOX: a permanently lost attachment goes stuck, not four identical retries (Phase 2 protection)', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * failHydration turns the refetch into the permanent-loss error. First
+   * pump: failed, attempt 1, retry scheduled. Second identical failure must
+   * short-circuit to STUCK (the bug-hunt 43 #33 rule), not burn the whole
+   * backoff ladder over 16 minutes.
+   */
+  const { doc, win, settle, restore } = await bootSending({ perLabel: true, draftAttachments: true, failHydration: true });
+  try {
+    doc.querySelector('.cat[data-mailbox="drafts"]').click();
+    await settle(10);
+    rows(doc)[0].click();
+    await settle(8);
+    doc.querySelector('#r-actions button[data-act="edit"]').click();
+    await settle(10);
+    doc.getElementById('c-to').value = 'a@pilani.bits-pilani.ac.in';
+    doc.getElementById('c-text').value = 'Doomed send.';
+    doc.getElementById('c-send').click();
+    await settle(10);
+    await drainOutbox(win, settle);
+
+    const read = async () => ((await win.chrome.storage.local.get('outbox')).outbox) || [];
+    const queue = await read();
+    assert.equal(queue.length, 1, 'the item stays queued');
+    assert.equal(queue[0].state, 'failed');
+    assert.match(queue[0].error, /Cannot recover attachment/);
+    // A permanently lost attachment cannot heal by waiting (bug-hunt 43 #33):
+    // the FIRST such failure goes straight to the cap instead of burning four
+    // identical retries across 16 minutes.
+    assert.equal(queue[0].attempts, 4, 'straight to stuck on the first loss');
   } finally {
     restore();
   }

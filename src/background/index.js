@@ -403,7 +403,9 @@ async function handle(msg) {
             // an unrecoverable part fails THIS item, loudly, not the batch.
             const draft = await hydrateDraftAttachments(item.draft);
             const res = await sendMessage(buildMime(draft), draft.threadId);
-            if (res?.id) sentIds.push(res.id);
+            // NAMESPACED per the PumpResult contract in outbox.js: `g:` marks
+            // a real Gmail message id, distinct from the fallback's `q:` ids.
+            if (res?.id) sentIds.push(`g:${res.id}`);
             items = items.filter((x) => x.id !== item.id);
             sent++;
           } catch (err) {

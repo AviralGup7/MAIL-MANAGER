@@ -256,3 +256,20 @@ test('worker recovery removes the degradation banner (bug-hunt 43 #25)', () => {
   assert.ok(fn.includes("document.getElementById('sw-warn')?.remove()"),
     'recovery must take the banner down with the state it describes');
 });
+
+test('a degraded session always arms its own recovery probes (audit 42 B10)', () => {
+  // A cold start whose FIRST verb fails is still a degrade event, and every
+  // degrade must arm the probe chain -- 5s timer plus an online listener --
+  // or the session latches into fallback forever. Pin the wiring so a future
+  // cleanup cannot quietly drop either arm.
+  const at = app.indexOf('function degradeToFallback');
+  assert.notEqual(at, -1);
+  const degrade = app.slice(at, at + 800);
+  assert.ok(degrade.includes('scheduleWorkerProbe()'),
+    'every degrade arms recovery');
+
+  const pt = app.indexOf('function scheduleWorkerProbe');
+  const probe = app.slice(pt, pt + 1400);
+  assert.match(probe, /addEventListener\('online'/, 'recovery also rides the online event');
+  assert.match(probe, /setTimeout\(check, 5000\)/, 'and re-probes on a short timer');
+});

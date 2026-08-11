@@ -290,17 +290,17 @@ test('a held item with a corrupt releaseAt gets its hold back (bug-hunt #17)', (
 });
 
 test('the SAME failure twice goes straight to stuck (bug-hunt #33)', () => {
-  // A permanently-lost draft attachment used to burn four identical retries
-  // over ~16 minutes. Repeating an error verbatim is a diagnosis: go stuck,
-  // and leave the escape hatch (retryNow resets attempts).
+  // Repeating an error verbatim is a diagnosis, not a coincidence: go stuck,
+  // and leave the escape hatch (retryNow resets attempts). Comparison runs on
+  // the FULL error, so two long errors sharing a prefix are not conflated.
   const first = markFailed(
     { id: 'x', state: 'sending', draft: {}, queuedAt: 0, releaseAt: 0, attempts: 0, nextAttempt: 0 },
-    'Cannot recover attachment “report.pdf”', 1000
+    'Gmail 503 on /messages/send (try 3)', 1000
   );
   assert.equal(first.attempts, 1);
   assert.ok(!isStuck(first), 'the first failure still earns retries');
 
-  const second = markFailed(first, 'Cannot recover attachment “report.pdf”', 2000);
+  const second = markFailed(first, 'Gmail 503 on /messages/send (try 3)', 2000);
   assert.ok(isStuck(second), 'the identical second failure must give up');
 
   // A DIFFERENT error is new information: retries continue.
@@ -308,7 +308,22 @@ test('the SAME failure twice goes straight to stuck (bug-hunt #33)', () => {
   assert.ok(!isStuck(different), 'a new error is not the same diagnosis');
 });
 
-test('flushOutbox reports the ids of what actually left (bug-hunt #27)', async () => {
+test('a lost attachment goes stuck on the FIRST failure (bug-hunt 43 #33)', () => {
+  // The source part is gone; waiting through four backoffs cannot bring it
+  // back. retryNow remains the user's explicit override.
+  const item = { id: 'x', state: 'sending', draft: {}, queuedAt: 0, releaseAt: 0, attempts: 0, nextAttempt: 0 };
+  assert.ok(isStuck(markFailed(item, 'Cannot recover attachment “report.pdf”: no source', 1000)));
+  assert.ok(isStuck(markFailed(item, 'Could not read attachment “x.pdf”', 1000)));
+  const retried = retryNowSyncHelper(markFailed(item, 'Cannot recover attachment “a”: gone', 1000));
+  assert.equal(retried.attempts, 0, 'retryNow is the explicit fresh judgement');
+});
+
+function retryNowSyncHelper(item) {
+  // Mirrors retryNow's reset without storage, for a pure unit assertion.
+  return { ...item, state: 'failed', attempts: 0, nextAttempt: 0, error: '', _fullError: '' };
+}
+
+test('flushOutbox reports NAMESPACED ids of what actually left (bug-hunt #27)', async () => {
   const storage = fakeStorage();
   await saveOutbox([
     { id: 'ob-1', state: 'held', draft: { to: 'a@b.c', body: 'x' }, queuedAt: 0, releaseAt: 0, attempts: 0, nextAttempt: 0 },
@@ -319,7 +334,7 @@ test('flushOutbox reports the ids of what actually left (bug-hunt #27)', async (
     now: 1,
   });
   assert.equal(res.sent, 1);
-  assert.deepEqual(res.sentIds, ['gmail-123'], 'the wire id, so the activity log can name the message');
+  assert.deepEqual(res.sentIds, ['g:gmail-123'], 'g:-prefixed wire id, never a bare mixed-space value');
 });
 
 test('a fresh send outranks a backlog of retries (bug-hunt 43 #1)', () => {

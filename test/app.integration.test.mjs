@@ -21,6 +21,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
+import { makeFakeWorker } from './helpers/worker-contract.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -202,101 +203,10 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
     await settle();
   };
 
-  function respond(msg) {
-    /*
-     * FAIL-INJECTION, so rollback paths can be exercised.
-     *
-     * Every optimistic action has a failure branch that rolls the local store
-     * back, and none of them had a test: the harness always answered ok. A
-     * rollback nobody exercises is a rollback nobody knows works -- and it is
-     * exactly where the undo/failure interaction bug lived.
-     */
-    if (failVerbs.includes(msg.type)) {
-      return { ok: false, error: `${msg.type} failed (injected)` };
-    }
-    switch (msg.type) {
-      case 'AUTH_STATUS': return { ok: true, data: { signedIn } };
-      case 'PROFILE': return { ok: true, data: { emailAddress: 'f20240294@pilani.bits-pilani.ac.in' } };
-      case 'SYNC_PAGE': {
-        if (msg.opts?.pageToken) return { ok: true, data: { messages: [], nextPageToken: '' } };
-        if (!perLabel) return { ok: true, data: { messages, nextPageToken: '' } };
-        // Distinct messages per mailbox, so a cross-mailbox leak is visible.
-        const label = (msg.opts?.labelIds || [])[0] || msg.opts?.labelName || 'INBOX';
-        // Some tests need a mailbox that is genuinely empty rather than one
-        // holding three synthetic messages.
-        if (emptyLabels.includes(label)) {
-          return { ok: true, data: { messages: [], nextPageToken: '' } };
-        }
-        const tag = { INBOX: 'inbox', SENT: 'sent', TRASH: 'trash', SPAM: 'spam',
-          DRAFT: 'draft', STARRED: 'star' }[label] || 'other';
-        const out = Array.from({ length: 3 }, (_, i) => ({
-          id: `${tag}${i}`, threadId: `t${tag}${i}`,
-          // Sender encodes the mailbox, so a cross-store leak is detectable.
-          from: `S${i} <${tag}${i}@pilani.bits-pilani.ac.in>`,
-          subject: `${tag} message ${i}`, snippet: 's',
-          date: Date.now() - i * 60000, unread: false, starred: false, labels: ['INBOX'],
-        }));
-        return { ok: true, data: { messages: out, nextPageToken: '' } };
-      }
-      case 'SYNC_DELTA':
-        return { ok: true, data: { kind: 'delta', added: [], removed: [], patched: [] } };
-      case 'GET_BODY':
-        return {
-          ok: true,
-          data: { id: msg.id, html: '<p>body</p>', text: '', attachments: [], ...bodyOverride },
-        };
-      case 'GET_ATTACHMENT':
-        return { ok: true, data: { dataUrl: 'data:application/pdf;base64,JVBER' } };
-      case 'LIST_LABELS':
-        return { ok: true, data: labels };
-      case 'GET_DRAFT':
-        // The worker resolves a MESSAGE id to a DRAFT id; the draftId is what
-        // makes a re-save an update rather than a second copy.
-        return {
-          ok: true,
-          data: {
-            draftId: `d-${msg.id}`, to: 'someone@pilani.bits-pilani.ac.in',
-            cc: '', bcc: '', subject: 'Half-written', text: 'Unfinished thought',
-            threadId: msg.id,
-          },
-        };
-      case 'OUTBOX_PUMP': {
-        /*
-         * Emulate the worker's SOLE-OWNER pump (bug-hunt P1): the app no
-         * longer dispatches per item, it asks the worker to drain the queue.
-         * The harness reads the queue from storage, dispatches what is due,
-         * and records one synthetic SEND per message -- what the worker would
-         * hand to sendMessage -- so wire assertions stay honest.
-         */
-        const items = Array.isArray(storage.outbox) ? storage.outbox : [];
-        const now = Date.now();
-        let sent = 0;
-        let failed = 0;
-        const sentIds = [];
-        const next = [];
-        for (const it of items) {
-          const isDue =
-            (it.state === 'held' && (it.releaseAt || 0) <= now) ||
-            (it.state === 'failed' && (it.attempts || 0) < 4 && (it.nextAttempt || 0) <= now);
-          if (!isDue) { next.push(it); continue; }
-          if (failVerbs.includes('SEND') || failVerbs.includes('OUTBOX_PUMP')) {
-            next.push({
-              ...it, state: 'failed', attempts: (it.attempts || 0) + 1,
-              nextAttempt: now + 15000, error: 'injected',
-            });
-            failed++;
-          } else {
-            calls.push({ type: 'SEND', draft: it.draft });
-            sentIds.push(`sent-${it.id}`);
-            sent++;
-          }
-        }
-        storage.outbox = next;
-        return { ok: true, data: { sent, failed, skipped: false, sentIds } };
-      }
-      default: return { ok: true, data: {} };
-    }
-  }
+  const respond = makeFakeWorker({
+    calls, storage, signedIn, messages, perLabel, emptyLabels, labels,
+    bodyOverride, failVerbs,
+  });
 
   // jsdom has no matchMedia; app.css handles reduced motion, app.js does not
   // call it, but the store/classify modules must not trip over its absence.

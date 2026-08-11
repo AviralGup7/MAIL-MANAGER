@@ -365,3 +365,32 @@ test('the template menu reads the course from the store, not the wire (bug-hunt 
   assert.ok(menu.includes('rec?.courses?.[0]'),
     'and from its stamped courses field');
 });
+
+test('saveDraft persists the storable shape, never the raw draft (enforcement pin)', async () => {
+  /*
+   * The metadata-only persistence is the regression guard for the autosave
+   * quota defect. This pins the ENFORCEMENT itself: the write must go
+   * through storable(), so a future "simplification" back to the raw draft
+   * fails here before it ever reaches a quota.
+   */
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../src/app/draft-store.js', import.meta.url), 'utf8');
+  assert.match(src, /await storage\.set\(\{ \[KEY\]: storable\(draft, now\) \}\)/,
+    'saveDraft must write the storable() shape');
+  assert.ok(!/await storage\.set\(\{ \[KEY\]: \{ \.\.\.draft/.test(src),
+    'the raw-draft write must never come back');
+
+  // Behavioural twin: two attachments of different kinds, both stripped of
+  // data, metadata preserved for the refetchable one.
+  const s = fakeStorage();
+  await saveDraft({
+    to: 'a@b.c', subject: 's', body: 'text', baseBody: '',
+    attachments: [
+      { filename: 'chosen.bin', mimeType: 'application/octet-stream', size: 100, data: 'AAAA' },
+      { filename: 'kept.pdf', mimeType: 'application/pdf', size: 7, attachmentId: 'a-7', messageId: 'm-7' },
+    ],
+  }, s);
+  const stored = (await s.get('composeDraft')).composeDraft;
+  for (const a of stored.attachments) assert.equal(a.data, undefined, 'no base64 in storage');
+  assert.equal(stored.attachments[1].attachmentId, 'a-7');
+});

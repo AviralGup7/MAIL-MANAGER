@@ -48,6 +48,27 @@ export const BACKOFF_MS = [15_000, 60_000, 300_000, 900_000];
 export const MAX_ATTEMPTS = BACKOFF_MS.length;
 
 /**
+ * THE CANONICAL OUTBOX_PUMP ANSWER (roadmap Phase 3 / bug-hunt 43 #50).
+ *
+ * Four producers speak this shape -- the worker verb, this module's in-page
+ * runner, and both integration emulators -- and this typedef is the single
+ * definition they are pinned against. Any new producer imports the contract
+ * from here rather than inventing a fifth dialect.
+ *
+ * @typedef {Object} PumpResult
+ * @property {number}   sent      messages that left
+ * @property {number}   failed    messages that did not
+ * @property {boolean}  skipped   the pump was already running; nothing was done
+ * @property {string[]} sentIds   NAMESPACED ids of what left: `g:` for Gmail
+ *                                message ids (worker path), `q:` for outbox
+ *                                queue ids (fallback path, which has no Gmail
+ *                                id to offer). The prefix keeps the activity
+ *                                log from mixing two id spaces in one field.
+ * @property {boolean}  [more]    due items remain beyond this batch; the
+ *                                caller re-arms promptly
+ */
+
+/**
  * @typedef {Object} OutboxItem
  * @property {string} id
  * @property {'held'|'sending'|'failed'} state
@@ -205,9 +226,18 @@ export function canUndo(item, now = Date.now()) {
   return !!item && item.state === 'held' && item.releaseAt > now;
 }
 
+/**
+ * Errors that describe a PERMANENTLY lost draft attachment (bug-hunt 43 #33).
+ * Retrying these cannot succeed -- the source part is gone -- so the first
+ * such failure goes straight to stuck. The user's retry button (retryNow)
+ * stays the explicit override.
+ */
+const ATTACHMENT_LOST = /Cannot recover attachment|Could not read attachment/;
+
 /** Record a failure and schedule the retry. Returns a NEW item. */
 export function markFailed(item, error, now = Date.now()) {
-  const message = String(error || 'Send failed').slice(0, 200);
+  const full = String(error || 'Send failed');
+  const message = full.slice(0, 200);
   let attempts = item.attempts + 1;
   /*
    * THE SAME FAILURE TWICE IS A DIAGNOSIS, NOT A COINCIDENCE (bug-hunt #33).
@@ -218,7 +248,16 @@ export function markFailed(item, error, now = Date.now()) {
    * (retryNow resets the count), which is exactly the right place for a
    * human judgement call.
    */
-  if (item.error && item.error === message) attempts = MAX_ATTEMPTS;
+  /*
+   * SAME-FAILURE SHORT-CIRCUIT. Compared on the FULL error string, not the
+   * truncated one (bug-hunt 43 #3): two different long errors that happen to
+   * share their first 200 characters are not the same diagnosis, and the
+   * stored copy is truncated for display, not for identity.
+   */
+  const prevFull = item._fullError || item.error || '';
+  if (prevFull && prevFull === full) attempts = MAX_ATTEMPTS;
+  // A lost attachment never heals by waiting (bug-hunt 43 #33).
+  if (ATTACHMENT_LOST.test(full)) attempts = MAX_ATTEMPTS;
   const wait = BACKOFF_MS[Math.min(attempts - 1, BACKOFF_MS.length - 1)];
   return {
     ...item,
@@ -226,6 +265,9 @@ export function markFailed(item, error, now = Date.now()) {
     attempts,
     nextAttempt: now + wait,
     error: message,
+    // Identity copy, trimmed from the persisted blob by normaliseOutbox; the
+    // comparison above needs the untruncated string.
+    _fullError: full,
   };
 }
 
@@ -367,7 +409,9 @@ export async function flushOutbox({ send, storage = STORAGE, now = Date.now(), o
 
       try {
         const res = await send(item.draft);
-        sentIds.push(res?.id || item.id);
+        // NAMESPACED (PumpResult contract): Gmail id when the wire gave one,
+        // queue id otherwise -- never a bare value from mixed spaces.
+        sentIds.push(res?.id ? `g:${res.id}` : `q:${item.id}`);
         items = items.filter((x) => x.id !== item.id);
         await releaseClaim(storage, item.id);
         sent++;
@@ -380,6 +424,24 @@ export async function flushOutbox({ send, storage = STORAGE, now = Date.now(), o
       await saveOutbox(items, storage);
       onChange?.(items);
     }
+
+    /*
+     * CLAIM GARBAGE COLLECTION (bug-hunt 43 #18). releaseClaim runs on the
+     * success path only; ids that left the queue by any OTHER route (cancel,
+     * a crash before release) used to linger in the claims map forever. The
+     * TTL gates freshness, but nothing removed the corpses -- so sweep any
+     * claim whose item is no longer queued.
+     */
+    try {
+      const got = (await storage.get(CLAIM_KEY)) || {};
+      const claims = got[CLAIM_KEY] || {};
+      const alive = new Set(items.map((x) => x.id));
+      let changed = false;
+      for (const id of Object.keys(claims)) {
+        if (!alive.has(id)) { delete claims[id]; changed = true; }
+      }
+      if (changed) await storage.set({ [CLAIM_KEY]: claims });
+    } catch { /* the TTL remains the backstop */ }
 
     return { sent, failed, skipped: false, sentIds };
   } finally {
@@ -409,7 +471,13 @@ export async function cancel(id, storage = STORAGE) {
 export async function retryNow(id, storage = STORAGE, now = Date.now()) {
   const items = await loadOutbox(storage);
   const next = items.map((x) =>
-    x.id === id ? { ...x, state: 'failed', attempts: 0, nextAttempt: now } : x
+    // The stale error goes with the old attempts (bug-hunt 43 #4): keeping
+    // it made an identical retry failure read as "the same failure twice",
+    // short-circuiting straight back to stuck and showing "attempt 4 of 4"
+    // after the user pressed Retry once. A retry is a fresh judgement.
+    x.id === id
+      ? { ...x, state: 'failed', attempts: 0, nextAttempt: now, error: '', _fullError: '' }
+      : x
   );
   await saveOutbox(next, storage);
   return next.find((x) => x.id === id) || null;
