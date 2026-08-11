@@ -128,6 +128,15 @@ export async function api(path, init = {}) {
   // ~3.5s worst-case retry window (it is refreshed 60s early).
   const headers = await authHeaders(init.headers || {});
   const res = await fetchRetrying(`${BASE}${path}`, { ...init, headers }, path);
+  if (res.status === 401) {
+    // Separated auth states (V2 P1-10): renew once and retry; the renewal's
+    // own error taxonomy (revoked vs transient) propagates untouched.
+    await auth.forceRenew();
+    const h2 = await authHeaders(init.headers || {});
+    const r2 = await fetchRetrying(`${BASE}${path}`, { ...init, headers: h2 }, path);
+    if (r2.status === 204) return null;
+    return r2.json();
+  }
   if (res.status === 204) return null;
   return res.json();
 }
@@ -187,7 +196,14 @@ export async function batchMetadata(ids) {
     '/batch'
   );
   const text = await res.text();
-  return parseBatch(text).map(normalise).filter(Boolean);
+  const out = parseBatch(text).map(normalise).filter(Boolean);
+  // A batch whose sub-requests ALL died must read as a FAILURE, never as
+  // "zero messages" (V2 P2-20) -- an auth hiccup must not look like an
+  // empty inbox.
+  if (ids.length > 0 && out.length === 0) {
+    throw new Error('batch metadata returned nothing for ' + ids.length + ' ids');
+  }
+  return out;
 }
 
 /**

@@ -400,6 +400,17 @@ export async function signOut() {
  * implicit token expires hourly and its absence means "needs renewal", not
  * "signed out". Conflating the two would show the sign-in gate every hour.
  */
+/**
+ * The 401 path (V2 P1-10): a server-side revocation with a locally unexpired
+ * token must not loop the same bad token. Drop the token (keep consent) and
+ * renew once; getToken then mints fresh or throws the canonical states:
+ * NOT_SIGNED_IN (revoked consent) vs AUTH_RENEW_TRANSIENT (network).
+ */
+export async function forceRenew() {
+  await chrome.storage.local.remove(['accessToken', 'expiresAt']);
+  return getToken();
+}
+
 export async function isSignedIn() {
   const { authorized } = await chrome.storage.local.get('authorized');
   return Boolean(authorized);

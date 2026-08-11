@@ -99,7 +99,7 @@ export function parseQuery(q, now = Date.now(), ctx = {}) {
    * with no OR in it -- walks exactly the same code path it always did and
    * pays nothing for a feature it is not using.
    */
-  if (hasGrouping(tokens)) return parseGrouped(tokens, now);
+  if (hasGrouping(tokens)) return parseGrouped(tokens, now, ctx);
 
   return compileFlat(tokens, now, {}, ctx);
 }
@@ -157,7 +157,7 @@ function explode(tokens) {
  * yields everything, the predicate narrows it. Bounded by MAX_MESSAGES = 2000,
  * paid only by queries that actually contain an OR.
  */
-function parseGrouped(tokens, now) {
+function parseGrouped(tokens, now, ctx = {}) {
   const toks = explode(tokens);
   let i = 0;
   const operators = [];
@@ -197,7 +197,7 @@ function parseGrouped(tokens, now) {
     }
     if (t === ')') { i++; return null; }
     i++;
-    const one = compileFlat([t], now, { textAsPredicate: true });
+    const one = compileFlat([t], now, { textAsPredicate: true }, ctx);
     operators.push(...one.operators);
     return one.predicate || (() => true);
   }

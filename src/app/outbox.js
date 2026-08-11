@@ -266,7 +266,9 @@ const dispatching = new Set();
  */
 const TAB_ID = Math.random().toString(36).slice(2);
 const CLAIM_KEY = 'outboxClaims';
-const CLAIM_TTL = 90000;
+// Longer than the worst-case send (60s budget + retries); a claim that
+// expires mid-send is what let two tabs both believe they owned it (V2 P1-9).
+const CLAIM_TTL = 180000;
 
 /*
  * CROSS-TAB DOUBLE-SEND GUARD (cross-audit M3). Two Gmail tabs used to both
@@ -274,6 +276,17 @@ const CLAIM_TTL = 90000;
  * per-tab, so nothing coordinated them. A claim in shared storage, renewed
  * per dispatch and respected while fresh, makes the second tab stand down.
  */
+async function releaseClaim(storage, id) {
+  try {
+    const got = (await storage.get(CLAIM_KEY)) || {};
+    const claims = got[CLAIM_KEY] || {};
+    if (claims[id]?.tab === TAB_ID) {
+      delete claims[id];
+      await storage.set({ [CLAIM_KEY]: claims });
+    }
+  } catch { /* best-effort; the TTL is the backstop */ }
+}
+
 async function claim(storage, id, now) {
   try {
     const got = (await storage.get(CLAIM_KEY)) || {};
@@ -302,7 +315,10 @@ export async function flushOutbox({ send, storage = chrome.storage?.local, now =
     for (const item of due) {
       // Claim it before awaiting, so a concurrent load cannot pick it up.
       dispatching.add(item.id);
-      if (!(await claim(storage, item.id, now))) continue; // another tab owns it
+      if (!(await claim(storage, item.id, now))) {
+        dispatching.delete(item.id); // denied claims must not leak (V2 P1-9)
+        continue; // another tab owns it
+      }
       items = items.map((x) => (x.id === item.id ? { ...x, state: 'sending' } : x));
       await saveOutbox(items, storage);
       onChange?.(items);
@@ -310,6 +326,7 @@ export async function flushOutbox({ send, storage = chrome.storage?.local, now =
       try {
         await send(item.draft);
         items = items.filter((x) => x.id !== item.id);
+        await releaseClaim(storage, item.id);
         sent++;
       } catch (err) {
         items = items.map((x) => (x.id === item.id ? markFailed(x, err?.message || err, now) : x));

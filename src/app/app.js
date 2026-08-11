@@ -1877,9 +1877,6 @@ function renderMessageDeadline(m) {
   box.className = `r-due r-due-${band}`;
   box.replaceChildren(frag);
   box.hidden = false;
-  // Combobox contract (40-ENG section 8): the field announces the popup and
-  // names the list it controls, so a screen reader treats this as one widget.
-  el.search.setAttribute('aria-expanded', 'true');
 }
 
 function renderTimetableEffects(id) {
@@ -3022,14 +3019,21 @@ async function applyRules(records) {
     const spec = BULK_ACTIONS[batch.type === 'markRead' ? 'read' : batch.type];
     if (!spec) continue;
     try {
-      await send('BULK', { ids: batch.ids, add: spec.add || [], remove: spec.remove || [] });
+      const res = await send('BULK', { ids: batch.ids, add: spec.add || [], remove: spec.remove || [] });
+      const failed = new Set(res?.failed || []);
+      const applied = batch.ids.filter((id) => !failed.has(id));
+      // Local state mirrors exactly what Gmail accepted (V2 P1-8); rejected
+      // ids were never touched locally, so there is nothing to roll back.
       store.batch(() => {
-        for (const id of batch.ids) {
+        for (const id of applied) {
           if (batch.type === 'archive') store.remove(id);
           else if (batch.type === 'markRead') store.patch(id, { unread: false });
           else if (batch.type === 'star') store.patch(id, { starred: true });
         }
       });
+      if (failed.size) {
+        activity.record({ verb: `RULE_${batch.type.toUpperCase()}`, ids: [...failed], actor: 'rule', outcome: 'partial' });
+      }
       const who = Object.keys(fired).map((id) => named.get(id)).filter(Boolean)[0];
       activity.record({
         verb: `RULE_${batch.type.toUpperCase()}`,
@@ -3090,7 +3094,13 @@ function autoArchive(records) {
    * and the user may not have been watching when it failed.
    */
   send('BULK', { ids, add, remove }).then(
-    () => {
+    (res) => {
+      const failed = reconcileBulk(res, records);
+      if (failed.length) {
+        activity.record({ verb: 'BULK_ARCHIVE', ids: failed, actor: 'auto', outcome: 'partial' });
+        toast(`Auto-archived ${ids.length - failed.length} of ${ids.length}`, { kind: 'error' });
+        return;
+      }
       toast(`Auto-archived ${ids.length} message${ids.length === 1 ? '' : 's'}`);
       recordUndo(ctx, `Auto-archived ${ids.length}`, async () => {
         for (const s of snapshots) store.upsert(s);
@@ -5111,14 +5121,8 @@ async function bulkAct(kind, explicitIds = null) {
 
   try {
     const res = await send('BULK', { ids, add, remove });
-    const failed = res?.failed || [];
+    const failed = reconcileBulk(res, snapshots);
     if (failed.length) {
-      // Partial failure: restore ONLY what Gmail rejected (H6), so the list
-      // agrees with the server on both halves and the toast tells the truth.
-      const doomed = new Set(failed);
-      store.batch(() => {
-        for (const m of snapshots) if (doomed.has(m.id)) store.upsert(m);
-      });
       activity.record({ verb: `BULK_${kind.toUpperCase()}`, ids: failed, actor: 'user', outcome: 'partial', error: `${failed.length} failed` });
       toast(`${kind}: ${n - failed.length} of ${n} applied`, { kind: 'error' });
       return;
@@ -5150,6 +5154,22 @@ async function bulkAct(kind, explicitIds = null) {
     await send('BULK', { ids, add: remove, remove: add });
     activity.record({ verb: `BULK_${kind.toUpperCase()}`, ids, actor: 'user', detail: 'undo' });
   });
+}
+
+/**
+ * ONE reconciliation contract for partial bulk results (V2 P1-8). Every
+ * caller -- user bulkAct, auto-archive, rule batches -- restores exactly the
+ * ids Gmail rejected and reports the split; no call site interprets
+ * `res.failed` on its own anymore.
+ */
+function reconcileBulk(res, snapshots) {
+  const failed = res?.failed || [];
+  if (!failed.length) return failed;
+  const doomed = new Set(failed);
+  store.batch(() => {
+    for (const m of snapshots) if (doomed.has(m.id)) store.upsert(m);
+  });
+  return failed;
 }
 
 /** Prepend an icon to a labelled button, preserving its text. */
