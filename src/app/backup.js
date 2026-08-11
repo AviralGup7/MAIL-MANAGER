@@ -1,3 +1,5 @@
+import { STORAGE } from '../platform/storage.js';
+
 /**
  * Local export and import.  (Feature 87.)
  *
@@ -115,7 +117,7 @@ export const NEVER_EXPORT = ['token', 'accessToken', 'refreshToken', 'auth', 'me
  * `outbox` is excluded on purpose despite being user data: importing a queue
  * of pending sends onto a second machine would send them twice.
  */
-export async function exportBackup(storage = chrome.storage?.local, { now = Date.now() } = {}) {
+export async function exportBackup(storage = STORAGE, { now = Date.now() } = {}) {
   const data = {};
   for (const key of EXPORTED_KEYS) {
     try {
@@ -186,7 +188,7 @@ export function validateBackup(raw) {
  * exactly the kind of irreversible surprise this project keeps designing
  * against. The user sees this before anything is written.
  */
-export async function previewImport(raw, storage = chrome.storage?.local) {
+export async function previewImport(raw, storage = STORAGE) {
   const check = validateBackup(raw);
   if (!check.ok) return check;
 
@@ -240,7 +242,7 @@ function countOf(v) {
  *
  * @param {{mode?:'replace'|'merge'}} [opts]
  */
-export async function importBackup(raw, storage = chrome.storage?.local, { mode = 'replace' } = {}) {
+export async function importBackup(raw, storage = STORAGE, { mode = 'replace' } = {}) {
   const check = validateBackup(raw);
   if (!check.ok) return { ok: false, reason: check.reason, applied: [], failed: [] };
 

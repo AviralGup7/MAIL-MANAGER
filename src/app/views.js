@@ -1,3 +1,5 @@
+import { STORAGE } from '../platform/storage.js';
+
 /**
  * Saved views.
  *
@@ -90,7 +92,7 @@ export const BUILTIN_VIEWS = [
 ];
 
 /** Load saved views, built-ins first. Never throws. */
-export async function loadViews(storage = chrome.storage.local) {
+export async function loadViews(storage = STORAGE) {
   let custom = [];
   let hidden = [];
   try {
@@ -129,7 +131,7 @@ function isValidView(v) {
  * Save a new view.
  * @returns {Promise<{ok:boolean, error?:string, view?:object}>}
  */
-export async function saveView(name, query, storage = chrome.storage.local) {
+export async function saveView(name, query, storage = STORAGE) {
   const clean = String(name || '').trim().slice(0, 40);
   const q = String(query || '').trim();
   if (!clean) return { ok: false, error: 'Give the view a name.' };
@@ -160,7 +162,7 @@ export async function saveView(name, query, storage = chrome.storage.local) {
  * A built-in is HIDDEN rather than deleted, so a user who removes "Overdue"
  * and later wants it back does not have to remember the syntax.
  */
-export async function removeView(id, storage = chrome.storage.local) {
+export async function removeView(id, storage = STORAGE) {
   const raw = await readRaw(storage);
   const next = BUILTIN_VIEWS.some((v) => v.id === id)
     ? { ...raw, hidden: [...new Set([...(raw.hidden || []), id])] }
@@ -169,7 +171,7 @@ export async function removeView(id, storage = chrome.storage.local) {
 }
 
 /** Restore every hidden built-in. */
-export async function restoreBuiltins(storage = chrome.storage.local) {
+export async function restoreBuiltins(storage = STORAGE) {
   const raw = await readRaw(storage);
   return write({ ...raw, hidden: [] }, storage, 'Could not restore the views.');
 }

@@ -1,3 +1,5 @@
+import { STORAGE } from '../platform/storage.js';
+
 /**
  * Local draft persistence and crash recovery.
  *
@@ -46,7 +48,7 @@ export function isMeaningful(draft) {
   );
 }
 
-export async function saveDraft(draft, storage = chrome.storage.local, now = Date.now()) {
+export async function saveDraft(draft, storage = STORAGE, now = Date.now()) {
   try {
     await storage.set({ [KEY]: { ...draft, savedAt: now } });
     return true;
@@ -57,7 +59,7 @@ export async function saveDraft(draft, storage = chrome.storage.local, now = Dat
   }
 }
 
-export async function loadDraft(storage = chrome.storage.local) {
+export async function loadDraft(storage = STORAGE) {
   try {
     const got = (await storage.get(KEY)) || {};
     const d = got[KEY];
@@ -69,7 +71,7 @@ export async function loadDraft(storage = chrome.storage.local) {
   }
 }
 
-export async function clearDraft(storage = chrome.storage.local) {
+export async function clearDraft(storage = STORAGE) {
   try {
     await storage.remove(KEY);
     return true;
@@ -88,7 +90,7 @@ export async function clearDraft(storage = chrome.storage.local) {
  * `flush()` is the important part. It is called on `pagehide`, where a
  * debounced timer would never fire because the page is already going away.
  */
-export function createDraftSaver(collect, storage = chrome.storage.local, opts = {}) {
+export function createDraftSaver(collect, storage = STORAGE, opts = {}) {
   const delay = opts.delayMs ?? AUTOSAVE_MS;
   const setT = opts.setTimeout ?? setTimeout;
   const clearT = opts.clearTimeout ?? clearTimeout;

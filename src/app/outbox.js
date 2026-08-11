@@ -1,3 +1,5 @@
+import { STORAGE } from '../platform/storage.js';
+
 /**
  * The outbox: queued sends, undo-send, and retry.  (Features 13 and 14.)
  *
@@ -102,7 +104,7 @@ export function normaliseOutbox(raw) {
   return out;
 }
 
-export async function loadOutbox(storage = chrome.storage?.local) {
+export async function loadOutbox(storage = STORAGE) {
   try {
     const got = (await storage.get(KEY)) || {};
     return normaliseOutbox(got[KEY]);
@@ -111,7 +113,7 @@ export async function loadOutbox(storage = chrome.storage?.local) {
   }
 }
 
-export async function saveOutbox(items, storage = chrome.storage?.local) {
+export async function saveOutbox(items, storage = STORAGE) {
   try {
     await storage.set({ [KEY]: normaliseOutbox(items) });
     return true;
@@ -301,7 +303,7 @@ async function claim(storage, id, now) {
   }
 }
 
-export async function flushOutbox({ send, storage = chrome.storage?.local, now = Date.now(), onChange } = {}) {
+export async function flushOutbox({ send, storage = STORAGE, now = Date.now(), onChange } = {}) {
   if (inFlight) return { sent: 0, failed: 0, skipped: true };
   inFlight = true;
   try {
@@ -345,7 +347,7 @@ export async function flushOutbox({ send, storage = chrome.storage?.local, now =
 }
 
 /** Remove one item -- the undo path, and the "cancel" button on a stuck item. */
-export async function cancel(id, storage = chrome.storage?.local) {
+export async function cancel(id, storage = STORAGE) {
   const items = await loadOutbox(storage);
   const item = items.find((x) => x.id === id);
   if (!item) return null;
@@ -363,7 +365,7 @@ export async function cancel(id, storage = chrome.storage?.local) {
 }
 
 /** Retry a stuck item now, resetting its backoff. */
-export async function retryNow(id, storage = chrome.storage?.local, now = Date.now()) {
+export async function retryNow(id, storage = STORAGE, now = Date.now()) {
   const items = await loadOutbox(storage);
   const next = items.map((x) =>
     x.id === id ? { ...x, state: 'failed', attempts: 0, nextAttempt: now } : x

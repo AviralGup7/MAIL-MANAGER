@@ -1,3 +1,5 @@
+import { STORAGE } from '../platform/storage.js';
+
 /**
  * Deadline overrides: corrections and manual entries.  (Features 60 and 61.)
  *
@@ -71,7 +73,7 @@ export function normaliseOverrides(raw) {
   return out;
 }
 
-export async function loadOverrides(storage = chrome.storage?.local) {
+export async function loadOverrides(storage = STORAGE) {
   // Stash as the session canonical; dueAtOfNow serves every reader.
   try {
     const got = (await storage.get(KEY)) || {};
@@ -83,7 +85,7 @@ export async function loadOverrides(storage = chrome.storage?.local) {
   }
 }
 
-export async function saveOverrides(map, storage = chrome.storage?.local) {
+export async function saveOverrides(map, storage = STORAGE) {
   currentOverrides = map || {};
   try {
     await storage.set({ [KEY]: normaliseOverrides(map) });

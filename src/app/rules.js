@@ -34,6 +34,7 @@
  */
 
 import { addressOf } from './contacts.js';
+import { STORAGE } from '../platform/storage.js';
 
 const KEY = 'categoryRules';
 
@@ -68,7 +69,7 @@ export function normaliseRules(raw) {
   return out;
 }
 
-export async function loadRules(storage = chrome.storage.local) {
+export async function loadRules(storage = STORAGE) {
   try {
     const got = (await storage.get(KEY)) || {};
     return normaliseRules(got[KEY]);
@@ -77,7 +78,7 @@ export async function loadRules(storage = chrome.storage.local) {
   }
 }
 
-export async function saveRules(rules, storage = chrome.storage.local) {
+export async function saveRules(rules, storage = STORAGE) {
   try {
     await storage.set({ [KEY]: normaliseRules(rules) });
     return true;

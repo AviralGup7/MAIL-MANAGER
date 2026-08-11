@@ -47,6 +47,7 @@
 
 import { dueAtOfNow } from './deadline-store.js';
 import { parseQuery } from './query.js';
+import { STORAGE } from '../platform/storage.js';
 
 const KEY = 'automationRules';
 
@@ -126,7 +127,7 @@ export function normaliseRuleList(raw) {
   return out;
 }
 
-export async function loadRuleList(storage = chrome.storage.local) {
+export async function loadRuleList(storage = STORAGE) {
   try {
     const got = (await storage.get(KEY)) || {};
     return normaliseRuleList(got[KEY]);
@@ -135,7 +136,7 @@ export async function loadRuleList(storage = chrome.storage.local) {
   }
 }
 
-export async function saveRuleList(rules, storage = chrome.storage.local) {
+export async function saveRuleList(rules, storage = STORAGE) {
   try {
     await storage.set({ [KEY]: normaliseRuleList(rules) });
     return true;

@@ -1,3 +1,5 @@
+import { STORAGE } from '../platform/storage.js';
+
 /**
  * The activity log.  (Feature 86.)
  *
@@ -88,7 +90,7 @@ export function prune(entries, now = Date.now()) {
     .slice(0, MAX_ENTRIES);
 }
 
-export async function loadLog(storage = chrome.storage.local) {
+export async function loadLog(storage = STORAGE) {
   try {
     const got = (await storage.get(KEY)) || {};
     return normaliseLog(got[KEY]);
@@ -119,7 +121,7 @@ export const FLUSH_MS = 1500;
  * are swallowed: a log that can break the action it is logging is worse than
  * no log.
  */
-export function record(entry, { storage = chrome.storage?.local, now = Date.now() } = {}) {
+export function record(entry, { storage = STORAGE, now = Date.now() } = {}) {
   const ids = Array.isArray(entry.ids) ? entry.ids : [];
   pending.push({
     at: Number.isFinite(entry.at) ? entry.at : now,
@@ -144,7 +146,7 @@ export function record(entry, { storage = chrome.storage?.local, now = Date.now(
 }
 
 /** Commit queued entries. Safe to call at any time. */
-export async function flush({ storage = chrome.storage?.local, now = Date.now() } = {}) {
+export async function flush({ storage = STORAGE, now = Date.now() } = {}) {
   if (pending.length === 0 || !storage) return 0;
   const batch = pending;
   pending = [];
@@ -168,7 +170,7 @@ export async function flush({ storage = chrome.storage?.local, now = Date.now() 
  * an action that looks like it stuck. Matches on verb and the id set, because
  * undoing the second-most-recent archive is possible from the history panel.
  */
-export async function markUndone(verb, ids, { storage = chrome.storage?.local } = {}) {
+export async function markUndone(verb, ids, { storage = STORAGE } = {}) {
   if (!storage) return false;
   try {
     const log = await loadLog(storage);
@@ -186,7 +188,7 @@ export async function markUndone(verb, ids, { storage = chrome.storage?.local } 
 }
 
 /** Wipe the log. Offered in options; an activity log nobody can clear is a trap. */
-export async function clearLog(storage = chrome.storage?.local) {
+export async function clearLog(storage = STORAGE) {
   pending = [];
   try {
     await storage?.remove(KEY);

@@ -1,3 +1,5 @@
+import { STORAGE } from '../platform/storage.js';
+
 /**
  * Message templates.  (Feature 16, absorbing feature 18's reply presets.)
  *
@@ -133,7 +135,7 @@ export function normaliseTemplates(raw) {
   return out;
 }
 
-export async function loadTemplates(storage = chrome.storage?.local) {
+export async function loadTemplates(storage = STORAGE) {
   let custom = [];
   let hidden = [];
   try {
@@ -147,7 +149,7 @@ export async function loadTemplates(storage = chrome.storage?.local) {
   return [...BUILTIN_TEMPLATES.filter((t) => !hidden.includes(t.id)), ...custom];
 }
 
-export async function saveTemplate(tpl, storage = chrome.storage?.local) {
+export async function saveTemplate(tpl, storage = STORAGE) {
   try {
     const got = (await storage.get(KEY)) || {};
     const blob = got[KEY] || {};
@@ -171,7 +173,7 @@ export async function saveTemplate(tpl, storage = chrome.storage?.local) {
  * the shipped set is code, so "deleting" one has to be recorded as a hide or
  * it returns on the next load and the user thinks the app is broken.
  */
-export async function removeTemplate(id, storage = chrome.storage?.local) {
+export async function removeTemplate(id, storage = STORAGE) {
   try {
     const got = (await storage.get(KEY)) || {};
     const blob = got[KEY] || {};

@@ -96,6 +96,7 @@ import {
   MUTED_CATEGORIES,
 } from '../classify/categories.js';
 import { courseNumbersIn, isAcademicSender } from './timetable-mail.js';
+import { STORAGE } from '../platform/storage.js';
 
 // ---------------------------------------------------------------- constants --
 
@@ -604,7 +605,7 @@ let cacheQuotaWarned = false;
 const saver = createSaver(() => {
   const inbox = stores.get('inbox');
   return inbox.idsFor('all').slice(0, CACHE_MAX).map((id) => inbox.get(id)).filter((m) => m && !m.fromSearch);
-}, chrome.storage.local, {
+}, STORAGE, {
   // P-7: a full local-storage quota used to fail silently — the cache is an
   // optimisation, but the user should know offline paint is degraded. Once
   // per session; every failed write is not worth a toast each.
@@ -2249,7 +2250,7 @@ function tagNode(text, color) {
  */
 let imageAllowList = new Set();
 
-export async function loadImageAllowList(storage = chrome.storage?.local) {
+export async function loadImageAllowList(storage = STORAGE) {
   try {
     const { imageAllow } = (await storage.get('imageAllow')) || {};
     imageAllowList = new Set(Array.isArray(imageAllow) ? imageAllow : []);
@@ -2259,7 +2260,7 @@ export async function loadImageAllowList(storage = chrome.storage?.local) {
   return imageAllowList;
 }
 
-async function allowSenderImages(address, storage = chrome.storage?.local) {
+async function allowSenderImages(address, storage = STORAGE) {
   if (!address) return;
   imageAllowList.add(address);
   try {
@@ -2802,7 +2803,7 @@ async function act(action, id) {
         done: 'Back in your inbox',
         // Clear the local schedule before the request, so a failure cannot
         // leave a message scheduled locally but not remotely.
-        before: (mid) => removeSnooze(mid, chrome.storage.local),
+        before: (mid) => removeSnooze(mid, STORAGE),
       });
       break;
     case 'spam': {
@@ -2834,9 +2835,9 @@ async function snoozeMessage(id, wakeAt, label) {
     // The local schedule is written before the request and unwound on either
     // failure or undo -- a message must never be scheduled locally without
     // Gmail agreeing, nor left scheduled after the user takes it back.
-    before: () => addSnooze(id, wakeAt, chrome.storage.local),
-    rollback: () => removeSnooze(id, chrome.storage.local),
-    undoBefore: () => removeSnooze(id, chrome.storage.local),
+    before: () => addSnooze(id, wakeAt, STORAGE),
+    rollback: () => removeSnooze(id, STORAGE),
+    undoBefore: () => removeSnooze(id, STORAGE),
   });
 }
 
@@ -5257,6 +5258,11 @@ function cancelPendingWork() {
   outboxTimer = 0;
   clearTimeout(suggestBlurTimer);
   suggestBlurTimer = 0;
+  // The cache saver defers writes to idle/50ms. If the page is being torn
+  // down, a pending write must be cancelled — otherwise it fires into
+  // whatever context comes next (a test's next mock storage, or a closed
+  // extension page) and writes a stale blob over fresh state.
+  saver.invalidate();
   if (searchFrame) {
     cancelAnimationFrame(searchFrame);
     searchFrame = 0;

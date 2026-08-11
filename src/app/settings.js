@@ -1,3 +1,5 @@
+import { STORAGE } from '../platform/storage.js';
+
 /**
  * Settings.
  *
@@ -168,7 +170,7 @@ function coerce(key, raw) {
 }
 
 /** Load every known setting into the synchronous cache. Call once at boot. */
-export async function loadSettings(storage = chrome.storage.local) {
+export async function loadSettings(storage = STORAGE) {
   const keys = Object.keys(SCHEMA);
   let stored = {};
   try {
@@ -233,7 +235,7 @@ export function get(key) {
 }
 
 /** Write one setting. Cache updates before the storage round trip. */
-export async function set(key, value, storage = chrome.storage.local) {
+export async function set(key, value, storage = STORAGE) {
   if (!(key in SCHEMA)) throw new Error(`Unknown setting: ${key}`);
   const v = coerce(key, value);
   const prev = cache.get(key);
@@ -256,7 +258,7 @@ export function snapshot() {
 }
 
 /** Restore one key to its schema default. */
-export async function reset(key, storage = chrome.storage.local) {
+export async function reset(key, storage = STORAGE) {
   return set(key, SCHEMA[key].def, storage);
 }
 

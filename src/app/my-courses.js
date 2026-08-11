@@ -1,3 +1,5 @@
+import { STORAGE } from '../platform/storage.js';
+
 /**
  * My courses: the enrolment scoping primitive.  (Features 58 and 55.)
  *
@@ -62,7 +64,7 @@ export function normaliseEnrolment(raw) {
   return out;
 }
 
-export async function loadEnrolment(storage = chrome.storage?.local) {
+export async function loadEnrolment(storage = STORAGE) {
   try {
     const got = (await storage.get(KEY)) || {};
     return normaliseEnrolment(got[KEY]);
@@ -71,7 +73,7 @@ export async function loadEnrolment(storage = chrome.storage?.local) {
   }
 }
 
-export async function saveEnrolment(list, storage = chrome.storage?.local) {
+export async function saveEnrolment(list, storage = STORAGE) {
   try {
     await storage.set({ [KEY]: normaliseEnrolment(list) });
     return true;

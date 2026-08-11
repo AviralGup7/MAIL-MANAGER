@@ -147,22 +147,26 @@ test('with no rules, filtering is a pass-through', () => {
  * A mute that hides mail from an explicit request, or hides it with no
  * indication at all, is a feature that makes people distrust the whole app.
  */
+// applyMute moved to src/app/selectors.js (audit R-6); the guards it
+// enforces are pinned against the selector's source now.
+const selSrc = readFileSync(new URL('../src/app/selectors.js', import.meta.url), 'utf8');
+
 test('mute never applies outside the inbox', () => {
-  const fn = app.slice(app.indexOf('function applyMute('));
-  assert.ok(fn.slice(0, 500).includes("state.mailbox !== 'inbox'"));
+  const fn = selSrc.slice(selSrc.indexOf('export function applyMute'));
+  assert.ok(fn.slice(0, 600).includes("mailbox !== 'inbox'"));
 });
 
 test('opening a muted category by name still shows it', () => {
-  const fn = app.slice(app.indexOf('function applyMute('));
+  const fn = selSrc.slice(selSrc.indexOf('export function applyMute'));
   assert.ok(
-    fn.slice(0, 500).includes("state.category !== 'all'"),
+    fn.slice(0, 600).includes("category !== 'all'"),
     'asking for a category by name must override its mute'
   );
 });
 
 test('search overrides mute', () => {
-  const fn = app.slice(app.indexOf('function applyMute('));
-  assert.ok(fn.slice(0, 500).includes('state.query'));
+  const fn = selSrc.slice(selSrc.indexOf('export function applyMute'));
+  assert.ok(fn.slice(0, 600).includes('query'));
 });
 
 test('an all-muted list explains itself and offers a way out', () => {

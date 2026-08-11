@@ -1,3 +1,5 @@
+import { STORAGE } from '../platform/storage.js';
+
 /**
  * Search suggestions.  (Feature 43, absorbing 44 and 47.)
  *
@@ -87,7 +89,7 @@ export function normaliseHistory(raw) {
   return out;
 }
 
-export async function loadHistory(storage = chrome.storage?.local) {
+export async function loadHistory(storage = STORAGE) {
   try {
     return normaliseHistory((await storage.get(HISTORY_KEY))?.[HISTORY_KEY]);
   } catch {
@@ -130,7 +132,7 @@ export function addToHistory(history, query, now = Date.now()) {
   return [{ q, at: now }, ...kept].slice(0, MAX_HISTORY);
 }
 
-export async function saveHistory(history, storage = chrome.storage?.local) {
+export async function saveHistory(history, storage = STORAGE) {
   try {
     await storage.set({ [HISTORY_KEY]: normaliseHistory(history) });
     return true;

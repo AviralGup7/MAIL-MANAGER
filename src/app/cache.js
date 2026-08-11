@@ -108,6 +108,7 @@ const AUD_NAME = { d: 'direct', c: 'cc', b: 'broadcast' };
  * (LIST_HEADERS); a full header dump would bloat 500 rows for nothing.
  */
 import { LIST_HEADERS } from './direct.js';
+import { STORAGE } from '../platform/storage.js';
 
 function pack(m) {
   return [
@@ -197,7 +198,7 @@ function safeHeaders(json) {
  *
  * @returns {Promise<{messages:object[], savedAt:number}|null>}
  */
-export async function loadCache(storage = chrome.storage.local) {
+export async function loadCache(storage = STORAGE) {
   try {
     const got = await storage.get(KEY);
     const blob = got?.[KEY];
@@ -215,7 +216,7 @@ export async function loadCache(storage = chrome.storage.local) {
 }
 
 /** Write the cache immediately. Prefer `scheduleSave`. */
-export async function saveCache(messages, storage = chrome.storage.local) {
+export async function saveCache(messages, storage = STORAGE) {
   const slice = messages.length > CACHE_MAX ? messages.slice(0, CACHE_MAX) : messages;
   try {
     await storage.set({ [KEY]: { v: VERSION, t: Date.now(), m: slice.map(pack) } });
@@ -227,7 +228,7 @@ export async function saveCache(messages, storage = chrome.storage.local) {
   }
 }
 
-export async function clearCache(storage = chrome.storage.local) {
+export async function clearCache(storage = STORAGE) {
   try {
     await storage.remove(KEY);
   } catch {
@@ -243,7 +244,7 @@ export async function clearCache(storage = chrome.storage.local) {
  * The timeout guarantees it still happens on a busy page. Falls back to a
  * timer where idle callbacks are unavailable (notably jsdom).
  */
-export function createSaver(getMessages, storage = chrome.storage.local, opts = {}) {
+export function createSaver(getMessages, storage = STORAGE, opts = {}) {
   const { idleTimeout = 2000, minIntervalMs = 1000 } = opts;
   // Called when a deferred write fails (quota exceeded, storage
   // unavailable). The cache is an optimisation, so a failure must never

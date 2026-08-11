@@ -1,3 +1,5 @@
+import { STORAGE } from '../platform/storage.js';
+
 /**
  * Follow-ups: "I am waiting on a reply to this."  (Feature 6, absorbing 20.)
  *
@@ -76,7 +78,7 @@ export function normaliseFollowups(raw) {
   return out;
 }
 
-export async function loadFollowups(storage = chrome.storage?.local) {
+export async function loadFollowups(storage = STORAGE) {
   try {
     const got = (await storage.get(KEY)) || {};
     return normaliseFollowups(got[KEY]);
@@ -85,7 +87,7 @@ export async function loadFollowups(storage = chrome.storage?.local) {
   }
 }
 
-export async function saveFollowups(list, storage = chrome.storage?.local) {
+export async function saveFollowups(list, storage = STORAGE) {
   try {
     await storage.set({ [KEY]: normaliseFollowups(list).slice(0, MAX_FOLLOWUPS) });
     return true;

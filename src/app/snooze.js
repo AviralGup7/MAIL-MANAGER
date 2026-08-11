@@ -1,3 +1,5 @@
+import { STORAGE } from '../platform/storage.js';
+
 /**
  * Snooze.
  *
@@ -96,7 +98,7 @@ export function presets(now = Date.now(), ctx = {}) {
 }
 
 /** @returns {Promise<Record<string, {at:number, snoozedAt:number}>>} */
-export async function loadSnoozed(storage = chrome.storage.local) {
+export async function loadSnoozed(storage = STORAGE) {
   try {
     const got = (await storage.get(KEY)) || {};
     const raw = got[KEY];
@@ -106,7 +108,7 @@ export async function loadSnoozed(storage = chrome.storage.local) {
   }
 }
 
-export async function addSnooze(id, wakeAt, storage = chrome.storage.local, now = Date.now()) {
+export async function addSnooze(id, wakeAt, storage = STORAGE, now = Date.now()) {
   // A past-due snooze is due on the next tick and vanishes -- the presets
   // filter `> now`; the writer must enforce the same contract (B-09).
   if (!Number.isFinite(wakeAt) || wakeAt <= now) return null;
@@ -120,7 +122,7 @@ export async function addSnooze(id, wakeAt, storage = chrome.storage.local, now 
   return all;
 }
 
-export async function removeSnooze(id, storage = chrome.storage.local) {
+export async function removeSnooze(id, storage = STORAGE) {
   const all = await loadSnoozed(storage);
   if (!(id in all)) return all;
   delete all[id];

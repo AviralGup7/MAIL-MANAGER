@@ -21,6 +21,7 @@
  */
 
 import { emptyState } from './timetable.js';
+import { STORAGE } from '../platform/storage.js';
 
 const KEY = 'timetable';
 const SCHEMA = 1;
@@ -53,7 +54,7 @@ function usableEntry(e) {
   return true;
 }
 
-export async function loadTimetable(storage = chrome.storage.local) {
+export async function loadTimetable(storage = STORAGE) {
   try {
     const got = await storage.get(KEY);
     const blob = got?.[KEY];
@@ -102,7 +103,7 @@ export async function loadTimetable(storage = chrome.storage.local) {
  * channel it can surface. Returning void here was the exact defect found in
  * views.js: mutators that could fail silently inside async click handlers.
  */
-export async function saveTimetable(state, storage = chrome.storage.local) {
+export async function saveTimetable(state, storage = STORAGE) {
   try {
     await storage.set({ [KEY]: { ...state, schemaVersion: SCHEMA } });
     return { ok: true, error: null };
@@ -112,7 +113,7 @@ export async function saveTimetable(state, storage = chrome.storage.local) {
 }
 
 /** Remove the timetable entirely. Used by sign-out and by "start over". */
-export async function clearTimetable(storage = chrome.storage.local) {
+export async function clearTimetable(storage = STORAGE) {
   try {
     await storage.remove(KEY);
     return { ok: true, error: null };
