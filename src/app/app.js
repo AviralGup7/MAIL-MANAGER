@@ -44,8 +44,6 @@ import * as settings from './settings.js';
 import { addressOf } from './contacts.js';
 import { audienceOf } from './direct.js';
 import * as activity from './activity.js';
-import * as outbox from './outbox.js';
-import * as lanes from './lanes.js';
 import * as engine from './rule-engine.js';
 import * as followups from './followups.js';
 import * as deadlineStore from './deadline-store.js';
@@ -58,6 +56,10 @@ import {
   repaintBody, cancelMarkRead, loadImageAllowList, openPartId,
 } from './reader.js';
 import { wireSuggestUI, renderSuggestions, cancelSuggestBlur } from './suggest-ui.js';
+import {
+  wireRails, renderSnoozed, renderOutbox, pumpOutbox, cancelOutboxTimer,
+  insertLaneHeaders,
+} from './rails.js';
 import {
   CAT_COLOR, LOW_CONFIDENCE, displayName, shortDate, fullDate,
 } from './display.js';
@@ -82,10 +84,7 @@ import {
   isMuted, isAutoArchived, applyCorrection, correctSender, clearCorrection,
   mutedCount,
 } from './rules.js';
-import {
-  presets as snoozePresets, addSnooze, removeSnooze,
-  loadSnoozed, pending as pendingSnoozes, wakeLabel,
-} from './snooze.js';
+import { addSnooze, removeSnooze } from './snooze.js';
 import {
   undoStack, recordUndo, performUndo,
   renderRadar, wireRadar, renderReaderIdle,
@@ -3177,102 +3176,11 @@ function themeTick() {
  * back -- and offers the one action that was previously impossible: get it
  * back NOW, without waiting for the alarm.
  */
-async function renderSnoozed() {
-  const wrap = $('snoozed');
-  const list = $('snoozed-list');
-  if (!wrap || !list) return;
-
-  const all = await loadSnoozed();
-  const items = pendingSnoozes(all);
-  wrap.hidden = items.length === 0;
-  if (items.length === 0) return;
-
-  const frag = document.createDocumentFragment();
-  for (const it of items.slice(0, 8)) {
-    const li = document.createElement('li');
-    li.className = 'snoozed-item';
-
-    const what = document.createElement('span');
-    what.className = 'snoozed-what';
-    // The message may not be in the store -- it was removed from the inbox
-    // when snoozed -- so fall back to the stored subject rather than blank.
-    const m = store.get(it.id);
-    what.textContent = m?.subject || all[it.id]?.subject || 'Snoozed message';
-
-    const when = document.createElement('span');
-    when.className = 'snoozed-when';
-    when.textContent = wakeLabel(it.at);
-
-    const now = document.createElement('button');
-    now.type = 'button';
-    now.className = 'ghost small';
-    now.textContent = 'Wake';
-    now.onclick = async () => {
-      try {
-        await send('UNSNOOZE', { id: it.id });
-        activity.record({ verb: 'UNSNOOZE', ids: [it.id], actor: 'user' });
-        toast('Back in your inbox');
-        await renderSnoozed();
-        refresh({ silent: true });
-      } catch (err) {
-        toast(`Could not wake: ${err.message}`, { kind: 'error' });
-      }
-    };
-
-    li.append(what, when, now);
-    frag.appendChild(li);
-  }
-  list.replaceChildren(frag);
-}
 
 
 
-/**
- * Insert lane headers into a built fragment.
- *
- * Walks the rows in order, asks which lane each belongs to, and inserts a
- * header before the first row of each new lane. Order follows the lane
- * cascade, not the fragment, so a message that sorts late still appears under
- * the right heading -- rows are moved into lane order first.
- */
-function insertLaneHeaders(frag) {
-  const rows = [...frag.children].filter((n) => n.classList?.contains('row'));
-  if (rows.length === 0) return;
 
-  const answered = lanes.answeredPredicate(store, state.selfEmail);
-  const ctxArgs = { self: state.selfEmail, isAnswered: answered, dueAtOf: (m) => deadlineStore.dueAtOf(m, deadlineOverrides) };
 
-  const byLane = new Map();
-  for (const node of rows) {
-    const m = store.get(node.dataset.id);
-    if (!m) continue;
-    const lane = lanes.laneOf(m, ctxArgs);
-    if (!byLane.has(lane)) byLane.set(lane, []);
-    byLane.get(lane).push(node);
-  }
-
-  // Rebuild in lane order. Empty lanes are skipped entirely -- a heading over
-  // nothing is the problem the completeness audit found in Views.
-  for (const lane of lanes.LANES) {
-    const group = byLane.get(lane);
-    if (!group || group.length === 0) continue;
-
-    const head = document.createElement('div');
-    head.className = 'lane-head';
-    head.setAttribute('role', 'presentation');
-
-    const label = document.createElement('span');
-    label.textContent = lanes.LANE_LABELS[lane];
-
-    const count = document.createElement('span');
-    count.className = 'lane-count';
-    count.textContent = String(group.length);
-
-    head.append(label, count);
-    frag.appendChild(head);
-    for (const node of group) frag.appendChild(node);
-  }
-}
 
 /**
  * The class-change cards.
@@ -3416,149 +3324,7 @@ function endOfDay(ms) {
  * One timer, rescheduled from `nextWakeIn`, rather than a poll: a queue that
  * wakes every second to discover it has nothing to do is a battery bug.
  */
-let outboxTimer = 0;
-/** One toast per pump-failure episode; see pumpOutbox. */
-let pumpFailedNotified = false;
-/** How many sends had already given up, so only NEW failures are announced. */
-let newlyStuck = 0;
 
-async function pumpOutbox() {
-  clearTimeout(outboxTimer);
-  outboxTimer = 0;
-
-  /*
-   * DISPATCH GOES THROUGH THE WORKER (bug-hunt P1): one owner for the send
-   * loop across every tab, instead of a storage claim whose get-check-set
-   * two tabs could win at once. In fallback mode send() routes this same
-   * verb to the in-page runner, claim-guarded. Either way the answer shape
-   * is { sent, failed, skipped }.
-   */
-  let result;
-  try {
-    result = await send('OUTBOX_PUMP');
-    pumpFailedNotified = false;
-  } catch {
-    /*
-     * OBSERVABLE, NOT SILENT (bug-hunt #26). A broken pump used to map
-     * every error to {skipped:true} and say nothing; the user believed
-     * mail was queued while nothing could dispatch. One toast per failure
-     * episode -- the retry itself stays quiet.
-     */
-    if (!pumpFailedNotified) {
-      pumpFailedNotified = true;
-      toast('Outbox paused — sending will retry', { kind: 'error' });
-    }
-    result = { sent: 0, failed: 0, skipped: true };
-  }
-
-  if (result.sent) {
-    // WITH ids (bug-hunt #27): the log must be able to say WHICH message
-    // left, not just that something did.
-    activity.record({ verb: 'SEND', ids: result.sentIds || [], actor: 'user' });
-    toast(result.sent === 1 ? 'Message sent' : `${result.sent} messages sent`, { kind: 'success' });
-  }
-  if (result.failed) {
-    activity.record({ verb: 'SEND', ids: [], actor: 'user', outcome: 'failed' });
-  }
-
-  /*
-   * A SEND THAT HAS GIVEN UP MUST SAY SO, ONCE.
-   *
-   * The outbox row already reports "Retrying in 15s (attempt 2 of 4)" and turns
-   * red when it is stuck -- but that section only exists while the queue is
-   * non-empty, and the user has no reason to be looking at it. Their model is
-   * "I sent it"; the app's model is "attempt 4 failed". Nothing bridged those,
-   * so the worst outcome in the product -- a message the user believes they
-   * sent -- was recorded and never announced.
-   *
-   * Only on the FINAL failure. A toast per retry would train the user to
-   * ignore it, and the retries usually succeed.
-   */
-  const stuck = (await outbox.loadOutbox()).filter(outbox.isStuck);
-  if (stuck.length > newlyStuck) {
-    const who = displayName(stuck[0].draft?.to || '');
-    toast(
-      stuck.length === 1
-        ? `Could not send to ${who}`
-        : `${stuck.length} messages could not be sent`,
-      {
-        kind: 'error',
-        action: { label: 'Show', run: () => $('outbox')?.scrollIntoView({ block: 'nearest' }) },
-      }
-    );
-  }
-  newlyStuck = stuck.length;
-
-  const items = await outbox.loadOutbox();
-  renderOutbox(items);
-
-  // The pump batches (worker cap of 8); leftover due items come back on a
-  // short re-arm rather than waiting for the next natural wake (bug-hunt #32).
-  if (result?.more) {
-    outboxTimer = setTimeout(pumpOutbox, 250);
-    return;
-  }
-  const wake = outbox.nextWakeIn(items);
-  if (wake !== null) {
-    outboxTimer = setTimeout(pumpOutbox, Math.max(250, wake));
-  }
-}
-
-/**
- * The outbox rail row.
- *
- * Appears only when the queue is non-empty, the same rule #radar follows --
- * a permanent empty section is the "heading over dead whitespace" problem the
- * completeness audit found in the saved-views list.
- */
-async function renderOutbox(known) {
-  const wrap = $('outbox');
-  const list = $('outbox-list');
-  if (!wrap || !list) return;
-
-  const items = known || (await outbox.loadOutbox());
-  wrap.hidden = items.length === 0;
-  if (items.length === 0) return;
-
-  const frag = document.createDocumentFragment();
-  for (const it of items) {
-    const li = document.createElement('li');
-    li.className = 'outbox-item' + (outbox.isStuck(it) ? ' outbox-stuck' : '');
-
-    const who = document.createElement('span');
-    who.className = 'outbox-to';
-    who.textContent = displayName(it.draft?.to || '(no recipient)');
-
-    const status = document.createElement('span');
-    status.className = 'outbox-status';
-    status.textContent = outbox.statusOf(it);
-
-    li.append(who, status);
-
-    /*
-     * A stuck message needs a way out that is not "wait". Both actions are
-     * offered because they answer different questions: retry now for a network
-     * that has come back, discard for a message that is no longer wanted.
-     */
-    if (outbox.isStuck(it)) {
-      const retry = document.createElement('button');
-      retry.type = 'button';
-      retry.className = 'ghost small';
-      retry.textContent = 'Retry';
-      retry.onclick = async () => { await outbox.retryNow(it.id); pumpOutbox(); };
-
-      const drop = document.createElement('button');
-      drop.type = 'button';
-      drop.className = 'ghost small';
-      drop.textContent = 'Discard';
-      drop.onclick = async () => { await outbox.cancel(it.id); renderOutbox(); };
-
-      li.append(retry, drop);
-    }
-    frag.appendChild(li);
-  }
-  list.replaceChildren(frag);
-}
 
 /**
  * Push the density setting onto the root element.  (Feature 28.)
@@ -4429,8 +4195,7 @@ function cancelPendingWork() {
   // The outbox pump re-arms itself after every dispatch; a test that sends
   // (or cancels a send) must not leave that timer firing into a torn-down
   // document after restore.
-  clearTimeout(outboxTimer);
-  outboxTimer = 0;
+  cancelOutboxTimer();
   cancelSuggestBlur();
   // The cache saver defers writes to idle/50ms. If the page is being torn
   // down, a pending write must be cancelled — otherwise it fires into
@@ -4820,6 +4585,12 @@ async function boot() {
 
   // Extracted tenants (architecture audit phase 9): wiring only; state
   // ownership stays with the shell.
+  wireRails({
+    get store() { return store; },
+    send, state,
+    refresh: (o) => refresh(o),
+    overrides: () => deadlineOverrides,
+  });
   wireSuggestUI({
     get store() { return store; },
     el,
