@@ -4320,6 +4320,8 @@ function endOfDay(ms) {
  * wakes every second to discover it has nothing to do is a battery bug.
  */
 let outboxTimer = 0;
+/** One toast per pump-failure episode; see pumpOutbox. */
+let pumpFailedNotified = false;
 /** How many sends had already given up, so only NEW failures are announced. */
 let newlyStuck = 0;
 
@@ -4337,13 +4339,25 @@ async function pumpOutbox() {
   let result;
   try {
     result = await send('OUTBOX_PUMP');
+    pumpFailedNotified = false;
   } catch {
+    /*
+     * OBSERVABLE, NOT SILENT (bug-hunt #26). A broken pump used to map
+     * every error to {skipped:true} and say nothing; the user believed
+     * mail was queued while nothing could dispatch. One toast per failure
+     * episode -- the retry itself stays quiet.
+     */
+    if (!pumpFailedNotified) {
+      pumpFailedNotified = true;
+      toast('Outbox paused — sending will retry', { kind: 'error' });
+    }
     result = { sent: 0, failed: 0, skipped: true };
   }
-  renderOutbox();
 
   if (result.sent) {
-    activity.record({ verb: 'SEND', ids: [], actor: 'user' });
+    // WITH ids (bug-hunt #27): the log must be able to say WHICH message
+    // left, not just that something did.
+    activity.record({ verb: 'SEND', ids: result.sentIds || [], actor: 'user' });
     toast(result.sent === 1 ? 'Message sent' : `${result.sent} messages sent`, { kind: 'success' });
   }
   if (result.failed) {
@@ -4381,6 +4395,12 @@ async function pumpOutbox() {
   const items = await outbox.loadOutbox();
   renderOutbox(items);
 
+  // The pump batches (worker cap of 8); leftover due items come back on a
+  // short re-arm rather than waiting for the next natural wake (bug-hunt #32).
+  if (result?.more) {
+    outboxTimer = setTimeout(pumpOutbox, 250);
+    return;
+  }
   const wake = outbox.nextWakeIn(items);
   if (wake !== null) {
     outboxTimer = setTimeout(pumpOutbox, Math.max(250, wake));

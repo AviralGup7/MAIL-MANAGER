@@ -574,9 +574,20 @@ async function doSend(ctx) {
  */
 async function openTemplateMenu(ctx, anchor) {
   const list = await templates.loadTemplates();
+  /*
+   * {{course}} DOES NOT COME OFF THE WIRE (bug-hunt #24). The GET_BODY
+   * shape has no course field -- adding one just for templates would be a
+   * second course-detection mechanism. The canonical CLASSIFIED record
+   * already carries `courses` (stamped at ingest, same field the row chip
+   * renders), so the store is where this reads it from.
+   */
+  const replyTo = composeMeta.replyTo || null;
+  const rec = replyTo?.id ? ctx.store?.get?.(replyTo.id) : null;
   const values = templates.autoValues({
     profileName: ctx.profileName?.() || '',
-    message: composeMeta.replyTo || null,
+    message: replyTo
+      ? { ...replyTo, course: rec?.courses?.[0] || replyTo.course }
+      : null,
   });
 
   openMenu({

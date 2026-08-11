@@ -187,3 +187,17 @@ test('autoValues omits what it does not know rather than inventing it', () => {
   assert.equal(v.name, undefined);
   assert.equal(v.subject, undefined);
 });
+
+test('autoValues surfaces the canonical course (bug-hunt #24)', () => {
+  // {{course}} used to be impossible: autoValues read message.course, but
+  // the GET_BODY shape never had one. The fix routes the CLASSIFIED record
+  // in -- the store entry stamped at ingest, same field the row chip uses.
+  const v = autoValues({
+    profileName: 'aviral g',
+    message: { subject: 'Re: PS report', from: 'Prof <p@bits.ac.in>', course: 'PS F111' },
+  });
+  assert.equal(v.course, 'PS F111');
+  assert.equal(v.sender, 'Prof <p@bits.ac.in>');
+  const none = autoValues({ message: { subject: 'x' } });
+  assert.equal(none.course, undefined, 'no course -> no fake one');
+});

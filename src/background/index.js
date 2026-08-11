@@ -360,11 +360,25 @@ async function handle(msg) {
       outboxPumping = true;
       try {
         let items = await loadOutbox(chrome.storage.local);
-        const due = dueItems(items);
-        if (due.length === 0) return { sent: 0, failed: 0, skipped: false };
+        const allDue = dueItems(items);
+        if (allDue.length === 0) return { sent: 0, failed: 0, skipped: false };
+        /*
+         * BATCHED, NOT UNBOUNDED (bug-hunt #32). The verb's timeout is a
+         * session-level contract -- exceeding it degrades the WHOLE app to
+         * fallback -- so one pathological queue must not be able to spend
+         * it all. Eight items keeps the worst case well inside the budget;
+         * the app's timer re-arms for the rest (they are still due, so the
+         * next wake is immediate).
+         */
+        const due = allDue.slice(0, MAX_PUMP_BATCH);
+        const more = allDue.length > due.length;
 
         let sent = 0;
         let failed = 0;
+        // Which messages actually left: the activity log exists to answer
+        // "what actually changed", and a send entry with no id cannot
+        // (bug-hunt #27). Gmail's send response carries the message id.
+        const sentIds = [];
         for (const item of due) {
           // Persist `sending` BEFORE the request: the crash contract reads it
           // on next boot, and cancel() refuses a record in this state.
@@ -374,7 +388,8 @@ async function handle(msg) {
             // Preserved draft attachments hydrate at the wire (bug-hunt P0);
             // an unrecoverable part fails THIS item, loudly, not the batch.
             const draft = await hydrateDraftAttachments(item.draft);
-            await sendMessage(buildMime(draft), draft.threadId);
+            const res = await sendMessage(buildMime(draft), draft.threadId);
+            if (res?.id) sentIds.push(res.id);
             items = items.filter((x) => x.id !== item.id);
             sent++;
           } catch (err) {
@@ -384,7 +399,7 @@ async function handle(msg) {
           }
           await saveOutbox(items, chrome.storage.local);
         }
-        return { sent, failed, skipped: false };
+        return { sent, failed, skipped: false, sentIds, more };
       } finally {
         outboxPumping = false;
       }
@@ -613,6 +628,9 @@ function shortSender(from, max = 40) {
 
 /** Single-flight guard for OUTBOX_PUMP: one dispatch loop at a time. */
 let outboxPumping = false;
+
+/** Per-run dispatch cap; see OUTBOX_PUMP. */
+const MAX_PUMP_BATCH = 8;
 
 function scheduleBackgroundSync() {
   if (!chrome.alarms) return;

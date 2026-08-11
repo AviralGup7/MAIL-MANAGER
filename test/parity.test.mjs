@@ -135,3 +135,37 @@ test('GET_DRAFT stamps attachments with their owning message on both paths (bug-
     assert.ok(body.includes('messageId:'), `${name} must make preserved parts refetchable`);
   }
 });
+
+test('attachment preservation uses ONE hydrator on both paths (bug-hunt P0)', () => {
+  // Two implementations of "refetch preserved parts" would drift; the
+  // contract is that both verb tables call the SAME gmail.js function.
+  const f = read('src/app/fallback.js');
+  const w = read('src/background/index.js');
+  const g = read('src/background/gmail.js');
+  assert.match(g, /export async function hydrateDraftAttachments/,
+    'the hydrator lives in the wire layer');
+  for (const [name, src] of [['fallback', f], ['worker', w]]) {
+    assert.match(src, /hydrateDraftAttachments/,
+      `${name} must call the shared hydrator, not its own copy`);
+  }
+  assert.ok(!/function hydrateDraftAttachments/.test(f),
+    'the fallback must not define a second copy');
+});
+
+test('OUTBOX_PUMP is batched and answers sentIds on both paths (bug-hunt #32/#27)', () => {
+  const f = read('src/app/fallback.js');
+  const w = read('src/background/index.js');
+  assert.match(w, /MAX_PUMP_BATCH/, 'the worker caps one pump run');
+  assert.match(w, /allDue\.slice\(0, MAX_PUMP_BATCH\)/, 'the cap is applied to the due set');
+  assert.match(w, /more/, 'and reports leftover work for the re-arm');
+  assert.match(w, /sentIds/, 'the worker must report which messages left');
+  // The fallback delegates to the shared runner, which is where its sentIds
+  // come from -- pin both halves of that chain.
+  assert.match(f, /outbox\.flushOutbox/, 'fallback runs the shared runner');
+  const o = read('src/app/outbox.js');
+  assert.match(o, /sentIds/, 'the shared runner collects what left');
+  // The app records those ids, not an empty array.
+  const app = read('src/app/app.js');
+  assert.match(app, /ids: result\.sentIds \|\| \[\]/,
+    'the activity entry names the messages that were sent');
+});

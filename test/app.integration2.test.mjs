@@ -110,7 +110,7 @@ const MESSAGES = [
  * Boot app.html in jsdom.
  * Returns { win, doc, calls, settle } — `calls` records every worker message.
  */
-async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bodyOverride = {}, syncLatency = 0, perLabel = false, emptyLabels = [], labels = [], timetableData = null, storageTimetable = undefined, deadWorker = false, failVerbs = [] } = {}) {
+async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bodyOverride = {}, syncLatency = 0, perLabel = false, emptyLabels = [], labels = [], timetableData = null, storageTimetable = undefined, deadWorker = false, failVerbs = [], draftAttachments = false } = {}) {
   const html = readFileSync(join(ROOT, 'app.html'), 'utf8');
   const dom = new JSDOM(html, {
     url: 'chrome-extension://test/app.html',
@@ -273,12 +273,22 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
       case 'GET_DRAFT':
         // The worker resolves a MESSAGE id to a DRAFT id; the draftId is what
         // makes a re-save an update rather than a second copy.
+        //
+        // ATTACHMENTS ride along as METADATA (bug-hunt P0): filename/type/size
+        // plus the ids needed to refetch the bytes at send. The harness also
+        // records the metadata so tests can verify what the worker would have
+        // hydrated.
         return {
           ok: true,
           data: {
             draftId: `d-${msg.id}`, to: 'someone@pilani.bits-pilani.ac.in',
             cc: '', bcc: '', subject: 'Half-written', text: 'Unfinished thought',
             threadId: msg.id,
+            id: msg.id,
+            attachments: draftAttachments ? [
+              { filename: 'report.pdf', mimeType: 'application/pdf', size: 1234,
+                attachmentId: 'att-1', messageId: msg.id },
+            ] : [],
           },
         };
       case 'OUTBOX_PUMP': {
@@ -293,6 +303,7 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
         const now = Date.now();
         let sent = 0;
         let failed = 0;
+        const sentIds = [];
         const next = [];
         for (const it of items) {
           const isDue =
@@ -307,11 +318,12 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
             failed++;
           } else {
             calls.push({ type: 'SEND', draft: it.draft });
+            sentIds.push(`sent-${it.id}`);
             sent++;
           }
         }
         storage.outbox = next;
-        return { ok: true, data: { sent, failed, skipped: false } };
+        return { ok: true, data: { sent, failed, skipped: false, sentIds } };
       }
       default: return { ok: true, data: {} };
     }
@@ -3755,6 +3767,110 @@ test('DRAFTS: a draft can be opened, finished and re-saved', async (t) => {
       saves[saves.length - 1].draftId,
       're-saving must UPDATE the draft, not create a second copy'
     );
+  } finally {
+    restore();
+  }
+});
+
+test('DRAFTS: attachments survive the edit -> save round trip (bug-hunt P0)', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * THE REGRESSION THIS PINS. Editing a Gmail draft used to rebuild the MIME
+   * without the original attachments -- silent data loss rated Severe. The
+   * fix carries attachment METADATA through compose and hydrates the bytes
+   * at the wire. This test owns the app half of that contract:
+   *   GET_DRAFT(metadata) -> chip on screen -> SAVE_DRAFT still lists it.
+   * Hydration itself is unit-pinned in gmail.test.mjs; here we verify the
+   * metadata never falls off between opening and saving.
+   */
+  const { doc, win, calls, settle, restore } = await boot({ perLabel: true, draftAttachments: true });
+  try {
+    doc.querySelector('.cat[data-mailbox="drafts"]').click();
+    await settle(10);
+    rows(doc)[0].click();
+    await settle(8);
+    doc.querySelector('#r-actions button[data-act="edit"]').click();
+    await settle(10);
+
+    const box = doc.getElementById('c-files');
+    assert.equal(box.hidden, false, 'the preserved attachment must appear as a chip');
+    assert.match(box.textContent, /report\.pdf/, 'named, so the user can see what is kept');
+
+    doc.getElementById('c-text').value = 'Finished.';
+    doc.getElementById('c-draft').click();
+    await settle(12);
+
+    const saves = calls.filter((c) => c.type === 'SAVE_DRAFT');
+    assert.ok(saves.length, 'saving must reach Gmail');
+    const atts = saves[saves.length - 1].draft.attachments;
+    assert.ok(Array.isArray(atts) && atts.length === 1,
+      'the saved draft must still list its attachment');
+    assert.equal(atts[0].attachmentId, 'att-1', 'with the refetch source intact');
+    assert.equal(atts[0].data, undefined,
+      'metadata only -- the bytes are hydrated by the worker at the wire');
+  } finally {
+    restore();
+  }
+});
+
+test('DRAFTS: a preserved attachment survives SEND through the outbox (bug-hunt P0)', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // The send path: edited draft -> outbox -> OUTBOX_PUMP -> the wire. The
+  // queued draft must carry the metadata so the pump's hydrator can refetch.
+  // bootSending seeds undoSendSeconds: 0 so the item is due immediately.
+  const { doc, win, calls, settle, restore } = await bootSending({ perLabel: true, draftAttachments: true });
+  try {
+    doc.querySelector('.cat[data-mailbox="drafts"]').click();
+    await settle(10);
+    rows(doc)[0].click();
+    await settle(8);
+    doc.querySelector('#r-actions button[data-act="edit"]').click();
+    await settle(10);
+
+    doc.getElementById('c-to').value = 'a@pilani.bits-pilani.ac.in';
+    doc.getElementById('c-text').value = 'Sending the finished draft.';
+    doc.getElementById('c-send').click();
+    await settle(10);
+    await drainOutbox(win, settle);
+
+    const sent = calls.find((c) => c.type === 'SEND');
+    assert.ok(sent, 'the message must be sent');
+    const atts = sent.draft.attachments;
+    assert.ok(Array.isArray(atts) && atts.length === 1,
+      'the queued draft must carry its attachment');
+    assert.equal(atts[0].attachmentId, 'att-1');
+    assert.equal(atts[0].messageId, 'draft0', 'and the message to refetch it from');
+  } finally {
+    restore();
+  }
+});
+
+test('DRAFTS: removing a preserved chip drops it from the save (bug-hunt P0)', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // Preservation must stay a CHOICE: the user removes the chip, the save
+  // respects it. (The opposite direction -- dropping without asking -- was
+  // the original bug.)
+  const { doc, calls, settle, restore } = await boot({ perLabel: true, draftAttachments: true });
+  try {
+    doc.querySelector('.cat[data-mailbox="drafts"]').click();
+    await settle(10);
+    rows(doc)[0].click();
+    await settle(8);
+    doc.querySelector('#r-actions button[data-act="edit"]').click();
+    await settle(10);
+
+    const rm = doc.querySelector('#c-files button');
+    assert.ok(rm, 'the chip must be removable');
+    rm.click();
+    await settle(6);
+
+    doc.getElementById('c-text').value = 'No attachment now.';
+    doc.getElementById('c-draft').click();
+    await settle(12);
+
+    const saves = calls.filter((c) => c.type === 'SAVE_DRAFT');
+    const atts = saves[saves.length - 1].draft.attachments;
+    assert.ok(!atts || atts.length === 0, 'a removed chip must stay removed');
   } finally {
     restore();
   }

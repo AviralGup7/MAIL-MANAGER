@@ -317,3 +317,51 @@ test('editDraft carries preserved attachments into the panel (bug-hunt P0)', asy
   assert.ok(open.includes('f.attachmentId && f.messageId'),
     'metadata-only (preserved) attachments must be accepted, not filtered out');
 });
+
+test('autosave of a draft with a large attachment stays small (regression)', async () => {
+  /*
+   * The defect behind bug-hunt P0's companion finding: every 800ms autosave
+   * serialised the WHOLE draft, megabytes of attachment base64 included,
+   * into the same storage the message cache lives in. This pins the whole
+   * saver path -- schedule, debounce, write -- not just storable(): a 3MB
+   * attachment must produce a blob that is kilobytes, and the identity
+   * skip must still fire on unchanged drafts.
+   */
+  const s = fakeStorage();
+  const big = 'A'.repeat(3 * 1024 * 1024);
+  let collected = 0;
+  const saver = createDraftSaver(() => {
+    collected++;
+    return {
+      to: 'a@b.c', subject: 's', body: 'typed text', baseBody: '',
+      attachments: [
+        { filename: 'big.pdf', mimeType: 'application/pdf', size: 3 * 1024 * 1024, data: big },
+        { filename: 'kept.pdf', mimeType: 'application/pdf', size: 5,
+          attachmentId: 'att-9', messageId: 'm-9' },
+      ],
+    };
+  }, s, { setTimeout: (fn) => setTimeout(fn, 5), clearTimeout });
+
+  saver.schedule();
+  await new Promise((r) => setTimeout(r, 40));
+
+  const stored = (await s.get('composeDraft')).composeDraft;
+  const bytes = JSON.stringify(stored).length;
+  assert.ok(bytes < 10_000, `the blob must be tiny without the base64 (got ${bytes})`);
+  assert.equal(stored.attachments[0].data, undefined, 'chosen file: name kept, bytes dropped');
+  assert.equal(stored.attachments[1].attachmentId, 'att-9', 'preserved file: refetch source kept');
+  assert.ok(collected >= 1);
+});
+
+test('the template menu reads the course from the store, not the wire (bug-hunt #24)', async () => {
+  // Wiring pin for the {{course}} fix: compose must reach for the canonical
+  // classified record via ctx.store, not expect GET_BODY to carry a field it
+  // does not have (and never add a second course-detection mechanism).
+  const { readFileSync } = await import('node:fs');
+  const compose = readFileSync(new URL('../src/app/compose.js', import.meta.url), 'utf8');
+  const menu = compose.slice(compose.indexOf('async function openTemplateMenu'), compose.indexOf('async function openTemplateMenu') + 1200);
+  assert.ok(menu.includes('ctx.store?.get?.(replyTo.id)'),
+    'the course comes from the canonical store record');
+  assert.ok(menu.includes('rec?.courses?.[0]'),
+    'and from its stamped courses field');
+});

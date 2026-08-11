@@ -272,6 +272,7 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
         const now = Date.now();
         let sent = 0;
         let failed = 0;
+        const sentIds = [];
         const next = [];
         for (const it of items) {
           const isDue =
@@ -286,11 +287,12 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
             failed++;
           } else {
             calls.push({ type: 'SEND', draft: it.draft });
+            sentIds.push(`sent-${it.id}`);
             sent++;
           }
         }
         storage.outbox = next;
-        return { ok: true, data: { sent, failed, skipped: false } };
+        return { ok: true, data: { sent, failed, skipped: false, sentIds } };
       }
       default: return { ok: true, data: {} };
     }

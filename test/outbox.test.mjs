@@ -156,7 +156,10 @@ test('each failure waits longer than the last', () => {
   let it = enqueue(draft, { now: NOW, holdMs: 0 });
   const waits = [];
   for (let i = 0; i < MAX_ATTEMPTS; i++) {
-    it = markFailed(it, 'x', NOW);
+    // DISTINCT errors: an identical repeat now short-circuits to stuck
+    // (bug-hunt #33), which is exactly right -- this test is here for the
+    // backoff PROGRESSION, which applies while failures differ.
+    it = markFailed(it, `failure ${i}`, NOW);
     waits.push(it.nextAttempt - NOW);
   }
   for (let i = 1; i < waits.length; i++) {
@@ -167,7 +170,7 @@ test('each failure waits longer than the last', () => {
 
 test('retries stop after the cap rather than hammering forever', () => {
   let it = enqueue(draft, { now: NOW, holdMs: 0 });
-  for (let i = 0; i < MAX_ATTEMPTS; i++) it = markFailed(it, 'x', NOW);
+  for (let i = 0; i < MAX_ATTEMPTS; i++) it = markFailed(it, `failure ${i}`, NOW);
   assert.equal(isStuck(it), true);
   assert.deepEqual(dueItems([it], NOW + 10 ** 9), [], 'a stuck item is not retried');
 });
@@ -283,4 +286,37 @@ test('a held item with a corrupt releaseAt gets its hold back (bug-hunt #17)', (
   assert.ok(it.releaseAt >= 1000, 'must re-anchor to the queued time, not 0');
   assert.ok(!dueItems([it], 1001).length, 'not due one millisecond after queueing');
   assert.ok(dueItems([it], it.releaseAt).length, 'due exactly when the hold ends');
+});
+
+test('the SAME failure twice goes straight to stuck (bug-hunt #33)', () => {
+  // A permanently-lost draft attachment used to burn four identical retries
+  // over ~16 minutes. Repeating an error verbatim is a diagnosis: go stuck,
+  // and leave the escape hatch (retryNow resets attempts).
+  const first = markFailed(
+    { id: 'x', state: 'sending', draft: {}, queuedAt: 0, releaseAt: 0, attempts: 0, nextAttempt: 0 },
+    'Cannot recover attachment “report.pdf”', 1000
+  );
+  assert.equal(first.attempts, 1);
+  assert.ok(!isStuck(first), 'the first failure still earns retries');
+
+  const second = markFailed(first, 'Cannot recover attachment “report.pdf”', 2000);
+  assert.ok(isStuck(second), 'the identical second failure must give up');
+
+  // A DIFFERENT error is new information: retries continue.
+  const different = markFailed(first, 'Network error', 2000);
+  assert.ok(!isStuck(different), 'a new error is not the same diagnosis');
+});
+
+test('flushOutbox reports the ids of what actually left (bug-hunt #27)', async () => {
+  const storage = fakeStorage();
+  await saveOutbox([
+    { id: 'ob-1', state: 'held', draft: { to: 'a@b.c', body: 'x' }, queuedAt: 0, releaseAt: 0, attempts: 0, nextAttempt: 0 },
+  ], storage);
+  const res = await flushOutbox({
+    send: async () => ({ id: 'gmail-123', threadId: 't' }),
+    storage,
+    now: 1,
+  });
+  assert.equal(res.sent, 1);
+  assert.deepEqual(res.sentIds, ['gmail-123'], 'the wire id, so the activity log can name the message');
 });

@@ -189,14 +189,25 @@ export function canUndo(item, now = Date.now()) {
 
 /** Record a failure and schedule the retry. Returns a NEW item. */
 export function markFailed(item, error, now = Date.now()) {
-  const attempts = item.attempts + 1;
+  const message = String(error || 'Send failed').slice(0, 200);
+  let attempts = item.attempts + 1;
+  /*
+   * THE SAME FAILURE TWICE IS A DIAGNOSIS, NOT A COINCIDENCE (bug-hunt #33).
+   * A permanently-lost draft attachment used to burn all four retries --
+   * ~16 minutes of identical failures -- before going stuck. If the error
+   * repeats verbatim, retrying on the same backoff schedule will produce
+   * the same result; go straight to stuck. The user can still force a retry
+   * (retryNow resets the count), which is exactly the right place for a
+   * human judgement call.
+   */
+  if (item.error && item.error === message) attempts = MAX_ATTEMPTS;
   const wait = BACKOFF_MS[Math.min(attempts - 1, BACKOFF_MS.length - 1)];
   return {
     ...item,
     state: 'failed',
     attempts,
     nextAttempt: now + wait,
-    error: String(error || 'Send failed').slice(0, 200),
+    error: message,
   };
 }
 
@@ -319,6 +330,11 @@ export async function flushOutbox({ send, storage = STORAGE, now = Date.now(), o
 
     let sent = 0;
     let failed = 0;
+    // The ids of what actually left, for the activity log (bug-hunt #27).
+    // `send` returns the wire response when it can; the fallback path has
+    // no Gmail id to offer and pushes the queue id instead -- something is
+    // better than the empty array this used to record.
+    const sentIds = [];
 
     for (const item of due) {
       // Claim it before awaiting, so a concurrent load cannot pick it up.
@@ -332,7 +348,8 @@ export async function flushOutbox({ send, storage = STORAGE, now = Date.now(), o
       onChange?.(items);
 
       try {
-        await send(item.draft);
+        const res = await send(item.draft);
+        sentIds.push(res?.id || item.id);
         items = items.filter((x) => x.id !== item.id);
         await releaseClaim(storage, item.id);
         sent++;
@@ -346,7 +363,7 @@ export async function flushOutbox({ send, storage = STORAGE, now = Date.now(), o
       onChange?.(items);
     }
 
-    return { sent, failed, skipped: false };
+    return { sent, failed, skipped: false, sentIds };
   } finally {
     inFlight = false;
   }
