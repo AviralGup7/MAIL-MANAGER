@@ -125,3 +125,90 @@ export function promptDialog({ title, label, value = '', hint, submit }) {
     input.select();
   });
 }
+
+/**
+ * In-app confirm dialog — replaces the browser-native `confirm()`.
+ *
+ * Same reasons as promptDialog, plus one more: the native dialog's buttons
+ * cannot be named, so a destructive question says only "OK" — the word that
+ * trains the click. Here the action button names the ACTION ("Discard",
+ * "Send anyway"), the safe button is the default focus, and a destructive
+ * question wears the danger style.
+ *
+ * Contract: resolves true when confirmed, false on cancel/Escape/outside.
+ * The ONE focus contract (trap, Esc, focus-return) comes from the layer
+ * primitive, exactly like every other surface.
+ */
+export function confirmDialog({
+  title, body, confirmLabel = 'OK', cancelLabel = 'Cancel', danger = false,
+}) {
+  return new Promise((resolve) => {
+    const doc = globalThis.document;
+    if (!doc) { resolve(false); return; }
+
+    const back = doc.createElement('div');
+    back.className = 'prompt-backdrop';
+    const box = doc.createElement('div');
+    box.className = 'prompt-box';
+    box.setAttribute('role', danger ? 'alertdialog' : 'dialog');
+    box.setAttribute('aria-modal', 'true');
+    box.setAttribute('aria-labelledby', 'prompt-title');
+    if (danger) box.dataset.danger = 'true';
+
+    const h = doc.createElement('h3');
+    h.id = 'prompt-title';
+    h.textContent = title;
+    box.appendChild(h);
+
+    if (body) {
+      const p = doc.createElement('p');
+      p.className = 'prompt-hint';
+      p.textContent = body;
+      box.appendChild(p);
+    }
+
+    const row = doc.createElement('div');
+    row.className = 'prompt-actions';
+    const confirmBtn = doc.createElement('button');
+    confirmBtn.type = 'button';
+    confirmBtn.className = danger ? 'danger' : 'primary';
+    confirmBtn.textContent = confirmLabel;
+    const cancelBtn = doc.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.textContent = cancelLabel;
+    // Safe choice first and focused: the accidental Enter must never be the
+    // destructive one.
+    row.append(cancelBtn, confirmBtn);
+    box.appendChild(row);
+    back.appendChild(box);
+    doc.body.appendChild(back);
+
+    const finish = (v) => {
+      resolve(v);
+      if (layer?.close) layer.close();
+    };
+
+    const layer = openLayer({
+      name: 'confirm',
+      node: back,
+      restoreFocusTo: doc.activeElement,
+      dismissOnOutsideClick: true,
+      onClose: () => {
+        back.remove();
+        resolve(false);
+      },
+    });
+
+    // Minimal focus trap: two buttons, Tab cycles between them.
+    box.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); finish(false); return; }
+      if (e.key !== 'Tab') return;
+      e.preventDefault();
+      (doc.activeElement === cancelBtn ? confirmBtn : cancelBtn).focus();
+    });
+
+    confirmBtn.addEventListener('click', () => finish(true));
+    cancelBtn.addEventListener('click', () => finish(false));
+    cancelBtn.focus();
+  });
+}

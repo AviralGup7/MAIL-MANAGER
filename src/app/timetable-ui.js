@@ -16,7 +16,8 @@
  * the common case of "fix this room" feel like starting over.
  */
 
-import { openLayer } from './layers.js';
+import { openLayer, trapFocus } from './layers.js';
+import { confirmDialog } from './dialog.js';
 import { icon } from './icons.js';
 import {
   emptyState, addCourse, removeCourse, manualEdit, setLocked,
@@ -314,6 +315,8 @@ export function openTimetable(ctx) {
   node.id = 'tt-panel';
 
   document.body.appendChild(node);
+  // role=dialog promises the keyboard stays inside; make it true (round 45).
+  trapFocus(node);
   layer = openLayer({
     name: 'timetable',
     node,
@@ -398,12 +401,12 @@ function header() {
        * Everything else in this system updates incrementally, so throwing the
        * timetable away is the one action that deserves a confirm.
        */
-      const ok = typeof confirm === 'function'
-        ? confirm(
-          `Delete all ${state.entries.length} classes and start again?\n\n` +
-          'Your manual edits and change history will be lost.'
-        )
-        : true;
+      const ok = await confirmDialog({
+        title: `Delete all ${state.entries.length} classes and start again?`,
+        body: 'Your manual edits and change history will be lost.',
+        confirmLabel: 'Delete everything',
+        danger: true,
+      });
       if (!ok) return;
       state = resetTimetable(state);
       await persist();

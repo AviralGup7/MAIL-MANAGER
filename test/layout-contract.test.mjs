@@ -81,3 +81,35 @@ test('every motion duration token is defined and used', () => {
     assert.ok(css.includes(`var(${t})`), `${t} used`);
   }
 });
+
+test('the focus policy is deliberate: focus-visible everywhere, focus on inputs', () => {
+  // Round 45 Phase 2 pins the policy so it stays a decision: keyboard users
+  // get rings via the global :focus-visible rule; the bare-:focus rules are
+  // reserved for text surfaces where a click-focus ring is the point.
+  assert.match(css, /^:focus-visible \{\s*outline: 2px solid var\(--accent\)/m,
+    'one global keyboard-focus ring');
+  const bareFocusSelectors = [...css.matchAll(/^([^{}\n]*):focus(?![-\w])/gm)]
+    .map((m) => m[1].trim());
+  for (const sel of bareFocusSelectors) {
+    // #list suppresses its own ring so the SELECTED ROW wears it instead
+    // (#list:focus-visible .row[aria-selected]) — part of the same policy.
+    assert.ok(/#search|#palette-input|#c-text|\.c-row input|prompt-box input|^#list$/.test(sel),
+      `bare :focus is reserved for text inputs, found: ${sel}`);
+  }
+});
+
+test('dialogs trap focus and announce destructive questions (round 45 Phase 2)', () => {
+  const layers = readFileSync(new URL('../src/app/layers.js', import.meta.url), 'utf8');
+  const dialog = readFileSync(new URL('../src/app/dialog.js', import.meta.url), 'utf8');
+  assert.match(layers, /export function trapFocus/, 'the layer module owns the trap');
+  const tt = readFileSync(new URL('../src/app/timetable-ui.js', import.meta.url), 'utf8');
+  assert.match(tt, /trapFocus\(node\)/, 'the timetable panel uses it');
+  assert.match(dialog, /role', danger \? 'alertdialog' : 'dialog'/,
+    'destructive questions announce themselves');
+  assert.match(dialog, /cancelBtn\.focus\(\)/, 'and the safe button is the default');
+  const app2 = readFileSync(new URL('../src/app/app.js', import.meta.url), 'utf8');
+  assert.match(app2, /kind === 'error' \? 'alert' : 'status'/,
+    'error toasts are assertive announcements');
+  assert.match(app2, /el\.list\.focus\(\{ preventScroll: true \}\)/,
+    'bulk actions return focus to the list');
+});

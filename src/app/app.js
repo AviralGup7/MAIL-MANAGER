@@ -505,6 +505,13 @@ function toast(text, opts = {}) {
 
   setText(el.toastText, text);
   el.toast.dataset.kind = kind;
+  /*
+   * ERRORS ARE ANNOUNCED, NOT MERELY SHOWN (round 45 Phase 2). role=alert is
+   * assertive: an interruption the user must hear about, where 'polite'
+   * could wait behind whatever the screen reader is mid-sentence on. Every
+   * other kind stays a polite status.
+   */
+  el.toast.setAttribute('role', kind === 'error' ? 'alert' : 'status');
 
   /*
    * POLISH 7+11: the toast's kind is legible at a glance -- an icon names the
@@ -5168,6 +5175,14 @@ async function bulkAct(kind, explicitIds = null) {
   if (!explicitIds) {
     selection.clear();
     renderSelection();
+    /*
+     * FOCUS MUST NOT BE STRANDED (round 45 Phase 2). The rows the user was
+     * standing on just left the list; without this, focus lands on <body>
+     * and a keyboard user has to tab back from the top of the page. The
+     * listbox is where j/k lives, so that is where focus belongs after a
+     * bulk action.
+     */
+    el.list.focus({ preventScroll: true });
   }
 
   const { verb, add = [], remove = [] } = BULK_ACTIONS[kind];

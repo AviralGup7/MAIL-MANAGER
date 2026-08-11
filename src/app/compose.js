@@ -14,6 +14,7 @@ import { closeWithMotion, cancelExit } from './layers.js';
 import * as outbox from './outbox.js';
 import * as templates from './templates.js';
 import { createDraftSaver, loadDraft, isMeaningful } from './draft-store.js';
+import { confirmDialog } from './dialog.js';
 import * as settings from './settings.js';
 import { invalidAddresses } from './contacts.js';
 
@@ -371,7 +372,12 @@ export async function restoreDraftIfAny(ctx) {
 
   const who = d.to ? ` to ${d.to}` : '';
   const what = d.subject ? ` "${d.subject}"` : '';
-  if (!confirm(`Restore your unsent message${what}${who}?`)) {
+  const restore = await confirmDialog({
+    title: 'Restore your unsent message?',
+    body: `${what}${who}`.trim() || 'It was still in progress when the last session ended.',
+    confirmLabel: 'Restore',
+  });
+  if (!restore) {
     await ensureDraftSaver().discard();
     return false;
   }
@@ -406,9 +412,17 @@ export function wireCompose(ctx) {
 
   $('compose-close').addEventListener('click', async () => {
     const d = collectDraft();
-    // Only warn if something was actually typed. A confirm() on an untouched
+    // Only warn if something was actually typed. A confirm on an untouched
     // panel is the kind of friction that makes people avoid the feature.
-    if (isMeaningful(d) && !confirm('Discard this message?')) return;
+    if (isMeaningful(d)) {
+      const discard = await confirmDialog({
+        title: 'Discard this message?',
+        body: 'What you have written will not be kept.',
+        confirmLabel: 'Discard',
+        danger: true,
+      });
+      if (!discard) return;
+    }
     // An explicit discard means the crash-recovery copy must go too, or the
     // user is offered back the message they just chose to throw away.
     await ensureDraftSaver().discard();
@@ -495,7 +509,12 @@ async function doSend(ctx) {
   const bad = [...invalidAddresses(draft.to), ...invalidAddresses(draft.cc), ...invalidAddresses(draft.bcc)];
   if (bad.length) {
     const list = bad.join(', ');
-    if (!confirm(`This does not look like an email address:\n\n${list}\n\nSend anyway?`)) {
+    const sendAnyway = await confirmDialog({
+      title: 'Some addresses look wrong',
+      body: `${list} — send anyway?`,
+      confirmLabel: 'Send anyway',
+    });
+    if (!sendAnyway) {
       setStatus(`Check the address: ${list}`, 'err');
       $('c-to').focus();
       return;
@@ -512,9 +531,16 @@ async function doSend(ctx) {
     ...(draft.body.match(/\{\{\s*[a-zA-Z][a-zA-Z0-9_]*\s*\}\}/g) || []),
     ...(draft.subject.match(/\{\{\s*[a-zA-Z][a-zA-Z0-9_]*\s*\}\}/g) || []),
   ])];
-  if (gaps.length && !confirm(`Unfilled template fields:\n\n${gaps.join(', ')}\n\nSend anyway?`)) {
-    setStatus('Fill the highlighted placeholders first', 'err');
-    return;
+  if (gaps.length) {
+    const sendAnyway = await confirmDialog({
+      title: 'Unfilled template fields',
+      body: `${gaps.join(', ')} — send anyway?`,
+      confirmLabel: 'Send anyway',
+    });
+    if (!sendAnyway) {
+      setStatus('Fill the highlighted placeholders first', 'err');
+      return;
+    }
   }
 
   const btn = $('c-send');

@@ -2088,14 +2088,17 @@ test('TIMETABLE: marking complete refuses while a clash remains', async (t) => {
   }
 });
 
+/* The in-app confirm primitive (dialog.js) replaces native confirm(): tests
+   drive its buttons like a user would. Cancel is first, the action second. */
+const dialogButtons = (doc) => [...doc.querySelectorAll('.prompt-backdrop .prompt-actions button')];
+const acceptDialog = (doc) => { const b = dialogButtons(doc); return b[b.length - 1]; };
+const declineDialog = (doc) => dialogButtons(doc)[0];
+
 test('TIMETABLE: reset asks first, then clears everything', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');
   // Destructive and not covered by undo, so it confirms. Declining must be
   // a genuine no-op, not a delayed yes.
   const { doc, win, settle, restore } = await boot({ timetableData: TT_DATA });
-  // Restored in `finally`: leaving a stubbed confirm on globalThis would make
-  // any later test that reaches one behave differently depending on order.
-  const realConfirm = globalThis.confirm;
   try {
     await openTT(doc, win, settle);
     const r = await ttSearch(doc, win, settle, 'CS F111');
@@ -2112,18 +2115,19 @@ test('TIMETABLE: reset asks first, then clears everything', async (t) => {
     const wipe = () => [...doc.querySelectorAll('#tt-panel button')]
       .find((b) => b.textContent === 'Reset');
 
-    // The module calls a bare `confirm(...)`, which resolves against the
-    // global the app module was evaluated with, not against `win`.
-    globalThis.confirm = () => false;
+    // The wipe asks through the in-app dialog (round 45 Phase 2).
     wipe().click();
+    await settle(6);
+    declineDialog(doc).click();
     await settle(6);
     assert.equal(
       getTimetableState().entries.length, before,
-      'declining the confirm must change nothing'
+      'declining the dialog must change nothing'
     );
 
-    globalThis.confirm = () => true;
     wipe().click();
+    await settle(6);
+    acceptDialog(doc).click();
     await settle(8);
     assert.equal(getTimetableState().entries.length, 0, 'accepting clears it');
     assert.ok(
@@ -2131,7 +2135,6 @@ test('TIMETABLE: reset asks first, then clears everything', async (t) => {
       'and the build screen comes back so it can be rebuilt'
     );
   } finally {
-    globalThis.confirm = realConfirm;
     restore();
   }
 });
@@ -2148,7 +2151,6 @@ test('TIMETABLE: the Pass 2 verification checklist, end to end', async (t) => {
    * parsed catalogue rather than a fixture.
    */
   const { doc, win, settle, restore, storage } = await boot({ timetableData: 'real' });
-  const realConfirm = globalThis.confirm;
   try {
     const M = await import('../src/app/timetable-ui.js');
 
@@ -2217,7 +2219,6 @@ test('TIMETABLE: the Pass 2 verification checklist, end to end', async (t) => {
     assert.ok(lines.every((x) => x.sourceLabel), '8. with a readable source');
 
     // 9. Reset is the only route back, and it is explicit.
-    globalThis.confirm = () => true;
     // The panel is already open, so re-clicking the toolbar button is a no-op.
     // Re-render it instead, which is what any state change would have done.
     M.closeTimetable();
@@ -2228,6 +2229,8 @@ test('TIMETABLE: the Pass 2 verification checklist, end to end', async (t) => {
       .find((b) => b.textContent === 'Reset');
     assert.ok(wipe, '9. reset must be reachable');
     wipe.click();
+    await settle(6);
+    acceptDialog(doc).click();
     await settle(8);
     assert.equal(M.getTimetableState().entries.length, 0, '9. and must clear');
 
@@ -2252,7 +2255,6 @@ test('TIMETABLE: the Pass 2 verification checklist, end to end', async (t) => {
       second.restore();
     }
   } finally {
-    globalThis.confirm = realConfirm;
     restore();
   }
 });
@@ -2643,12 +2645,12 @@ test('MAIL: a recovered draft reveals the recipients it actually has', async (t)
     bcc: 'c@pilani.bits-pilani.ac.in',
     subject: 'Recovered', body: 'text', title: 'New message',
   };
-  // Restoring asks first; accept it. Restored in `finally`.
-  const realConfirm = globalThis.confirm;
-  globalThis.confirm = () => true;
+  // Restoring asks first through the in-app dialog; accept it.
   const { doc, settle, restore } = await boot({ storageSeed: { composeDraft: draft } });
   try {
     await settle(10);
+    acceptDialog(doc).click();
+    await settle(8);
     assert.equal(doc.getElementById('c-cc').value, draft.cc, 'Cc must be restored');
     assert.equal(doc.getElementById('c-bcc').value, draft.bcc, 'Bcc must be restored');
     assert.equal(
@@ -2660,7 +2662,6 @@ test('MAIL: a recovered draft reveals the recipients it actually has', async (t)
       'and so must a restored Bcc'
     );
   } finally {
-    globalThis.confirm = realConfirm;
     restore();
   }
 });
@@ -2833,14 +2834,10 @@ test('MAIL: attachments do not leak into the next message', async (t) => {
 
     // An attachment-only draft IS content now (bug-hunt 44 #23), so closing
     // asks before discarding. Accept the discard, then prove nothing leaked.
-    const realConfirm = globalThis.confirm;
-    globalThis.confirm = () => true;
-    try {
-      doc.getElementById('compose-close').click();
-      await settle(6);
-    } finally {
-      globalThis.confirm = realConfirm;
-    }
+    doc.getElementById('compose-close').click();
+    await settle(6);
+    acceptDialog(doc).click();
+    await settle(6);
     press(doc, win, 'c');
     await settle(6);
 

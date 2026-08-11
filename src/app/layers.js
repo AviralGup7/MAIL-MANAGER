@@ -244,3 +244,34 @@ export function cancelExit(node) {
   node.classList.remove('closing');
   delete node.dataset.closing;
 }
+
+/**
+ * Keyboard focus trap for a layer node (round 45 Phase 2).
+ *
+ * role=dialog promises that Tab stays inside; without this the timetable
+ * panel (and any future modal surface) walked focus out into the app chrome
+ * behind it. Attach once per open; the listener dies with the node, so there
+ * is nothing to clean up on re-render. Returns an explicit untrap for the
+ * rare caller that swaps the node out from under the trap.
+ */
+export function trapFocus(node, doc = globalThis.document) {
+  if (!node || !doc) return () => {};
+  const SELECTOR =
+    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+  const onDown = (e) => {
+    if (e.key !== 'Tab' || !node.contains(e.target)) return;
+    const items = [...node.querySelectorAll(SELECTOR)].filter((el) => !el.disabled);
+    if (!items.length) return;
+    const first = items[0];
+    const last = items[items.length - 1];
+    if (e.shiftKey && doc.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && doc.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
+  node.addEventListener('keydown', onDown);
+  return () => node.removeEventListener('keydown', onDown);
+}
