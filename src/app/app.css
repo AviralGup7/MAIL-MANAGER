@@ -1532,6 +1532,10 @@ a.ghost {
 }
 
 #reader-empty {
+  /* width + auto margins: in a column flex, `margin:auto` alone shrink-wraps
+     the block to its narrowest content, which collapsed the shortcut legend
+     into a two-word column (seen in the live render). Give it a real measure. */
+  width: min(100%, 480px);
   margin: auto;
   text-align: center;
   color: var(--fg-faint);

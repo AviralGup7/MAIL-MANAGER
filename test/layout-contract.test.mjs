@@ -146,3 +146,11 @@ test('motion accessibility is complete: nothing animates without a reduced-motio
   assert.deepEqual(infinite, [],
     'only work-reporting animations may run indefinitely');
 });
+
+test('the reader empty-state keeps a readable measure (round 49 live render)', () => {
+  // The live render showed the shortcut legend collapsed into a two-word
+  // column: in a column flex, `margin:auto` alone shrink-wraps the block. A
+  // real width keeps the legend to one or two lines.
+  assert.match(css, /#reader-empty \{[^}]*width: min\(100%, 480px\)/s,
+    'the empty state must not collapse to its narrowest content');
+});
