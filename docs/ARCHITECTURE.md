@@ -92,6 +92,29 @@ All three appeared when the per-mailbox refactor turned a singleton into a
 collection. **Every existing capture of a value is suspect the moment that
 value becomes a collection.** When in doubt, publish a getter.
 
+### Derived state: `selectors.js`
+
+The question *"what should the list show right now"* has exactly one answer
+and exactly one home: `src/app/selectors.js` (audit 39/40 ARCH R-6). Its
+`visibleIds(store, ctx)` is the choke point every render path — list, counts,
+bulk, j/k — reads through, so mute scoping, threading collapse, query
+predicates and the server-search overlay merge are applied once, identically,
+for all of them.
+
+The rules of the house:
+
+- **Pure functions of `(store, ctx)`.** No DOM, no `chrome.*`, no storage,
+  no `Date.now()`. Every impure dependency is injected on `ctx`: live state
+  values read at call time (never captured), the threaded setting, the muted
+  list, the query parser (it needs deadline overrides and a clock), and the
+  ephemeral overlay.
+- **The shell only builds `selectorsCtx()`.** A new view must go through
+  `visibleIds` rather than re-deriving its own variant — divergence between
+  views is the defect this layer exists to make impossible.
+- The contracts are pinned in `test/selectors.test.mjs`, including the
+  interactions (mute-then-collapse, overlay term filtering), and the
+  live-binding lint keeps the shell from capturing `store` into the ctx.
+
 ---
 
 ## 3 · The `ctx` contract

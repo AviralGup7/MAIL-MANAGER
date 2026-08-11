@@ -161,3 +161,60 @@ test('collapseThreads is a pass-through when threading is off', () => {
   const store = inbox([msg(0), msg(1)]);
   assert.deepEqual(collapseThreads(store.idsFor('all'), store, { threaded: false }), ['m1', 'm0']);
 });
+
+/*
+ * Contract extensions on top of the R-6 commit. The original suite pins each
+ * mechanism alone; these pin their INTERACTIONS, which is where an extraction
+ * like this most plausibly reorders work.
+ */
+
+test('mutes apply BEFORE threading collapse, and hide whole threads', () => {
+  // The contract being pinned: a thread whose messages are all muted
+  // disappears ENTIRELY (no phantom row), and the hidden-count counts
+  // messages, not threads. Removing the mute step from visibleIds, or
+  // making the counter count threads, fails this.
+  const store = inbox([
+    msg(0, { category: 'clubs', subject: 'Thread root about registration' }),
+    msg(1, { category: 'clubs', subject: 'Reply about registration' }), // same thread, muted
+    msg(2, { category: 'augsd', subject: 'Other thread about registration' }),
+  ]);
+  const ctx = ctxFor(store, { muted: ['clubs'], threaded: true });
+  assert.deepEqual(
+    visibleIds(store, ctx), ['m2'],
+    'a fully-muted thread disappears entirely; the unmuted thread collapses to its root'
+  );
+  assert.equal(mutedHiddenCount(store, ctx), 2, 'counter counts messages, not threads');
+});
+
+test('an overlay hit that misses the TERMS is refused, not just the predicate', () => {
+  // matchesQuery guards both halves. A server hit for a different word must
+  // not ride the query into the list just because it passes the predicate.
+  const store = inbox([msg(1, { subject: 'Real result' })]);
+  const overlay = {
+    ids: () => ['s1'],
+    // passes the predicate, does NOT contain the term 'result':
+    get: () => ({ id: 's1', subject: 'unrelated', from: '', snippet: '' }),
+  };
+  const ctx = ctxFor(store, {
+    query: 'result',
+    parse: parseWith(() => true),
+    overlay,
+  });
+  assert.deepEqual(visibleIds(store, ctx), ['m1']);
+});
+
+test('an overlay id whose record vanished is skipped, not fatal', () => {
+  // The overlay is ephemeral by design; a record can be gone by merge time.
+  const store = inbox([msg(1, { subject: 'result' })]);
+  const overlay = { ids: () => ['ghost', 'm1'], get: () => undefined };
+  const ctx = ctxFor(store, { query: 'result', overlay });
+  assert.deepEqual(visibleIds(store, ctx), ['m1']);
+});
+
+test('a predicate-null parse leaves the index result untouched', () => {
+  // applyPredicate with no predicate must return the SAME array semantics:
+  // nothing dropped, nothing reordered.
+  const store = inbox([msg(1, { subject: 'fee notice' }), msg(2, { subject: 'fee reminder' })]);
+  const ctx = ctxFor(store, { query: 'fee' }); // plainParse: terms, no predicate
+  assert.deepEqual(visibleIds(store, ctx), ['m2', 'm1']);
+});

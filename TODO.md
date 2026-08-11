@@ -1,6 +1,6 @@
 # TODO
 
-Ordered by **risk × user impact**, not by effort. Twelve of the original
+Ordered by **risk × user impact**, not by effort. Thirteen of the original
 fifteen items are done; the rest are below, followed by the historical record
 of what the finished work found.
 
@@ -97,13 +97,17 @@ preview and offline support simultaneously.
 
 ---
 
-### 5 · Background sync and notifications — **M**
+### 5 · Background sync and notifications — **DONE**
 
-`app.js` still says *"Never on a timer"*. The blocker is gone: `alarms` is
-permitted and already drives the snooze wake. Pair it with classifier-driven
-notification rules — notify on `augsd` and `academics`, never on
-`external-promotions` — which is what makes notifications wanted rather than
-annoying, and which Gmail structurally cannot offer.
+The 15-minute `bmm-sync` alarm advances the history cursor via the existing
+worker-safe `syncDelta`, so a long absence never builds a delta backlog that
+forces a full resync. New mail is classified in the worker and — only when
+the user opts in — notified for `augsd` and `academics` only: the one thing
+Gmail structurally cannot offer (its notifications are all-or-nothing).
+Conservative by design: burst cap of 3 per run, a persisted dedupe list
+(cleared on sign-out, since message ids are account-scoped), no notification
+while a Gmail tab is open, and the selection logic is a pure module
+(`src/background/notify.js`) with its own unit tests.
 
 ---
 
