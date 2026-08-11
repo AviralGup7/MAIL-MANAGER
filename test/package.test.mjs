@@ -1226,7 +1226,9 @@ test('ARCH: overlays use the layer primitive rather than hand-rolled teardown', 
    *
    * The primitive is the only sanctioned place for that listener.
    */
-  const shell = read('src/app/app.js')
+  // The rail's roving-tabindex handler moved to sidebar.js (round 52), so
+  // the shell scan covers both files.
+  const shell = (read('src/app/app.js') + read('src/app/sidebar.js'))
     .replace(/\/\*[\s\S]*?\*\//g, ' ')
     .replace(/\/\/[^\n]*/g, ' ');
   assert.ok(
@@ -1335,7 +1337,9 @@ test('ARCH: a bulk label delta is stated once, not once per direction', () => {
    * remove: add}. This counts the literals: only the table may name a Gmail
    * label in a BULK payload.
    */
-  const shell = read('src/app/app.js')
+  // The rail's roving-tabindex handler moved to sidebar.js (round 52), so
+  // the shell scan covers both files.
+  const shell = (read('src/app/app.js') + read('src/app/sidebar.js'))
     .replace(/\/\*[\s\S]*?\*\//g, ' ')
     .replace(/\/\/[^\n]*/g, ' ');
 

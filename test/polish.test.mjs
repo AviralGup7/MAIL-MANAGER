@@ -10,7 +10,9 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
-const js = read('src/app/app.js');
+const js = read('src/app/app.js')
+  // The tab-title stamp moved with the sidebar (round 52).
+  + read('src/app/sidebar.js');
 // The list cluster moved out of app.js in the round-52 workspace extraction.
 const list = read('src/app/list.js');
 const css = read('src/app/app.css');

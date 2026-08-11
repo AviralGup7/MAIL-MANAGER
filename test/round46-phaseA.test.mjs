@@ -18,7 +18,9 @@ const sanitize = readFileSync(new URL('../src/app/sanitize.js', import.meta.url)
 const css = readFileSync(new URL('../src/app/app.css', import.meta.url), 'utf8');
 
 test('mute state is visible in the rail (round 46 #28)', () => {
-  assert.match(app, /dataset\.muted = String\(rules\.muted\.includes/,
+  // The rail moved to sidebar.js (round 52); the rules read goes through ctx.
+  const sidebar = readFileSync(new URL('../src/app/sidebar.js', import.meta.url), 'utf8');
+  assert.match(sidebar, /dataset\.muted = String\(ctx\.getRules\(\)\.muted\.includes/,
     'the rail marks muted categories');
   assert.match(css, /\.cat\[data-muted='true'\]/, 'and styles them as muted');
 });

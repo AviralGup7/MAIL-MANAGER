@@ -45,6 +45,83 @@ const num = (label) => {
 const pass = num('pass');
 const fail = num('fail');
 const skipped = num('skipped');
+const total = num('tests');
+const dur = (res.stdout || '').match(/^# duration_ms ([\d.]+)$/m);
+
+/*
+ * THE PASTEABLE SUMMARY (round 52).
+ *
+ * The full TAP log is thousands of lines; the maintainer needs one small
+ * block to paste back into the working session: the verdict, the counts,
+ * and for every failure its name, file:line, duration and the first line of
+ * the error. Emitted with loud delimiters at the very end of the CI log and
+ * mirrored into the GitHub step summary when running under Actions.
+ */
+function collectFailures(tap) {
+  const out = [];
+  const lines = tap.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^not ok \d+ - (.*)$/);
+    if (!m) continue;
+    const name = m[1];
+    let location = '';
+    let failureType = '';
+    let error = '';
+    let duration = '';
+    // The YAML diagnostics block follows within the next ~20 lines.
+    for (let j = i + 1; j < Math.min(i + 30, lines.length); j++) {
+      const t = lines[j].trim();
+      if (t.startsWith('location:')) location = t.slice('location:'.length).trim().replace(/^'|'$/g, '');
+      if (t.startsWith('failureType:')) failureType = t.slice('failureType:'.length).trim();
+      if (t.startsWith('duration_ms:')) duration = t.slice('duration_ms:'.length).trim();
+      if (t.startsWith('error:')) {
+        // error: may be inline or open a |- block; take the first real text.
+        const inline = t.slice('error:'.length).trim();
+        if (inline && inline !== '|-') error = inline;
+        else {
+          for (let k = j + 1; k < Math.min(j + 8, lines.length); k++) {
+            const cand = lines[k].trim();
+            if (cand) { error = cand; break; }
+          }
+        }
+      }
+      if (t === '...') break;
+    }
+    out.push({ name, location, failureType, error, duration });
+  }
+  return out;
+}
+
+const failures = collectFailures(res.stdout || '');
+const verdict = fail === 0 && skipped === 0 && pass > 0 ? 'PASS' : 'FAIL';
+const bar = '='.repeat(56);
+const summary = [
+  bar,
+  `TEST SUMMARY — ${verdict}`,
+  `tests: ${total} | passed: ${pass} | failed: ${fail} | skipped: ${skipped}` +
+    (dur ? ` | duration: ${Math.round(Number(dur[1]) / 1000)}s` : ''),
+  ...(failures.length
+    ? ['Failed tests:',
+       ...failures.map((f, i) => [
+         `  ${i + 1}. ${f.name}`,
+         f.location ? `     at: ${f.location}` : null,
+         f.duration ? `     took: ${Math.round(Number(f.duration))}ms` : null,
+         `     reason: ${f.failureType || 'unknown'}${f.error ? ` — ${f.error.slice(0, 200)}` : ''}`,
+       ].filter(Boolean).join('\n'))]
+    : ['Failed tests: none']),
+  bar,
+].join('\n');
+
+console.log(`\n${summary}`);
+
+// On GitHub Actions, also land it on the run's Summary page.
+if (process.env.GITHUB_STEP_SUMMARY) {
+  const { appendFileSync } = await import('node:fs');
+  appendFileSync(
+    process.env.GITHUB_STEP_SUMMARY,
+    `\n\`\`\`\n${summary}\n\`\`\`\n`
+  );
+}
 
 console.log(`\nCI summary: ${pass} passed, ${fail} failed, ${skipped} skipped`);
 

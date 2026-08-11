@@ -14,6 +14,8 @@ const {
 } = await import('../src/app/mailboxes.js');
 
 const app = readFileSync(new URL('../src/app/app.js', import.meta.url), 'utf8');
+// The rail moved out of app.js in the round-52 workspace extraction.
+const sidebar = readFileSync(new URL('../src/app/sidebar.js', import.meta.url), 'utf8');
 const sync = readFileSync(new URL('../src/background/sync.js', import.meta.url), 'utf8');
 const bg = readFileSync(new URL('../src/background/index.js', import.meta.url), 'utf8');
 
@@ -181,15 +183,15 @@ test('a missing snoozed label yields an empty page, not an error', () => {
 
 test('the rail is still exactly one tab stop across both groups', () => {
   // Two groups must not mean two tab stops; that was the regression.
-  assert.match(app, /const preferred =/);
-  assert.match(app, /b\.tabIndex = b === preferred \? 0 : -1/);
+  assert.match(sidebar, /const preferred =/);
+  assert.match(sidebar, /b\.tabIndex = b === preferred \? 0 : -1/);
 });
 
 test('sidebar iteration does not read children directly', () => {
   // The buttons are grandchildren now. Reading `children` returned the two
   // wrapper divs and silently did nothing.
   assert.ok(
-    !/for \(const b of el\.cats\.children\)/.test(app),
+    !/for \(const b of el\.cats\.children\)/.test(sidebar),
     'el.cats.children no longer contains the buttons'
   );
 });
