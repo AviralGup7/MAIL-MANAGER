@@ -1433,6 +1433,46 @@ test('A11Y: activedescendant follows j/k and clears on close', async (t) => {
   }
 });
 
+test('A11Y: the search field is a combobox owning the suggestion list', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // The full combobox contract (40-ENG section 8): the input must announce
+  // the popup, name the list it controls, and move aria-activedescendant
+  // through it — otherwise the suggestion list reads as an unowned orphan.
+  const { doc, win, settle, restore } = await boot();
+  try {
+    const input = doc.getElementById('search');
+    assert.equal(input.getAttribute('role'), 'combobox');
+    assert.equal(input.getAttribute('aria-controls'), 'search-suggest');
+    assert.equal(input.getAttribute('aria-expanded'), 'false', 'closed by default');
+
+    input.focus();
+    input.value = 'is:';
+    input.dispatchEvent(new win.Event('input'));
+    await settle(4);
+    assert.equal(input.getAttribute('aria-expanded'), 'true', 'open once suggestions render');
+
+    const box = doc.getElementById('search-suggest');
+    assert.equal(box.hidden, false);
+    assert.ok(box.children.length > 0, 'suggestions exist');
+    assert.ok(box.children[0].id, 'each option carries an id for activedescendant');
+
+    // Arrow down moves activedescendant to a real option.
+    input.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    await settle();
+    const active = input.getAttribute('aria-activedescendant');
+    assert.ok(active && doc.getElementById(active), 'activedescendant references a real option');
+
+    // Closing (blur path) must drop the expanded state. The close is
+    // deliberately delayed 120ms so a suggestion click can land; wait it out.
+    input.blur();
+    await new Promise((r) => win.setTimeout(r, 140));
+    await settle(2);
+    assert.equal(input.getAttribute('aria-expanded'), 'false', 'closed on blur');
+  } finally {
+    restore();
+  }
+});
+
 test('A11Y: exactly one option is aria-selected at a time', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');
   const { doc, settle, restore } = await boot();

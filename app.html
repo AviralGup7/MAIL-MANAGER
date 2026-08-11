@@ -27,7 +27,7 @@
               never claims currency we have not earned. Recomputed on render,
               not on a timer -- a ticking clock is motion nobody asked for.
             -->
-            <button id="freshness" type="button" class="fresh-btn" aria-live="polite" title="Sync now"></button>
+            <button id="freshness" type="button" class="fresh-btn" aria-live="polite" title="Sync now" aria-label="Sync now"></button>
           </span>
         </div>
 
@@ -144,7 +144,12 @@
               placeholder="Search subject or sender…"
               autocomplete="off"
               spellcheck="false"
+              role="combobox"
               aria-label="Search mail"
+              aria-expanded="false"
+              aria-controls="search-suggest"
+              aria-autocomplete="list"
+              aria-activedescendant=""
             />
             <kbd id="searchkbd">/</kbd>
             <!--
@@ -619,6 +624,7 @@
           -->
           <!-- Chosen files. Empty and hidden until something is attached. -->
           <div id="c-files" hidden></div>
+          <label for="c-text" class="sr-only">Message body</label>
           <textarea id="c-text" aria-label="Message body"
                     placeholder="Write your message…" spellcheck="true"></textarea>
         </div>

@@ -1867,6 +1867,9 @@ function renderMessageDeadline(m) {
   box.className = `r-due r-due-${band}`;
   box.replaceChildren(frag);
   box.hidden = false;
+  // Combobox contract (40-ENG section 8): the field announces the popup and
+  // names the list it controls, so a screen reader treats this as one widget.
+  el.search.setAttribute('aria-expanded', 'true');
 }
 
 function renderTimetableEffects(id) {
@@ -3827,6 +3830,8 @@ function renderSuggestions() {
 
   suggestions = suggest.suggest(el.search.value, suggestContext());
   suggestIndex = -1;
+  el.search.setAttribute('aria-expanded', 'false');
+  el.search.removeAttribute('aria-activedescendant');
 
   if (suggestions.length === 0) {
     box.hidden = true;
@@ -3837,6 +3842,7 @@ function renderSuggestions() {
   suggestions.forEach((sg, i) => {
     const li = document.createElement('li');
     li.className = 'suggest-item';
+    li.id = `suggest-opt-${i}`;
     li.setAttribute('role', 'option');
     li.setAttribute('aria-selected', 'false');
     li.dataset.index = String(i);
@@ -3854,6 +3860,9 @@ function renderSuggestions() {
   });
   box.replaceChildren(frag);
   box.hidden = false;
+  // Combobox contract (40-ENG section 8): the field announces the popup and
+  // names the list it controls, so a screen reader treats this as one widget.
+  el.search.setAttribute('aria-expanded', 'true');
 }
 
 function moveSuggestion(delta) {
@@ -3864,6 +3873,9 @@ function moveSuggestion(delta) {
     li.classList.toggle('active', i === suggestIndex);
     li.setAttribute('aria-selected', String(i === suggestIndex));
   });
+  // aria-activedescendant moves with the arrow keys — the field is the
+  // combobox, so the reader must hear the option as the field's own value.
+  el.search.setAttribute('aria-activedescendant', `suggest-opt-${suggestIndex}`);
 }
 
 /**
@@ -3904,7 +3916,13 @@ el.search.addEventListener('focus', () => renderSuggestions());
 el.search.addEventListener('blur', () => {
   setTimeout(() => {
     const box = $('search-suggest');
-    if (box && !box.contains(document.activeElement)) box.hidden = true;
+    if (box && !box.contains(document.activeElement)) {
+      box.hidden = true;
+      // Keep the combobox contract honest: the popup is gone, so the field
+      // must stop announcing it.
+      el.search.setAttribute('aria-expanded', 'false');
+      el.search.removeAttribute('aria-activedescendant');
+    }
   }, 120);
 });
 
