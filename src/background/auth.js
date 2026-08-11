@@ -405,8 +405,12 @@ export async function signOut() {
   // for an account the user just signed out of. historyId goes too: applying
   // one account's deltas to the next would be silent corruption. The token
   // itself comes out of the session area.
+  // bgNotifiedIds is the same class of hazard (V2 P1-12): message ids are
+  // account-scoped, so the background-sync dedupe list of account A is
+  // private data that must not survive into account B's session (nor hold a
+  // slot in its 100-entry cap).
   await tokenArea().remove(['accessToken', 'expiresAt']);
-  await chrome.storage.local.remove(['authorized', 'historyId']);
+  await chrome.storage.local.remove(['authorized', 'historyId', 'bgNotifiedIds']);
 }
 
 /**

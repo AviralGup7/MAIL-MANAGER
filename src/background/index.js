@@ -13,6 +13,7 @@ import {
   getFull, modify, batchModify, trash, profile,
   buildMime, sendMessage, saveDraft, getDraftForMessage,
   listLabels, createLabel, getAttachment, ensureLabel, headerMap, normalise,
+  _clearLabelCache,
 } from './gmail.js';
 import { classify } from '../classify/index.js';
 import { selectNotifiable } from './notify.js';
@@ -207,6 +208,11 @@ async function handle(msg) {
       return { signedIn: true };
     case 'SIGN_OUT':
       await signOut();
+      // Label ids are ACCOUNT-scoped (V2 P1-12). A different Google account
+      // signing in within this worker's lifetime must never be handed the
+      // previous account's ids -- that is a 404 at best, a silent write to
+      // the wrong label space at worst. The cache goes with the account.
+      _clearLabelCache();
       return { signedIn: false };
     case 'PROFILE':
       return profile();

@@ -193,3 +193,18 @@ test('sidebar iteration does not read children directly', () => {
     'el.cats.children no longer contains the buttons'
   );
 });
+
+test('prune runs only when the store holds the WHOLE mailbox (V2 P2-22)', () => {
+  // The sweep deletes overrides/mutes/follow-ups for threads the store no
+  // longer holds. That is correct ONLY when the store is complete. Against a
+  // partial store (first page of a 3000-message inbox) it would delete state
+  // for mail that is simply not loaded yet. The guard has four parts and
+  // every one is load-bearing.
+  const at = app.indexOf('pruneAfterFullSync()');
+  assert.notEqual(at, -1, 'the sweep must actually be called');
+  const gate = app.slice(Math.max(0, at - 220), at);
+  assert.ok(gate.includes("!pageToken"), 'not mid-pagination');
+  assert.ok(gate.includes("!nextPageToken"), 'no further pages waiting');
+  assert.ok(gate.includes("!store.isFull"), 'store never hit its cap');
+  assert.ok(gate.includes("id === 'inbox'"), 'only the classified mailbox');
+});

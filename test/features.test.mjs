@@ -609,3 +609,79 @@ test('newer_than includes the message at exactly the boundary', () => {
   );
   assert.equal(inNewer, true, 'the boundary belongs to newer_than');
 });
+
+test('older_than:Nm is a calendar month, not 30 days (V2 P2-18)', () => {
+  /*
+   * Gmail reads `older_than:1m` as one CALENDAR month. The old code used a
+   * fixed 30 days, so on 11 March it cut at 9 February -- every message
+   * between the two dates silently belonged to the wrong half of the
+   * partition. `now` is injected (never Date.now()) and dates are built with
+   * LOCAL constructors because calendar arithmetic is local by definition;
+   * Date.UTC here would make the test lie in any non-UTC timezone.
+   */
+  const now = new Date(2026, 2, 11, 9, 0).getTime(); // 11 March
+  const cutoff = new Date(2026, 1, 11, 9, 0).getTime(); // 11 February
+
+  const older = parseQuery('older_than:1m', now);
+  const newer = parseQuery('newer_than:1m', now);
+  assert.ok(older.predicate && newer.predicate);
+
+  // 10 February: older than a calendar month, NEWER than 30 days. This one
+  // message is the discriminator between the two semantics.
+  const feb10 = { date: new Date(2026, 1, 10, 9, 0).getTime(), subject: '', from: '', snippet: '' };
+  assert.equal(older.predicate(feb10), true, 'calendar month includes 10 Feb');
+  assert.equal(newer.predicate(feb10), false);
+
+  const onBoundary = { date: cutoff, subject: '', from: '', snippet: '' };
+  const pastBoundary = { date: cutoff + 1, subject: '', from: '', snippet: '' };
+  assert.equal(older.predicate(onBoundary), false, 'the cutoff belongs to newer_than');
+  assert.equal(older.predicate(pastBoundary), false);
+  assert.equal(newer.predicate(onBoundary), true);
+
+  // Multi-month: 11 March - 2m = 11 January.
+  const older2 = parseQuery('older_than:2m', now);
+  assert.equal(
+    older2.predicate({ date: new Date(2026, 0, 10, 9, 0).getTime(), subject: '', from: '', snippet: '' }),
+    true
+  );
+  assert.equal(
+    older2.predicate({ date: new Date(2026, 0, 12, 9, 0).getTime(), subject: '', from: '', snippet: '' }),
+    false
+  );
+});
+
+test('calendar-month spans clamp at month ends instead of overflowing (V2 P2-18)', () => {
+  // 31 March - 1m must be 28 February (2026 is not a leap year). A naive
+  // setMonth turns "31 February" into 3 MARCH -- three days of mail in the
+  // wrong half. The mutant is reachable from exactly one day a year, but
+  // that day exists every year.
+  const now = new Date(2026, 2, 31, 9, 0).getTime(); // 31 March
+  const cutoff = new Date(2026, 1, 28, 9, 0).getTime(); // 28 February
+
+  const older = parseQuery('older_than:1m', now);
+  assert.equal(
+    older.predicate({ date: cutoff - 1, subject: '', from: '', snippet: '' }),
+    true, '27 Feb is older than one calendar month from 31 Mar'
+  );
+  assert.equal(
+    older.predicate({ date: cutoff, subject: '', from: '', snippet: '' }),
+    false, 'the clamped cutoff itself belongs to newer_than (31 Mar - 1m = 28 Feb)'
+  );
+  assert.equal(
+    older.predicate({ date: new Date(2026, 2, 2, 9, 0).getTime(), subject: '', from: '', snippet: '' }),
+    false, '2 March must not be the cutoff: that is the setMonth-overflow mutant'
+  );
+});
+
+test('d / w / y spans stay fixed durations (V2 P2-18 regression guard)', () => {
+  const now = new Date(2026, 2, 11, 9, 0).getTime();
+  const DAY = 86_400_000;
+  const msg = (offsetDays) => ({ date: now - offsetDays * DAY, subject: '', from: '', snippet: '' });
+
+  assert.equal(parseQuery('older_than:7d', now).predicate(msg(7.5)), true);
+  assert.equal(parseQuery('older_than:7d', now).predicate(msg(6.5)), false);
+  assert.equal(parseQuery('older_than:2w', now).predicate(msg(14.5)), true);
+  assert.equal(parseQuery('older_than:2w', now).predicate(msg(13.5)), false);
+  assert.equal(parseQuery('older_than:1y', now).predicate(msg(365.5)), true);
+  assert.equal(parseQuery('older_than:1y', now).predicate(msg(364.5)), false);
+});

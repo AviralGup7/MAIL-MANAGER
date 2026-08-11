@@ -838,7 +838,10 @@ export async function ensureLabel(name) {
   return found.id;
 }
 
-/** Test seam. */
+/**
+ * Test seam AND production sign-out hook (V2 P1-12): label ids are
+ * account-scoped, so the cache must die with the session that filled it.
+ */
 export function _clearLabelCache() {
   labelIdCache.clear();
 }

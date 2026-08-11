@@ -673,3 +673,37 @@ test('the depth bound does not affect a normally-nested message', async () => {
   assert.equal(out.text, 'hello');
   assert.match(out.html, /hi/);
 });
+
+// ------------------------------------------------------------- label cache --
+
+test('the label-id cache is account-scoped: clearing it re-hits the API (V2 P1-12)', async () => {
+  // Label ids belong to one account. The cache exists because ensureLabel is
+  // on the path of every snooze, but it MUST be cleared at sign-out or the
+  // next account inherits the previous one's ids. The clear is only
+  // meaningful if the next call really goes back to the API.
+  const { ensureLabel, _clearLabelCache } = await import('../src/background/gmail.js');
+
+  let labelCalls = 0;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    labelCalls++;
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ labels: [{ id: 'LID', name: 'BMM/Snoozed' }] }),
+    };
+  };
+  try {
+    _clearLabelCache(); // start cold no matter what ran before
+    assert.equal(await ensureLabel('BMM/Snoozed'), 'LID');
+    assert.equal(await ensureLabel('BMM/Snoozed'), 'LID');
+    assert.equal(labelCalls, 1, 'the repeat call must be served from the cache');
+
+    _clearLabelCache(); // what SIGN_OUT does
+    assert.equal(await ensureLabel('BMM/Snoozed'), 'LID');
+    assert.equal(labelCalls, 2, 'after the clear the id must come from the API again');
+  } finally {
+    globalThis.fetch = realFetch;
+    _clearLabelCache();
+  }
+});

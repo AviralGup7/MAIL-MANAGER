@@ -189,8 +189,12 @@ test('the alarm is never scheduled in the past', () => {
 
 test('one alarm is re-aimed rather than one alarm per message', () => {
   assert.ok(bg.includes("chrome.alarms.create(WAKE_ALARM"));
+  // Count WAKE_ALARM creates only: the background-sync commit (P-3) added a
+  // second, periodic alarm (SYNC_ALARM), which is legitimate. The invariant
+  // being guarded here is narrower: the SNOOZE wake must be one re-aimed
+  // alarm, never one registration per snoozed message.
   assert.equal(
-    (bg.match(/alarms\.create\(/g) || []).length, 1,
+    (bg.match(/alarms\.create\(WAKE_ALARM/g) || []).length, 1,
     'a hundred snoozed messages must not mean a hundred alarms'
   );
 });
@@ -204,6 +208,21 @@ test('the snoozed label is a real Gmail label, not just local state', () => {
   // Wiping the extension must leave the mail findable in Gmail.
   assert.equal(SNOOZE_LABEL, 'BMM/Snoozed');
   assert.ok(bg.includes('ensureLabel(SNOOZE_LABEL)'));
+});
+
+test('sign-out drops the label-id cache (V2 P1-12)', () => {
+  // Label ids are ACCOUNT-scoped. The worker can outlive a session, so if a
+  // different Google account signs in next, a stale cache would hand the new
+  // session the previous account's ids -- a 404 at best, a write into the
+  // wrong label space at worst. The cache must die with the session.
+  const at = bg.indexOf("case 'SIGN_OUT':");
+  assert.notEqual(at, -1);
+  const next = bg.indexOf("case '", at + 10);
+  const body = bg.slice(at, next === -1 ? undefined : next);
+  assert.ok(
+    body.includes('_clearLabelCache()'),
+    'SIGN_OUT must clear the account-scoped label-id cache'
+  );
 });
 
 /*

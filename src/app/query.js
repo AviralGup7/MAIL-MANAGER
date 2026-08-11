@@ -67,12 +67,34 @@ function parseDate(v) {
   return null;
 }
 
-/** `7d`, `2w`, `3m` -> milliseconds. */
-function parseSpan(v) {
-  const m = v.match(/^(\d+)\s*([dwmy])$/);
+/**
+ * Cutoff timestamp for `older_than` / `newer_than` at time `now`, or null.
+ *
+ * `d`, `w`, `y` are fixed spans. `m` is a CALENDAR month, matching Gmail
+ * (V2 P2-18): `older_than:1m` on 11 March means "before 11 February", not
+ * "before 9 February" (30 days). Month-end days clamp to the target month's
+ * end (31 Jan - 1m = 28/29 Feb) instead of overflowing into the next month
+ * the way a naive setMonth does.
+ */
+function spanCutoff(v, now) {
+  const m = String(v).match(/^(\d+)\s*([dwmy])$/);
   if (!m) return null;
   const n = Number(m[1]);
-  return { d: n * DAY_MS, w: n * 7 * DAY_MS, m: n * 30 * DAY_MS, y: n * 365 * DAY_MS }[m[2]];
+  switch (m[2]) {
+    case 'd': return now - n * DAY_MS;
+    case 'w': return now - n * 7 * DAY_MS;
+    case 'y': return now - n * 365 * DAY_MS;
+    case 'm': {
+      const d = new Date(now);
+      const day = d.getDate();
+      d.setDate(1); // shield the month arithmetic from day overflow
+      d.setMonth(d.getMonth() - n);
+      const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+      d.setDate(Math.min(day, last));
+      return d.getTime();
+    }
+    default: return null;
+  }
 }
 
 /**
@@ -365,12 +387,12 @@ function buildCheck(key, value, now, ctx = {}) {
       return t === null ? null : (m) => m.date >= t;
     }
     case 'older_than': {
-      const span = parseSpan(value);
-      return span === null ? null : (m) => m.date < now - span;
+      const t = spanCutoff(value, now);
+      return t === null ? null : (m) => m.date < t;
     }
     case 'newer_than': {
-      const span = parseSpan(value);
-      return span === null ? null : (m) => m.date >= now - span;
+      const t = spanCutoff(value, now);
+      return t === null ? null : (m) => m.date >= t;
     }
     default:
       return null;

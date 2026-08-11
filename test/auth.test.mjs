@@ -356,12 +356,13 @@ test('sign-out clears consent and the delta cursor', async () => {
       expiresAt: 123,
       authorized: true,
       historyId: '999',
+      bgNotifiedIds: ['m1', 'm2'],
       theme: 'nord',
     },
   });
   await h.mod.signOut();
 
-  for (const k of ['accessToken', 'expiresAt', 'authorized', 'historyId']) {
+  for (const k of ['accessToken', 'expiresAt', 'authorized', 'historyId', 'bgNotifiedIds']) {
     assert.equal(h.store[k], undefined, `${k} must be cleared`);
   }
   assert.equal(h.store.clientId, CLIENT_ID, 'the client ID is not a credential');
@@ -537,6 +538,6 @@ test('the live token lives in session storage; consent stays in local (SEC-5)', 
   assert.match(AUTH_SRC, /tokenArea\(\)\.set\(\{\s*accessToken/, 'token written to the area');
   assert.match(AUTH_SRC, /chrome\.storage\.local\.get\('authorized'\)/,
     'consent flag read from local');
-  assert.match(AUTH_SRC, /chrome\.storage\.local\.remove\(\['authorized', 'historyId'\]\)/,
-    'sign-out clears consent from local, token from the area');
+  assert.match(AUTH_SRC, /chrome\.storage\.local\.remove\(\['authorized', 'historyId', 'bgNotifiedIds'\]\)/,
+    'sign-out clears consent + cursor + notification dedupe from local, token from the area');
 });
