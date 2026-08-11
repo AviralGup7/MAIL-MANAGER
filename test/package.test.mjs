@@ -768,7 +768,7 @@ test('every keyframe is defined exactly once and is actually used', () => {
    * `animation:` declaration here. Scanning the source for it keeps the
    * orphan check honest instead of exempting it.
    */
-  const js = read('src/app/app.js');
+  const js = read('src/app/app.js') + read('src/app/toast.js');
   const used = new Set([...css.matchAll(/animation:\s*([\w-]+)/g)].map((m) => m[1]));
   for (const m of js.matchAll(/animation = `([\w-]+)/g)) used.add(m[1]);
   const orphans = [...counts.keys()].filter((k) => !used.has(k));
@@ -2496,7 +2496,7 @@ test('every overlay open path cancels a half-finished exit', () => {
   for (const [file, marker] of [
     ['src/app/compose.js', 'panel'],
     ['src/app/palette.js', 'box'],
-    ['src/app/app.js', 'el.toast'],
+    ['src/app/toast.js', 'el.toast'],
   ]) {
     assert.match(read(file), /cancelExit\(/, `${file} must clear a stale exit before opening`);
   }

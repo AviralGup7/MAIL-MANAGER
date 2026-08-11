@@ -105,14 +105,19 @@ test('dialogs trap focus and announce destructive questions (round 45 Phase 2)',
   const layers = readFileSync(new URL('../src/app/layers.js', import.meta.url), 'utf8');
   const dialog = readFileSync(new URL('../src/app/dialog.js', import.meta.url), 'utf8');
   assert.match(layers, /export function trapFocus/, 'the layer module owns the trap');
-  const tt = readFileSync(new URL('../src/app/timetable-ui.js', import.meta.url), 'utf8');
-  assert.match(tt, /trapFocus\(node\)/, 'the timetable panel uses it');
+  // The trap is openLayer's DEFAULT now (round 46 arch #6): call sites inherit
+  // it instead of asking, and a dialog must not carry its own Tab handler.
+  assert.match(layers, /opts\.trap === false \? null : trapFocus\(opts\.node, doc\)/,
+    'openLayer traps by default, opt-out only');
+  const dialog2 = dialog;
+  assert.ok(!/e\.key !== 'Tab'/.test(dialog2), 'no hand-rolled Tab trap left in dialogs');
   assert.match(dialog, /role', danger \? 'alertdialog' : 'dialog'/,
     'destructive questions announce themselves');
   assert.match(dialog, /cancelBtn\.focus\(\)/, 'and the safe button is the default');
-  const app2 = readFileSync(new URL('../src/app/app.js', import.meta.url), 'utf8');
-  assert.match(app2, /kind === 'error' \? 'alert' : 'status'/,
+  const toastSrc = readFileSync(new URL('../src/app/toast.js', import.meta.url), 'utf8');
+  assert.match(toastSrc, /kind === 'error' \? 'alert' : 'status'/,
     'error toasts are assertive announcements');
+  const app2 = readFileSync(new URL('../src/app/app.js', import.meta.url), 'utf8');
   assert.match(app2, /el\.list\.focus\(\{ preventScroll: true \}\)/,
     'bulk actions return focus to the list');
 });
@@ -123,16 +128,21 @@ test('motion accessibility is complete: nothing animates without a reduced-motio
   // duration AND delay for every element, so every declaration has a story.
   // This pin fails if that block is weakened, and if any NEW infinite
   // animation appears that is not the documented skeleton shimmer.
-  const rm = css.match(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\n\}\n\}/);
+  const rmBlocks = [...css.matchAll(/@media \(prefers-reduced-motion: reduce\) \{/g)]
+    .map((m) => css.slice(m.index, css.indexOf('\n}', m.index)));
+  const rm = rmBlocks.find((b) => b.includes('animation-duration: 1ms !important'));
   assert.ok(rm, 'the global reduced-motion block exists');
-  assert.match(rm[0], /animation-duration: 1ms !important/);
-  assert.match(rm[0], /animation-delay: 0ms !important/);
-  assert.match(rm[0], /animation-iteration-count: 1 !important/,
+  assert.match(rm, /animation-duration: 1ms !important/);
+  assert.match(rm, /animation-delay: 0ms !important/);
+  assert.match(rm, /animation-iteration-count: 1 !important/,
     'infinite work-reporters stop iterating under reduced motion');
 
+  // Two work-reporters may run indefinitely: the skeleton shimmer and the
+  // topbar busy sweep -- both stop the moment their work stops, which is
+  // the rule. Anything else infinite needs a decision here.
   const infinite = [...css.matchAll(/animation:[^;]*infinite[^;]*;/g)]
     .map((m) => m[0])
-    .filter((a) => !a.includes('sk-shimmer'));
+    .filter((a) => !a.includes('sk-shimmer') && !a.includes('sweep'));
   assert.deepEqual(infinite, [],
-    'only the skeleton shimmer may run indefinitely');
+    'only work-reporting animations may run indefinitely');
 });
