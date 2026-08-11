@@ -81,8 +81,13 @@ export function openCompose(ctx, prefill = {}) {
    * re-send went out without them. Restoring them here puts them back on
    * screen and back in the MIME.
    */
+  // Two citizens: freshly chosen files (with base64 `data`) and PRESERVED
+  // draft attachments (metadata only, refetched at send). Both are valid;
+  // dropping either is losing a file the user can see (bug-hunt P0/#12).
   pendingFiles = Array.isArray(prefill.attachments)
-    ? prefill.attachments.filter((f) => f && typeof f.filename === 'string' && typeof f.data === 'string')
+    ? prefill.attachments.filter((f) =>
+        f && typeof f.filename === 'string' &&
+        ((typeof f.data === 'string' && f.data) || (f.attachmentId && f.messageId)))
     : [];
 
   $('compose-title').textContent = prefill.title || 'New message';
@@ -180,6 +185,14 @@ export async function editDraft(ctx, id) {
       title: 'Edit draft',
       threadId: d.threadId,
       draftId: d.draftId,
+      /*
+       * PRESERVED ATTACHMENTS (bug-hunt P0). Metadata only -- the bytes stay
+       * server-side until send, where the worker refetches them
+       * (hydrateDraftAttachments). Carrying them through here is what stops
+       * the next SAVE_DRAFT from rebuilding the MIME without them and
+       * silently deleting the user's files.
+       */
+      attachments: d.attachments || [],
     });
     // Set directly rather than through `quoted`, which would re-wrap it as a
     // reply -- this is the user's own unfinished text, not somebody else's.

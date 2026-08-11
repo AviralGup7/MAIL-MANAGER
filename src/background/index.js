@@ -13,13 +13,16 @@ import {
   getFull, modify, batchModify, trash, profile,
   buildMime, sendMessage, saveDraft, getDraftForMessage,
   listLabels, createLabel, getAttachment, ensureLabel, headerMap, normalise,
-  _clearLabelCache,
+  _clearLabelCache, hydrateDraftAttachments,
 } from './gmail.js';
 import { classify } from '../classify/index.js';
 import { selectNotifiable } from './notify.js';
 import { SNOOZE_LABEL } from '../shared/labels.js';
 import { MAX_INLINE_BYTES, MAX_INLINE_PARTS, BULK_CHUNK } from '../shared/limits.js';
 import { loadSnoozed, removeSnooze, due } from '../app/snooze.js';
+// Pure queue helpers (state machine, backoff, normalisation). The RUNNER
+// lives here in the worker now: one dispatcher for every tab (bug-hunt P1).
+import { loadOutbox, saveOutbox, dueItems, markFailed } from '../app/outbox.js';
 import { syncPage, syncDelta } from './sync.js';
 import { api } from './gmail.js';
 // The MIME parser lives in its own module so the in-page fallback can reuse
@@ -298,8 +301,14 @@ async function handle(msg) {
       return modify(msg.id, ['INBOX'], ['SPAM']);
 
     // ---- compose ---------------------------------------------------------
-    case 'SEND':
-      return sendMessage(buildMime(msg.draft), msg.draft.threadId);
+    case 'SEND': {
+      // Preserved draft attachments are hydrated at the wire, not carried in
+      // memory (bug-hunt P0). A part that cannot be recovered throws -- the
+      // outbox surfaces that as a retryable failure instead of sending a
+      // message silently missing its files.
+      const draft = await hydrateDraftAttachments(msg.draft);
+      return sendMessage(buildMime(draft), draft.threadId);
+    }
     /*
      * Open a draft for editing. The Drafts mailbox is fetched by label, so the
      * app has a MESSAGE id and the drafts API wants a DRAFT id -- see
@@ -311,10 +320,75 @@ async function handle(msg) {
       if (!d) return null;
       // Parsed HERE, beside extractBody, which already knows how to read a
       // Gmail payload. A second parser is how two readers drift apart.
-      return { draftId: d.draftId, ...extractBody(d.message) };
+      const body = extractBody(d.message);
+      /*
+       * PRESERVED ATTACHMENTS carry the id of the message that owns them
+       * (bug-hunt P0): editing re-saves through a rebuilt MIME, and an entry
+       * with no `data` must be refetchable or it silently disappears. The
+       * bytes themselves stay server-side until send (see
+       * hydrateDraftAttachments) -- chips need metadata, not megabytes.
+       */
+      body.attachments = (body.attachments || []).map((a) => ({
+        ...a,
+        messageId: body.id || msg.id,
+      }));
+      return { draftId: d.draftId, ...body };
     }
-    case 'SAVE_DRAFT':
-      return saveDraft(buildMime(msg.draft), msg.draft.threadId, msg.draftId);
+    case 'SAVE_DRAFT': {
+      const draft = await hydrateDraftAttachments(msg.draft);
+      return saveDraft(buildMime(draft), draft.threadId, msg.draftId);
+    }
+
+    // ---- outbox ----------------------------------------------------------
+    /*
+     * THE WORKER IS THE SOLE DISPATCHER (bug-hunt P1).
+     *
+     * The queue's state machine (held -> sending -> sent/failed) stays in
+     * storage and in outbox.js's pure helpers, but the act of sending now has
+     * exactly ONE owner. Two tabs flushing for themselves used to race on a
+     * storage claim whose get-check-set is not atomic, and the prize for
+     * winning that race is a duplicated email -- the worst failure mode of a
+     * mail client. Every tab asks the worker to pump; the worker single-
+     * flights, so the claim can no longer be contested.
+     *
+     * A crash mid-dispatch is covered by the existing semantics: a record
+     * left in `sending` demotes to `failed` on next load, visible and
+     * cancellable, never silently re-sent.
+     */
+    case 'OUTBOX_PUMP': {
+      if (outboxPumping) return { sent: 0, failed: 0, skipped: true };
+      outboxPumping = true;
+      try {
+        let items = await loadOutbox(chrome.storage.local);
+        const due = dueItems(items);
+        if (due.length === 0) return { sent: 0, failed: 0, skipped: false };
+
+        let sent = 0;
+        let failed = 0;
+        for (const item of due) {
+          // Persist `sending` BEFORE the request: the crash contract reads it
+          // on next boot, and cancel() refuses a record in this state.
+          items = items.map((x) => (x.id === item.id ? { ...x, state: 'sending' } : x));
+          await saveOutbox(items, chrome.storage.local);
+          try {
+            // Preserved draft attachments hydrate at the wire (bug-hunt P0);
+            // an unrecoverable part fails THIS item, loudly, not the batch.
+            const draft = await hydrateDraftAttachments(item.draft);
+            await sendMessage(buildMime(draft), draft.threadId);
+            items = items.filter((x) => x.id !== item.id);
+            sent++;
+          } catch (err) {
+            items = items.map((x) =>
+              x.id === item.id ? markFailed(x, err?.message || err) : x);
+            failed++;
+          }
+          await saveOutbox(items, chrome.storage.local);
+        }
+        return { sent, failed, skipped: false };
+      } finally {
+        outboxPumping = false;
+      }
+    }
 
     // ---- labels ----------------------------------------------------------
     case 'LIST_LABELS':
@@ -363,10 +437,16 @@ async function handle(msg) {
       let budget = MAX_INLINE_BYTES;
       for (const p of parts) {
         if (!p?.attachmentId || !p?.contentId) continue;
+        // The DECLARED size is a pre-flight filter only -- a hostile part can
+        // lie about it. The real enforcement happens on the fetched bytes
+        // (bug-hunt #7): the base64 payload length tells the truth.
         if ((p.size || 0) > budget) continue;
         try {
           const dataUrl = await getAttachment(msg.messageId, p.attachmentId, p.mimeType);
-          budget -= p.size || 0;
+          const b64 = String(dataUrl).slice(String(dataUrl).indexOf(',') + 1);
+          const actual = Math.floor(b64.length * 3 / 4);
+          if (actual > budget) continue; // fetched more than we can spend
+          budget -= actual;
           out.push({ contentId: p.contentId, filename: p.filename || '', dataUrl });
         } catch {
           // One unfetchable part must not blank the whole message body.
@@ -530,6 +610,9 @@ function shortSender(from, max = 40) {
   if (!clean) return 'BITS mail';
   return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
 }
+
+/** Single-flight guard for OUTBOX_PUMP: one dispatch loop at a time. */
+let outboxPumping = false;
 
 function scheduleBackgroundSync() {
   if (!chrome.alarms) return;

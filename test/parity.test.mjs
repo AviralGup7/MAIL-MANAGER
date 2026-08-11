@@ -87,3 +87,51 @@ test('fallback SIGN_OUT clears the label cache like the worker (bug-hunt #22)', 
   assert.ok(body.includes('gmail._clearLabelCache()'),
     'account-scoped label ids must die with the session on both paths');
 });
+
+/*
+ * Bug-hunt P0/P1/P2 pins: the fixes that ended silent attachment loss,
+ * cross-tab double-send, and declared-size budgeting.
+ */
+
+test('OUTBOX_PUMP exists in BOTH tables and dispatches through the hydrator', () => {
+  const f = read('src/app/fallback.js');
+  const w = read('src/background/index.js');
+  assert.ok(worker.has('OUTBOX_PUMP'), 'worker owns the dispatch loop');
+  assert.ok(fallback.has('OUTBOX_PUMP'), 'fallback degrades to in-page dispatch');
+  assert.match(w, /case 'OUTBOX_PUMP'/);
+  assert.match(w, /outboxPumping/, 'the worker single-flights the pump');
+  assert.match(w, /hydrateDraftAttachments\(item\.draft\)/,
+    'preserved attachments hydrate at the wire, per item');
+  assert.match(f, /outbox\.flushOutbox/, 'the in-page path runs the queue runner');
+});
+
+test('GET_INLINE enforces the ACTUAL fetched bytes, not the declared size (bug-hunt P2)', () => {
+  const f = read('src/app/fallback.js');
+  const w = read('src/background/index.js');
+  for (const [name, src] of [['fallback', f], ['worker', w]]) {
+    assert.match(src, /actual > budget/,
+      `${name} must compare the fetched bytes against the budget`);
+    assert.match(src, /budget -= actual/, `${name} must spend what it fetched`);
+  }
+});
+
+test('SEND/SAVE_DRAFT hydrate preserved attachments on both paths (bug-hunt P0)', () => {
+  const f = read('src/app/fallback.js');
+  const w = read('src/background/index.js');
+  for (const [name, src] of [['fallback', f], ['worker', w]]) {
+    const send = src.slice(src.indexOf("case 'SEND'"), src.indexOf("case 'SEND'") + 600);
+    assert.ok(send.includes('hydrateDraftAttachments'), `${name} SEND must hydrate`);
+    const save = src.slice(src.indexOf("case 'SAVE_DRAFT'"), src.indexOf("case 'SAVE_DRAFT'") + 600);
+    assert.ok(save.includes('hydrateDraftAttachments'), `${name} SAVE_DRAFT must hydrate`);
+  }
+});
+
+test('GET_DRAFT stamps attachments with their owning message on both paths (bug-hunt P0)', () => {
+  const f = read('src/app/fallback.js');
+  const w = read('src/background/index.js');
+  for (const [name, src] of [['fallback', f], ['worker', w]]) {
+    const at = src.indexOf("case 'GET_DRAFT'");
+    const body = src.slice(at, at + 900);
+    assert.ok(body.includes('messageId:'), `${name} must make preserved parts refetchable`);
+  }
+});

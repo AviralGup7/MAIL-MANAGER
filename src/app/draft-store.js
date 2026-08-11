@@ -48,9 +48,35 @@ export function isMeaningful(draft) {
   );
 }
 
+/**
+ * The persistable shape of a draft.
+ *
+ * Base64 attachment DATA never enters chrome.storage.local (bug-hunt, new):
+ * this module once persisted the entire collected draft, megabytes of
+ * attachment base64 included -- contradicting its own charter ("crash
+ * recovery restores the text and NOT the attachments") and competing with the
+ * message cache for the shared quota on every 800ms autosave.
+ *
+ * Attachment METADATA survives, deliberately:
+ *   - a freshly chosen file degrades to a name with no source; restore
+ *     filters it out, exactly the documented behaviour;
+ *   - a PRESERVED draft attachment keeps attachmentId + messageId, so after a
+ *     crash the user's Gmail-draft files are still refetchable at send and
+ *     the next save cannot silently drop them (bug-hunt P0).
+ */
+function storable(draft, now) {
+  const safe = { ...draft, savedAt: now };
+  if (Array.isArray(safe.attachments)) {
+    safe.attachments = safe.attachments
+      .filter((f) => f && typeof f.filename === 'string')
+      .map(({ data, ...meta }) => meta);
+  }
+  return safe;
+}
+
 export async function saveDraft(draft, storage = STORAGE, now = Date.now()) {
   try {
-    await storage.set({ [KEY]: { ...draft, savedAt: now } });
+    await storage.set({ [KEY]: storable(draft, now) });
     return true;
   } catch {
     // Quota or private mode. The in-memory panel is unaffected; the user
@@ -103,7 +129,10 @@ export function createDraftSaver(collect, storage = STORAGE, opts = {}) {
 
     // Skip identical writes. Moving the caret fires input events on some
     // platforms, and rewriting the same bytes every 800ms is pure waste.
-    const ser = JSON.stringify(draft);
+    // Serialise the STORABLE shape: the heavy base64 data is stripped before
+    // persistence, so the comparison never stringifies megabytes.
+    const safe = storable(draft, 0);
+    const ser = JSON.stringify(safe);
     if (ser === lastSerialised) return false;
     lastSerialised = ser;
 

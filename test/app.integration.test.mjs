@@ -260,6 +260,38 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
             threadId: msg.id,
           },
         };
+      case 'OUTBOX_PUMP': {
+        /*
+         * Emulate the worker's SOLE-OWNER pump (bug-hunt P1): the app no
+         * longer dispatches per item, it asks the worker to drain the queue.
+         * The harness reads the queue from storage, dispatches what is due,
+         * and records one synthetic SEND per message -- what the worker would
+         * hand to sendMessage -- so wire assertions stay honest.
+         */
+        const items = Array.isArray(storage.outbox) ? storage.outbox : [];
+        const now = Date.now();
+        let sent = 0;
+        let failed = 0;
+        const next = [];
+        for (const it of items) {
+          const isDue =
+            (it.state === 'held' && (it.releaseAt || 0) <= now) ||
+            (it.state === 'failed' && (it.attempts || 0) < 4 && (it.nextAttempt || 0) <= now);
+          if (!isDue) { next.push(it); continue; }
+          if (failVerbs.includes('SEND') || failVerbs.includes('OUTBOX_PUMP')) {
+            next.push({
+              ...it, state: 'failed', attempts: (it.attempts || 0) + 1,
+              nextAttempt: now + 15000, error: 'injected',
+            });
+            failed++;
+          } else {
+            calls.push({ type: 'SEND', draft: it.draft });
+            sent++;
+          }
+        }
+        storage.outbox = next;
+        return { ok: true, data: { sent, failed, skipped: false } };
+      }
       default: return { ok: true, data: {} };
     }
   }

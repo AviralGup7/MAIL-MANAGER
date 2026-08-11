@@ -279,3 +279,41 @@ test('pending reports whether a write is actually buffered', async () => {
   await saver.discard();
   assert.equal(saver.pending, false, 'discard clears it too');
 });
+
+// ---------------------------------------------- attachment persistence pins --
+
+test('autosave never persists attachment base64 (bug-hunt: charter vs reality)', async () => {
+  // The charter says crash recovery restores text, not attachments; the old
+  // code persisted the entire collected draft, megabytes of base64 included,
+  // on every 800ms autosave. The stored shape must carry metadata only.
+  const s = fakeStorage();
+  const draft = {
+    to: 'a@b.c', subject: 's', body: 'typed', baseBody: '',
+    attachments: [
+      { filename: 'big.pdf', mimeType: 'application/pdf', size: 999, data: 'A'.repeat(5000) },
+      { filename: 'kept.pdf', mimeType: 'application/pdf', size: 5,
+        attachmentId: 'att1', messageId: 'm1' },
+    ],
+  };
+  assert.equal(await saveDraft(draft, s), true);
+  const stored = (await s.get('composeDraft')).composeDraft;
+  assert.equal(stored.attachments[0].data, undefined, 'fresh-file base64 must not reach storage');
+  assert.equal(stored.attachments[0].filename, 'big.pdf', 'its name survives for honesty');
+  assert.equal(stored.attachments[1].attachmentId, 'att1', 'preserved parts keep their refetch source');
+  assert.equal(stored.attachments[1].messageId, 'm1');
+});
+
+test('editDraft carries preserved attachments into the panel (bug-hunt P0)', async () => {
+  // Source wiring pins: the app side of the preservation contract. Without
+  // these, the worker hydrates nothing and the files are rebuilt away.
+  const { readFileSync } = await import('node:fs');
+  const compose = readFileSync(new URL('../src/app/compose.js', import.meta.url), 'utf8');
+
+  const edit = compose.slice(compose.indexOf('export async function editDraft'), compose.indexOf('export async function editDraft') + 1400);
+  assert.ok(edit.includes('attachments: d.attachments || []'),
+    'editDraft must hand the draft attachments to openCompose');
+
+  const open = compose.slice(compose.indexOf('export function openCompose'), compose.indexOf('export function openCompose') + 2500);
+  assert.ok(open.includes('f.attachmentId && f.messageId'),
+    'metadata-only (preserved) attachments must be accepted, not filtered out');
+});

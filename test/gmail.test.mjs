@@ -839,3 +839,57 @@ test('a second 401 after renewal is AUTH_REVOKED, not data (bug-hunt #2)', async
     fakeStorage.expiresAt = Date.now() + 3600_000;
   }
 });
+
+// -------------------------------------------- draft attachment preservation --
+
+test('hydrateDraftAttachments refetches preserved parts at the wire (bug-hunt P0)', async () => {
+  const { hydrateDraftAttachments } = await import('../src/background/gmail.js');
+  let fetched = 0;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    fetched++;
+    return { ok: true, status: 200, json: async () => ({ data: 'aGVsbG8' }) };
+  };
+  try {
+    const draft = {
+      to: 'a@b.c', body: 'x',
+      attachments: [
+        { filename: 'kept.pdf', mimeType: 'application/pdf', size: 5,
+          attachmentId: 'att1', messageId: 'm1' },          // metadata only
+        { filename: 'local.txt', mimeType: 'text/plain', data: 'bG9jYWw=' }, // already read
+      ],
+    };
+    const out = await hydrateDraftAttachments(draft);
+    assert.equal(fetched, 1, 'only the metadata-only part hits the network');
+    assert.equal(out.attachments[0].data, 'aGVsbG8=', 'preserved part hydrated (padded)');
+    assert.equal(out.attachments[1].data, 'bG9jYWw=', 'local part untouched');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('an unrecoverable preserved attachment THROWS, it never sends without it (bug-hunt P0)', async () => {
+  const { hydrateDraftAttachments } = await import('../src/background/gmail.js');
+  // No attachmentId, no data: nothing to refetch from. Sending anyway is the
+  // silent-loss bug this function exists to kill.
+  await assert.rejects(
+    () => hydrateDraftAttachments({
+      to: 'a@b.c', body: 'x',
+      attachments: [{ filename: 'orphan.pdf', mimeType: 'application/pdf', size: 5 }],
+    }),
+    /orphan\.pdf/
+  );
+  // A refetch that fails must fail the send, not drop the file.
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: false, status: 404, text: async () => 'gone' });
+  try {
+    await assert.rejects(
+      () => hydrateDraftAttachments({
+        to: 'a@b.c', body: 'x',
+        attachments: [{ filename: 'dead.pdf', attachmentId: 'x', messageId: 'm', mimeType: 'application/pdf' }],
+      })
+    );
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});

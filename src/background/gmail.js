@@ -762,6 +762,37 @@ function plainToHtml(text) {
 }
 
 /**
+ * Re-fetch the attachments of a Gmail draft being edited (bug-hunt P0).
+ *
+ * Editing a draft opens it with attachment METADATA only (filename, type,
+ * size, attachmentId) -- carrying megabytes through the message channel just
+ * to display a chip would be the same waste the compose panel avoids. The
+ * bytes are fetched HERE, at the last gate before the wire, for entries that
+ * have no `data` yet.
+ *
+ * A preserved attachment that cannot be recovered THROWS rather than sending
+ * without it: the silent alternative is exactly the data loss this exists to
+ * end. The outbox turns the throw into a visible, retryable failure.
+ */
+export async function hydrateDraftAttachments(draft) {
+  const atts = Array.isArray(draft?.attachments) ? draft.attachments : [];
+  if (!atts.length) return draft;
+  const out = [];
+  for (const f of atts) {
+    if (!f || typeof f.filename !== 'string') continue;
+    if (typeof f.data === 'string' && f.data) { out.push(f); continue; }
+    if (!f.attachmentId || !f.messageId) {
+      throw new Error(`Cannot recover attachment \u201c${f.filename}\u201d: no source to refetch it from`);
+    }
+    const dataUrl = await getAttachment(f.messageId, f.attachmentId, f.mimeType);
+    const at = String(dataUrl).indexOf(',');
+    if (at === -1) throw new Error(`Could not read attachment \u201c${f.filename}\u201d`);
+    out.push({ ...f, data: dataUrl.slice(at + 1) });
+  }
+  return { ...draft, attachments: out };
+}
+
+/**
  * Send a message.
  * `threadId` keeps a reply inside its conversation.
  */

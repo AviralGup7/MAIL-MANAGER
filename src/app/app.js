@@ -351,6 +351,10 @@ const VERB_TIMEOUT_MS = {
   BULK: 30000,
   // Interactive OAuth: the user has to actually sign in.
   SIGN_IN: 120000,
+  // The whole due queue: per item, attachment refetch + a send with its own
+  // retries. Generous on purpose -- declaring the worker dead mid-pump would
+  // degrade the session over work that is succeeding.
+  OUTBOX_PUMP: 300000,
 };
 
 /** Everything else is a small request that should answer quickly. */
@@ -4323,10 +4327,20 @@ async function pumpOutbox() {
   clearTimeout(outboxTimer);
   outboxTimer = 0;
 
-  const result = await outbox.flushOutbox({
-    send: (draft) => send('SEND', { draft }),
-    onChange: () => renderOutbox(),
-  });
+  /*
+   * DISPATCH GOES THROUGH THE WORKER (bug-hunt P1): one owner for the send
+   * loop across every tab, instead of a storage claim whose get-check-set
+   * two tabs could win at once. In fallback mode send() routes this same
+   * verb to the in-page runner, claim-guarded. Either way the answer shape
+   * is { sent, failed, skipped }.
+   */
+  let result;
+  try {
+    result = await send('OUTBOX_PUMP');
+  } catch {
+    result = { sent: 0, failed: 0, skipped: true };
+  }
+  renderOutbox();
 
   if (result.sent) {
     activity.record({ verb: 'SEND', ids: [], actor: 'user' });

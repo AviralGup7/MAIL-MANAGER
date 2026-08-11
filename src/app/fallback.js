@@ -59,11 +59,12 @@ let loadError = null;
 async function buildHandler() {
   if (handler || loadError) return handler;
   try {
-    const [auth, gmail, sync, snooze, mime] = await Promise.all([
+    const [auth, gmail, sync, snooze, outbox, mime] = await Promise.all([
       import('../background/auth.js'),
       import('../background/gmail.js'),
       import('../background/sync.js'),
       import('./snooze.js'),
+      import('./outbox.js'),
       import('../background/mime.js'),
     ]);
     handler = makeHandler({ auth, gmail, sync, snooze, mime });
@@ -82,7 +83,7 @@ async function buildHandler() {
  * chrome.scripting is refused by name rather than failing obscurely, so the
  * caller gets "this needs the background worker" instead of a TypeError.
  */
-function makeHandler({ auth, gmail, sync, snooze, mime }) {
+function makeHandler({ auth, gmail, sync, snooze, outbox, mime }) {
   return async function handleInPage(msg) {
     const { type } = msg;
 
@@ -205,10 +206,15 @@ function makeHandler({ auth, gmail, sync, snooze, mime }) {
         let budget = MAX_INLINE_BYTES;
         for (const part of parts) {
           if (!part?.attachmentId || !part?.contentId) continue;
+          // Declared size is a pre-flight filter; the ACTUAL fetched bytes are
+          // the enforcement (bug-hunt #7), exactly as in the worker.
           if ((part.size || 0) > budget) continue;
           try {
             const dataUrl = await gmail.getAttachment(msg.messageId || msg.id, part.attachmentId, part.mimeType);
-            budget -= part.size || 0;
+            const b64 = String(dataUrl).slice(String(dataUrl).indexOf(',') + 1);
+            const actual = Math.floor(b64.length * 3 / 4);
+            if (actual > budget) continue;
+            budget -= actual;
             out.push({ contentId: part.contentId, filename: part.filename || '', dataUrl });
           } catch { /* one bad part must not blank the body */ }
         }
@@ -217,6 +223,21 @@ function makeHandler({ auth, gmail, sync, snooze, mime }) {
         // placeholders forever in fallback mode.
         return { inline: out };
       }
+
+      /*
+       * DEGRADED-MODE DISPATCH. When the worker is alive it is the sole
+       * dispatcher (bug-hunt P1); when it is dead, this page runs the queue
+       * itself with the existing claim guard -- a weaker, multi-tab-safe
+       * fallback, because degraded mode already lost the stronger guarantee.
+       */
+      case 'OUTBOX_PUMP':
+        return outbox.flushOutbox({
+          send: async (draft) => {
+            const d = await gmail.hydrateDraftAttachments(draft);
+            return gmail.sendMessage(gmail.buildMime(d), d.threadId);
+          },
+          storage: chrome.storage?.local,
+        });
 
       case 'LIST_LABELS': return gmail.listLabels();
       case 'CREATE_LABEL': return gmail.createLabel(msg.name);
@@ -228,15 +249,26 @@ function makeHandler({ auth, gmail, sync, snooze, mime }) {
         // second parser.
         const d = await gmail.getDraftForMessage(msg.id || msg.messageId);
         if (!d) return null;
-        return { draftId: d.draftId, ...mime.extractBody(d.message) };
+        const body = mime.extractBody(d.message);
+        // Preserved-attachment parity with the worker (bug-hunt P0): stamp
+        // the owning message id so a re-save can refetch the bytes.
+        body.attachments = (body.attachments || []).map((a) => ({
+          ...a,
+          messageId: body.id || msg.id,
+        }));
+        return { draftId: d.draftId, ...body };
       }
 
       // Compose verbs: the fallback used to lack the product's core mail
       // operations entirely (V2 C-class). Same builders as the worker.
-      case 'SEND':
-        return gmail.sendMessage(gmail.buildMime(msg.draft), msg.draft.threadId);
-      case 'SAVE_DRAFT':
-        return gmail.saveDraft(gmail.buildMime(msg.draft), msg.draft.threadId, msg.draftId);
+      case 'SEND': {
+        const draft = await gmail.hydrateDraftAttachments(msg.draft);
+        return gmail.sendMessage(gmail.buildMime(draft), draft.threadId);
+      }
+      case 'SAVE_DRAFT': {
+        const draft = await gmail.hydrateDraftAttachments(msg.draft);
+        return gmail.saveDraft(gmail.buildMime(draft), draft.threadId, msg.draftId);
+      }
 
       default:
         if (WORKER_ONLY.has(type)) {
