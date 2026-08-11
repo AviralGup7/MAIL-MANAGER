@@ -116,8 +116,22 @@ function mount({ reducedMotion = false, url = 'https://mail.google.com/mail/u/0/
     await new Promise((r) => win.setTimeout(r, 0));
   };
 
-  /** The app iframe reporting first paint. */
+  /** The app iframe reporting first paint -- echoing the embed nonce the
+   *  content script minted into the frame URL, exactly like the real app. */
   const appReady = () => {
+    const frame = win.document.getElementById('bmm-takeover-frame');
+    let nonce = '';
+    try { nonce = new URL(frame?.src || 'https://x/').searchParams.get('embed') || ''; } catch { nonce = ''; }
+    win.dispatchEvent(
+      new win.MessageEvent('message', {
+        data: { type: 'BMM_READY', nonce },
+        source: frame?.contentWindow || null,
+      })
+    );
+  };
+
+  /** A FORGED readiness: right source, no nonce. */
+  const appReadyForged = () => {
     const frame = win.document.getElementById('bmm-takeover-frame');
     win.dispatchEvent(
       new win.MessageEvent('message', {
@@ -141,7 +155,7 @@ function mount({ reducedMotion = false, url = 'https://mail.google.com/mail/u/0/
       cssText: el.getAttribute('style') || '',
     }));
 
-  return { win, doc: win.document, send, tick, appReady, roots, styleSnapshot };
+  return { win, doc: win.document, send, tick, appReady, appReadyForged, roots, styleSnapshot };
 }
 
 const host = (doc) => doc.getElementById('bmm-takeover-host');
@@ -272,11 +286,13 @@ test('BMM_RELEASE from the app iframe releases; a forged one does not', async (t
   await h.tick();
   assert.ok(host(h.doc), 'a message from an unknown source must be ignored');
 
-  // Genuine: from the app frame.
+  // Genuine: from the app frame, echoing the nonce minted into its URL
+  // (bug-hunt 44 #70).
   const frame = h.doc.getElementById('bmm-takeover-frame');
+  const nonce = new URL(frame.src).searchParams.get('embed');
   h.win.dispatchEvent(
     new h.win.MessageEvent('message', {
-      data: { type: 'BMM_RELEASE' },
+      data: { type: 'BMM_RELEASE', nonce },
       source: frame.contentWindow,
       origin: 'chrome-extension://test',
     })
@@ -612,4 +628,35 @@ test('TAKEOVER: an untrusted page chord cannot double-toggle alongside the worke
   const els = h.doc.querySelectorAll('#bmm-takeover-host');
   assert.equal(els.length, 1, 'exactly one takeover host');
   assert.ok(els[0].classList.contains('bmm-active'), 'and it is the active one');
+});
+
+test('the takeover frame is minted with an embed nonce (bug-hunt 44 #70)', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const h = mount();
+  h.send({ type: 'BMM_TOGGLE' });
+  await h.tick(5);
+  const frame = h.doc.getElementById('bmm-takeover-frame');
+  assert.ok(frame, 'the frame exists');
+  const nonce = new URL(frame.src).searchParams.get('embed');
+  assert.ok(nonce && nonce.length >= 8, 'the frame URL carries a minted nonce');
+  assert.match(nonce, /^bmm-/, 'and it is namespaced');
+});
+
+test('a forged BMM_READY without the nonce cannot reveal the takeover (bug-hunt 44 #70)', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * The threat: any script on the Gmail page can post the handshake
+   * messages. Source alone cannot tell our frame from a foreign one -- but
+   * the nonce can, because only our content script knows the value it just
+   * minted into the frame URL.
+   */
+  const h = mount();
+  h.send({ type: 'BMM_TOGGLE' });
+  await h.tick(5);
+  h.appReadyForged();
+  await h.tick(5);
+  const hostEl = host(h.doc);
+  assert.ok(hostEl, 'the host stays mounted');
+  assert.ok(!hostEl.classList.contains('bmm-active'),
+    'readiness without the nonce must not activate the takeover');
 });

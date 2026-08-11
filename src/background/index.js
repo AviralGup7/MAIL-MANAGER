@@ -491,6 +491,14 @@ async function handle(msg) {
   }
 }
 
+/**
+ * TEST SEAM (roadmap Phase 4 / bug-hunt 44 #58). The dispatch table used to
+ * be verified only by source pins and emulations -- the real function never
+ * executed in a test process. Exported so the worker's actual verb handler
+ * runs under stubbed chrome/fetch; the underscore marks it as non-product.
+ */
+export const _testHandle = handle;
+
 
 
 

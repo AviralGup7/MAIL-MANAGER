@@ -50,3 +50,19 @@ test('sending warns about unfilled template placeholders (bug-hunt 44 #30)', () 
   assert.match(body, /Unfilled template fields/,
     'the send path names the gaps before a template mails them');
 });
+
+test('an embedded boot without a nonce refuses to run (bug-hunt 44 #70)', () => {
+  // app.html is web-accessible to mail.google.com; anything on that page can
+  // iframe it. The legitimate embedder mints a nonce into the URL, so an
+  // embedded boot WITHOUT one must refuse: no start(), no probes, a visible
+  // refusal instead.
+  assert.match(app, /EMBED_NONCE/, 'the app reads the embed nonce');
+  assert.match(app, /IS_EMBEDDED/, 'and knows when it is iframed');
+  assert.match(app, /if \(IS_EMBEDDED && !EMBED_NONCE\)/,
+    'embedded + nonceless = refuse');
+  const gate = app.slice(app.indexOf('if (IS_EMBEDDED && !EMBED_NONCE)'), app.indexOf('if (IS_EMBEDDED && !EMBED_NONCE') + 900);
+  assert.ok(gate.includes('boot()') === false || /else \{\s*boot\(\);/.test(app.slice(app.indexOf('if (IS_EMBEDDED && !EMBED_NONCE)'))),
+    'boot runs only on the legitimate branches');
+  assert.match(app, /\{ type: 'BMM_READY', \.\.\.\(EMBED_NONCE/, 'readiness echoes the nonce');
+  assert.match(app, /\{ type: 'BMM_RELEASE', \.\.\.\(EMBED_NONCE/, 'and so does release');
+});

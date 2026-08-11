@@ -59,6 +59,15 @@ const EXIT_MS = 260;
 let state = 'idle'; // idle | entering | active | leaving
 let host = null;
 let frame = null;
+/*
+ * EMBED PROVENANCE (bug-hunt 44 #70). app.html is web-accessible to
+ * mail.google.com -- needed so WE can iframe it, but it also lets any
+ * script on the Gmail page embed the app on its own terms. The frame is
+ * therefore created with a one-time nonce in its URL, and every handshake
+ * message back must echo it: a foreign embedder cannot complete the
+ * takeover handshake, because it never received the nonce we just minted.
+ */
+let embedNonce = '';
 let hiddenNodes = [];
 let escHandler = null;
 let lateObserver = null;
@@ -207,7 +216,10 @@ function waitForAppReady(timeoutMs = 2000) {
       resolve();
     };
     const onMsg = (e) => {
-      if (e.source === frame?.contentWindow && e.data?.type === 'BMM_READY') {
+      // Source-checked AND nonce-checked: only the frame we just created,
+      // carrying the nonce only we know, may declare itself ready.
+      if (e.source === frame?.contentWindow && e.data?.type === 'BMM_READY' &&
+          e.data?.nonce === embedNonce) {
         finish();
       }
     };
@@ -226,13 +238,14 @@ async function takeOver() {
   host.setAttribute('aria-modal', 'true');
   host.setAttribute('aria-label', 'BITS Mail Manager');
 
+  embedNonce = `bmm-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   frame = document.createElement('iframe');
   frame.id = FRAME_ID;
   // Pass the account index through. Gmail multiplexes accounts by path
   // (/mail/u/0/, /mail/u/1/ ...), and the app runs on an extension origin so
   // it cannot read this page's URL. Without it, "Open in Gmail" always
   // deep-linked to the first account regardless of which one you were reading.
-  frame.src = `${chrome.runtime.getURL('app.html')}?u=${encodeURIComponent(accountIndex())}`;
+  frame.src = `${chrome.runtime.getURL('app.html')}?u=${encodeURIComponent(accountIndex())}&embed=${embedNonce}`;
   frame.setAttribute('title', 'BITS Mail Manager');
   // No allow-same-origin: the frame is an extension origin and does not need
   // access to the Gmail document. Least privilege.
@@ -383,11 +396,12 @@ window.addEventListener('keydown', (e) => {
   toggle();
 }, true);
 
-// The app asks to be closed (its own back button).
+// The app asks to be closed (its own back button). Nonce-checked for the
+// same reason BMM_READY is: a foreign frame must not drive the release.
 window.addEventListener('message', (e) => {
   if (e.source !== frame?.contentWindow) return;
   if (e.origin !== new URL(chrome.runtime.getURL('')).origin) return;
-  if (e.data?.type === 'BMM_RELEASE') release();
+  if (e.data?.type === 'BMM_RELEASE' && e.data?.nonce === embedNonce) release();
 });
 
 // If the tab is torn down mid-takeover, put Gmail back. Without this a crash

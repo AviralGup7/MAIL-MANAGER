@@ -243,6 +243,24 @@ const ACCOUNT_INDEX = (() => {
   const u = new URLSearchParams(search).get('u');
   return u && /^\d+$/.test(u) ? u : '0';
 })();
+
+/*
+ * EMBED PROVENANCE (bug-hunt 44 #70). app.html is web-accessible to
+ * mail.google.com so the takeover can iframe it -- which means anything on
+ * the Gmail page can iframe it too. The legitimate embedder (our content
+ * script) mints a one-time nonce into the frame URL; a foreign embedder
+ * cannot. When we are embedded WITHOUT a nonce, we refuse to boot: no auth
+ * probes, no storage reads, no UI an attacker could costume.
+ */
+const EMBED_NONCE = (() => {
+  const search = globalThis.window?.location?.search || '';
+  const n = new URLSearchParams(search).get('embed');
+  return n && /^[A-Za-z0-9_-]{8,64}$/.test(n) ? n : '';
+})();
+const IS_EMBEDDED = (() => {
+  const w = globalThis.window;
+  return !!w && !!w.parent && w.parent !== w;
+})();
 const el = {
   shell: $('shell'),
   cats: $('cats'),
@@ -4721,7 +4739,10 @@ function release() {
   saver.flush();
   flushDraft();
   cancelPendingWork();
-  parent.postMessage({ type: 'BMM_RELEASE' }, 'https://mail.google.com');
+  parent.postMessage(
+    { type: 'BMM_RELEASE', ...(EMBED_NONCE ? { nonce: EMBED_NONCE } : {}) },
+    'https://mail.google.com'
+  );
 }
 
 // Keyboard. Gmail-compatible where it makes sense, so muscle memory survives.
@@ -5787,7 +5808,10 @@ async function boot() {
   // Tell the content script we have painted. It waits for this before it
   // reveals the takeover, which is what prevents the white flash the old
   // separate-tab approach had.
-  requestAnimationFrame(() => parent.postMessage({ type: 'BMM_READY' }, 'https://mail.google.com'));
+  requestAnimationFrame(() => parent.postMessage(
+    { type: 'BMM_READY', ...(EMBED_NONCE ? { nonce: EMBED_NONCE } : {}) },
+    'https://mail.google.com'
+  ));
 
   try {
     const { signedIn } = await send('AUTH_STATUS');
@@ -5854,4 +5878,22 @@ function fullDate(ms) {
   });
 }
 
-boot();
+if (IS_EMBEDDED && !EMBED_NONCE) {
+  /*
+   * Foreign embed: refuse visibly and boot nothing. The message names the
+   * chord, which is the honest way back to the legitimate surface.
+   */
+  console.warn('[BMM] refusing to boot inside an unrecognised embed.');
+  try {
+    document.body.replaceChildren();
+    const note = document.createElement('div');
+    note.setAttribute('role', 'alert');
+    note.style.cssText = 'padding:24px;font-family:system-ui;color:#8a2f2f';
+    note.textContent =
+      'BITS Mail Manager will not run inside this page. ' +
+      'Open it from Gmail with Alt+Shift+M.';
+    document.body.appendChild(note);
+  } catch { /* refusing is the point; the notice is a courtesy */ }
+} else {
+  boot();
+}

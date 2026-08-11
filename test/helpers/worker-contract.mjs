@@ -17,6 +17,8 @@
  *                      tests can assert BYTES at the wire, not metadata.
  */
 
+import { attemptsAfterFailure } from '../../src/app/outbox.js';
+
 export function makeFakeWorker({
   calls,
   storage,
@@ -159,11 +161,9 @@ const hydrate = (draft) => {
             draft = hydrate(it.draft);
           } catch (err) {
             const message = String(err.message).slice(0, 200);
-            // Mirror the runner's markFailed rules: a permanently lost
-            // attachment goes straight to stuck (bug-hunt 43 #33); any other
-            // repeated error short-circuits on its second occurrence.
-            const lost = /Cannot recover attachment|Could not read attachment/.test(message);
-            const attempts = lost || it.error === message ? 4 : (it.attempts || 0) + 1;
+            // The SAME predicate the runner uses (roadmap Phase 4): the
+            // harness no longer carries its own copy of the failure rules.
+            const attempts = attemptsAfterFailure(it, String(err.message));
             next.push({ ...it, state: 'failed', attempts, nextAttempt: now + 15000, error: message });
             failed++;
             continue;

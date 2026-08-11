@@ -1085,10 +1085,15 @@ test('the app tells the content script it has painted', async (t) => {
   // If BMM_READY never fires, the takeover animation waits out its 2s timeout
   // and the handover looks broken.
   const html = readFileSync(join(ROOT, 'app.html'), 'utf8');
+  const src = readFileSync(join(ROOT, 'src/app/app.js'), 'utf8');
   assert.ok(
-    readFileSync(join(ROOT, 'src/app/app.js'), 'utf8').includes("postMessage({ type: 'BMM_READY' }"),
+    src.includes("type: 'BMM_READY'") && src.includes("'https://mail.google.com'"),
     'app.js must post BMM_READY to its parent'
   );
+  // The readiness handshake carries the embed nonce when embedded
+  // (bug-hunt 44 #70); the contract is asserted, not just the call.
+  assert.match(src, /\{ type: 'BMM_READY', \.\.\.\(EMBED_NONCE/,
+    'readiness echoes the embed nonce');
   assert.ok(html.includes('app.js'));
 });
 

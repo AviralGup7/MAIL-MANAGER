@@ -784,7 +784,22 @@ export async function hydrateDraftAttachments(draft) {
     if (!f.attachmentId || !f.messageId) {
       throw new Error(`Cannot recover attachment \u201c${f.filename}\u201d: no source to refetch it from`);
     }
-    const dataUrl = await getAttachment(f.messageId, f.attachmentId, f.mimeType);
+    let dataUrl;
+    try {
+      dataUrl = await getAttachment(f.messageId, f.attachmentId, f.mimeType);
+    } catch (err) {
+      /*
+       * Classify the failure. A Gmail 4xx means the part is GONE and no
+       * amount of waiting will bring it back -- that is the lost-attachment
+       * class, which the outbox takes straight to stuck. A network or 5xx
+       * error stays retryable by re-throwing unchanged.
+       */
+      const msg = String(err?.message || err);
+      if (/Gmail 4\d\d/.test(msg)) {
+        throw new Error(`Could not read attachment \u201c${f.filename}\u201d: Gmail refused it`);
+      }
+      throw err;
+    }
     const at = String(dataUrl).indexOf(',');
     if (at === -1) throw new Error(`Could not read attachment \u201c${f.filename}\u201d`);
     out.push({ ...f, data: dataUrl.slice(at + 1) });

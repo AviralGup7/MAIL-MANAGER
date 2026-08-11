@@ -67,7 +67,7 @@ async function buildHandler() {
       import('./outbox.js'),
       import('../background/mime.js'),
     ]);
-    handler = makeHandler({ auth, gmail, sync, snooze, mime });
+    handler = makeHandler({ auth, gmail, sync, snooze, outbox, mime });
   } catch (err) {
     loadError = err;
     handler = null;

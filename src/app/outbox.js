@@ -232,7 +232,20 @@ export function canUndo(item, now = Date.now()) {
  * such failure goes straight to stuck. The user's retry button (retryNow)
  * stays the explicit override.
  */
-const ATTACHMENT_LOST = /Cannot recover attachment|Could not read attachment/;
+export const ATTACHMENT_LOST = /Cannot recover attachment|Could not read attachment/;
+
+/**
+ * THE failure-classification predicate, defined ONCE (roadmap Phase 4 /
+ * bug-hunt 44 #66/#31). The runner, the worker pump and every test harness
+ * decide "how many attempts does this failure cost" HERE -- three places
+ * used to carry three copies of this rule, and copies drift.
+ */
+export function attemptsAfterFailure(item, fullError) {
+  const lost = ATTACHMENT_LOST.test(fullError);
+  const repeated = (item._fullError || item.error || '') !== '' &&
+    (item._fullError || item.error) === fullError;
+  return lost || repeated ? MAX_ATTEMPTS : (item.attempts || 0) + 1;
+}
 
 /** Record a failure and schedule the retry. Returns a NEW item. */
 export function markFailed(item, error, now = Date.now()) {
@@ -252,12 +265,10 @@ export function markFailed(item, error, now = Date.now()) {
    * SAME-FAILURE SHORT-CIRCUIT. Compared on the FULL error string, not the
    * truncated one (bug-hunt 43 #3): two different long errors that happen to
    * share their first 200 characters are not the same diagnosis, and the
-   * stored copy is truncated for display, not for identity.
+   * stored copy is truncated for display, not for identity. The rule lives
+   * in attemptsAfterFailure, shared with the worker and the harnesses.
    */
-  const prevFull = item._fullError || item.error || '';
-  if (prevFull && prevFull === full) attempts = MAX_ATTEMPTS;
-  // A lost attachment never heals by waiting (bug-hunt 43 #33).
-  if (ATTACHMENT_LOST.test(full)) attempts = MAX_ATTEMPTS;
+  attempts = attemptsAfterFailure(item, full);
   const wait = BACKOFF_MS[Math.min(attempts - 1, BACKOFF_MS.length - 1)];
   return {
     ...item,
