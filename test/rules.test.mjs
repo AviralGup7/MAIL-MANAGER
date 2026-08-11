@@ -18,6 +18,8 @@ const {
 } = await import('../src/app/rules.js');
 
 const app = readFileSync(new URL('../src/app/app.js', import.meta.url), 'utf8');
+// The rail moved to sidebar.js in round 52 step 5.
+const sidebar = readFileSync(new URL('../src/app/sidebar.js', import.meta.url), 'utf8');
 
 
 // ------------------------------------------------------------ normalising ---
@@ -231,7 +233,7 @@ test('rules load before the first ingest', () => {
 });
 
 test('muted categories are visibly marked in the rail', () => {
-  assert.ok(app.includes("classList.toggle('is-muted'"));
+  assert.ok(sidebar.includes("classList.toggle('is-muted'"));
 });
 
 /* ------------------------------------------------- mutation-testing gaps ----

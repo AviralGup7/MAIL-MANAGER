@@ -8,6 +8,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const app = readFileSync(new URL('../src/app/app.js', import.meta.url), 'utf8');
+// The bulk cluster moved to bulk.js in round 52 step 6.
+const bulk = readFileSync(new URL('../src/app/bulk.js', import.meta.url), 'utf8');
 const compose = readFileSync(new URL('../src/app/compose.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../src/app/app.css', import.meta.url), 'utf8');
 // The reader cluster moved out of app.js in the round-51 workspace extraction.
@@ -48,13 +50,13 @@ test('a minimised compose keeps its identity (round 45 M4)', () => {
 });
 
 test('bulk operations report progress and accept cancellation (round 45 M2)', () => {
-  const at = app.indexOf('CHUNKED WITH PROGRESS AND CANCEL');
+  const at = bulk.indexOf('CHUNKED WITH PROGRESS AND CANCEL');
   assert.notEqual(at, -1);
-  const block = app.slice(at, at + 3800);
+  const block = bulk.slice(at, at + 3800);
   assert.match(block, /const CHUNK = 1000/, 'the worker chunk size');
   assert.match(block, /of \$\{n\.toLocaleString\(\)\}/, 'progress names the run');
   assert.match(block, /label: 'Cancel'/, 'with a stop affordance');
   assert.match(block, /const unsent = snapshots\.filter/, 'unsent rows come back on cancel');
-  assert.match(block, /recordUndo\(ctx, `\$\{verb\} \$\{appliedIds\.length\}/,
+  assert.match(block, /recordUndo\(ctx\.appCtx, `\$\{verb\} \$\{appliedIds\.length\}/,
     'undo covers exactly what was applied');
 });

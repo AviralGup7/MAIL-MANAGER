@@ -223,7 +223,9 @@ test('the recipient fields are real comboboxes', () => {
 
 test('Cc gets autocomplete too, not just To', () => {
   assert.match(html, /id="c-cc-list"/);
-  assert.ok(feat.includes("wireAutocomplete('c-cc', 'c-cc-list')"));
+  // compose calls through its ctx seam now (round-46 refactor), with the
+  // optional-chain the barrel wiring uses.
+  assert.ok(feat.includes("wireAutocomplete?.('c-cc', 'c-cc-list')"));
 });
 
 test('the contact book is built per open, not per keystroke', () => {
@@ -238,7 +240,7 @@ test('the contact book is built per open, not per keystroke', () => {
   const start = feat.indexOf('export function openCompose');
   const next = feat.indexOf('\nexport ', start + 1);
   const open = feat.slice(start, next === -1 ? undefined : next);
-  assert.ok(open.includes('refreshContacts(ctx)'), 'openCompose must rebuild the address book');
+  assert.ok(open.includes('refreshContacts?.(ctx)'), 'openCompose must rebuild the address book');
   const wire = feat.slice(feat.indexOf('input.addEventListener(\'input\''));
   assert.ok(!wire.slice(0, 300).includes('refreshContacts'));
 });
@@ -282,7 +284,8 @@ test('a bad address warns but does not block the send', () => {
   const fn = feat.slice(feat.indexOf('async function doSend'));
   const body = fn.slice(0, 1500);
   assert.ok(body.includes('invalidAddresses'));
-  assert.ok(body.includes('Send anyway?'), 'must offer to proceed');
+  // The dialog refactor dropped the question mark; the contract is the offer.
+  assert.ok(body.includes('Send anyway'), 'must offer to proceed');
 });
 
 /*
