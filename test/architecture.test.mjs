@@ -137,11 +137,22 @@ test('the ctx store binding is a getter, never a value capture', () => {
       if (!line.includes('{')) continue;
       if (!/(^|[\s,{])store\s*([,}:]|$)/.test(line)) continue;
       if (/=> store\b/.test(line)) continue; // arrow return, not a member
-      // Function parameters and call arguments: `store` inside parens that
-      // contain no brace is a local binding, not an object member. A capture
-      // like `foo({ store })` has the brace INSIDE the parens and stays.
-      const parens = line.match(/\([^)]*\)/g) || [];
-      if (parens.some((p) => p.includes('store') && !p.includes('{'))) continue;
+      // Function parameters and call arguments: `store` is a local binding,
+      // not an object member, whenever the nearest enclosing opener before
+      // the token is a PAREN. A capture (`{ store, ... }`) has a brace as the
+      // opener; `applyMute(all, store, { ... })` has a paren, whatever else
+      // the call contains. Scan, don't regex: balanced groups with nested
+      // braces defeat any pattern that looks only at the line's parens.
+      {
+        const at = line.indexOf('store');
+        let depth = 0, opener = null;
+        for (let j = 0; j < at; j++) {
+          const ch = line[j];
+          if (ch === '(' || ch === '{') { depth++; opener = ch; }
+          else if (ch === ')' || ch === '}') depth = Math.max(0, depth - 1);
+        }
+        if (opener === '(') continue;
+      }
       if (/get store\(/.test(line)) continue;
       if (/(^|[=(\s])store\s*[,}]\s*=\s*/.test(line)) continue; // destructure
       assert.fail(

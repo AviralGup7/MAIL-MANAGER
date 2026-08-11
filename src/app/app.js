@@ -52,6 +52,7 @@ import * as deadlineStore from './deadline-store.js';
 import * as myCourses from './my-courses.js';
 import { detectNotice, shouldPromote, summarise } from './notices.js';
 import { rowSnippet } from './snippet.js';
+import * as sel from './selectors.js';
 import { renderShortcuts } from './shortcuts.js';
 import { openLayer, closeTopLayer, hasLayers, closeAllLayers, closeWithMotion, cancelExit } from './layers.js';
 import { openMenu, closeMenu, menuIsOpen } from './menu.js';
@@ -699,100 +700,45 @@ let rules = emptyRules();
  * "delete" -- so the moment the user asks for the thing directly, it is there.
  */
 /** How many messages the current mute rules are hiding right now. */
-function mutedHiddenCount() {
-  if (!rules.muted.length || state.mailbox !== 'inbox') return 0;
-  if (state.category !== 'all' || state.query) return 0;
-  const all = store.idsFor('all');
-  return all.length - applyMute(all).length;
-}
-
-function applyMute(ids) {
-  if (!rules.muted.length) return ids;
-  if (state.mailbox !== 'inbox') return ids;
-  if (state.category !== 'all') return ids; // they asked for it by name
-  // Defensive: `visibleIds()` already routes a query down a branch that never
-  // calls this function, so this line is redundancy against a future caller
-  // rather than the mechanism. Kept because a mute leaking into search would
-  // make mail unfindable, and that is worth two guards.
-  if (state.query) return ids;
-  const muted = new Set(rules.muted);
-  return ids.filter((id) => {
-    const m = store.get(id);
-    return m && !muted.has(m.category);
-  });
-}
-
-/** The ids the list should currently show. */
-/*
- * THREADING IS APPLIED AT ONE PLACE.
- *
- * `visibleIds()` is the single choke point every render path already goes
- * through -- list, counts, bulk actions, j/k navigation all read from it. So
- * collapsing conversations here means every one of those subsystems inherits
- * threading without its own special case, which is the only way a change this
- * broad stays consistent.
- *
- * SEARCH IS DELIBERATELY NOT COLLAPSED. When you search you are looking for a
- * MESSAGE, and hiding the match behind the newest reply in its conversation is
- * exactly the wrong answer -- you would see "Revised schedule" when you
- * searched for a phrase that appears only in the corrigendum. Gmail collapses
- * search results and it is the most complained-about thing it does.
- */
-function collapseThreads(ids) {
-  if (!settings.get('threaded')) return ids;
-  return store.rootIds(ids);
-}
-
 /*
  * Server-search results live in the store ONLY while a query is active, so
  * they can render and open like anything else. The moment the query clears
  * they are purged (cross-audit H4): they were never inbox mail, and leaving
  * them behind is how archived mail ended up in unread counts and lanes.
  */
+
+/*
+ * SELECTORS (audit 39/40 ARCH R-6). All derived-state logic — mute, threading,
+ * the query predicate, the server-search overlay merge — lives in
+ * src/app/selectors.js as pure functions. The shell only builds the ctx: the
+ * LIVE state values (read at call time, so a mutation between renders is
+ * impossible), the threaded setting, the muted list, the query parser with
+ * its deadline overrides, and the ephemeral overlay. `visibleIds()` remains
+ * the single choke point every render path goes through.
+ */
+function selectorsCtx() {
+  return {
+    mailbox: state.mailbox,
+    category: state.category,
+    query: state.query,
+    threaded: settings.get('threaded'),
+    muted: rules.muted,
+    parse: (q) => parseQuery(q, Date.now(), { dueAtOf: (m) => deadlineStore.dueAtOf(m, deadlineOverrides) }),
+    overlay: { ids: overlayIds, get: overlayGet },
+  };
+}
+
+function mutedHiddenCount() {
+  return sel.mutedHiddenCount(store, selectorsCtx());
+}
+
 function visibleIds() {
-  if (!state.query) return collapseThreads(applyMute(store.idsFor(state.category)));
-
-  // Operators are applied as a PREDICATE over what the index returns, not by
-  // scanning every message. The index still does the fast token lookup; the
-  // parser only narrows it. That keeps `from:augsd registration` as cheap as
-  // `registration` was.
-  const parsed = parseQuery(state.query, Date.now(), { dueAtOf: (m) => deadlineStore.dueAtOf(m, deadlineOverrides) });
-  const base = parsed.terms.length
-    ? store.search(parsed.terms.join(' '), state.category)
-    : store.idsFor(state.category);
-
-  const local = applyPredicate(base, parsed);
-  if (!state.query) return local;
-  // The ephemeral overlay (V2 P0-4): server hits live outside the Store and
-  // are merged here, under the same predicate/terms, only while querying.
-  const seen = new Set(local);
-  const out = [...local];
-  for (const id of overlayIds()) {
-    if (seen.has(id)) continue;
-    const m = overlayGet(id);
-    if (!m) continue;
-    if (!matchesQuery(m, parsed)) continue;
-    out.push(id);
-  }
-  return out;
+  return sel.visibleIds(store, selectorsCtx());
 }
 
-function applyPredicate(base, parsed) {
-  if (!parsed.predicate) return base;
-  const out = [];
-  for (const id of base) {
-    const m = store.get(id);
-    if (m && parsed.predicate(m)) out.push(id);
-  }
-  return out;
-}
-
-/** Same term semantics as the Store index: subject + from + snippet. */
-function matchesQuery(m, parsed) {
-  if (parsed.predicate && !parsed.predicate(m)) return false;
-  if (!parsed.terms.length) return true;
-  const hay = `${m.subject || ''} ${m.from || ''} ${m.snippet || ''}`.toLowerCase();
-  return parsed.terms.every((t) => hay.includes(String(t).toLowerCase()));
+/** Sidebar total: collapse at the same choke point as the list (see R-6). */
+function collapseThreads(ids) {
+  return sel.collapseThreads(ids, store, selectorsCtx());
 }
 
 /**
