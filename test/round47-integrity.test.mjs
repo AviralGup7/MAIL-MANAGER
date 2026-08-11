@@ -56,3 +56,16 @@ test('every module path a pin suite reads actually exists', () => {
     }
   }
 });
+
+test('reader controls carry accessible names (round 48)', () => {
+  const app = readFileSync(join(ROOT, 'src/app/app.js'), 'utf8');
+  assert.match(app, /aria-label', `Download \$\{a\.filename\}/, 'attachment chips named');
+  assert.match(app, /aria-label', `Message body: /, 'body frame named per message');
+  assert.match(app, /aria-label', `Unfold \$\{folds\.length\}/, 'unfold names its count');
+  assert.match(app, /aria-label', `\$\{displayName\(msg\.from\)\}, /, 'strip rows named');
+});
+
+test('visual harness waits for the theme to land (round 48)', () => {
+  const vr = readFileSync(join(ROOT, 'tools/visual-regression.mjs'), 'utf8');
+  assert.match(vr, /hasAttribute\('data-theme'\)/, 'waits for the theme stamp');
+});

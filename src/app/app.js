@@ -1975,6 +1975,9 @@ function renderThreadStrip(rootId) {
 
     row.append(who, when, peek);
     row.title = `${msg.from} · ${fullDate(msg.date)}`;
+    // A pressed/not-pressed state is not a name; name the alternative so a
+    // screen reader can tell the conversation's messages apart (round 48).
+    row.setAttribute('aria-label', `${displayName(msg.from)}, ${fullDate(msg.date)}`);
     frag.appendChild(row);
   }
 
@@ -2029,6 +2032,10 @@ async function openMessage(id) {
   el.rSubject.textContent = m.subject;
   el.rFrom.textContent = m.from;
   el.rDate.textContent = fullDate(m.date);
+  // The body frame must name what it shows; a titleless iframe is a blank to
+  // a screen reader (round 48).
+  el.rBody.setAttribute('title', m.subject);
+  el.rBody.setAttribute('aria-label', `Message body: ${m.subject}`);
   /*
    * MAILBOX-AWARE (round 45 M1): the deep link lands where the message
    * LIVES. Snoozed has no Gmail fragment of its own, so it lands in All
@@ -2135,6 +2142,9 @@ function renderAttachments(body) {
     chip.dataset.mime = a.mimeType || '';
     chip.dataset.size = String(a.size || 0);
     chip.title = `${a.filename} — ${formatBytes(a.size)}`;
+    // title is not reliably read by screen readers; give the chip its own
+    // name so a download control is never a nameless button (round 48).
+    chip.setAttribute('aria-label', `Download ${a.filename}, ${formatBytes(a.size)}`);
 
     const name = document.createElement('span');
     name.className = 'att-name';
@@ -2280,6 +2290,8 @@ function renderBodyInto(body, forceRemote = false) {
     const folds = doc ? [...doc.querySelectorAll('details.quote-fold')] : [];
     const unfold = $('r-unfold');
     unfold.hidden = folds.length === 0;
+    // Name the control with the count so its purpose is audible (round 48).
+    unfold.setAttribute('aria-label', `Unfold ${folds.length} quoted ${folds.length === 1 ? 'section' : 'sections'}`);
     unfold.onclick = () => { for (const d of folds) d.open = true; unfold.hidden = true; };
   };
 

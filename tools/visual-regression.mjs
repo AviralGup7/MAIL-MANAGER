@@ -99,7 +99,15 @@ try {
         const page = await browser.newPage({ viewport: { width, height: 800 } });
         await page.addInitScript(chromeStub.replaceAll('__THEME__', theme).replaceAll('__DENSITY__', density));
         await page.goto(APP_URL);
-        await page.waitForTimeout(450);
+        // Wait for the theme to actually stamp data-theme rather than a fixed
+        // delay, so a slow CI never captures a pre-paint frame (round 48).
+        try {
+          await page.waitForFunction(
+            () => document.documentElement.hasAttribute('data-theme'),
+            null, { timeout: 2000 }
+          );
+        } catch { /* fall through to the fixed settle below */ }
+        await page.waitForTimeout(150);
         const file = join(OUT, `${theme}.${density}.${width}.png`);
         await page.screenshot({ path: file });
         taken++;
