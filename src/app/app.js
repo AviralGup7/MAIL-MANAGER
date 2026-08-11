@@ -30,7 +30,6 @@ import { THEMES, applyTheme, getTheme, DEFAULT_THEME } from './themes.js';
 import { icon, setIcon } from './icons.js';
 import { setAttr } from './dom.js';
 import { toast, hideToast, initToast } from './toast.js';
-import { Selection, selectionLabel } from './selection.js';
 import { loadViews, saveView, removeView } from './views.js';
 import { extractDeadline } from './deadlines.js';
 import { runInPage, probeWorker } from './fallback.js';
@@ -64,6 +63,9 @@ import {
   saveScroll, recallScroll, announceNew, renderedIdsOf, nodeByIdOf,
 } from './list.js';
 import { wireSidebar, buildSidebar, renderSidebar } from './sidebar.js';
+import {
+  wireBulk, selection, move, renderSelection, bulkAct, reconcileBulk, BULK_ACTIONS,
+} from './bulk.js';
 import { displayName } from './display.js';
 import { renderShortcuts } from './shortcuts.js';
 import { openLayer, closeTopLayer, hasLayers, closeAllLayers, closeWithMotion, cancelExit } from './layers.js';
@@ -186,14 +188,6 @@ const state = {
  * frame repopulates the list after a clear (the sign-out render bug).
  */
 
-/**
- * Multi-select.
- *
- * Deliberately separate from `state.selected`, which is the OPEN message. A
- * row can be checked without being read, and conflating the two means you
- * cannot select the message you are looking at.
- */
-const selection = new Selection();
 
 // ------------------------------------------------------------------- lookup --
 
@@ -2594,25 +2588,7 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-function move(delta) {
-  const ids = renderedIdsOf();
-  if (ids.length === 0) return;
-  const i = state.selected ? ids.indexOf(state.selected) : -1;
-  const next = ids[Math.max(0, Math.min(ids.length - 1, i + delta))];
-  if (!next || next === state.selected) return;
-  openMessage(next);
 
-  // Feature-detected rather than assumed.
-  //
-  // scrollIntoView exists in every real browser, so this is not defending
-  // against a browser gap -- it is defending against the fact that an
-  // exception thrown HERE aborts the whole keydown handler. A missing scroll
-  // is cosmetic; a dead j/k key is not, and coupling the two is the bug.
-  const node = nodeByIdOf().get(next);
-  if (typeof node?.scrollIntoView === 'function') {
-    node.scrollIntoView({ block: 'nearest' });
-  }
-}
 
 // The content script pings us when the takeover is fully visible. Focus lands
 // here so keyboard shortcuts work without a click.
@@ -2675,254 +2651,9 @@ function syncContextActions(m) {
  * to call on every selection change without going through the render loop --
  * selection does not alter WHICH rows exist, only how they look.
  */
-/**
- * The messages the current selection stands for.
- *
- * With threading on, a tick on a collapsed row means the whole conversation --
- * archiving one reply and leaving two behind is the most confusing thing a
- * threaded client can do, because the row appears to survive the action.
- */
-function selectedMessageIds() {
-  const ids = renderedIdsOf();
-  return settings.get('threaded')
-    ? selection.liveThreaded(store, ids)
-    : selection.live(store, ids);
-}
 
-function renderSelection() {
-  const threaded = settings.get('threaded');
-  const ids = selectedMessageIds();
-  const n = ids.length;
-  el.bulkbar.hidden = n === 0;
-  el.listhead.hidden = n > 0;
-  document.body.classList.toggle('selecting', n > 0);
 
-  for (const [id, node] of nodeByIdOf()) {
-    /*
-     * A row reads as ticked when ANY message in its conversation is. A reply
-     * arriving replaces the rendered root, and without this the tick the user
-     * placed silently disappears with the row it was attached to.
-     */
-    const on = threaded ? selection.hasThread(store, id) : selection.has(id);
-    if (node.classList.contains('picked') !== on) node.classList.toggle('picked', on);
-    const box = node.querySelector('.r-check');
-    if (box && box.checked !== on) box.checked = on;
-  }
 
-  if (n === 0) return;
-  el.bulkCount.textContent = selectionLabel(n);
-
-  // Tri-state "select all": checked when everything visible is picked,
-  // indeterminate when only some is. A plain checkbox that reads "checked"
-  // while half the list is selected is a lie.
-  const visibleIdsNow = renderedIdsOf();
-  const visible = visibleIdsNow.length;
-  const picked = visibleIdsNow.filter((id) => selection.has(id)).length;
-  el.bulkAll.checked = picked === visible && visible > 0;
-  el.bulkAll.indeterminate = picked > 0 && picked < visible;
-}
-
-/**
- * Run one action across the whole selection.
- *
- * ONE Gmail request, ONE store batch, ONE undo entry. Archiving forty messages
- * must undo as a single step -- forty separate undos would be unusable, and it
- * is precisely why UndoStack stores a thunk rather than a diff.
- */
-/**
- * What each bulk action does to Gmail's labels, stated ONCE.
- *
- * WHY THIS IS A TABLE
- * -------------------
- * `bulkAct` used to carry TWO five-branch ladders: a forward chain of
- * `if (kind === 'archive') send({remove: ['INBOX']}) else if ...`, and a
- * second chain inside `recordUndo` that hand-wrote each inverse. Ten
- * statements for five actions, with nothing connecting a delta to its
- * reversal except that someone typed both correctly.
- *
- * Every inverse was in fact correct when this was written -- checked, not
- * assumed. The problem is that nothing MADE them correct. Adding a sixth
- * action means remembering to edit two ladders in two places, and getting an
- * inverse wrong is close to invisible: the list on screen is restored from the
- * local snapshot regardless of what goes to the server, so a broken undo looks
- * perfect locally and only diverges in Gmail, where the test suite cannot see.
- * A row-counting test passed happily with `trash`'s undo sabotaged.
- *
- * Now the delta is written once and the undo is `{add: remove, remove: add}`.
- * An inverse cannot drift from its action because it is no longer stored.
- */
-const BULK_ACTIONS = {
-  archive: { verb: 'Archived', remove: ['INBOX'] },
-  trash: { verb: 'Deleted', add: ['TRASH'], remove: ['INBOX'] },
-  read: { verb: 'Marked read', remove: ['UNREAD'] },
-  star: { verb: 'Starred', add: ['STARRED'] },
-  // Junk arrives in batches, so reporting it one message at a time is
-  // exactly the friction this product exists to remove.
-  spam: { verb: 'Reported', add: ['SPAM'], remove: ['INBOX'] },
-};
-
-/**
- * Apply one action to many messages.
- *
- * `explicitIds` lets a single-row action on a collapsed conversation reuse
- * this path rather than reimplementing batching, rollback and undo. Defaults
- * to the current selection, which is every other caller.
- */
-async function bulkAct(kind, explicitIds = null) {
-  const ids = explicitIds || selectedMessageIds();
-  if (ids.length === 0) return;
-
-  // Snapshot BEFORE mutating, for the undo.
-  const snapshots = ids.map((id) => ({ ...store.get(id) }));
-  const n = ids.length;
-  const noun = n === 1 ? 'message' : 'messages';
-
-  const removal = kind === 'archive' || kind === 'trash' || kind === 'spam';
-  if (removal && state.selected && ids.includes(state.selected)) closeReader();
-
-  store.batch(() => {
-    for (const id of ids) {
-      if (kind === 'archive' || kind === 'trash' || kind === 'spam') store.remove(id);
-      else if (kind === 'read') store.patch(id, { unread: false });
-      else if (kind === 'star') store.patch(id, { starred: true });
-    }
-  });
-  // Only when acting on a selection: a conversation action from the reader
-  // has not touched the ticks and must not silently discard them.
-  if (!explicitIds) {
-    selection.clear();
-    renderSelection();
-    /*
-     * FOCUS MUST NOT BE STRANDED (round 45 Phase 2). The rows the user was
-     * standing on just left the list; without this, focus lands on <body>
-     * and a keyboard user has to tab back from the top of the page. The
-     * listbox is where j/k lives, so that is where focus belongs after a
-     * bulk action.
-     */
-    el.list.focus({ preventScroll: true });
-  }
-
-  const { verb, add = [], remove = [] } = BULK_ACTIONS[kind];
-
-  /*
-   * A LONG BULK OPERATION HAS TO LOOK LIKE WORK.
-   *
-   * The optimistic update is so effective that it hides the request: the rows
-   * leave instantly, and then for a second or more over campus wifi nothing
-   * happens and nothing says anything is outstanding. A user who closes the
-   * tab in that window loses the operation.
-   *
-   * `aria-busy` already drives the topbar sweep used for sync, so this is the
-   * existing idiom applied to the operation with the largest blast radius --
-   * not a new indicator. Only for batches big enough to be slow: raising it
-   * for a two-message archive would be a flicker.
-   */
-  const slow = ids.length >= 10;
-  if (slow) setBusy(true);
-
-  /*
-   * CHUNKED WITH PROGRESS AND CANCEL (round 45 M2). A 4000-message run is
-   * four requests, and a spinner is not an answer to "is it working?" -- so
-   * each chunk reports its place in the run and offers a stop. Cancelling
-   * between chunks leaves what already landed landed (undo covers it) and
-   * restores what was never sent; nothing is half-sent silently. Batches of
-   * one chunk behave exactly as before: no progress toast, no cancel.
-   */
-  const CHUNK = 1000;
-  const PROGRESS_VERB = {
-    archive: 'Archiving', trash: 'Deleting', spam: 'Reporting spam',
-    read: 'Marking read', star: 'Starring',
-  };
-  const chunked = ids.length > CHUNK;
-  let cancelled = false;
-  const appliedIds = [];
-  const appliedSnapshots = [];
-  const failedIds = [];
-  try {
-    for (let i = 0; i < ids.length && !cancelled; i += CHUNK) {
-      const sliceIds = ids.slice(i, i + CHUNK);
-      const sliceSnaps = snapshots.slice(i, i + CHUNK);
-      if (chunked) {
-        const done = Math.min(i + CHUNK, ids.length);
-        toast(`${PROGRESS_VERB[kind] || kind} ${done.toLocaleString()} of ${n.toLocaleString()}…`, {
-          kind: 'info', ms: 2500,
-          action: { label: 'Cancel', run: () => { cancelled = true; } },
-        });
-      }
-      try {
-        const res = await send('BULK', { ids: sliceIds, add, remove });
-        const failed = reconcileBulk(res, sliceSnaps);
-        const failedSet = new Set(failed);
-        failedIds.push(...failed);
-        for (let j = 0; j < sliceIds.length; j++) {
-          if (!failedSet.has(sliceIds[j])) {
-            appliedIds.push(sliceIds[j]);
-            appliedSnapshots.push(sliceSnaps[j]);
-          }
-        }
-      } catch {
-        // The whole chunk failed: put those rows back on screen and count
-        // them failed. The NEXT chunk still gets its chance -- one bad
-        // request is not a verdict on the whole run.
-        store.batch(() => { for (const m of sliceSnaps) store.upsert(m); });
-        failedIds.push(...sliceIds);
-      }
-    }
-
-    if (cancelled) {
-      // Rows never sent come back; rows already applied stay (undo covers
-      // them) and rows that failed already came back chunk by chunk.
-      const touched = new Set([...appliedIds, ...failedIds]);
-      const unsent = snapshots.filter((m) => !touched.has(m.id));
-      store.batch(() => { for (const m of unsent) store.upsert(m); });
-    }
-
-    if (failedIds.length) {
-      activity.record({ verb: `BULK_${kind.toUpperCase()}`, ids: failedIds, actor: 'user', outcome: 'partial', error: `${failedIds.length} failed` });
-      toast(`${kind}: ${appliedIds.length} of ${n} applied${cancelled ? ' (cancelled)' : ''}`, { kind: 'error' });
-      if (!appliedIds.length) return;
-    } else if (cancelled) {
-      toast(`${kind} stopped — ${appliedIds.length} of ${n} applied`, { kind: 'info' });
-      activity.record({ verb: `BULK_${kind.toUpperCase()}`, ids: appliedIds, actor: 'user', detail: 'cancelled' });
-      if (!appliedIds.length) return;
-    }
-  } finally {
-    // `finally`, so an early return on the error path cannot strand the busy
-    // state and leave the topbar sweeping forever.
-    if (slow) setBusy(false);
-  }
-
-  activity.record({ verb: `BULK_${kind.toUpperCase()}`, ids: appliedIds, actor: 'user' });
-
-  const appliedNoun = appliedIds.length === 1 ? 'message' : 'messages';
-  recordUndo(ctx, `${verb} ${appliedIds.length} ${appliedNoun}`, async () => {
-    store.batch(() => {
-      for (const m of appliedSnapshots) store.upsert(m);
-    });
-    // R2: recovery is a disorienting moment by definition; the first
-    // restored row pulses back into view once the render lands.
-    requestAnimationFrame(() => reorientTo(appliedSnapshots[0]?.id));
-    // The inverse is DERIVED, never typed: swap add and remove.
-    await send('BULK', { ids: appliedIds, add: remove, remove: add });
-    activity.record({ verb: `BULK_${kind.toUpperCase()}`, ids: appliedIds, actor: 'user', detail: 'undo' });
-  });
-}
-
-/**
- * ONE reconciliation contract for partial bulk results (V2 P1-8). Every
- * caller -- user bulkAct, auto-archive, rule batches -- restores exactly the
- * ids Gmail rejected and reports the split; no call site interprets
- * `res.failed` on its own anymore.
- */
-function reconcileBulk(res, snapshots) {
-  const failed = res?.failed || [];
-  if (!failed.length) return failed;
-  const doomed = new Set(failed);
-  store.batch(() => {
-    for (const m of snapshots) if (doomed.has(m.id)) store.upsert(m);
-  });
-  return failed;
-}
 
 /** Prepend an icon to a labelled button, preserving its text. */
 function decorate(id, name) {
@@ -3454,6 +3185,14 @@ async function boot() {
     getMessage: (id) => store.get(id),
     openMessage,
     getEnrolment: () => enrolment,
+  });
+  wireBulk({
+    get store() { return store; },
+    state, el, send,
+    setBusy,
+    closeReader,
+    openMessage,
+    appCtx: ctx,
   });
   wireBulkbar({
     move, bulkAct, renderSelection,

@@ -18,9 +18,11 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const css = readFileSync(join(ROOT, 'src/app/app.css'), 'utf8');
 // The list cluster moved out of app.js in the round-52 workspace extraction:
-// the ghost lives in list.js; optimistic()/bulkAct() stayed in the shell.
+// the ghost lives in list.js, optimistic() stayed in the shell, and bulkAct
+// moved to bulk.js (step 6).
 const js = readFileSync(join(ROOT, 'src/app/app.js'), 'utf8');
 const list = readFileSync(join(ROOT, 'src/app/list.js'), 'utf8');
+const bulkSrc = readFileSync(join(ROOT, 'src/app/bulk.js'), 'utf8');
 
 const fn = list.slice(list.indexOf('function travelGhost('), list.indexOf('function travelGhost(') + 4000);
 
@@ -59,7 +61,7 @@ test('exactly one ghost; bulk archive creates none', () => {
   // Bulk never reaches optimistic(), so it cannot fire the travel; and
   // optimistic captures the travel for ARCHIVE only.
   assert.match(js, /if \(verb === 'ARCHIVE'\)/, 'travel captured for archive alone');
-  const bulk = js.slice(js.indexOf('function bulkAct('), js.indexOf('function bulkAct(') + 3000);
+  const bulk = bulkSrc.slice(bulkSrc.indexOf('function bulkAct('), bulkSrc.indexOf('function bulkAct(') + 3000);
   assert.ok(!bulk.includes('travelGhost'), 'bulk must not fire the travel');
 });
 

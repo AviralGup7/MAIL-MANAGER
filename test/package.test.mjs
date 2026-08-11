@@ -1337,7 +1337,9 @@ test('ARCH: a bulk label delta is stated once, not once per direction', () => {
    * remove: add}. This counts the literals: only the table may name a Gmail
    * label in a BULK payload.
    */
-  const shell = read('src/app/app.js')
+  // The bulk cluster moved to bulk.js (round 52 step 6); the doctrine
+  // scan covers both files.
+  const shell = (read('src/app/app.js') + read('src/app/bulk.js'))
     .replace(/\/\*[\s\S]*?\*\//g, ' ')
     .replace(/\/\/[^\n]*/g, ' ');
 
@@ -2423,8 +2425,9 @@ test('a slow bulk action raises the busy state', () => {
    * this reuses it rather than adding an indicator -- and clears in `finally`
    * so the error path cannot strand it.
    */
-  const src = read('src/app/app.js');
-  const fn = src.slice(src.indexOf('async function bulkAct'), src.indexOf('function decorate'));
+  // bulkAct moved to bulk.js (round 52 step 6); reconcileBulk bounds it there.
+  const src = read('src/app/bulk.js');
+  const fn = src.slice(src.indexOf('async function bulkAct'), src.indexOf('function reconcileBulk'));
   assert.match(fn, /setBusy\(true\)/, 'a large batch must show it is working');
   assert.match(fn, /finally\s*\{[^}]*setBusy\(false\)/s, 'and must clear it on every path');
 });

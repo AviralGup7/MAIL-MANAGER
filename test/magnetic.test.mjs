@@ -17,6 +17,8 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const css = readFileSync(join(ROOT, 'src/app/app.css'), 'utf8');
 const js = readFileSync(join(ROOT, 'src/app/app.js'), 'utf8');
+// move() left app.js with the bulk cluster (round 52 step 6).
+const bulk = readFileSync(join(ROOT, 'src/app/bulk.js'), 'utf8');
 
 function scrollerBlock() {
   const i = css.indexOf('#scroller {');
@@ -39,14 +41,14 @@ test('#scroller pads the viewport by exactly one row, via the token', () => {
 test('move() still lands rows with block: nearest', () => {
   // The padding is what does the work. A future switch to 'center' would
   // silently double the scrolled distance per step, so pin the call.
-  const move = js.slice(js.indexOf('function move('), js.indexOf('function move(') + 1500);
+  const move = bulk.slice(bulk.indexOf('function move('), bulk.indexOf('function move(') + 1500);
   assert.match(move, /scrollIntoView\(\{\s*block:\s*'nearest'\s*\}\)/);
 });
 
 test('move() keeps its feature check on scrollIntoView', () => {
   // A dead `j` key is worse than a missing scroll; the typeof guard is the
   // contract. Sabotage: delete the guard, expect fail.
-  assert.match(js, /typeof node\?\.scrollIntoView === 'function'/);
+  assert.match(bulk, /typeof node\?\.scrollIntoView === 'function'/);
 });
 
 test('no scroll-snap and no smooth scrolling on #scroller', () => {

@@ -271,6 +271,8 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
   ({ _resetUndo: undoState } = await import('../src/app/undo-actions.js'));
   // list.js keeps the row index across boots for the same reason (round 52).
   ({ _resetList: listState } = await import('../src/app/list.js'));
+  // bulk.js keeps the selection across boots for the same reason.
+  ({ _resetBulk: bulkState } = await import('../src/app/bulk.js'));
   const ttStore = await import('../src/app/timetable-store.js');
   ttStore._resetSourceData(); // the catalogue is memoised per module, not per boot
 
@@ -338,6 +340,12 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
     } catch {
       // Never mask the real result.
     }
+    // bulk.js selection (round-52 workspace extraction, step 6).
+    try {
+      bulkState?.();
+    } catch {
+      // Never mask the real result.
+    }
     Object.assign(globalThis, prev);
 
     // LATE-RAF NO-OP: a deferred app timer (mark-read grace, refresh sweep)
@@ -385,6 +393,8 @@ let menuState = null;
 let undoState = null;
 /** list.js reset, same reasoning (round 52). */
 let listState = null;
+/** bulk.js reset, same reasoning (round 52 step 6). */
+let bulkState = null;
 
 const rows = (doc) => [...doc.querySelectorAll('#list .row')];
 
