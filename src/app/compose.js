@@ -501,6 +501,22 @@ async function doSend(ctx) {
       return;
     }
   }
+  /*
+   * TEMPLATE GAPS MUST NOT RIDE ALONG (bug-hunt 44 #30). Unfilled
+   * placeholders stay visible in the body BY DESIGN so the writer sees them
+   * -- but the send path never looked, so a hurried user could mail
+   * "{{reason}}" to a professor. Same warn-don't-block posture as the
+   * bad-address check: name the gap, let the human decide.
+   */
+  const gaps = [...new Set([
+    ...(draft.body.match(/\{\{\s*[a-zA-Z][a-zA-Z0-9_]*\s*\}\}/g) || []),
+    ...(draft.subject.match(/\{\{\s*[a-zA-Z][a-zA-Z0-9_]*\s*\}\}/g) || []),
+  ])];
+  if (gaps.length && !confirm(`Unfilled template fields:\n\n${gaps.join(', ')}\n\nSend anyway?`)) {
+    setStatus('Fill the highlighted placeholders first', 'err');
+    return;
+  }
+
   const btn = $('c-send');
   btn.disabled = true;
   setStatus('Sending…', '');

@@ -29,7 +29,7 @@ import {
 import {
   loadTimetable, saveTimetable, searchCourses, courseByComCode, loadSourceData,
 } from './timetable-store.js';
-import { scanMessages, matchNotice } from './timetable-mail.js';
+import { scanMessages, matchNotice, isAcademicSender, courseNumbersIn } from './timetable-mail.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -161,10 +161,14 @@ export function scanForUpdates(messages) {
   if (!state.entries.length) return [];
   const found = scanMessages(messages || [], state);
   const notices = source?.changes ? matchNotice(source.changes, state) : [];
+  return mergeFindings([...notices, ...found]);
+}
 
+/** Shared tail of every scan path: dedupe against handled mail, then merge. */
+function mergeFindings(candidates) {
   // A notice for an entry we have already reconciled is not news.
   const seen = new Set(state.appliedMail || []);
-  const fresh = [...notices, ...found].filter((f) => {
+  const fresh = candidates.filter((f) => {
     const key = f.messageId || `notice:${f.noticeRef}:${f.kind}`;
     return !seen.has(key);
   });
@@ -172,6 +176,70 @@ export function scanForUpdates(messages) {
   pending = dedupePending([...pending, ...fresh]);
   updateBadge();
   return fresh;
+}
+
+/**
+ * THE AUTHORITATIVE INPUT CONTRACT FOR ACADEMIC INTELLIGENCE (bug-hunt 44
+ * #46/#47).
+ *
+ *   WHO   every newly ingested message from an academic sender that names
+ *         a course in the user's timetable -- whatever mailbox it ends up
+ *         in. Inbox presence is NOT eligibility: a rule that auto-archives
+ *         academic mail must not blind the scanner, because the failure
+ *         would be silent and the data is the kind that is dangerous wrong.
+ *   WHAT  subject and snippet first (free); the BODY, fetched on demand,
+ *         only for the handful of candidates that pass the sender + course
+ *         gates but matched nothing on the cheap text. Bodies are where the
+ *         details live ("will be held in 6101" two sentences in), and
+ *         fetching one per candidate is a bounded price for correctness.
+ *   WHEN  at ingest, before auto-archive and rule application can move the
+ *         message out of sight, plus the boot-time scan of what is already
+ *         held.
+ *
+ * `fetchBody(id)` is injected: the app owns the wire, this module stays
+ * pure-ish (no send(), no chrome). Failures degrade to "no body" -- the
+ * subject/snippet findings still stand.
+ */
+export async function deepScanMessages(messages, fetchBody, { limit = 3 } = {}) {
+  const list = Array.isArray(messages) ? messages : [];
+  if (!state.entries.length || !list.length) return [];
+
+  const cheap = scanMessages(list, state);
+
+  // A message is SETTLED when the cheap text already produced an ACTIONABLE
+  // finding (a value extracted). A notify-only finding -- "something changed,
+  // value not stated" -- is precisely the case the body pass exists to
+  // upgrade, so it does not block the fetch.
+  const settled = new Set(cheap.filter((f) => f.actionable).map((f) => f.messageId));
+
+  // Candidates for the body pass: academic, naming one of OUR courses, and
+  // not already settled on the cheap text. Capped, because each one costs a
+  // GET_BODY round trip and ingest must stay light.
+  const candidates = list.filter((m) =>
+    m && m.id && !settled.has(m.id) &&
+    isAcademicSender(m.from) &&
+    courseNumbersIn(`${m.subject || ''} ${m.snippet || ''}`)
+      .some((c) => state.entries.some((e) => e.courseNo === c))
+  ).slice(0, limit);
+
+  const deep = [];
+  for (const m of candidates) {
+    let body = '';
+    try { body = (await fetchBody(m.id)) || ''; } catch { body = ''; }
+    if (!body) continue;
+    deep.push(...scanMessages([{ ...m, body }], state));
+  }
+
+  // A deep finding that turned actionable SUPERSEDES its valueless cheap
+  // twin (same kind + entry + message): the user gets the real value, not
+  // both.
+  const upgraded = new Set(
+    deep.filter((f) => f.actionable).map((f) => `${f.kind}|${f.entryId}|${f.messageId}`)
+  );
+  const kept = cheap.filter(
+    (f) => !upgraded.has(`${f.kind}|${f.entryId}|${f.messageId}`)
+  );
+  return mergeFindings([...kept, ...deep]);
 }
 
 function dedupePending(list) {
@@ -767,6 +835,29 @@ function conflictSection(problems = state.conflicts) {
     const msg = el('span', 'tt-conflict-msg');
     msg.textContent = c.message;
     row.appendChild(msg);
+
+    /*
+     * RESOLUTION HANDLE (bug-hunt 44 #53). A detected problem the user
+     * cannot act on is just anxiety; the row now jumps to the class it is
+     * about and flashes it, which is where the fix (a manual edit, a section
+     * switch) already lives. Shown only when the conflict names entries that
+     * still exist -- a stale one pointing at a dropped class would scroll
+     * nowhere.
+     */
+    const target = (c.entryIds || []).find((id) => state.entries.some((e) => e.id === id));
+    if (target) {
+      const show = el('button', 'ghost small tt-conflict-show');
+      show.type = 'button';
+      show.textContent = 'Show';
+      show.addEventListener('click', () => {
+        const node = document.querySelector(`.tt-entry[data-entry-id="${CSS.escape(target)}"]`);
+        if (!node) return;
+        node.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        node.classList.add('tt-flash');
+        setTimeout(() => node.classList.remove('tt-flash'), 1600);
+      });
+      row.appendChild(show);
+    }
     s.appendChild(row);
   }
   return s;
@@ -915,6 +1006,9 @@ function listSection() {
 
 function entryRow(e) {
   const row = el('div', 'tt-entry');
+  // Anchor so a conflict can jump the user to the class it is about
+  // (bug-hunt 44 #53: detection existed, resolution had no handle).
+  row.dataset.entryId = e.id;
 
   const tag = el('span', `tt-kind tt-${e.kind}`);
   tag.textContent = e.section;

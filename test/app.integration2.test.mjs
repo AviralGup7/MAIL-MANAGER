@@ -2831,8 +2831,16 @@ test('MAIL: attachments do not leak into the next message', async (t) => {
     await settle(10);
     assert.match(doc.getElementById('c-files').textContent, /secret\.txt/);
 
-    doc.getElementById('compose-close').click();
-    await settle(6);
+    // An attachment-only draft IS content now (bug-hunt 44 #23), so closing
+    // asks before discarding. Accept the discard, then prove nothing leaked.
+    const realConfirm = globalThis.confirm;
+    globalThis.confirm = () => true;
+    try {
+      doc.getElementById('compose-close').click();
+      await settle(6);
+    } finally {
+      globalThis.confirm = realConfirm;
+    }
     press(doc, win, 'c');
     await settle(6);
 

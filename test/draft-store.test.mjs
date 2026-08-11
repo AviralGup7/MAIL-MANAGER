@@ -394,3 +394,14 @@ test('saveDraft persists the storable shape, never the raw draft (enforcement pi
   for (const a of stored.attachments) assert.equal(a.data, undefined, 'no base64 in storage');
   assert.equal(stored.attachments[1].attachmentId, 'a-7');
 });
+
+test('a draft whose only content is an attachment is meaningful (bug-hunt 44 #23)', () => {
+  // The bytes are deliberately not persisted, but the FACT of the attachment
+  // is content: autosave skipping such a draft let a crash lose the
+  // selection entirely.
+  assert.equal(isMeaningful({ to: '', cc: '', subject: '', body: '', baseBody: '',
+    attachments: [{ filename: 'report.pdf', attachmentId: 'a-1', messageId: 'm-1' }] }),
+    true, 'attachment-only drafts must autosave');
+  assert.equal(isMeaningful({ to: '', cc: '', subject: '', body: '', baseBody: '', attachments: [] }),
+    false, 'an empty attachments array is still empty');
+});

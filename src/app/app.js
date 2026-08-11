@@ -87,7 +87,7 @@ import {
   wireAutocomplete, refreshContacts,
 } from './features.js';
 import {
-  initTimetable, openTimetable, scanForUpdates, _resetTimetableUI,
+  initTimetable, openTimetable, scanForUpdates, deepScanMessages, _resetTimetableUI,
   timetableEffectsOf,
 } from './timetable-ui.js';
 import { classify } from '../classify/index.js';
@@ -2947,6 +2947,18 @@ function ingest(messages) {
   // then the arrival-only consequences (auto-archive, user rules).
   const records = shapeRecords(messages, true);
   store.upsertMany(records); // one batch -> one notification -> one frame
+  /*
+   * ACADEMIC INTELLIGENCE SCANS AT INGEST (bug-hunt 44 #46/#47), BEFORE
+   * auto-archive and rules can move a message out of sight. The contract:
+   * eligibility is "academic sender naming one of your courses", NOT inbox
+   * presence -- and bodies are fetched only for the few candidates the cheap
+   * scan cannot settle. Fire-and-forget: the findings surface via the
+   * timetable badge, and a scan failure must never touch the mail pipeline.
+   */
+  deepScanMessages(records, async (id) => {
+    const body = await send('GET_BODY', { id });
+    return body?.text || '';
+  }).catch(() => {});
   autoArchive(records);
   // User rules run after the category auto-archive, so a hand-written rule can
   // act on anything the category sweep left behind.
@@ -5447,6 +5459,24 @@ Object.defineProperty(window, '__bmmStore', { get: () => store, configurable: tr
  * stretch someone would be trying to reconstruct.
  */
 window.addEventListener('pagehide', () => { activity.flush(); });
+
+/*
+ * THE INVISIBLE-FAILURE HOLE (bug-hunt 44 #67 / improvements #32).
+ * reportError only covers the paths that remember to call it; a rejected
+ * promise inside a feature module (palette, menus, timetable) used to
+ * vanish with no trace -- the user saw mysterious missing behaviour and the
+ * logs saw nothing. Every unhandled rejection now lands in the activity
+ * ring, which is exactly the record that exists to answer "what actually
+ * happened".
+ */
+window.addEventListener('unhandledrejection', (e) => {
+  const reason = e?.reason;
+  const message = String(reason?.message || reason || 'unknown rejection').slice(0, 200);
+  console.warn('[BMM] unhandled rejection:', message);
+  try {
+    activity.record({ verb: 'REJECTION', ids: [], actor: 'system', outcome: 'failed', error: message });
+  } catch { /* the observer must never become the failure */ }
+});
 
 window.__bmmTeardown = cancelPendingWork;
 

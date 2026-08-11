@@ -709,3 +709,16 @@ test('before:/after: reject impossible dates instead of rolling them over (bug-h
   assert.equal(ok.predicate({ date: Date.UTC(2025, 10, 21) }), true);
   assert.equal(ok.predicate({ date: Date.UTC(2025, 10, 19) }), false);
 });
+
+test('reply quotes decode entities exactly once (bug-hunt 44 #1)', () => {
+  // The double-decode that was fixed in gmail.js survived in stripTags:
+  // decoding &amp; first turned a literal "&amp;lt;" into "&lt;" and then
+  // into "<". One decode pass must mean one decode.
+  const r = buildReply(
+    { html: 'a &amp;lt;b&amp;gt; c', from: 'x@y.com', subject: 's', threadId: 't', messageId: 'm', date: 0 },
+    'me@bits', 'reply'
+  );
+  assert.ok(r.quoted.includes('a &lt;b&gt; c'),
+    `the quote must keep the literal entity text, got: ${r.quoted.slice(0, 120)}`);
+  assert.ok(!r.quoted.includes('a <b> c'), 'and must not produce live-looking tags');
+});

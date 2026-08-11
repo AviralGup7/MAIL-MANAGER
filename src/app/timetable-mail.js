@@ -56,7 +56,7 @@ const PATTERNS = [
     kind: 'room',
     field: 'room',
     // "shifted to 6101", "venue: 5105", "will be held in room 1204"
-    test: /\b(room|venue|shifted to|moved|will be held in|relocated to)\b/i,
+    test: /\b(room|venue|shifted to|moved|will be held in|relocated to|rescheduled|changed to)\b/i,
     /*
      * PICK THE ROOM THE CLASS IS MOVING TO, NOT THE ONE IT IS LEAVING
      * (bug-hunt 43 #12). The old extractor took the FIRST room number in the

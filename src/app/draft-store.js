@@ -42,6 +42,13 @@ export function isMeaningful(draft) {
     draft.to?.trim() ||
     draft.cc?.trim() ||
     draft.subject?.trim() ||
+    /*
+     * A chosen attachment IS content (bug-hunt 44 #23): a draft whose only
+     * substance is a file used to fail this check, so autosave skipped it
+     * and a crash lost the selection. The bytes are deliberately not
+     * persisted (see storable), but the FACT of the attachment is.
+     */
+    (Array.isArray(draft.attachments) && draft.attachments.length > 0) ||
     // A reply pre-fills the quoted original; that alone is not "typed
     // something". Compare against what the panel opened with.
     (draft.body || '').trim() !== (draft.baseBody || '').trim()

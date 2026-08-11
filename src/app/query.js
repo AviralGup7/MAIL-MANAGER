@@ -534,8 +534,12 @@ function stripTags(html) {
     .replace(/<\/p>/gi, '\n\n')
     .replace(/<[^>]+>/g, '')
     .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
+    // &amp; LAST (bug-hunt 44 #1): the same double-decode that was fixed in
+    // gmail.js's decodeEntities survived here. Decoding &amp; first turns a
+    // literal "&amp;lt;" into "&lt;" and then into "<" -- one decode pass
+    // must mean one decode, so reply quotes stopped surfacing stray tags.
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
     .replace(/\n{3,}/g, '\n\n');
 }

@@ -4915,6 +4915,26 @@ kbd {
 .tt-entry[data-locked='true'] {
   background: var(--bg);
 }
+/*
+ * The conflict "Show" jump lands here (bug-hunt 44 #53). A brief outline
+ * flash says "this is the row the warning meant" without moving anything —
+ * motion would fight the scroll that just positioned it. Reduced-motion
+ * users get the outline held steady instead of pulsed.
+ */
+.tt-entry.tt-flash {
+  animation: tt-flash 1.6s ease-out 1;
+  border-radius: var(--r-2, 6px);
+}
+@keyframes tt-flash {
+  0% { box-shadow: 0 0 0 2px var(--accent, #4a7); background: color-mix(in srgb, var(--accent, #4a7) 12%, transparent); }
+  100% { box-shadow: 0 0 0 0 transparent; background: transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tt-entry.tt-flash {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--accent, #4a7);
+  }
+}
 .tt-kind {
   font-weight: var(--w-semi);
   color: var(--accent);
