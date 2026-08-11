@@ -252,6 +252,11 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
   ({ _resetList: listState } = await import('../src/app/list.js'));
   // bulk.js keeps the selection across boots for the same reason.
   ({ _resetBulk: bulkState } = await import('../src/app/bulk.js'));
+  // layers.js keeps its stack across boots; a stray layer from one test
+  // eats the next test's Escape (round 54, workspace promotion). Close
+  // properly FIRST — teardown fires each tenant's onClose, which is what
+  // nulls their cached layer handles — then wipe whatever is left.
+  ({ _resetLayers: layersState, closeAllLayers: layersCloseAll } = await import('../src/app/layers.js'));
   const ttStore = await import('../src/app/timetable-store.js');
   ttStore._resetSourceData(); // the catalogue is memoised per module, not per boot
 
@@ -325,6 +330,13 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
     } catch {
       // Never mask the real result.
     }
+    // layers.js stack (round 54): close with teardown, then wipe.
+    try {
+      layersCloseAll?.();
+      layersState?.();
+    } catch {
+      // Never mask the real result.
+    }
     Object.assign(globalThis, prev);
 
     // LATE-RAF NO-OP: a deferred app timer (mark-read grace, refresh sweep)
@@ -374,6 +386,9 @@ let undoState = null;
 let listState = null;
 /** bulk.js reset, same reasoning (round 52 step 6). */
 let bulkState = null;
+/** layers.js reset, same reasoning (round 54). */
+let layersState = null;
+let layersCloseAll = null;
 
 const rows = (doc) => [...doc.querySelectorAll('#list .row')];
 

@@ -4738,7 +4738,7 @@ kbd {
   color: var(--fg-dim);
   font: inherit;
   font-size: var(--t-sm);
-  font-weight: 500;
+  font-weight: var(--w-medium);
   cursor: pointer;
   margin-bottom: -1px;
 }
@@ -4754,7 +4754,7 @@ kbd {
   background: var(--accent-soft);
   color: var(--fg);
   font-size: var(--t-xs);
-  font-weight: 600;
+  font-weight: var(--w-semi);
   text-align: center;
 }
 .tt-tabpane { min-height: 0; }

@@ -273,6 +273,11 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
   ({ _resetList: listState } = await import('../src/app/list.js'));
   // bulk.js keeps the selection across boots for the same reason.
   ({ _resetBulk: bulkState } = await import('../src/app/bulk.js'));
+  // layers.js keeps its stack across boots; a stray layer from one test
+  // eats the next test's Escape (round 54, workspace promotion). Close
+  // properly FIRST — teardown fires each tenant's onClose, which is what
+  // nulls their cached layer handles — then wipe whatever is left.
+  ({ _resetLayers: layersState, closeAllLayers: layersCloseAll } = await import('../src/app/layers.js'));
   const ttStore = await import('../src/app/timetable-store.js');
   ttStore._resetSourceData(); // the catalogue is memoised per module, not per boot
 
@@ -346,6 +351,13 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
     } catch {
       // Never mask the real result.
     }
+    // layers.js stack (round 54): close with teardown, then wipe.
+    try {
+      layersCloseAll?.();
+      layersState?.();
+    } catch {
+      // Never mask the real result.
+    }
     Object.assign(globalThis, prev);
 
     // LATE-RAF NO-OP: a deferred app timer (mark-read grace, refresh sweep)
@@ -395,6 +407,9 @@ let undoState = null;
 let listState = null;
 /** bulk.js reset, same reasoning (round 52 step 6). */
 let bulkState = null;
+/** layers.js reset, same reasoning (round 54). */
+let layersState = null;
+let layersCloseAll = null;
 
 const rows = (doc) => [...doc.querySelectorAll('#list .row')];
 
@@ -1452,7 +1467,12 @@ test('TIMETABLE: the panel opens and offers to add a course', async (t) => {
   try {
     const panel = await openTT(doc, win, settle);
     assert.ok(panel, 'the timetable panel should open');
-    assert.equal(panel.getAttribute('role'), 'dialog');
+    // Round 54: a WORKSPACE, not a dialog — the mail chrome steps aside and
+    // the surface takes the main area, so aria-modal would be a lie.
+    assert.equal(panel.getAttribute('role'), 'region');
+    assert.equal(doc.getElementById('tt-workspace').hidden, false);
+    assert.equal(doc.getElementById('panes').hidden, true,
+      'the mail pane steps aside for the workspace');
     assert.ok(doc.getElementById('tt-q'), 'an empty timetable offers a course search');
 
     const results = await ttSearch(doc, win, settle, 'CS F111');
@@ -1839,7 +1859,8 @@ test('TIMETABLE: signing out clears it from the screen', async (t) => {
 
 test('TIMETABLE: Escape closes the panel without leaving Gmail', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');
-  // It is a layer, so it must unwind before the takeover does.
+  // Round 54: a workspace, so Esc steps back to mail — one rung of the
+  // ladder, still above the takeover itself.
   const { doc, win, settle, restore } = await boot({ timetableData: TT_DATA });
   try {
     let released = false;
@@ -1850,7 +1871,8 @@ test('TIMETABLE: Escape closes the panel without leaving Gmail', async (t) => {
 
     press(doc, win, 'Escape');
     await settle(6);
-    assert.equal(doc.getElementById('tt-panel'), null, 'the panel should close');
+    assert.equal(doc.getElementById('tt-workspace').hidden, true, 'the workspace should close');
+    assert.equal(doc.getElementById('panes').hidden, false, 'and mail comes back');
     assert.equal(released, false, 'and must not drop the user back into Gmail');
   } finally {
     restore();

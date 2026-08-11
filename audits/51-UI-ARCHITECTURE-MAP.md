@@ -198,18 +198,32 @@ question behind the Timetable promotion, and nothing in this round moves it.
 | 4 | rails: snoozed + outbox + pump + lane headers → `rails.js` | ✔ round 52 |
 | 5 | sidebar render + rail wiring → `sidebar.js` | ✔ round 52 |
 | 6 | selection/bulk + j/k navigation → `bulk.js` | ✔ round 52 |
-| — | Timetable layer → workspace promotion: DESIGN DECISION FIRST (§5) | parked |
+| — | Timetable layer → workspace promotion (§5) | ✔ round 54 |
 | — | Settings stays on the options page; no in-app settings panels | doctrine |
 
-**The sequence is complete.** app.js went 6,020 → 3,321 lines and is now
-what the map always said it should be: the shell — worker bridge, sync
+**The code sequence is complete.** app.js went 6,020 → 3,321 lines and is
+now what the map always said it should be: the shell — worker bridge, sync
 engine (`opEpoch` stays the spine), mailbox switching, keyboard, boot —
 plus the triage verbs that feed every surface. Each extracted module carries
 the RESPONSIBILITY/OWNS/DOES NOT OWN/DEPENDS ON header, talks through a ctx
 seam, and has a `_reset*` test seam where module state outlives a
 cache-busted app.js re-import. Found and fixed in flight: the reader-store
 getter-capture hazard (round 51), the dblclick-inside-click listener leak
-(list wiring, round 52), and six pre-existing red pins (round 51 §4).
+(list wiring, round 52), six pre-existing red pins (round 51 §4), and four
+more suites the CI shard split exposed (round 53).
+
+**Round 54 executed the §5 design decision** — the maintainer chose the
+essay's flagship: Timetable was promoted from a 1040px layer to a
+first-class workspace on the main surface (mail chrome steps aside, sidebar
+stays as the app's navigation). Its one-long-scroll body became four named
+rooms behind a counted tab bar — Schedule / Changes / Conflicts / Exams —
+with rooms that hold nothing rendering no tab. role=region, not dialog: a
+workspace over live mail must not promise aria-modal. Esc steps back to
+mail as one ladder rung; any mailbox/category click returns to mail first.
+The integration contract moved with it (role assertion, Esc-returns-to-mail
+assertion), and the harness gained a layers teardown seam — close WITH
+teardown first, wipe second, because tenants null their cached layer
+handles inside onClose.
 
 ## 7. What this map forbids (the essay's danger list, adopted)
 
