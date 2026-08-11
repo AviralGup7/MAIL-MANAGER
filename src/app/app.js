@@ -3605,6 +3605,10 @@ async function selectMailbox(id) {
   state.category = 'all';
   state.query = '';
   el.search.value = '';
+  // The overlay belongs to the query (bug-hunt #26): leaving it alive let
+  // stale INBOX search hits merge into the next mailbox's results, because
+  // scheduleServerSearch returns early outside the inbox and never clears.
+  clearSearchOverlay();
   state.selected = null;
   selection.clear();
 

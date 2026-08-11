@@ -93,7 +93,13 @@ export function normaliseOutbox(raw) {
       state: it.state === 'held' ? 'held' : 'failed',
       draft: it.draft,
       queuedAt: Number.isFinite(it.queuedAt) ? it.queuedAt : Date.now(),
-      releaseAt: Number.isFinite(it.releaseAt) ? it.releaseAt : 0,
+      // A held item with a corrupt or missing releaseAt used to default to 0
+      // -- i.e. DUE IMMEDIATELY -- and a restart would fire the send the
+      // moment the app opened, skipping the undo window the user was still
+      // entitled to (bug-hunt #17). Re-anchor to the hold instead.
+      releaseAt: Number.isFinite(it.releaseAt)
+        ? it.releaseAt
+        : (Number.isFinite(it.queuedAt) ? it.queuedAt : Date.now()) + DEFAULT_HOLD_MS,
       attempts: Number.isFinite(it.attempts) ? it.attempts : 0,
       nextAttempt: Number.isFinite(it.nextAttempt) ? it.nextAttempt : 0,
       ...(typeof it.error === 'string' ? { error: it.error.slice(0, 200) } : {}),

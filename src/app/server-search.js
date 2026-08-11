@@ -92,7 +92,12 @@ async function runServerSearch() {
     const { messages } = await ctx.send('SYNC_PAGE', {
       // `q` goes to Gmail verbatim: its operator syntax is a superset of ours,
       // so `from:x report` means the same thing on both sides.
-      opts: { q, max: 40, anchorHistory: false },
+      //
+      // ...except for the mailbox scope (bug-hunt #6): with no labelIds, Gmail
+      // searches TRASH AND SPAM too, and those hits used to merge into the
+      // inbox overlay, where archive/star acted on them out of context. This
+      // supplement serves the inbox; trash and spam are never the answer.
+      opts: { q: `${q} -in:trash -in:spam`, max: 40, anchorHistory: false },
     });
 
     // A newer keystroke has superseded this request. Dropping the response is

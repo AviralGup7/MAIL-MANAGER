@@ -487,3 +487,50 @@ test('an unknown audience code does not survive as garbage', async () => {
   const [m] = (await loadCache(s)).messages;
   assert.equal(m.audience, undefined, 'an unmappable value is dropped, not stored');
 });
+
+// ------------------------------------------------------------ bug-hunt pins --
+
+test('a row with a corrupt date is skipped, not hydrated (bug-hunt #16)', async () => {
+  // A string date passes the old row check and then breaks the store's
+  // ordered-insert comparisons. One bad row must cost one message, never the
+  // whole cache.
+  const s = fakeStorage();
+  await saveCache([msg(0), msg(1)], s);
+  const blob = (await s.get('msgCache')).msgCache;
+  blob.m[1][5] = 'not-a-number'; // corrupt the second row's date
+  await s.set({ msgCache: blob });
+
+  const got = await loadCache(s);
+  assert.equal(got.messages.length, 1, 'the corrupt row is dropped');
+  assert.equal(got.messages[0].id, 'm0', 'the healthy row survives');
+});
+
+test('flush reports a failed write through onError (bug-hunt #53)', async () => {
+  // A quota error during pagehide must not be invisible just because the write
+  // path changed from scheduled to immediate.
+  let reported = 0;
+  const failing = {
+    get: async () => ({}),
+    set: async () => { throw new Error('QUOTA'); },
+    remove: async () => {},
+  };
+  const saver = createSaver(() => [msg(0)], failing, { onError: () => { reported++; } });
+  saver.schedule();
+  await saver.flush();
+  assert.equal(reported, 1, 'the immediate write path must surface the failure');
+});
+
+test('schedule survives being destructured off the saver (bug-hunt #54)', async () => {
+  // The throttle re-arm used `this.schedule()`, which only resolves while the
+  // saver is called as an object. A destructured schedule() threw.
+  const s = fakeStorage();
+  const saver = createSaver(() => [msg(0)], s, { minIntervalMs: 5, idleTimeout: 10 });
+  const { schedule } = saver;
+  schedule();                                   // first write (idle fallback ~50ms)
+  await new Promise((r) => setTimeout(r, 80));  // let it land; lastWrite is set
+  schedule();                                   // inside minInterval -> throttle re-arm
+  schedule();                                   // coalesces onto the re-armed timer
+  await new Promise((r) => setTimeout(r, 120)); // re-arm (5ms) + idle write (50ms)
+  const got = await loadCache(s);
+  assert.ok(got && got.messages.length === 1, 'the re-armed save still lands');
+});

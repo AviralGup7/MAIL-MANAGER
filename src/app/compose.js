@@ -62,6 +62,10 @@ export function openCompose(ctx, prefill = {}) {
     threadId: prefill.threadId || '',
     inReplyTo: prefill.inReplyTo || '',
     references: prefill.references || '',
+    // The message being answered, for template auto-values ({{sender}},
+    // {{subject}}, {{course}}). Read by openTemplateMenu but NEVER WRITTEN
+    // before bug-hunt #35 -- those placeholders always shipped unfilled.
+    replyTo: prefill.replyTo || null,
     // What the panel STARTED with. Used to tell "typed something" from "a
     // reply pre-filled a quoted original".
     baseBody: prefill.quoted ? `\n\n${prefill.quoted}` : '',
@@ -70,6 +74,17 @@ export function openCompose(ctx, prefill = {}) {
   };
   const panel = $('compose');
   if (!panel) return;
+
+  /*
+   * ATTACHMENTS RIDE WITH THE DRAFT (bug-hunt #12). The undo-send path
+   * reopens compose with the cancelled draft; closeCompose had already
+   * cleared pendingFiles, so the files used to vanish from the panel and the
+   * re-send went out without them. Restoring them here puts them back on
+   * screen and back in the MIME.
+   */
+  pendingFiles = Array.isArray(prefill.attachments)
+    ? prefill.attachments.filter((f) => f && typeof f.filename === 'string' && typeof f.data === 'string')
+    : [];
 
   $('compose-title').textContent = prefill.title || 'New message';
   $('c-to').value = prefill.to || '';
@@ -105,6 +120,9 @@ export function openCompose(ctx, prefill = {}) {
    * came in, the signature must not have been stamped over it. */
   composeMeta.baseBody = prefill.baseBody || composeMeta.baseBody || '';
   $('c-cc-row').hidden = !prefill.cc;
+  // The bcc row needs the same reset (bug-hunt #33): without it a row left
+  // open by the previous compose session stayed open for the next one.
+  $('c-bcc-row').hidden = !prefill.bcc;
   $('c-status').textContent = '';
 
   // Rebuild the address book once per open, from mail already in the store.
@@ -115,6 +133,7 @@ export function openCompose(ctx, prefill = {}) {
   cancelExit(panel);
   panel.hidden = false;
   panel.classList.remove('minimised');
+  renderFiles();
   document.body.classList.add('composing');
   // Focus the first EMPTY field: a reply already has a recipient and a
   // subject, so landing in "To" would make the user tab past both.
@@ -190,6 +209,7 @@ export async function startReply(ctx, mode) {
     const r = buildReply(body, ctx.state.email || '', mode);
     openCompose(ctx, {
       ...r,
+      replyTo: body, // bug-hunt #35: template auto-values need the source
       title: mode === 'forward' ? 'Forward' : mode === 'replyAll' ? 'Reply all' : 'Reply',
     });
   } catch (err) {
@@ -269,7 +289,12 @@ function readAsBase64(file) {
     r.onload = () => {
       // The data URL is "data:<mime>;base64,<payload>" -- take the payload.
       const s = String(r.result || '');
-      resolve(s.slice(s.indexOf(',') + 1));
+      const at = s.indexOf(',');
+      // No comma means the result is not a data URL at all; slicing at 0
+      // would hand the whole string to the MIME builder as "base64"
+      // (bug-hunt #36). That is a failed read, not an empty one.
+      if (at === -1) return reject(new Error(`Could not read ${file.name}`));
+      resolve(s.slice(at + 1));
     };
     r.readAsDataURL(file);
   });
@@ -452,7 +477,9 @@ async function doSend(ctx) {
    * something it does not recognise is worse than one that asks. So: name the
    * suspect address and let the user decide.
    */
-  const bad = [...invalidAddresses(draft.to), ...invalidAddresses(draft.cc)];
+  // Bcc gets the same check (bug-hunt #34): a typo there fails just as
+  // silently, and the warning exists precisely for silent failures.
+  const bad = [...invalidAddresses(draft.to), ...invalidAddresses(draft.cc), ...invalidAddresses(draft.bcc)];
   if (bad.length) {
     const list = bad.join(', ');
     if (!confirm(`This does not look like an email address:\n\n${list}\n\nSend anyway?`)) {

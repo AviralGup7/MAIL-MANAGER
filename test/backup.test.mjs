@@ -254,3 +254,41 @@ test('the OAuth client id is never written to a backup file', async () => {
   assert.doesNotMatch(json, /googleusercontent/, 'client id must not travel');
   assert.match(json, /nord/, 'but real preferences still do');
 });
+
+// ----------------------------------------------------- bug-hunt key pins --
+
+test('the allow-list names storage keys that ACTUALLY EXIST (bug-hunt #13/#14)', () => {
+  /*
+   * The allow-list once said 'imageAllowList' -- a key nothing writes (the
+   * app stores 'imageAllow') -- so the image allow-list silently never backed
+   * up: the exact "exported a fiction" defect the settings fix documents.
+   * Pin the real keys, plus the timetable, which is invested user effort this
+   * module exists to protect and was missing entirely.
+   */
+  assert.ok(EXPORTED_KEYS.includes('imageAllow'), 'real image allow-list key');
+  assert.ok(!EXPORTED_KEYS.includes('imageAllowList'), 'the fictional key must stay out');
+  assert.ok(EXPORTED_KEYS.includes('timetable'), 'the user-built timetable is invested effort');
+});
+
+test('NEVER_EXPORT names real keys, not fictions (bug-hunt #15)', () => {
+  // A guarantee that names a key that does not exist is not a guarantee. The
+  // cache is stored under 'msgCache', never 'messageCache'.
+  assert.ok(NEVER_EXPORT.includes('msgCache'), 'the real cache key');
+  assert.ok(NEVER_EXPORT.includes('outboxClaims'), 'pending-send coordination state');
+  assert.ok(!NEVER_EXPORT.includes('messageCache'), 'the fictional key must stay out');
+});
+
+test('imageAllow and timetable actually round-trip through a backup', async () => {
+  const source = fakeStorage({
+    imageAllow: ['prof@pilani.bits-pilani.ac.in'],
+    timetable: { v: 1, entries: [{ id: 'cs-f111', comCode: 'CS F111', section: 'P1', meetings: [], history: [] }] },
+  });
+  const backup = await exportBackup(source);
+  assert.ok('imageAllow' in backup.data, 'allow-list captured');
+  assert.ok('timetable' in backup.data, 'timetable captured');
+
+  const target = fakeStorage();
+  const out = await importBackup(JSON.stringify(backup), target);
+  assert.ok(out.applied.includes('imageAllow'));
+  assert.ok(out.applied.includes('timetable'));
+});

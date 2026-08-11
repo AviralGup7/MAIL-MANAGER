@@ -99,7 +99,14 @@ export const EXPORTED_KEYS = [
   'deadlineOverrides',
   'myCourses',
   'snoozed',
-  'imageAllowList',
+  // The REAL storage key is 'imageAllow' (app.js reads/writes that name).
+  // This list once said 'imageAllowList' -- a key that never existed, so the
+  // allow-list silently never backed up: the exact defect class the settings
+  // fix above documents (bug-hunt #13).
+  'imageAllow',
+  // The user-built timetable is invested effort of exactly the kind this
+  // module exists to protect; it was missing entirely (bug-hunt #14).
+  'timetable',
 ];
 
 /**
@@ -109,7 +116,11 @@ export const EXPORTED_KEYS = [
  * This is belt-and-braces on top of the allow-list: the allow-list is what
  * enforces the rule, this is what explains it.
  */
-export const NEVER_EXPORT = ['token', 'accessToken', 'refreshToken', 'auth', 'messageCache', 'activityLog', 'outbox'];
+// Named with the keys that ACTUALLY exist: the cache key is 'msgCache'
+// (cache.js), not 'messageCache' as this list once claimed -- a guarantee
+// that names a fictional key is not a guarantee (bug-hunt #15). 'outboxClaims'
+// joins 'outbox': pending-send coordination state must not travel either.
+export const NEVER_EXPORT = ['token', 'accessToken', 'refreshToken', 'auth', 'msgCache', 'activityLog', 'outbox', 'outboxClaims'];
 
 /**
  * Build a backup object.

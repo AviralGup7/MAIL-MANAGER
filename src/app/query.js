@@ -61,10 +61,24 @@ function tokenize(q) {
 /** `2025-11-20`, `20/11/2025`, `20 Nov 2025` -> ms, or null. */
 function parseDate(v) {
   let m = v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-  if (m) return Date.UTC(+m[1], +m[2] - 1, +m[3]);
+  if (m) return checkedDate(+m[1], +m[2], +m[3]);
   m = v.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
-  if (m) return Date.UTC(+m[3], +m[2] - 1, +m[1]); // day-first: this is an Indian tool
+  // day-first: this is an Indian tool
+  if (m) return checkedDate(+m[3], +m[2], +m[1]);
   return null;
+}
+
+/**
+ * Assemble ONLY real dates (bug-hunt #8). Date.UTC silently normalises
+ * out-of-range fields -- `32/13/2025` became 1 Feb 2026, and a pasted
+ * US-style `11/20/2025` read as 11 Aug 2026 -- so before:/after: filtered
+ * on dates nobody ever wrote. An impossible date is no date: null.
+ */
+function checkedDate(y, month, day) {
+  if (month < 1 || month > 12) return null;
+  const last = new Date(Date.UTC(y, month, 0)).getUTCDate(); // days in month
+  if (day < 1 || day > last) return null;
+  return Date.UTC(y, month - 1, day);
 }
 
 /**

@@ -541,3 +541,21 @@ test('the live token lives in session storage; consent stays in local (SEC-5)', 
   assert.match(AUTH_SRC, /chrome\.storage\.local\.remove\(\['authorized', 'historyId', 'bgNotifiedIds'\]\)/,
     'sign-out clears consent + cursor + notification dedupe from local, token from the area');
 });
+
+// ----------------------------------------------------- bug-hunt SEC-5 seams --
+
+test('forceRenew and the revocation path drop the token from the TOKEN area (bug-hunt #3/#4)', () => {
+  // SEC-5 moved the token to session storage; two paths kept removing it from
+  // local, which removed nothing -- the stale 401'ing token came right back.
+  const renew = AUTH_SRC.slice(AUTH_SRC.indexOf('export async function forceRenew'));
+  assert.match(renew, /tokenArea\(\)\.remove\(\['accessToken', 'expiresAt'\]\)/,
+    'forceRenew must drop the token from the area persist() wrote it to');
+  assert.ok(!/chrome\.storage\.local\.remove\(\['accessToken'/.test(renew),
+    'no local-area token removal may survive in forceRenew');
+
+  const revoked = AUTH_SRC.slice(AUTH_SRC.indexOf('const revoked ='), AUTH_SRC.indexOf('scheduleRenewRetry()'));
+  assert.match(revoked, /tokenArea\(\)\.remove\(\['accessToken', 'expiresAt'\]\)/,
+    'an explicit Google rejection must drop the token from the token area');
+  assert.match(revoked, /chrome\.storage\.local\.remove\(\['authorized'\]\)/,
+    'consent still comes out of local storage');
+});

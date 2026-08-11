@@ -41,6 +41,8 @@
  * This is a fallback, not a replacement. It says so, loudly, in the UI.
  */
 
+import { MAX_INLINE_BYTES, MAX_INLINE_PARTS, BULK_CHUNK } from '../shared/limits.js';
+
 /** Verbs that genuinely cannot work without a worker. */
 const WORKER_ONLY = new Set(['TOGGLE_TAKEOVER']);
 
@@ -87,11 +89,21 @@ function makeHandler({ auth, gmail, sync, snooze, mime }) {
     switch (type) {
       case 'AUTH_STATUS': return { signedIn: await auth.isSignedIn() };
       case 'SIGN_IN': return auth.signIn();
-      case 'SIGN_OUT': return auth.signOut();
+      case 'SIGN_OUT': {
+        await auth.signOut();
+        // Label ids are account-scoped (bug-hunt #22): the worker's handler
+        // clears its cache at this moment; the in-page path must too, or a
+        // different account signing in inherits the previous one's ids.
+        gmail._clearLabelCache();
+        return { signedIn: false };
+      }
       case 'PROFILE': return gmail.profile();
 
       case 'SYNC_PAGE': return sync.syncPage(msg.opts || {});
-      case 'SYNC_DELTA': return sync.syncDelta(msg.historyId);
+      // syncDelta() takes NO arguments -- it reads the cursor from storage.
+      // Passing one suggested a contract the function does not have
+      // (bug-hunt #23).
+      case 'SYNC_DELTA': return sync.syncDelta();
 
       /*
        * SIGNATURES MATTER, AND I GOT THEM WRONG FIRST TIME.
@@ -121,8 +133,27 @@ function makeHandler({ auth, gmail, sync, snooze, mime }) {
         return gmail.api(`/messages/${encodeURIComponent(msg.id)}/untrash`, { method: 'POST' });
       case 'SPAM': return gmail.modify(msg.id, ['SPAM'], ['INBOX']);
       case 'NOT_SPAM': return gmail.modify(msg.id, ['INBOX'], ['SPAM']);
-      case 'BULK':
-        return gmail.batchModify(msg.ids, msg.add || [], msg.remove || []);
+      case 'BULK': {
+        /*
+         * SAME CONTRACT AS THE WORKER (bug-hunt #21): chunk at Gmail's
+         * 1000-id limit and answer `{ failed }`, because reconcileBulk on
+         * the app side restores exactly those ids. The old shape (one raw
+         * request, raw 204 back) 400'd past a thousand ids and gave the
+         * reconciler nothing to work with.
+         */
+        const ids = msg.ids || [];
+        if (ids.length === 0) return { failed: [] };
+        const failed = [];
+        for (let i = 0; i < ids.length; i += BULK_CHUNK) {
+          try {
+            await gmail.batchModify(ids.slice(i, i + BULK_CHUNK), msg.add || [], msg.remove || []);
+          } catch {
+            failed.push(...ids.slice(i, i + BULK_CHUNK));
+          }
+        }
+        if (failed.length === ids.length) throw new Error('bulk action failed for all messages');
+        return { failed };
+      }
 
       /*
        * READING A MESSAGE. Without this the fallback lists mail and cannot
@@ -167,9 +198,11 @@ function makeHandler({ auth, gmail, sync, snooze, mime }) {
         // Parity with the worker (V2 code audit): silently empty inline
         // resolution made the fallback render image-less bodies forever.
         // Same bounds as the worker: part cap plus a byte budget.
-        const parts = Array.isArray(msg.parts) ? msg.parts.slice(0, 20) : [];
+        // Limits come from the shared seam, not literals (bug-hunt #24):
+        // this path and the worker's must never drift apart.
+        const parts = Array.isArray(msg.parts) ? msg.parts.slice(0, MAX_INLINE_PARTS) : [];
         const out = [];
-        let budget = 2 * 1024 * 1024;
+        let budget = MAX_INLINE_BYTES;
         for (const part of parts) {
           if (!part?.attachmentId || !part?.contentId) continue;
           if ((part.size || 0) > budget) continue;
@@ -179,7 +212,10 @@ function makeHandler({ auth, gmail, sync, snooze, mime }) {
             out.push({ contentId: part.contentId, filename: part.filename || '', dataUrl });
           } catch { /* one bad part must not blank the body */ }
         }
-        return out;
+        // { inline }, not a bare array (bug-hunt #20): the app reads
+        // `res.inline`, so the old shape meant inline images rendered as
+        // placeholders forever in fallback mode.
+        return { inline: out };
       }
 
       case 'LIST_LABELS': return gmail.listLabels();

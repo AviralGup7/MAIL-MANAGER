@@ -18,6 +18,7 @@ import {
 import { classify } from '../classify/index.js';
 import { selectNotifiable } from './notify.js';
 import { SNOOZE_LABEL } from '../shared/labels.js';
+import { MAX_INLINE_BYTES, MAX_INLINE_PARTS, BULK_CHUNK } from '../shared/limits.js';
 import { loadSnoozed, removeSnooze, due } from '../app/snooze.js';
 import { syncPage, syncDelta } from './sync.js';
 import { api } from './gmail.js';
@@ -25,15 +26,9 @@ import { api } from './gmail.js';
 // it without importing this file, which registers listeners at load.
 import { extractBody, b64url } from './mime.js';
 
-/**
- * Inline-image budget. See GET_INLINE.
- *
- * 2MB of source bytes becomes roughly 2.7MB of base64 in the srcdoc string,
- * which is a large but survivable document. 20 parts covers every legitimate
- * newsletter seen in the data pack with room to spare.
- */
-const MAX_INLINE_BYTES = 2 * 1024 * 1024;
-const MAX_INLINE_PARTS = 20;
+// Inline-image budget constants live in src/shared/limits.js now: the
+// in-page fallback enforces the SAME budget, and two copies of a number
+// like this are two copies of policy (bug-hunt #24).
 
 /**
  * Is this a Gmail tab?
@@ -270,11 +265,11 @@ async function handle(msg) {
       // applied the action elsewhere must not surface as an error.
       if (ids.length === 0) return { failed: [] };
       const failed = [];
-      for (let i = 0; i < ids.length; i += 1000) {
+      for (let i = 0; i < ids.length; i += BULK_CHUNK) {
         try {
-          await batchModify(ids.slice(i, i + 1000), msg.add || [], msg.remove || []);
+          await batchModify(ids.slice(i, i + BULK_CHUNK), msg.add || [], msg.remove || []);
         } catch {
-          failed.push(...ids.slice(i, i + 1000));
+          failed.push(...ids.slice(i, i + BULK_CHUNK));
         }
       }
       if (failed.length === ids.length) throw new Error('bulk action failed for all messages');
@@ -536,7 +531,10 @@ if (chrome.alarms?.onAlarm) {
       await wakeDue();
       await scheduleWake(); // re-aim at whatever is next
     } else if (alarm.name === SYNC_ALARM) {
-      backgroundSync();
+      // Guarded (bug-hunt #27): a throw inside the sweep -- a storage get
+      // failing, say -- must not surface as an unhandled worker rejection.
+      // The next 15-minute run retries; silence is the correct status.
+      backgroundSync().catch(() => {});
     }
   });
 }

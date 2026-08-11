@@ -166,7 +166,7 @@ test('opening a muted category by name still shows it', () => {
 
 test('search overrides mute', () => {
   const fn = selSrc.slice(selSrc.indexOf('export function applyMute'));
-  assert.ok(fn.slice(0, 600).includes('query'));
+  assert.ok(fn.slice(0, 600).includes('if (query) return ids'));
 });
 
 test('an all-muted list explains itself and offers a way out', () => {

@@ -49,3 +49,41 @@ test('the OAuth scope set matches shipped capability (modify + send, nothing mor
   assert.match(a, /auth\/gmail\.send/);
   assert.ok(!/mail\.google\.com\/'?\)/.test(a.slice(a.indexOf('SCOPES'), a.indexOf('SCOPES') + 400)), 'no full-mailbox scope');
 });
+
+/*
+ * Bug-hunt shape pins: findings #20/#21/#22/#24 survived precisely because
+ * the original pins checked source MARKERS rather than response shapes. These
+ * pin the shapes themselves on BOTH sides, so the next drift fails loudly.
+ */
+
+test('GET_INLINE answers { inline } on both paths (bug-hunt #20)', () => {
+  const f = read('src/app/fallback.js');
+  const w = read('src/background/index.js');
+  assert.match(f, /return \{ inline: out \}/, 'fallback must wrap its parts');
+  assert.match(w, /return \{ inline: out \}/, 'worker must wrap its parts');
+});
+
+test('BULK answers { failed } and chunks identically on both paths (bug-hunt #21)', () => {
+  const f = read('src/app/fallback.js');
+  const w = read('src/background/index.js');
+  for (const [name, src] of [['fallback', f], ['worker', w]]) {
+    assert.match(src, /i \+= BULK_CHUNK/, `${name} must chunk at the shared limit`);
+    assert.match(src, /return \{ failed \}/, `${name} must answer { failed }`);
+  }
+  // The limit itself has ONE home (bug-hunt #24).
+  const limits = read('src/shared/limits.js');
+  assert.match(limits, /export const BULK_CHUNK = 1000/);
+  assert.match(limits, /export const MAX_INLINE_BYTES/);
+  assert.match(f, /from '\.\.\/shared\/limits\.js'/, 'fallback imports the seam');
+  assert.match(w, /from '\.\.\/shared\/limits\.js'/, 'worker imports the seam');
+});
+
+test('fallback SIGN_OUT clears the label cache like the worker (bug-hunt #22)', () => {
+  const f = read('src/app/fallback.js');
+  const at = f.indexOf("case 'SIGN_OUT':");
+  assert.notEqual(at, -1);
+  const next = f.indexOf("case '", at + 10);
+  const body = f.slice(at, next === -1 ? undefined : next);
+  assert.ok(body.includes('gmail._clearLabelCache()'),
+    'account-scoped label ids must die with the session on both paths');
+});

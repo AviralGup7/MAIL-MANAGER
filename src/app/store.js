@@ -291,11 +291,15 @@ export class Store {
       return;
     }
 
-    // Only category and text changes affect the indexes.
+    // Only category and text changes affect the indexes. SNIPPET INCLUDED:
+    // tokenize() indexes subject + from + snippet (bug-hunt #19), so a
+    // snippet patch that skipped reindexing would leave the search index
+    // describing text the message no longer has.
     const reindex =
       ('category' in fields && fields.category !== msg.category) ||
       'subject' in fields ||
-      'from' in fields;
+      'from' in fields ||
+      'snippet' in fields;
     if (reindex) this._deindex(msg);
     Object.assign(msg, fields);
     if (reindex) this._index(msg);

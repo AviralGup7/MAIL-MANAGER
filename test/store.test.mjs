@@ -659,3 +659,19 @@ test('THREAD: emptied conversations do not accumulate in the index', () => {
     'archiving every conversation must not leave 50 empty Sets behind'
   );
 });
+
+test('patching snippet reindexes the search terms (bug-hunt #19)', () => {
+  // tokenize() indexes subject + from + SNIPPET, so a snippet patch that
+  // skipped reindexing would leave the index describing text the message no
+  // longer has: searchable after it was edited away, unsearchable after it
+  // was edited in.
+  const s = new Store();
+  s.upsert({ id: 'a', threadId: 'a', from: 'x@y.com', subject: 'hi',
+    snippet: 'the original body words', date: 1, unread: true, starred: false,
+    category: 'augsd', confidence: 0.9, reason: 'r' });
+
+  assert.deepEqual(s.search('original'), ['a']);
+  s.patch('a', { snippet: 'a completely replaced text' });
+  assert.deepEqual(s.search('original'), [], 'old snippet text must leave the index');
+  assert.deepEqual(s.search('replaced'), ['a'], 'new snippet text must enter it');
+});

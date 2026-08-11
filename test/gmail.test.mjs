@@ -343,12 +343,23 @@ test('RETRY: a 404 is NOT retried — it is terminal', async () => {
   }
 });
 
-test('RETRY: a 401 is NOT retried — the token needs refreshing, not repeating', async () => {
+test('RETRY: a 401 is NOT retried — it is handed to the renew path', async () => {
+  // The invariant this pins: fetchRetrying must not burn attempts repeating a
+  // 401 with the same (rejected) token. Exactly ONE attempt hits the
+  // endpoint, then control transfers to the renew-once path in api(). With no
+  // consent in the harness, that path surfaces NOT_SIGNED_IN -- proof the 401
+  // branch is now REACHABLE (it was dead code when fetchRetrying threw first:
+  // bug-hunt #2).
   const { api } = await import('../src/background/gmail.js');
-  const s = scriptFetch([res(401, 'unauthorized')]);
+  // Two 401s: the first is handed to the renew path, which retries EXACTLY
+  // once; the second is the canonical AUTH_REVOKED. (The harness storage's
+  // remove() is a no-op, so the 'renewed' token is the same one -- api() does
+  // not care; the point is the single-retry shape.) A third attempt would
+  // mean blind retrying, which is what this test has always policed.
+  const s = scriptFetch([res(401, 'unauthorized'), res(401, 'unauthorized')]);
   try {
-    await assert.rejects(() => api('/profile'), /401/);
-    assert.equal(s.attempts.length, 1);
+    await assert.rejects(() => api('/profile'), /AUTH_REVOKED/);
+    assert.equal(s.attempts.length, 2, 'exactly one renew-and-retry, never more');
   } finally {
     s.restore();
   }
@@ -705,5 +716,126 @@ test('the label-id cache is account-scoped: clearing it re-hits the API (V2 P1-1
   } finally {
     globalThis.fetch = realFetch;
     _clearLabelCache();
+  }
+});
+
+// -------------------------------------------------- bug-hunt security pins --
+
+test('Subject is CRLF-scrubbed like every other header (bug-hunt #1)', async () => {
+  // The reply path copies the INBOUND subject, which is attacker-controlled;
+  // a pure-ASCII CR/LF in it used to be the last header-injection path.
+  const { buildMime } = await import('../src/background/gmail.js');
+  const mime = buildMime({
+    to: 'a@b.com',
+    subject: 'Hello\r\nBcc: harvest@evil.com',
+    body: 'x',
+  });
+  assert.ok(!mime.includes('harvest@evil.com'), 'the injected text must not reach the wire at all');
+  assert.match(mime, /^Subject: Hello\r\n/m, 'only the first line of the subject survives');
+  // A clean subject survives intact.
+  const ok = buildMime({ to: 'a@b.com', subject: 'Fee reminder', body: 'x' });
+  assert.match(ok, /^Subject: Fee reminder\r\n/m);
+});
+
+test('getAttachment clamps a hostile mimeType (bug-hunt #5)', async () => {
+  const { getAttachment } = await import('../src/background/gmail.js');
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true, status: 200,
+    json: async () => ({ data: 'aGVsbG8' }),
+  });
+  try {
+    // Plain types pass; anything with parameters, quotes, whitespace or a
+    // second scheme degrades to octet-stream (bug-hunt #5).
+    const params = await getAttachment('m', 'a', 'image/png;evil=1');
+    assert.ok(params.startsWith('data:application/octet-stream;base64,'));
+    const spaced = await getAttachment('m', 'a', 'text/html attack');
+    assert.ok(spaced.startsWith('data:application/octet-stream;base64,'));
+    const quoted = await getAttachment('m', 'a', 'image/png\"x');
+    assert.ok(quoted.startsWith('data:application/octet-stream;base64,'));
+    const good = await getAttachment('m', 'a', 'image/png');
+    assert.ok(good.startsWith('data:image/png;base64,'));
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('decodeEntities decodes &amp; LAST (bug-hunt #9)', async () => {
+  const { normalise } = await import('../src/background/gmail.js');
+  const mk = (snippet) => normalise({ id: 'x', snippet, internalDate: '1' });
+  // A literal "&lt;" in the mail arrives as "&amp;lt;": ONE decode pass must
+  // yield the visible text "&lt;", not an HTML-active "<".
+  assert.equal(mk('a &amp;lt;b&amp;gt; c').snippet, 'a &lt;b&gt; c');
+  assert.equal(mk('Tom &amp; Jerry').snippet, 'Tom & Jerry');
+  assert.equal(mk('it&#x27;s &apos;fine&apos;').snippet, "it's 'fine'");
+});
+
+test('a 401 reaches api() and triggers the renew-once path (bug-hunt #2)', async () => {
+  // Old behaviour: fetchRetrying THREW on 401, so the renew branch in api()
+  // was dead code. Now the 401 response is handed to api(), which must renew
+  // exactly once and retry with the fresh token.
+  const mod = await import('../src/background/gmail.js');
+
+  fakeStorage.authorized = true;
+  fakeStorage.accessToken = 'stale';
+  fakeStorage.expiresAt = Date.now() + 3600_000;
+
+  let calls = 0;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    calls++;
+    if (String(url).includes('/revoke')) return { ok: true, status: 200 };
+    if (calls === 1) return { ok: false, status: 401, text: async () => 'expired' };
+    return { ok: true, status: 200, json: async () => ({ emailAddress: 'me@bits' }) };
+  };
+  // Silent renewal: answer the implicit-flow round trip with a fresh token.
+  const realIdentity = globalThis.chrome.identity;
+  globalThis.chrome.identity = {
+    ...realIdentity,
+    launchWebAuthFlow: async (opts) => {
+      const state = new URL(opts.url).searchParams.get('state');
+      return `https://abc.chromiumapp.org/#access_token=fresh&expires_in=3600&state=${encodeURIComponent(state)}`;
+    },
+  };
+  try {
+    const res = await mod.profile();
+    assert.equal(res.emailAddress, 'me@bits');
+    assert.equal(calls >= 2, true, 'the request must be retried after renewal');
+  } finally {
+    globalThis.fetch = realFetch;
+    globalThis.chrome.identity = realIdentity;
+    delete fakeStorage.authorized;
+    fakeStorage.accessToken = 'fake-token';
+    fakeStorage.expiresAt = Date.now() + 3600_000;
+  }
+});
+
+test('a second 401 after renewal is AUTH_REVOKED, not data (bug-hunt #2)', async () => {
+  const mod = await import('../src/background/gmail.js');
+  fakeStorage.authorized = true;
+  fakeStorage.accessToken = 'stale';
+  fakeStorage.expiresAt = Date.now() + 3600_000;
+
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes('/revoke')) return { ok: true, status: 200 };
+    return { ok: false, status: 401, text: async () => 'nope' };
+  };
+  const realIdentity = globalThis.chrome.identity;
+  globalThis.chrome.identity = {
+    ...realIdentity,
+    launchWebAuthFlow: async (opts) => {
+      const state = new URL(opts.url).searchParams.get('state');
+      return `https://abc.chromiumapp.org/#access_token=fresh&expires_in=3600&state=${encodeURIComponent(state)}`;
+    },
+  };
+  try {
+    await assert.rejects(() => mod.profile(), /AUTH_REVOKED/);
+  } finally {
+    globalThis.fetch = realFetch;
+    globalThis.chrome.identity = realIdentity;
+    delete fakeStorage.authorized;
+    fakeStorage.accessToken = 'fake-token';
+    fakeStorage.expiresAt = Date.now() + 3600_000;
   }
 });

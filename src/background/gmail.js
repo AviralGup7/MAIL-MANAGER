@@ -15,7 +15,14 @@
  * actually opens something.
  */
 
-import { getToken } from './auth.js';
+/*
+ * forceRenew is imported BY NAME (bug-hunt #2): this file once wrote
+ * `auth.forceRenew()` with no `auth` binding at all -- a ReferenceError that
+ * could never surface because the 401 branch that called it was unreachable.
+ * Dead code hiding a crash: the import is the test that proves the arm is
+ * wired.
+ */
+import { getToken, forceRenew } from './auth.js';
 
 const BASE = 'https://gmail.googleapis.com/gmail/v1/users/me';
 const BATCH_URL = 'https://gmail.googleapis.com/batch/gmail/v1';
@@ -111,6 +118,14 @@ async function fetchRetrying(url, init, label) {
 
     if (res.ok) return res;
 
+    /*
+     * 401 is the caller's business, not a retry failure (bug-hunt #2):
+     * api() owns the renew-once path, and it can only own it if the 401
+     * RESPONSE reaches it. Throwing here made that branch dead code -- the
+     * V2 P1-10 fix never fired.
+     */
+    if (res.status === 401) return res;
+
     const body = await res.text().catch(() => '');
     const retryable = RETRYABLE.has(res.status) || (res.status === 403 && isQuota403(body));
     lastErr = new Error(`Gmail ${res.status} ${label} ${body.slice(0, 200)}`);
@@ -131,9 +146,15 @@ export async function api(path, init = {}) {
   if (res.status === 401) {
     // Separated auth states (V2 P1-10): renew once and retry; the renewal's
     // own error taxonomy (revoked vs transient) propagates untouched.
-    await auth.forceRenew();
+    await forceRenew();
     const h2 = await authHeaders(init.headers || {});
     const r2 = await fetchRetrying(`${BASE}${path}`, { ...init, headers: h2 }, path);
+    if (r2.status === 401) {
+      // A fresh token that is ALSO rejected is not data -- it is the
+      // canonical revoked state. Returning the error body as a value used to
+      // let callers read `.messages || []` on it and paint an empty inbox.
+      throw new Error('AUTH_REVOKED: Gmail rejected a freshly renewed token');
+    }
     if (r2.status === 204) return null;
     return r2.json();
   }
@@ -291,6 +312,9 @@ export function normalise(g) {
     snippet: decodeEntities(str(g.snippet)),
     // internalDate is ms-since-epoch as a STRING, and it is authoritative.
     // The Date: header is attacker-controlled and is routinely wrong.
+    // The fallback keeps it anyway (bug-hunt #41): no-internalDate records
+    // are rarer than wrong Date headers, and a 1970 date would sink the
+    // message below everything and hide it -- worse than a wrong position.
     date: Number(g.internalDate) || Date.parse(h.date) || 0,
     unread: labels.includes('UNREAD'),
     starred: labels.includes('STARRED'),
@@ -345,13 +369,17 @@ function str(v) {
 }
 
 function decodeEntities(s) {
+  // &amp; LAST (bug-hunt #9): decoding it first turns a literal "&amp;lt;"
+  // into "&lt;" and then into "<" -- one decode pass must mean one decode.
   return s
-    .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, ' ');
+    .replace(/&#x27;/gi, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&');
 }
 
 /** Full body for one message, fetched only when the user opens it. */
@@ -517,7 +545,21 @@ export function buildMime(m) {
     `To: ${safeAddressHeader(m.to)}`,
     m.cc ? `Cc: ${safeAddressHeader(m.cc)}` : null,
     m.bcc ? `Bcc: ${safeAddressHeader(m.bcc)}` : null,
-    `Subject: ${encodeHeader(m.subject)}`,
+    /*
+     * SUBJECT GETS THE SCRUB TOO (bug-hunt #1). encodeHeader alone passes a
+     * pure-ASCII subject through unchanged, and an ASCII CR/LF in it was the
+     * one remaining header-injection path -- reachable without typing
+     * anything, because buildReply copies the INBOUND subject, which is
+     * attacker-controlled. Non-ASCII subjects were already safe: the
+     * base64 encoded-word cannot carry a line break.
+     *
+     * Everything after the first line break is CUT, not folded in: the same
+     * "the attacker's text must not reach the wire at all" standard the
+     * address headers hold. A legitimate subject never contains a raw
+     * line break; a multi-line compose input or a crafted inbound subject
+     * has nothing honest on the later lines.
+     */
+    `Subject: ${encodeHeader(safeSubject(m.subject))}`,
     // Threading. Without these two a reply starts a NEW conversation, which is
     // the single most visible way a mail client looks broken.
     m.inReplyTo ? `In-Reply-To: ${safeIdHeader(m.inReplyTo)}` : null,
@@ -598,6 +640,17 @@ export function buildMime(m) {
     ...headers,
     `Content-Type: multipart/mixed; boundary="${outer}"`,
   ].join('\r\n') + `\r\n\r\n${body.join('\r\n')}`;
+}
+
+/**
+ * The subject scrub (bug-hunt #1): keep only the first line, then cap it.
+ * Kept separate from safeHeaderValue because "delete the line break" is
+ * exactly the weaker strategy the address headers document and reject --
+ * for a SUBJECT, cutting is right: text after a raw line break is either an
+ * injection or a multiline paste, and neither belongs in the header.
+ */
+function safeSubject(v) {
+  return String(v ?? '').split(/[\r\n\u2028\u2029]/)[0].slice(0, 1000);
 }
 
 /**
@@ -740,7 +793,10 @@ export async function getDraftForMessage(messageId) {
   // (cross-audit P6). The reply path calls this per message, so the common
   // case (hit on page 1) costs the same single request as before.
   let pageToken = '';
-  for (;;) {
+  // Capped (bug-hunt #29): a repeated nextPageToken from the API used to be
+  // an infinite loop. 20 pages is 10,000 drafts -- past any real folder, and
+  // a draft that deep is a full-folder problem, not a hang.
+  for (let page = 0; page < 20; page++) {
     const q = pageToken
       ? `/drafts?maxResults=500&pageToken=${encodeURIComponent(pageToken)}`
       : '/drafts?maxResults=500';
@@ -753,6 +809,7 @@ export async function getDraftForMessage(messageId) {
     pageToken = list.nextPageToken;
     if (!pageToken) return null;
   }
+  return null;
 }
 
 /** Save a draft rather than sending. */
@@ -864,5 +921,14 @@ export async function getAttachment(messageId, attachmentId, mimeType) {
   );
   const b64 = String(data.data || '').replace(/-/g, '+').replace(/_/g, '/');
   const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
-  return `data:${mimeType || 'application/octet-stream'};base64,${padded}`;
+  /*
+   * The MIME type is ATTACKER-CONTROLLED (it comes off the message), and it
+   * is interpolated into the data: URL (bug-hunt #5). Anything that is not
+   * a plain type/subtype token -- parameters, commas, whitespace, a second
+   * scheme -- degrades to octet-stream rather than reaching the URL.
+   */
+  const mt = /^[a-zA-Z0-9!#$&^_.+-]+\/[a-zA-Z0-9!#$&^_.+-]+$/.test(mimeType || '')
+    ? mimeType
+    : 'application/octet-stream';
+  return `data:${mt};base64,${padded}`;
 }

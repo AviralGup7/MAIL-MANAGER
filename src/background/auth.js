@@ -357,7 +357,11 @@ async function renew() {
     const msg = String((err && err.message) || err);
     const revoked = /access_denied|invalid_client|invalid_grant|deleted_client|interaction_required|login_required/.test(msg);
     if (revoked) {
-      await chrome.storage.local.remove(['accessToken', 'expiresAt', 'authorized']);
+      // Token keys come out of the SAME area persist() wrote them to
+      // (bug-hunt #4): since SEC-5 that is the session area, and removing
+      // them from local left the revoked token live for up to an hour.
+      await tokenArea().remove(['accessToken', 'expiresAt']);
+      await chrome.storage.local.remove(['authorized']);
       throw new Error('NOT_SIGNED_IN');
     }
     scheduleRenewRetry();
@@ -427,7 +431,10 @@ export async function signOut() {
  * NOT_SIGNED_IN (revoked consent) vs AUTH_RENEW_TRANSIENT (network).
  */
 export async function forceRenew() {
-  await chrome.storage.local.remove(['accessToken', 'expiresAt']);
+  // The token lives in tokenArea() since SEC-5 -- removing it from local
+  // storage removed NOTHING and the stale 401'ing token came right back
+  // (bug-hunt #3).
+  await tokenArea().remove(['accessToken', 'expiresAt']);
   return getToken();
 }
 

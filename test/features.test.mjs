@@ -685,3 +685,27 @@ test('d / w / y spans stay fixed durations (V2 P2-18 regression guard)', () => {
   assert.equal(parseQuery('older_than:1y', now).predicate(msg(365.5)), true);
   assert.equal(parseQuery('older_than:1y', now).predicate(msg(364.5)), false);
 });
+
+test('before:/after: reject impossible dates instead of rolling them over (bug-hunt #8)', () => {
+  /*
+   * Date.UTC normalises out-of-range fields, so the raw assembly turned
+   * `32/13/2025` into 1 Feb 2026 and a pasted US-style `11/20/2025` into
+   * 11 Aug 2026 -- before:/after: then filtered on dates nobody wrote. An
+   * impossible date is no date: the operator must not build.
+   */
+  const now = Date.UTC(2026, 0, 15);
+  assert.equal(parseQuery('after:32/13/2025', now).predicate, null,
+    'day 32 does not exist; the operator must be ignored');
+  assert.equal(parseQuery('before:2025-13-01', now).predicate, null,
+    'month 13 does not exist');
+  assert.equal(parseQuery('after:31/02/2025', now).predicate, null,
+    'February never has 31 days');
+  // Leap-year discipline: 29 Feb exists in 2024 and not in 2025.
+  assert.ok(parseQuery('after:29/02/2024', now).predicate);
+  assert.equal(parseQuery('after:29/02/2025', now).predicate, null);
+  // Real dates still work, day-first.
+  const ok = parseQuery('after:20/11/2025', now);
+  assert.ok(ok.predicate);
+  assert.equal(ok.predicate({ date: Date.UTC(2025, 10, 21) }), true);
+  assert.equal(ok.predicate({ date: Date.UTC(2025, 10, 19) }), false);
+});

@@ -271,3 +271,16 @@ test('a status line never contains NaN in any reachable state', () => {
     assert.doesNotMatch(line, /NaN|undefined/, `${s.state}/${s.attempts}: "${line}"`);
   }
 });
+
+test('a held item with a corrupt releaseAt gets its hold back (bug-hunt #17)', () => {
+  // releaseAt defaulting to 0 meant "due immediately", so a restart fired the
+  // send the moment the app opened -- skipping the undo window entirely.
+  const [it] = normaliseOutbox([{
+    id: 'ob-1', state: 'held', draft: { to: 'a@b.c', body: 'x' },
+    queuedAt: 1000, releaseAt: 'garbage',
+  }]);
+  assert.equal(it.state, 'held');
+  assert.ok(it.releaseAt >= 1000, 'must re-anchor to the queued time, not 0');
+  assert.ok(!dueItems([it], 1001).length, 'not due one millisecond after queueing');
+  assert.ok(dueItems([it], it.releaseAt).length, 'due exactly when the hold ends');
+});

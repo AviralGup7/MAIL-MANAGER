@@ -208,3 +208,26 @@ test('prune runs only when the store holds the WHOLE mailbox (V2 P2-22)', () => 
   assert.ok(gate.includes("!store.isFull"), 'store never hit its cap');
   assert.ok(gate.includes("id === 'inbox'"), 'only the classified mailbox');
 });
+
+test('leaving the inbox drops the server-search overlay (bug-hunt #26)', () => {
+  // The overlay belongs to the query. selectMailbox clears the query but used
+  // to leave the overlay alive, so stale INBOX hits merged into the next
+  // mailbox's search (scheduleServerSearch returns early outside the inbox and
+  // never clears). The clear must sit inside selectMailbox itself.
+  const at = app.indexOf('function selectMailbox');
+  assert.notEqual(at, -1);
+  const body = app.slice(at, app.indexOf('\n}', at));
+  assert.ok(body.includes('clearSearchOverlay()'),
+    'a mailbox switch must drop the previous query\'s overlay');
+});
+
+test('server search never serves Trash or Spam into the inbox (bug-hunt #6)', () => {
+  const ss = readFileSync(new URL('../src/app/server-search.js', import.meta.url), 'utf8');
+  assert.match(ss, /-in:trash -in:spam/,
+    'the supplement query must exclude trash and spam');
+});
+
+test('the background sync sweep cannot reject the alarm handler (bug-hunt #27)', () => {
+  assert.match(bg, /backgroundSync\(\)\.catch\(\(\) => \{\}\)/,
+    'a throw inside the sweep must not surface as an unhandled worker rejection');
+});

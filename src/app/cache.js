@@ -206,8 +206,12 @@ export async function loadCache(storage = STORAGE) {
     const messages = [];
     for (const row of blob.m) {
       // Skip malformed rows individually; one bad record must not cost the
-      // user their whole cache.
-      if (Array.isArray(row) && typeof row[0] === 'string') messages.push(unpack(row));
+      // user their whole cache. The date must be a FINITE NUMBER too
+      // (bug-hunt #16): a string date passes the old check and then breaks
+      // the store's ordered-insert comparisons.
+      if (Array.isArray(row) && typeof row[0] === 'string' && Number.isFinite(row[5])) {
+        messages.push(unpack(row));
+      }
     }
     return messages.length ? { messages, savedAt: blob.t || 0 } : null;
   } catch {
@@ -291,7 +295,7 @@ export function createSaver(getMessages, storage = STORAGE, opts = {}) {
     }
   }
 
-  return {
+  const api = {
     /** Request a save. Many calls collapse into one write. */
     schedule() {
       if (handle !== null) return;
@@ -301,7 +305,10 @@ export function createSaver(getMessages, storage = STORAGE, opts = {}) {
         handle = schedTimeout(() => {
           handle = null;
           handleKind = null;
-          if (pending) this.schedule();
+          // api.schedule, not `this.schedule` (bug-hunt #54): `this` only
+          // resolves while the saver is called as an object; a destructured
+          // schedule() would throw here.
+          if (pending) api.schedule();
         }, minIntervalMs - since);
         return;
       }
@@ -327,8 +334,15 @@ export function createSaver(getMessages, storage = STORAGE, opts = {}) {
       if (!pending) return Promise.resolve();
       pending = false;
       lastWrite = Date.now();
-      // Issued immediately, not scheduled.
-      return Promise.resolve(saveCache(getMessages(), storage));
+      // Issued immediately, not scheduled. The onError reporter still fires
+      // on failure (bug-hunt #53): a quota error during pagehide must not be
+      // invisible just because the write path changed.
+      return Promise.resolve(saveCache(getMessages(), storage)).then((ok) => {
+        if (!ok && onError) {
+          try { onError(); } catch { /* the reporter must never break the write path */ }
+        }
+        return ok;
+      });
     },
     get isPending() {
       return pending;
@@ -347,4 +361,5 @@ export function createSaver(getMessages, storage = STORAGE, opts = {}) {
       pending = false;
     },
   };
+  return api;
 }
