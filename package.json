@@ -11,6 +11,9 @@
     "preview": "node tools/make-preview.mjs",
     "icons": "python3 tools/make-icons.py",
     "test:ci": "node tools/ci-test.mjs",
+    "coverage": "node tools/coverage-gate.mjs",
+    "a11y": "node --test test/a11y.test.mjs",
+    "vr": "node tools/visual-regression.mjs",
     "contrast": "node tools/check-contrast.mjs",
     "push": "bash tools/push.sh",
     "mutate": "node tools/mutate.mjs",
@@ -22,6 +25,10 @@
     "departments": "node tools/check-departments.mjs"
   },
   "devDependencies": {
+    "axe-core": "^4.13.0",
     "jsdom": "^24.0.0"
+  },
+  "dependencies": {
+    "playwright-core": "^1.62.1"
   }
 }

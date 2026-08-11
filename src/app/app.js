@@ -53,6 +53,7 @@ import * as myCourses from './my-courses.js';
 import { detectNotice, shouldPromote, summarise } from './notices.js';
 import { rowSnippet } from './snippet.js';
 import * as sel from './selectors.js';
+import { READER_TYPOGRAPHY, readerCsp } from './reader-frame.js';
 import { renderShortcuts } from './shortcuts.js';
 import { openLayer, closeTopLayer, hasLayers, closeAllLayers, closeWithMotion, cancelExit } from './layers.js';
 import { openMenu, closeMenu, menuIsOpen } from './menu.js';
@@ -2381,36 +2382,19 @@ function renderBody(body, { allowRemote = false, stats = {} } = {}) {
   const ink = dark ? t.fg : '#16181d';
 
   /*
-   * READER DENSITY (round 45 H2). The list obeys the density setting; the
-   * reader used to ignore it, so a compact user lived in two apps -- a dense
-   * list and a spacious body. The reading surface scales with the setting,
-   * within bounds: the measure and long-form line heights stay in the
-   * reading range at every step, because dense text that stops being readable
-   * defeats the user's own request.
+   * READER DENSITY (round 45 H2), declared ONCE in the reader frame
+   * contract module: the list obeys the density setting and the reader does
+   * too, within reading bounds at every step.
    */
-  const READER_TYPOGRAPHY = {
-    comfortable: { size: 15, line: 1.65, pad: '26px 28px 44px' },
-    cosy:        { size: 14, line: 1.6,  pad: '22px 24px 38px' },
-    compact:     { size: 13, line: 1.55, pad: '18px 20px 32px' },
-  };
   const typo = READER_TYPOGRAPHY[settings.get('density')] || READER_TYPOGRAPHY.comfortable;
 
-  /*
-   * The CSP is derived from the SAME decision the sanitiser made.
-   *
-   * `https:` is added only when remote images were actually emitted. This is
-   * the fix for the defect where the sanitiser allowed an https src that the
-   * CSP then silently refused: there is now exactly one source of truth.
-   *
-   * Note this stays `img-src` only -- no script, no frame, no connect. An
-   * image request leaks the read to the sender, which is why it is opt-in,
-   * but it cannot execute anything.
-   */
-  const imgSrc = allowRemote ? 'data: https:' : 'data:';
+  // The CSP comes from the reader frame contract: one source of truth for
+  // the decision the sanitiser already made (round 45, arch A2).
+  const csp = readerCsp(allowRemote);
 
   return `<!doctype html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy"
-      content="default-src 'none'; img-src ${imgSrc}; style-src 'unsafe-inline'; font-src data:;">
+      content="${csp}">
 <style>
   html{color-scheme:${t.scheme}}
   /*

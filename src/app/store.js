@@ -71,6 +71,17 @@ export class Store {
     this._depth = 0;
     this._dirty = new Set();
     this._structuralChange = false;
+
+    /*
+     * DERIVED-READ MEMO (round 45, arch A7). The sidebar and lanes walk the
+     * full order array per render for counts and category slices; at the
+     * 2000-message cap that is several O(n) passes per refresh. The reads are
+     * pure functions of the current contents, so they are memoised per
+     * _version and the flush that changes the contents is the single
+     * invalidation.
+     */
+    this._version = 0;
+    this._memo = new Map();
   }
 
   subscribe(fn) {
@@ -100,7 +111,17 @@ export class Store {
     const structural = this._structuralChange;
     this._dirty = new Set();
     this._structuralChange = false;
+    this._version++;
+    this._memo.clear();
     for (const fn of this.subscribers) fn({ changed, structural });
+  }
+
+  /** One cache slot per (version, key); invalidated wholesale by _flush. */
+  _memoGet(key, compute) {
+    if (this._memo.has(key)) return this._memo.get(key);
+    const v = compute();
+    this._memo.set(key, v);
+    return v;
   }
 
   _touch(id, structural = false) {
@@ -369,12 +390,14 @@ export class Store {
     // slice() of at most a few thousand strings is a few microseconds and is
     // not worth the aliasing hazard.
     if (!category || category === 'all') return this.order.slice();
-    const set = this.byCategory.get(category);
-    if (!set || set.size === 0) return [];
-    // Walk `order` so the result stays newest-first without a sort.
-    const out = [];
-    for (const id of this.order) if (set.has(id)) out.push(id);
-    return out;
+    return this._memoGet(`ids:${category}`, () => {
+      const set = this.byCategory.get(category);
+      if (!set || set.size === 0) return [];
+      // Walk `order` so the result stay newest-first without a sort.
+      const out = [];
+      for (const id of this.order) if (set.has(id)) out.push(id);
+      return out;
+    });
   }
 
   /* ------------------------------------------------------------ threading -- */
@@ -493,28 +516,32 @@ export class Store {
   }
 
   counts() {
-    // `fromSearch` records are render-only citizens (cross-audit H4): they
-    // answer the query on screen and must never move the rail's truth.
-    const out = {};
-    for (const [cat, set] of this.byCategory) {
-      let n = 0;
-      for (const id of set) if (!this.byId.get(id)?.fromSearch) n++;
-      if (n) out[cat] = n;
-    }
-    return out;
+    return this._memoGet('counts', () => {
+      // `fromSearch` records are render-only citizens (cross-audit H4): they
+      // answer the query on screen and must never move the rail's truth.
+      const out = {};
+      for (const [cat, set] of this.byCategory) {
+        let n = 0;
+        for (const id of set) if (!this.byId.get(id)?.fromSearch) n++;
+        if (n) out[cat] = n;
+      }
+      return out;
+    });
   }
 
   unreadCounts() {
-    const out = {};
-    for (const [cat, set] of this.byCategory) {
-      let n = 0;
-      for (const id of set) {
-        const m = this.byId.get(id);
-        if (m?.unread && !m.fromSearch) n++;
+    return this._memoGet('unread', () => {
+      const out = {};
+      for (const [cat, set] of this.byCategory) {
+        let n = 0;
+        for (const id of set) {
+          const m = this.byId.get(id);
+          if (m?.unread && !m.fromSearch) n++;
+        }
+        if (n) out[cat] = n;
       }
-      if (n) out[cat] = n;
-    }
-    return out;
+      return out;
+    });
   }
 
   /**

@@ -675,3 +675,21 @@ test('patching snippet reindexes the search terms (bug-hunt #19)', () => {
   assert.deepEqual(s.search('original'), [], 'old snippet text must leave the index');
   assert.deepEqual(s.search('replaced'), ['a'], 'new snippet text must enter it');
 });
+
+test('derived reads are memoised per version and invalidated by mutation (arch A7)', () => {
+  const s = new Store();
+  s.upsert({ id: 'a', threadId: 'a', from: 'x@y.com', subject: 'hi', snippet: '',
+    date: 5, unread: true, starred: false, category: 'augsd', confidence: 0.9, reason: 'r' });
+  const c1 = s.counts();
+  assert.equal(s.counts(), c1, 'same version, same object');
+  s.upsert({ id: 'b', threadId: 'b', from: 'x@y.com', subject: 'yo', snippet: '',
+    date: 6, unread: false, starred: false, category: 'augsd', confidence: 0.9, reason: 'r' });
+  const c2 = s.counts();
+  assert.notEqual(c2, c1, 'a mutation bumps the version and busts the memo');
+  assert.equal(c2.augsd, 2);
+  // category slices memoise too
+  const ids1 = s.idsFor('augsd');
+  assert.equal(s.idsFor('augsd'), ids1);
+  s.remove('b');
+  assert.notEqual(s.idsFor('augsd'), ids1, 'removal busts the slice memo');
+});

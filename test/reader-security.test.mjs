@@ -24,14 +24,12 @@ test('the body iframe sandbox allows neither scripts nor same-origin', () => {
 });
 
 test('every generated srcdoc carries its CSP meta, and the policy stays strict', () => {
-  // The CSP is derived from the same decision the sanitiser makes; the
-  // default must stay 'none' with img-src as the only content channel.
-  assert.match(app, /default-src 'none'; img-src \$\{imgSrc\}/,
-    'the srcdoc CSP keeps default-src none with a dynamic img-src');
-  assert.match(app, /const imgSrc = allowRemote \? 'data: https:' : 'data:'/,
-    'remote images widen img-src only when explicitly allowed');
-  assert.ok(!/script-src 'unsafe-inline'/.test(app.slice(app.indexOf('function renderBody'), app.indexOf('function renderBody') + 4000)),
-    'the reader CSP never grows an unsafe script-src');
+  // The CSP is derived from the same decision the sanitiser makes; since
+  // arch A2 it is declared in reader-frame.js and interpolated here. The
+  // strictness itself is asserted against the contract module below.
+  assert.match(app, /readerCsp\(allowRemote\)/,
+    'renderBody builds the policy from the reader frame contract');
+  assert.match(app, /content="\$\{csp\}"/, 'and the srcdoc carries it');
 });
 
 test('unhandled rejections are observed and recorded (bug-hunt 44 #67)', () => {
@@ -65,4 +63,26 @@ test('an embedded boot without a nonce refuses to run (bug-hunt 44 #70)', () => 
     'boot runs only on the legitimate branches');
   assert.match(app, /\{ type: 'BMM_READY', \.\.\.\(EMBED_NONCE/, 'readiness echoes the nonce');
   assert.match(app, /\{ type: 'BMM_RELEASE', \.\.\.\(EMBED_NONCE/, 'and so does release');
+});
+
+test('the reader frame contract is declared once, in reader-frame.js (arch A2)', async () => {
+  const rf = await import('../src/app/reader-frame.js');
+  // Typography covers every density, within reading bounds.
+  for (const d of ['comfortable', 'cosy', 'compact']) {
+    const t = rf.READER_TYPOGRAPHY[d];
+    assert.ok(t.size >= 13 && t.size <= 16, `${d} stays readable`);
+    assert.ok(t.line >= 1.5, `${d} keeps long-form leading`);
+  }
+  // CSP: strict default; https only when remote images are on.
+  assert.match(rf.readerCsp(false), /^default-src 'none'; img-src data:;/);
+  assert.match(rf.readerCsp(true), /img-src data: https:/);
+  assert.ok(!rf.readerCsp(true).includes('script-src'), 'never a script-src');
+  // Sandbox: the two forbidden flags stay forbidden.
+  for (const f of rf.READER_SANDBOX_FORBIDDEN) {
+    assert.ok(!rf.READER_SANDBOX.includes(f), `${f} stays out of the sandbox`);
+  }
+  // And app.html still agrees with the contract.
+  const m = html.match(/id="r-body"[\s\S]{0,400}?sandbox="([^"]+)"/);
+  assert.deepEqual(m[1].trim().split(/\s+/).sort(), [...rf.READER_SANDBOX].sort(),
+    'the iframe flags ARE the contract');
 });
