@@ -100,7 +100,7 @@ export const THEMES = [
     bgSunken: '#0b0908',
     fg: '#f2ebe3',
     fgDim: '#bdb0a2',
-    fgFaint: '#968a7e',
+    fgFaint: '#9e9284', // lifted from #968a7e: was 4.47:1 on accentSoft, AA needs 4.5
     line: '#2e2822',
     lineStrong: '#5f5245',
     accent: '#e8944a',
@@ -150,7 +150,7 @@ export const THEMES = [
     bgSunken: '#272c36',
     fg: '#eceff4',
     fgDim: '#c5cddb',
-    fgFaint: '#a7b2c4', // lifted from #4c566a, which is unreadable as text
+    fgFaint: '#b6c0d2', // lifted twice: #4c566a unreadable, #a7b2c4 was 4.27:1 on accentSoft
     line: '#434c5e',
     lineStrong: '#727e94',
     accent: '#88c0d0',
@@ -158,7 +158,7 @@ export const THEMES = [
     accentSoft: '#3b4a55',
     danger: '#f0a49d',
     warning: '#ebcb8b',
-    success: '#a3be8c',
+    success: '#adc898', // lifted from #a3be8c: was 4.49:1 on accentSoft
     star: '#ebcb8b',
     glow: 'rgba(136, 192, 208, 0.18)',
   },

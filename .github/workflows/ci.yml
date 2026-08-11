@@ -6,8 +6,22 @@ on:
   pull_request:
 
 jobs:
+  # THE SUITE, IN FOUR PORTIONS (round 53).
+  #
+  # One job used to run every test file serially: every jsdom document,
+  # every crash risk and every minute of wall time concentrated in one
+  # place. The runner (tools/ci-test.mjs --shard i/n) deals the sorted test
+  # files round-robin into n slices, so each job runs a disjoint quarter and
+  # prints its own TEST SUMMARY block (verdict, counts, duration, per-failure
+  # name/location/time/reason). fail-fast is OFF on purpose: all four
+  # summaries must land, because the point of portions is seeing the whole
+  # picture, not stopping at the first cut.
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ['1/4', '2/4', '3/4', '4/4']
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -17,11 +31,26 @@ jobs:
           cache: npm
 
       # jsdom is required. test:ci fails if any test skips, so a missing
-      # install cannot quietly reduce the suite to the headless subset.
+      # install cannot quietly reduce the suite to the headless subset --
+      # in ANY shard.
       - run: npm ci
 
-      - name: Test (fails on skips)
-        run: npm run test:ci
+      - name: Test shard ${{ matrix.shard }} (fails on skips)
+        run: node tools/ci-test.mjs --shard ${{ matrix.shard }}
+
+  # The non-test gates. Split out so the four shards do not pay for them
+  # four times, and so a test failure does not hide their results.
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
 
       - name: Theme contrast (WCAG AA)
         run: npm run contrast

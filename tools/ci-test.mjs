@@ -12,6 +12,55 @@
  */
 
 import { spawnSync } from 'node:child_process';
+import { readdirSync } from 'node:fs';
+import { join } from 'node:path';
+
+/*
+ * SHARDING (round 53). The full suite is one long serial run, and a single
+ * CI job concentrates every jsdom document, every crash and every minute of
+ * wall time into one place. `--shard i/n` runs ONLY the i-th of n slices so
+ * the workflow can fan the suite out across parallel jobs.
+ *
+ * The split is deterministic and balanced by COUNT: files are sorted, then
+ * dealt round-robin, so every shard gets every n-th file and the heavy
+ * integration suites (which sort apart) do not all land in one slice. No
+ * shard may silently shrink the suite -- the skip-fails rule still applies
+ * to whatever a shard runs.
+ */
+function parseShard(argv) {
+  const at = argv.indexOf('--shard');
+  if (at === -1) return null;
+  const spec = argv[at + 1];
+  const m = /^(\d+)\/(\d+)$/.exec(spec || '');
+  if (!m) {
+    console.error(`✗ --shard expects i/n, got: ${spec ?? '(nothing)'}`);
+    process.exit(2);
+  }
+  const i = Number(m[1]);
+  const n = Number(m[2]);
+  if (!(n >= 1) || !(i >= 1) || i > n) {
+    console.error(`✗ --shard out of range: ${spec}`);
+    process.exit(2);
+  }
+  return { i, n };
+}
+
+function shardFiles(shard) {
+  const all = readdirSync('test').filter((f) => f.endsWith('.test.mjs')).sort();
+  if (!shard) return null; // run the whole directory, as before
+  return all
+    .filter((_, idx) => idx % shard.n === shard.i - 1)
+    .map((f) => join('test', f));
+}
+
+const shard = parseShard(process.argv.slice(2));
+const files = shardFiles(shard);
+const args = ['--max-old-space-size=3072', '--test'].concat(files ?? ['test/']);
+
+if (files) {
+  const total = readdirSync('test').filter((f) => f.endsWith('.test.mjs')).length;
+  console.log(`Shard ${shard.i}/${shard.n}: running ${files.length} of ${total} test files`);
+}
 
 /*
  * --max-old-space-size mirrors `npm test`, and is not optional.
@@ -22,15 +71,12 @@ import { spawnSync } from 'node:child_process';
  * Node's default ~950MB ceiling; run under `node --test test/`, where files
  * execute in parallel and share the budget, it does not -- and the file
  * aborts with SIGABRT. That surfaces as a test failure with no assertion
- * attached, which sends you hunting a logic bug that does not exist. It also
- * means the failure only appears in the full suite, never when you re-run the
- * file to investigate.
+ * attached, which sends you hunting a logic bug that does not exist.
  *
- * close() in the harness fixed the leak we owned; this covers the one jsdom
- * owns. Raising the ceiling is the honest fix here -- the alternative is
- * splitting the file for reasons that have nothing to do with what it tests.
+ * Sharding reduces how many files share one ceiling at once, which is one
+ * more reason it exists; the raised ceiling stays anyway.
  */
-const res = spawnSync('node', ['--max-old-space-size=3072', '--test', 'test/'], {
+const res = spawnSync('node', args, {
   encoding: 'utf8',
   stdio: ['ignore', 'pipe', 'inherit'],
 });
@@ -100,9 +146,10 @@ const failures = collectFailures(res.stdout || '');
 const crashed = !!(res.error || res.signal || (res.status !== 0 && fail === 0));
 const verdict = crashed ? 'CRASHED' : (fail === 0 && skipped === 0 && pass > 0 ? 'PASS' : 'FAIL');
 const bar = '='.repeat(56);
+const shardTag = shard ? ` — shard ${shard.i}/${shard.n}` : '';
 const summary = [
   bar,
-  `TEST SUMMARY — ${verdict}`,
+  `TEST SUMMARY${shardTag} — ${verdict}`,
   `tests: ${total} | passed: ${pass} | failed: ${fail} | skipped: ${skipped}` +
     (dur ? ` | duration: ${Math.round(Number(dur[1]) / 1000)}s` : '') +
     (crashed ? ` | RUN DID NOT COMPLETE (status=${res.status}${res.signal ? `, signal=${res.signal}` : ''})` : ''),

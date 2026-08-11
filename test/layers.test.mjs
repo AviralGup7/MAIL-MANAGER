@@ -126,7 +126,9 @@ test('outside-click dismissal is opt-in and wired exactly once', () => {
   L.openLayer({ name: 'plain' }, doc);
   assert.equal(doc._listeners.length, 0, 'no listener without the opt-in');
 
-  const b = L.openLayer({ name: 'menu', node: el(), dismissOnOutsideClick: true }, doc);
+  // trap:false — this test pins the outside-click contract, and the fake
+  // node carries no addEventListener for the focus trap to attach.
+  const b = L.openLayer({ name: 'menu', node: el(), dismissOnOutsideClick: true, trap: false }, doc);
   assert.equal(doc._listeners.length, 1);
   assert.equal(doc._listeners[0].type, 'mousedown',
     'mousedown, not click: click fires after blur');
@@ -142,7 +144,7 @@ test('an outside click closes the layer; an inside click does not', () => {
   const inside = {};
   const node = el((t) => t === inside);
   let closed = 0;
-  L.openLayer({ node, dismissOnOutsideClick: true, onClose: () => closed++ }, doc);
+  L.openLayer({ node, dismissOnOutsideClick: true, onClose: () => closed++, trap: false }, doc);
   const handler = doc._listeners[0].fn;
 
   handler({ target: inside });
@@ -161,6 +163,7 @@ test('a throwing onClose still tears down its listener and restores focus', () =
   const a = L.openLayer({
     node: el(),
     dismissOnOutsideClick: true,
+    trap: false, // the fake node has no addEventListener for the trap
     onClose: () => { throw new Error('boom'); },
   }, doc);
 
