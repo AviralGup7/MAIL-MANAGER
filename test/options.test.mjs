@@ -234,6 +234,41 @@ test('the client-ID guard still refuses a pasted secret', async (t) => {
 
 /* ------------------------------------------------------------- signature -- */
 
+test('saving a client ID probes the worker and reports signed-in', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const h = await bootOptions();
+  try {
+    // Extend the harness chrome mock with a worker that answers.
+    h.win.chrome.runtime.sendMessage = (msg, cb) => {
+      cb({ ok: true, data: { signedIn: true } });
+    };
+    globalThis.chrome = h.win.chrome;
+    h.doc.getElementById('clientId').value = '12345.apps.googleusercontent.com';
+    h.doc.getElementById('save').click();
+    await new Promise((r) => setTimeout(r, 80));
+    assert.match(h.doc.getElementById('status').textContent, /signed in and ready/);
+  } finally {
+    h.restore();
+  }
+});
+
+test('saving a client ID reports the next step when not yet signed in', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const h = await bootOptions();
+  try {
+    h.win.chrome.runtime.sendMessage = (msg, cb) => {
+      cb({ ok: true, data: { signedIn: false } });
+    };
+    globalThis.chrome = h.win.chrome;
+    h.doc.getElementById('clientId').value = '12345.apps.googleusercontent.com';
+    h.doc.getElementById('save').click();
+    await new Promise((r) => setTimeout(r, 80));
+    assert.match(h.doc.getElementById('status').textContent, /open Gmail/);
+  } finally {
+    h.restore();
+  }
+});
+
 test('an existing signature loads into the field', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');
   const { doc, restore } = await bootOptions({ signature: 'Aviral Gupta' });

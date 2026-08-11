@@ -599,9 +599,19 @@ function wireStore(id) {
  * can never delay a frame. The saver defers to idle and coalesces, so a sync
  * touching 200 messages still produces exactly one write.
  */
+let cacheQuotaWarned = false;
 const saver = createSaver(() => {
   const inbox = stores.get('inbox');
   return inbox.idsFor('all').slice(0, CACHE_MAX).map((id) => inbox.get(id)).filter((m) => m && !m.fromSearch);
+}, chrome.storage.local, {
+  // P-7: a full local-storage quota used to fail silently — the cache is an
+  // optimisation, but the user should know offline paint is degraded. Once
+  // per session; every failed write is not worth a toast each.
+  onError: () => {
+    if (cacheQuotaWarned) return;
+    cacheQuotaWarned = true;
+    toast('Local storage is full — offline painting is limited', { kind: 'error' });
+  },
 });
 
 wireStore('inbox');
@@ -5248,6 +5258,11 @@ function cancelPendingWork() {
   _resetViews();
   clearTimeout(markReadTimer);
   markReadTimer = 0;
+  // The outbox pump re-arms itself after every dispatch; a test that sends
+  // (or cancels a send) must not leave that timer firing into a torn-down
+  // document after restore.
+  clearTimeout(outboxTimer);
+  outboxTimer = 0;
   if (searchFrame) {
     cancelAnimationFrame(searchFrame);
     searchFrame = 0;

@@ -108,7 +108,42 @@ async function save() {
   await chrome.storage.local.set({ clientId: raw });
   status.style.color = '#1e9e6a';
   status.textContent = 'Saved.';
+  // F1 (39-PRACTICAL): a saved-but-wrong client ID is the #1 first-run
+  // drop-off — the user only discovers it at the Gmail sign-in gate. Probe
+  // the worker once after saving; the answer is honest either way.
+  verifyClientId(status);
   setTimeout(() => (status.textContent = ''), 2500);
+}
+
+/**
+ * Probe the worker for the auth state after saving a client ID.
+ *
+ * The service worker may be asleep — that is normal, not an error — so a
+ * failed probe leaves "Saved." standing. When it answers, the message names
+ * the next step instead of leaving the user to guess.
+ */
+function verifyClientId(status) {
+  if (typeof chrome.runtime?.sendMessage !== 'function') return;
+  let done = false;
+  const finish = (msg) => {
+    if (done) return;
+    done = true;
+    status.style.color = msg.includes('signed in') ? '#1e9e6a' : '#5b6270';
+    status.textContent = msg;
+    setTimeout(() => (status.textContent = ''), 4000);
+  };
+  const timer = setTimeout(() => finish('Saved.'), 2000);
+  try {
+    chrome.runtime.sendMessage({ type: 'AUTH_STATUS' }, (res) => {
+      clearTimeout(timer);
+      if (chrome.runtime.lastError) { finish('Saved.'); return; }
+      if (res?.data?.signedIn) finish('Saved — signed in and ready.');
+      else finish('Saved — open Gmail and press Alt+Shift+M to sign in.');
+    });
+  } catch {
+    clearTimeout(timer);
+    finish('Saved.');
+  }
 }
 
 /* ========================================================================== *

@@ -1342,6 +1342,39 @@ test('DELIGHT: a duplicate view name stays INSIDE the dialog, not a toast', asyn
   }
 });
 
+test('UNDO-SEND: cancelling restores the body, signature is not stamped over it', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // The outbox item's draft carries the body the user typed. Reopening it
+  // must restore that body EXACTLY — a signature auto-inserted on top of a
+  // restored body (or worse, replacing it) is data loss the user sees only
+  // after sending (audit 40-ENG 9.2).
+  const { doc, win, settle, restore } = await boot({
+    storageSeed: { settings: { signature: 'Aviral Gupta' } },
+  });
+  try {
+    doc.getElementById('btn-compose').click();
+    await settle(4);
+    doc.getElementById('c-to').value = 'augsd@pilani.bits-pilani.ac.in';
+    doc.getElementById('c-subject').value = 'Test';
+    const body = 'This is the message body I typed.';
+    doc.getElementById('c-text').value = body;
+    doc.getElementById('c-send').click();
+    await settle(12);
+
+    // Undo the send — the outbox cancel path reopens compose from the draft.
+    doc.getElementById('toast-action').click();
+    await settle(8);
+
+    assert.equal(doc.getElementById('compose').hidden, false, 'compose reopens');
+    assert.equal(
+      doc.getElementById('c-text').value, body,
+      'the typed body comes back exactly, with no signature stamped over it'
+    );
+  } finally {
+    restore();
+  }
+});
+
 test('DELIGHT: sending names the recipient rather than confirming a mechanism', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');
   // The fear after sending is "who did that go to", not "did the button work".

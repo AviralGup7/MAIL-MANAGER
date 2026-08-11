@@ -21,6 +21,14 @@ export const SENDER_PENALTY = 30;
  * The 2nd, 3rd, ... keyword hit in the same field is worth progressively less.
  * Without this, a mail that says "exam" six times outscores a mail that says
  * "exam" once and "timetable" once — but the second is the better signal.
+ *
+ * DELIBERATELY PER-FIELD, NOT GLOBAL (audit 40-BUSINESS M-01): the same word
+ * in subject AND snippet is two genuine observations (two places the sender
+ * chose to say it), so it keeps full weight across fields; diminishing only
+ * applies to repetition WITHIN one field, where it is noise. The snippet
+ * weight (1.0) is already the floor, so a newsletter footer cannot outvote a
+ * subject hit of the same keyword. Accepted as designed; documented, not
+ * re-tuned, because these constants were calibrated against real mail.
  */
 export const DIMINISHING_RETURNS_FACTOR = 0.6;
 
@@ -33,6 +41,13 @@ export const CONFLICT_OVERLAP_RATIO = 0.9;
  * A step ladder rather than a curve, carried over exactly. It is not
  * principled — it is calibrated — and inventing a smooth function here would
  * silently change every threshold decision in the app.
+ *
+ * KNOWN CLIFF (audit 40-BUSINESS M-02): 89 -> 0.82, 90 -> 0.9, and
+ * `is:important` gates on confidence >= 0.9 — so one raw point flips the
+ * badge. Accepted: the ladder was tuned against real mail, and smoothing it
+ * would retune every threshold in the app at once. If the cliff ever shows
+ * up in user complaints, the documented alternative is
+ * `1 - exp(-rawScore / 60)` with the same anchors.
  */
 export function normalizeConfidence(rawScore) {
   if (rawScore <= 0) return 0.3;

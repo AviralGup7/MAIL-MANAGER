@@ -245,6 +245,10 @@ export async function clearCache(storage = chrome.storage.local) {
  */
 export function createSaver(getMessages, storage = chrome.storage.local, opts = {}) {
   const { idleTimeout = 2000, minIntervalMs = 1000 } = opts;
+  // Called when a deferred write fails (quota exceeded, storage
+  // unavailable). The cache is an optimisation, so a failure must never
+  // surface as an error state — but it must not be SILENT either (P-7).
+  const onError = typeof opts.onError === 'function' ? opts.onError : null;
   let handle = null;
   let lastWrite = 0;
   let pending = false;
@@ -280,7 +284,10 @@ export function createSaver(getMessages, storage = chrome.storage.local, opts = 
     handleKind = null;
     pending = false;
     lastWrite = Date.now();
-    await saveCache(getMessages(), storage);
+    const ok = await saveCache(getMessages(), storage);
+    if (!ok && onError) {
+      try { onError(); } catch { /* the reporter must never break the write path */ }
+    }
   }
 
   return {

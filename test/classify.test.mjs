@@ -14,7 +14,7 @@ import {
   ruleCount,
   classifyBySender,
 } from '../src/classify/sender.js';
-import { normalizeConfidence, resolveConflict } from '../src/classify/scoring.js';
+import { normalizeConfidence, resolveConflict, scoreField } from '../src/classify/scoring.js';
 import { CATEGORIES, SIDEBAR_ORDER } from '../src/classify/categories.js';
 import { SENDER_RULES } from '../src/classify/sender-rules.js';
 import { PATTERN_RULES } from '../src/classify/pattern-rules.js';
@@ -398,6 +398,32 @@ test('a BITS sender cannot be classified as an external category', () => {
         `BITS sender matched external pattern "${p}"`
       );
     }
+  }
+});
+
+test('diminishing returns is per-field: the same word in two fields keeps full weight (M-01)', () => {
+  // Documented, not changed: falloff applies to the 2nd DISTINCT keyword in
+  // a field, and the same word in subject AND snippet is two genuine
+  // observations. subject=1.2 + snippet=1.0 = 2.2, while two distinct
+  // keywords in ONE field fall off (1.2 + 1.2*0.6 = 1.92).
+  const twoKwOneField = scoreField('exam timetable', { exam: 1, timetable: 1 }, 1.2);
+  assert.equal(twoKwOneField.score, 1.2 + 1.2 * 0.6, 'second distinct keyword falls off');
+  assert.equal(twoKwOneField.hits.length, 2);
+  const crossField = scoreField('exam', { exam: 1 }, 1.2).score +
+                     scoreField('exam', { exam: 1 }, 1.0).score;
+  assert.equal(crossField, 2.2, 'cross-field same word keeps full weight');
+});
+
+test('the confidence ladder anchors are stable (M-02 documented cliff)', () => {
+  assert.equal(normalizeConfidence(89), 0.82);
+  assert.equal(normalizeConfidence(90), 0.9);
+  assert.ok(normalizeConfidence(90) >= 0.9, 'is:important gate anchor');
+  // Monotonic: the ladder never decreases as the score rises.
+  let prev = 0;
+  for (let s = 0; s <= 200; s++) {
+    const c = normalizeConfidence(s);
+    assert.ok(c >= prev, `confidence decreased at ${s}`);
+    prev = c;
   }
 });
 

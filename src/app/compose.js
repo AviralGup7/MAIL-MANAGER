@@ -85,21 +85,25 @@ export function openCompose(ctx, prefill = {}) {
   $('c-subject').value = prefill.subject || '';
 
   /*
-   * SIGNATURE.
+   * SIGNATURE (audit 40-ENG section 9: inserted, not merged).
    *
-   * Inserted when the panel OPENS, not injected at send time. A signature the
-   * user cannot see before sending is a signature they cannot edit, delete for
-   * one message, or write above -- and the first they know of a mistake in it
-   * is when it has gone out. Gmail does the same for the same reason.
-   *
-   * It goes ABOVE any quoted original, which is where a reply's signature
-   * belongs.
+   * Inserted when the panel OPENS, not injected at send time — a signature
+   * the user cannot see before sending is one they cannot edit. But it is
+   * only for a FRESH message: a reply/forward already quotes a thread whose
+   * footer may carry a signature (doubling them reads as a bug), and a
+   * restored draft or an undone send must come back EXACTLY as the user left
+   * it — re-inserting the signature there would resurrect text they deleted
+   * for that message.
    */
-  const sig = settings.get('signature').trim();
+  const isFresh = !prefill.quoted && !prefill.body && !prefill.draftId;
+  const sig = isFresh ? settings.get('signature').trim() : '';
   const sigBlock = sig ? `\n\n-- \n${sig}` : '';
   $('c-text').value = prefill.quoted
     ? `\n\n${sigBlock ? `${sigBlock}\n` : ''}${prefill.quoted}`
-    : sigBlock;
+    : (prefill.body || sigBlock);
+  /* The body travels with the draft (outbox cancel, draft restore): if it
+   * came in, the signature must not have been stamped over it. */
+  composeMeta.baseBody = prefill.baseBody || composeMeta.baseBody || '';
   $('c-cc-row').hidden = !prefill.cc;
   $('c-status').textContent = '';
 

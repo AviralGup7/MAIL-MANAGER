@@ -225,6 +225,28 @@ test('flush() with nothing pending does not write', async () => {
   assert.equal(writes, 0);
 });
 
+test('a failed deferred write reports through onError, once per failure', async () => {
+  // Quota exceeded used to be swallowed silently; the reporter lets the app
+  // warn once per session (P-7) without the cache write path ever throwing.
+  const s = fakeStorage();
+  let errors = 0;
+  const wrapped = {
+    ...s,
+    async set(o) { throw new Error('QuotaExceededError'); },
+  };
+  const saver = createSaver(() => [msg(0)], wrapped, {
+    minIntervalMs: 0,
+    onError: () => { errors++; },
+  });
+  saver.schedule();
+  await new Promise((r) => setTimeout(r, 80)); // past the idle fallback
+  assert.equal(errors, 1, 'the failure reached the reporter exactly once');
+  // And the saver stays usable — a later schedule does not throw.
+  saver.schedule();
+  await new Promise((r) => setTimeout(r, 80));
+  assert.equal(errors, 2, 'each failed write reports again (the app throttles)');
+});
+
 test('invalidate() cancels a scheduled save so it cannot resurrect a cleared cache', async () => {
   // Sign-out clears the cache, then resetView() clears the store, whose
   // notifications schedule one last save. That save must never land after
