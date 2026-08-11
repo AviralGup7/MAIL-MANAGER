@@ -20,6 +20,21 @@ function fmtEvery(ms) {
  */
 
 import * as settings from '../app/settings.js';
+
+/**
+ * A setting that fails to persist must not fail silently (bug-hunt 43 #17):
+ * settings.set rolls the value back and throws; this is where the user hears
+ * about it. Every write on this page goes through this wrapper.
+ */
+function persist(promise) {
+  return Promise.resolve(promise).catch(() => {
+    const status = $('status');
+    if (status) {
+      status.style.color = '#c0392b';
+      status.textContent = 'Could not save that setting — storage is full or unavailable.';
+    }
+  });
+}
 import * as bk from '../app/backup.js';
 import * as engine from '../app/rule-engine.js';
 
@@ -187,7 +202,7 @@ function fmtHold(sec) {
   const lanesBox = $('lanes');
   if (lanesBox) {
     lanesBox.checked = settings.get('lanes');
-    lanesBox.addEventListener('change', () => settings.set('lanes', lanesBox.checked));
+    lanesBox.addEventListener('change', () => persist(settings.set('lanes', lanesBox.checked)));
   }
   if (auto) {
     auto.value = String(settings.get('autoRefreshMs'));
@@ -196,7 +211,7 @@ function fmtHold(sec) {
   if (bgNotify) {
     bgNotify.checked = settings.get('bgNotify');
     bgNotify.addEventListener('change', async () => {
-      await settings.set('bgNotify', bgNotify.checked);
+      await persist(settings.set('bgNotify', bgNotify.checked));
     });
   }
   if (undoSend) {
@@ -209,7 +224,7 @@ function fmtHold(sec) {
       undoSendLabel.textContent = fmtHold(Number(undoSend.value));
     });
     undoSend.addEventListener('change', async () => {
-      await settings.set('undoSendSeconds', Number(undoSend.value));
+      await persist(settings.set('undoSendSeconds', Number(undoSend.value)));
     });
   }
 
@@ -227,7 +242,7 @@ function fmtHold(sec) {
   syncEnabled();
 
   markRead.addEventListener('change', async () => {
-    await settings.set('markReadOnOpen', markRead.checked);
+    await persist(settings.set('markReadOnOpen', markRead.checked));
     syncEnabled();
   });
 
@@ -237,15 +252,15 @@ function fmtHold(sec) {
     delayLabel.textContent = fmtDelay(Number(delay.value));
   });
   delay.addEventListener('change', async () => {
-    await settings.set('markReadDelayMs', Number(delay.value));
+    await persist(settings.set('markReadDelayMs', Number(delay.value)));
   });
 
   images.addEventListener('change', async () => {
-    await settings.set('remoteImages', images.value);
+    await persist(settings.set('remoteImages', images.value));
   });
 
   threaded?.addEventListener('change', async () => {
-    await settings.set('threaded', threaded.checked);
+    await persist(settings.set('threaded', threaded.checked));
   });
 
   // Same input/change split as the delay slider: live label, one write.
@@ -253,7 +268,7 @@ function fmtHold(sec) {
     autoLabel.textContent = fmtEvery(Number(auto.value));
   });
   auto?.addEventListener('change', async () => {
-    await settings.set('autoRefreshMs', Number(auto.value));
+    await persist(settings.set('autoRefreshMs', Number(auto.value)));
   });
 })();
 
@@ -269,7 +284,7 @@ function fmtHold(sec) {
   if (!box) return;
 
   let timer = 0;
-  const commit = () => settings.set('signature', box.value);
+  const commit = () => persist(settings.set('signature', box.value));
 
   /*
    * Await the load explicitly rather than deferring by a task.

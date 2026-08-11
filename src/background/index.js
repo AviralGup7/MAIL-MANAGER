@@ -22,7 +22,7 @@ import { MAX_INLINE_BYTES, MAX_INLINE_PARTS, BULK_CHUNK } from '../shared/limits
 import { loadSnoozed, removeSnooze, due } from '../app/snooze.js';
 // Pure queue helpers (state machine, backoff, normalisation). The RUNNER
 // lives here in the worker now: one dispatcher for every tab (bug-hunt P1).
-import { loadOutbox, saveOutbox, dueItems, markFailed } from '../app/outbox.js';
+import { loadOutbox, saveOutbox, dueItems, markFailed, prioritizeDue } from '../app/outbox.js';
 import { syncPage, syncDelta } from './sync.js';
 import { api } from './gmail.js';
 // The MIME parser lives in its own module so the in-page fallback can reuse
@@ -360,7 +360,9 @@ async function handle(msg) {
       outboxPumping = true;
       try {
         let items = await loadOutbox(chrome.storage.local);
-        const allDue = dueItems(items);
+        // HELD FIRST (bug-hunt 43 #1): a fresh send must not wait behind a
+        // backlog of automatic retries for a slot in the batch.
+        const allDue = prioritizeDue(dueItems(items));
         if (allDue.length === 0) return { sent: 0, failed: 0, skipped: false };
         /*
          * BATCHED, NOT UNBOUNDED (bug-hunt #32). The verb's timeout is a

@@ -164,6 +164,24 @@ export function dueItems(items, now = Date.now()) {
 }
 
 /**
+ * Dispatch order for a due set (bug-hunt 43 #1): HELD FIRST.
+ *
+ * A held item is a human who pressed Send seconds ago; a failed item is an
+ * automatic retry that has already waited its backoff. A batch cap of N
+ * items must never let a backlog of retries defer a fresh send to a later
+ * pump -- the user's newest action outranks the queue's oldest business.
+ * Within each class the existing order stands (stable sort), so retries
+ * still run oldest-first.
+ */
+export function prioritizeDue(items) {
+  return [...items].sort((a, b) => {
+    const pa = a.state === 'held' ? 0 : 1;
+    const pb = b.state === 'held' ? 0 : 1;
+    return pa - pb;
+  });
+}
+
+/**
  * When should the next flush happen?
  *
  * Returns ms from now, or null when nothing is pending. Used to schedule one
@@ -325,7 +343,7 @@ export async function flushOutbox({ send, storage = STORAGE, now = Date.now(), o
   inFlight = true;
   try {
     let items = await loadOutbox(storage);
-    const due = dueItems(items, now);
+    const due = prioritizeDue(dueItems(items, now));
     if (due.length === 0) return { sent: 0, failed: 0, skipped: false };
 
     let sent = 0;

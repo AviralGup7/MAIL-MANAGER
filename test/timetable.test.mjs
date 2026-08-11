@@ -463,6 +463,49 @@ test('MAIL: a room change with a stated room is actionable', () => {
   assert.match(f[0].evidence, /6101/, 'the user must see the sentence');
 });
 
+test('MAIL: a room change names the NEW room, never the one being left (bug-hunt 43 #12)', () => {
+  /*
+   * "leaving 5105, class will be held in 6101" used to propose 5105 -- the
+   * room the message exists to say is wrong. The extractor must read change
+   * semantics: the proposal is the room attached to the arrival verb, and a
+   * departure-marked room is never proposed.
+   */
+  const { state } = build();
+  const leaving = scanMessage(msg({
+    subject: 'CS F111 room change',
+    body: 'CS F111 L1 is leaving 5105; the class will be held in 6101 from Monday.',
+  }), state);
+  assert.equal(leaving.length, 1);
+  assert.equal(leaving[0].value, '6101', 'the arrival room, not the departure room');
+  assert.equal(leaving[0].actionable, true);
+
+  const moved = scanMessage(msg({
+    subject: 'CS F111 moved',
+    body: 'CS F111 L1 moved from 5105 to 6101.',
+  }), state);
+  assert.equal(moved[0].value, '6101', 'from/to phrasing picks the target');
+
+  const venue = scanMessage(msg({
+    subject: 'CS F111 venue',
+    body: 'Venue for CS F111 L1: 6101.',
+  }), state);
+  assert.equal(venue[0].value, '6101', 'a venue declaration is an arrival');
+});
+
+test('MAIL: an old-room-only notice proposes nothing (bug-hunt 43 #12 fail-closed)', () => {
+  // A room mentioned only with departure words cannot be attributed to the
+  // change; proposing it would be the silent-wrong-value failure this module
+  // refuses. The finding still exists -- as a notification.
+  const { state } = build();
+  const f = scanMessage(msg({
+    subject: 'CS F111 L1',
+    body: 'CS F111 L1 is leaving room 5105 until further notice.',
+  }), state);
+  assert.equal(f.length, 1, 'still reported');
+  assert.equal(f[0].actionable, false, 'but not applied');
+  assert.equal(f[0].value, null);
+});
+
 test('MAIL: an instructor change is reported but never applied', () => {
   /*
    * DELIBERATE LIMIT. A person's name cannot be delimited in free prose

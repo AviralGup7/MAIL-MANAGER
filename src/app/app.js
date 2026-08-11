@@ -4496,7 +4496,11 @@ function setTheme(id) {
    * subscriber notification all lived in a module nothing was calling for
    * this key.
    */
-  settings.set('theme', theme.id);
+  settings.set('theme', theme.id).catch(() => {
+    // A theme that cannot persist reverts at next boot; say so once, here,
+    // instead of letting the failure disappear (bug-hunt 43 #17).
+    toast('Could not save the theme choice', { kind: 'error' });
+  });
   /*
    * No loop over menu children to re-tick. The menu is rebuilt from
    * `state.theme` on every open and destroyed on every close, so there is no
@@ -5597,7 +5601,8 @@ async function boot() {
   if (!coachShown) {
     coachShown = true;
     if (!settings.get('coachDone')) {
-      settings.set('coachDone', true);
+      // A failed write only costs a repeated coach mark; silent is right.
+      settings.set('coachDone', true).catch(() => {});
       toast('Press j to move between messages — ? for every key', {
         ms: 7000,
         action: { label: 'Got it', run: () => {} },

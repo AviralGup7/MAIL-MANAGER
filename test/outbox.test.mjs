@@ -16,6 +16,7 @@ const {
   enqueue, dueItems, nextWakeIn, canUndo, markFailed, isStuck, statusOf,
   flushOutbox, cancel, retryNow, loadOutbox, saveOutbox, normaliseOutbox,
   _resetOutbox, isDispatching, DEFAULT_HOLD_MS, MAX_ATTEMPTS, BACKOFF_MS,
+  prioritizeDue,
 } = await import('../src/app/outbox.js');
 
 const NOW = 1_700_000_000_000;
@@ -319,4 +320,16 @@ test('flushOutbox reports the ids of what actually left (bug-hunt #27)', async (
   });
   assert.equal(res.sent, 1);
   assert.deepEqual(res.sentIds, ['gmail-123'], 'the wire id, so the activity log can name the message');
+});
+
+test('a fresh send outranks a backlog of retries (bug-hunt 43 #1)', () => {
+  // The batch cap takes the FIRST N due items; without priority, eight
+  // retrying failures defer the message a human just pressed Send on.
+  const retry = (i) => ({ id: `r${i}`, state: 'failed', draft: {}, queuedAt: 0, releaseAt: 0, attempts: 1, nextAttempt: 0 });
+  const fresh = { id: 'fresh', state: 'held', draft: {}, queuedAt: 9, releaseAt: 10, attempts: 0, nextAttempt: 0 };
+  const ordered = prioritizeDue([...Array.from({ length: 9 }, (_, i) => retry(i)), fresh]);
+  assert.equal(ordered[0].id, 'fresh', 'the held item leads the dispatch order');
+  assert.deepEqual(ordered.slice(1).map((x) => x.id),
+    ['r0', 'r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8'],
+    'retries keep their oldest-first order behind it');
 });

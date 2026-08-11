@@ -56,10 +56,47 @@ const PATTERNS = [
     kind: 'room',
     field: 'room',
     // "shifted to 6101", "venue: 5105", "will be held in room 1204"
-    test: /\b(room|venue|shifted to|moved to|will be held in|relocated to)\b/i,
+    test: /\b(room|venue|shifted to|moved|will be held in|relocated to)\b/i,
+    /*
+     * PICK THE ROOM THE CLASS IS MOVING TO, NOT THE ONE IT IS LEAVING
+     * (bug-hunt 43 #12). The old extractor took the FIRST room number in the
+     * text, so "leaving 5105, class will be held in 6101" proposed 5105 --
+     * the room the message exists to say is WRONG.
+     *
+     * The fix reads CHANGE SEMANTICS. Every 4-digit candidate is classified
+     * by the words immediately before it: a departure marker (leaving / from /
+     * was / previously / no longer) tags it OLD; an arrival marker (held in /
+     * shifted to / moved to / now in / changed to / venue:) tags it NEW. The
+     * proposal is the first NEW-tagged room. When nothing is tagged NEW the
+     * extract returns null -- a notify-only finding -- because proposing a
+     * room we cannot attribute to the change is exactly the silent-wrong-value
+     * failure this module is written to refuse.
+     */
     extract: (text) => {
-      const m = text.match(/\b(?:room|venue|shifted to|moved to|held in|relocated to)\b[^\d]{0,20}(\d{4}[A-Za-z]?)\b/i);
-      return m ? m[1] : null;
+      const T = String(text);
+      const rooms = [...T.matchAll(/\b(\d{4}[A-Za-z]?)\b/g)].map((m) => ({
+        v: m[1],
+        before: T.slice(Math.max(0, m.index - 30), m.index),
+      }));
+      const DEPART_TAIL = /\b(leaving|left|from|was|previously|no longer)\b[\s:]*$/i;
+      const DEPART_ANY = /\b(leaving|left|from|was|previously|earlier|no longer|instead of)\b/i;
+      const ARRIVE_TAIL = /\b(held in|shifted to|moved to|relocated to|now in|now at|changed to|will be in|in room|venue|to)\b[\s:]*$/i;
+      const ARRIVE_ANY = /\b(held in|will be held in|shifted to|moved to|relocated to|now in|changed to|venue|will be in)\b/i;
+      const ROOM_ANY = /\broom\b/i;
+      // PASS 1 -- strict: an arrival marker sits RIGHT BEFORE the room, and
+      // no departure marker ends the window. The strongest signal wins.
+      for (const r of rooms) {
+        if (DEPART_TAIL.test(r.before)) continue;
+        if (ARRIVE_TAIL.test(r.before)) return r.v;
+      }
+      // PASS 2 -- loose: an arrival word anywhere in the window, but only
+      // when the window carries NO departure word at all (this is what keeps
+      // "leaving room 5105" from proposing 5105).
+      for (const r of rooms) {
+        if (DEPART_ANY.test(r.before)) continue;
+        if (ARRIVE_ANY.test(r.before) || ROOM_ANY.test(r.before)) return r.v;
+      }
+      return null; // no room is attributable to the change: notify only
     },
     label: 'Room change',
   },

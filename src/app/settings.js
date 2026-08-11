@@ -244,8 +244,18 @@ export async function set(key, value, storage = STORAGE) {
   emit(key, v);
   try {
     await storage.set({ [key]: v });
-  } catch {
-    // The in-memory value stands for this session; it simply will not persist.
+  } catch (err) {
+    /*
+     * ROLL BACK AND SAY SO (bug-hunt 43 #17). The old behaviour kept the
+     * in-memory value and said nothing -- the user changed a setting, it
+     * "took", and it silently reverted at next boot. The write is the
+     * authoritative operation: if it fails, the cache goes back, the
+     * subscribers hear about the reversion, and the caller gets an error it
+     * can surface.
+     */
+    cache.set(key, prev);
+    emit(key, prev);
+    throw new Error(`SETTINGS_PERSIST_FAILED: ${key} (${err?.message || 'storage unavailable'})`);
   }
   return v;
 }

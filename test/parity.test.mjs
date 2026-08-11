@@ -181,3 +181,34 @@ test('the pump re-checks each item against live storage before dispatch (bug-hun
   assert.match(pump, /!live\.some/,
     'a cancelled item is dropped, not dispatched');
 });
+
+test('the pump batch cap fits inside the verb timeout with margin (bug-hunt 43 #10)', () => {
+  /*
+   * MAX_PUMP_BATCH and VERB_TIMEOUT_MS.OUTBOX_PUMP are a MATCHED PAIR: one
+   * full batch must complete before the app declares the worker dead and
+   * degrades the whole session to fallback. Nothing enforced the
+   * relationship, so either constant could drift and reintroduce the exact
+   * failure the cap exists to prevent.
+   *
+   * The arithmetic encodes the INTENDED budget, not the pathological one:
+   * per item, a sane-network send plus an optional attachment refetch.
+   * (The worst case -- every request exhausting all retries -- is bounded
+   * by fetchRetrying itself and would defeat any batch size; the contract
+   * here is "a normal batch never touches the timeout".)
+   */
+  const w = read('src/background/index.js');
+  const a = read('src/app/app.js');
+
+  const batch = Number(w.match(/MAX_PUMP_BATCH = (\d+)/)[1]);
+  const timeout = Number(a.match(/OUTBOX_PUMP: (\d+)/)[1]);
+
+  assert.ok(Number.isFinite(batch) && batch > 0, 'the cap exists');
+  assert.ok(Number.isFinite(timeout) && timeout > 0, 'the timeout exists');
+
+  const PER_ITEM_TYPICAL_MS = 15_000; // send + possible hydrate, sane network
+  const SAFETY = 2;                    // headroom for backoff and stragglers
+  assert.ok(
+    batch * PER_ITEM_TYPICAL_MS * SAFETY <= timeout,
+    `${batch} items x ${PER_ITEM_TYPICAL_MS}ms x ${SAFETY} margin must fit in ${timeout}ms`
+  );
+});
