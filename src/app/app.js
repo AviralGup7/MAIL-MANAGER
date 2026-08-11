@@ -1268,6 +1268,9 @@ function buildRow(id) {
 function fillRow(li, m) {
   if (!m) return;
   const q = (s) => li.querySelector(s);
+  // Forty identical "Select message" names made the accessibility tree a
+  // list of clones; the subject gives each tick its own name (46 #46).
+  q('.r-check')?.setAttribute('aria-label', `Select ${m.subject || m.from}`);
   const bar = q('.r-bar');
   const color = CAT_COLOR[m.category] || CAT_COLOR.other;
   if (bar.style.getPropertyValue('--c') !== color) bar.style.setProperty('--c', color);
@@ -1681,6 +1684,9 @@ function renderSidebar() {
   // are grandchildren and `children` would iterate two wrapper divs.
   for (const b of el.cats.querySelectorAll('.cat')) {
     const countEl = b.lastElementChild;
+
+    // Mute state must be visible where it is managed (round 46 #28).
+    if (b.dataset.cat) b.dataset.muted = String(rules.muted.includes(b.dataset.cat));
 
     if (b.dataset.mailbox) {
       // A mailbox shows the count of what IT holds, from its own store, and
@@ -2332,6 +2338,18 @@ function renderBodyInto(body, forceRemote = false) {
 
   const stats = {};
   el.rBody.srcdoc = renderBody(body, { allowRemote, stats });
+  // Restore the remembered reading position once the frame has laid out
+  // (round 46 #23), and surface the unfold-all control only while folded
+  // quotes exist (round 46 #19).
+  el.rBody.onload = () => {
+    const at = readPosition.get(body.id);
+    if (at) el.rBody.contentWindow?.scrollTo({ top: at });
+    const doc = el.rBody.contentDocument;
+    const folds = doc ? [...doc.querySelectorAll('details.quote-fold')] : [];
+    const unfold = $('r-unfold');
+    unfold.hidden = folds.length === 0;
+    unfold.onclick = () => { for (const d of folds) d.open = true; unfold.hidden = true; };
+  };
 
   // The bar only appears when there is something to unblock.
   const blocked = stats.blockedRemote || 0;
@@ -2453,7 +2471,7 @@ function renderBody(body, { allowRemote = false, stats = {} } = {}) {
     padding:8px 12px;box-sizing:border-box;
     font-size:12px;color:${t.fgDim};
   }
-  pre{white-space:pre-wrap;font:inherit;margin:0}
+  pre{white-space:pre-wrap;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;margin:0}
   table{max-width:100%!important}
   a{color:${t.accent};text-underline-offset:2px}
   a:hover{text-decoration-thickness:2px}
@@ -2477,8 +2495,16 @@ function escapeDoc(text) {
   )}</pre>`;
 }
 
+/** Remembered scroll per open message, so long mail reopens where you left
+ *  it (round 46 #23). */
+const readPosition = new Map();
+
 function closeReader() {
   const prev = state.selected;
+  if (prev) {
+    const sc = el.rBody.contentDocument?.scrollingElement;
+    if (sc && sc.scrollTop > 0) readPosition.set(prev, sc.scrollTop);
+  }
   state.selected = null;
   bodyToken++;
   lastBody = null;
@@ -3521,6 +3547,56 @@ el.rThread?.addEventListener('click', (e) => {
   if (part?.dataset.id) openThreadPart(part.dataset.id);
 });
 
+/*
+ * TOUCH (round 46 #11): swipe left to archive, swipe right to unarchive,
+ * long-press to select. Horizontal dominance is required first, so a
+ * vertical pan never triggers -- CSS hands the pan back to the browser via
+ * touch-action, and these own only the deliberate gestures.
+ */
+let touchStart = null;
+let longPressTimer = 0;
+el.list.addEventListener('touchstart', (e) => {
+  const t = e.touches[0];
+  const row = e.target.closest('.row');
+  touchStart = { x: t.clientX, y: t.clientY, row, moved: false };
+  clearTimeout(longPressTimer);
+  if (row) {
+    longPressTimer = setTimeout(() => {
+      if (touchStart && !touchStart.moved) {
+        const id = row.dataset.id;
+        selection.toggle(id);
+        renderSelection();
+        renderList();
+        touchStart = null;
+      }
+    }, 500);
+  }
+}, { passive: true });
+el.list.addEventListener('touchmove', (e) => {
+  if (!touchStart) return;
+  const t = e.touches[0];
+  if (Math.abs(t.clientX - touchStart.x) > 8 || Math.abs(t.clientY - touchStart.y) > 8) {
+    touchStart.moved = true;
+    clearTimeout(longPressTimer);
+  }
+}, { passive: true });
+el.list.addEventListener('touchend', (e) => {
+  clearTimeout(longPressTimer);
+  if (!touchStart || !touchStart.row) { touchStart = null; return; }
+  const t = e.changedTouches[0];
+  const dx = t.clientX - touchStart.x;
+  const dy = t.clientY - touchStart.y;
+  const id = touchStart.row.dataset.id;
+  touchStart = null;
+  if (Math.abs(dx) > 60 && Math.abs(dx) > 2 * Math.abs(dy) && id) {
+    if (dx < 0) {
+      optimistic({ id, verb: 'ARCHIVE', undoVerb: 'UNARCHIVE', past: 'Archived', failed: 'Could not archive', done: 'Archived' });
+    } else {
+      optimistic({ id, verb: 'UNARCHIVE', undoVerb: 'ARCHIVE', past: 'Unarchived', failed: 'Could not unarchive', done: 'Moved back to the inbox' });
+    }
+  }
+}, { passive: true });
+
 el.list.addEventListener('click', (e) => {
   el.list.addEventListener('dblclick', (e) => {
     const row = e.target.closest('.row');
@@ -4548,6 +4624,9 @@ function setTheme(id) {
    * subscriber notification all lived in a module nothing was calling for
    * this key.
    */
+  // The success half of the settings-failure toast (round 46 #3): applying
+  // a theme now speaks, so success and failure share one language.
+  toast(theme.name, { ms: 1200 });
   settings.set('theme', theme.id).catch(() => {
     // A theme that cannot persist reverts at next boot; say so once, here,
     // instead of letting the failure disappear (bug-hunt 43 #17).
@@ -5730,17 +5809,8 @@ async function boot() {
    * toast for a user who had already dismissed it (cross-audit 6.1). Boot
    * runs once per page load, which is the only moment it may appear.
    */
-  if (!coachShown) {
-    coachShown = true;
-    if (!settings.get('coachDone')) {
-      // A failed write only costs a repeated coach mark; silent is right.
-      settings.set('coachDone', true).catch(() => {});
-      toast('Press j to move between messages — ? for every key', {
-        ms: 7000,
-        action: { label: 'Got it', run: () => {} },
-      });
-    }
-  }
+  // The coach toast moved to start(), AFTER the gate: a j/k hint on a
+  // sign-in screen where no list exists is first-run noise (round 46 #44).
 
   // Theme next, before anything paints, so there is no flash of the wrong
   // palette. `applyTheme` falls back to the default for an unknown id, which
@@ -5895,10 +5965,22 @@ async function boot() {
   ));
 
   try {
-    const { signedIn } = await send('AUTH_STATUS');
-    state.signedIn = signedIn;
-    if (!signedIn) return showGate('');
-    hideGate();
+  const { signedIn } = await send('AUTH_STATUS');
+  state.signedIn = signedIn;
+  if (!signedIn) return showGate('');
+  hideGate();
+
+  if (!coachShown) {
+    coachShown = true;
+    if (!settings.get('coachDone')) {
+      // A failed write only costs a repeated coach mark; silent is right.
+      settings.set('coachDone', true).catch(() => {});
+      toast('Press j to move between messages — ? for every key', {
+        ms: 7000,
+        action: { label: 'Got it', run: () => {} },
+      });
+    }
+  }
     // Rules must be loaded BEFORE the first ingest, or the first page is
     // classified without the user's corrections and auto-archive silently
     // does not run on it.

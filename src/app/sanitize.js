@@ -242,6 +242,12 @@ function walk(src, dest, doc, ctx) {
       }
       el.setAttribute('target', '_blank');
       el.setAttribute('rel', 'noopener noreferrer nofollow');
+      // Name the destination BEFORE the click (round 46 #24): the _blank
+      // marker says "leaves the message", the hostname says where to.
+      try {
+        const host = new URL(el.getAttribute('href'), 'https://x.invalid').hostname;
+        if (host && host !== 'x.invalid') el.setAttribute('title', host);
+      } catch { /* a href the URL parser rejects stays untitled */ }
     }
 
     walk(node, el, doc, ctx);
@@ -288,6 +294,7 @@ function copyAttributes(from, to, tag, ctx) {
           ctx.stats.inlineResolved++;
         } else {
           to.setAttribute('data-bmm-missing', '1');
+          to.setAttribute('alt', 'Inline image could not be found in this message.');
           ctx.stats.inlineMissing++;
         }
         continue;
@@ -308,6 +315,7 @@ function copyAttributes(from, to, tag, ctx) {
           to.setAttribute('src', url);
         } else {
           to.setAttribute('data-bmm-src', url);
+          to.setAttribute('alt', 'Image hidden until you trust this sender.');
           ctx.stats.blockedRemote++;
         }
         continue;

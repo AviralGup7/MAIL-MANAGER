@@ -43,9 +43,12 @@ test('the reader frame wears the theme, not hardcoded white (round 45 H3)', () =
 });
 
 test('reader typography follows the density setting (round 45 H2)', () => {
-  assert.match(app, /READER_TYPOGRAPHY/, 'the reader has a density table');
+  // The table lives in the reader frame contract module (arch A2); the app
+  // consumes it. Check both halves of that contract.
+  const rf = readFileSync(new URL('../src/app/reader-frame.js', import.meta.url), 'utf8');
+  assert.match(rf, /READER_TYPOGRAPHY/, 'the reader has a density table');
   for (const d of ['comfortable', 'cosy', 'compact']) {
-    assert.match(app, new RegExp(`${d}:\\s*\\{ size:`), `${d} has reading metrics`);
+    assert.match(rf, new RegExp(`${d}:\\s*\\{ size:`), `${d} has reading metrics`);
   }
   assert.match(app, /READER_TYPOGRAPHY\[settings\.get\('density'\)\]/,
     'and the srcdoc is built from the live setting');
@@ -112,4 +115,24 @@ test('dialogs trap focus and announce destructive questions (round 45 Phase 2)',
     'error toasts are assertive announcements');
   assert.match(app2, /el\.list\.focus\(\{ preventScroll: true \}\)/,
     'bulk actions return focus to the list');
+});
+
+test('motion accessibility is complete: nothing animates without a reduced-motion story (round 46 arch #8)', () => {
+  // The product decision is that animation STAYS; the only motion debt is
+  // accessibility completeness. The global reduced-motion block zeroes
+  // duration AND delay for every element, so every declaration has a story.
+  // This pin fails if that block is weakened, and if any NEW infinite
+  // animation appears that is not the documented skeleton shimmer.
+  const rm = css.match(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\n\}\n\}/);
+  assert.ok(rm, 'the global reduced-motion block exists');
+  assert.match(rm[0], /animation-duration: 1ms !important/);
+  assert.match(rm[0], /animation-delay: 0ms !important/);
+  assert.match(rm[0], /animation-iteration-count: 1 !important/,
+    'infinite work-reporters stop iterating under reduced motion');
+
+  const infinite = [...css.matchAll(/animation:[^;]*infinite[^;]*;/g)]
+    .map((m) => m[0])
+    .filter((a) => !a.includes('sk-shimmer'));
+  assert.deepEqual(infinite, [],
+    'only the skeleton shimmer may run indefinitely');
 });

@@ -16,7 +16,7 @@
  * the common case of "fix this room" feel like starting over.
  */
 
-import { openLayer, trapFocus } from './layers.js';
+import { openLayer } from './layers.js';
 import { confirmDialog } from './dialog.js';
 import { icon } from './icons.js';
 import {
@@ -315,8 +315,8 @@ export function openTimetable(ctx) {
   node.id = 'tt-panel';
 
   document.body.appendChild(node);
-  // role=dialog promises the keyboard stays inside; make it true (round 45).
-  trapFocus(node);
+  // The layer traps focus by default now (round 46, arch #6); role=dialog's
+  // promise is kept by openLayer, not by each call site.
   layer = openLayer({
     name: 'timetable',
     node,

@@ -199,12 +199,10 @@ export function confirmDialog({
       },
     });
 
-    // Minimal focus trap: two buttons, Tab cycles between them.
+    // Escape cancels; Tab is owned by the layer's default focus trap, which
+    // wraps at the edges and lets natural movement happen between them.
     box.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') { e.preventDefault(); finish(false); return; }
-      if (e.key !== 'Tab') return;
-      e.preventDefault();
-      (doc.activeElement === cancelBtn ? confirmBtn : cancelBtn).focus();
+      if (e.key === 'Escape') { e.preventDefault(); finish(false); }
     });
 
     confirmBtn.addEventListener('click', () => finish(true));

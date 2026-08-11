@@ -281,7 +281,8 @@ function renderFiles() {
     meter.title = `${fmtBytes(used)} of ${fmtBytes(MAX_ATTACH_BYTES)} (wire size)`;
     const fill = document.createElement('span');
     fill.className = 'c-budget-fill';
-    fill.style.width = `${pct}%`;
+    // scaleX keeps the fill off the layout path (see the CSS note).
+    fill.style.transform = `scaleX(${pct / 100})`;
     meter.appendChild(fill);
     box.appendChild(meter);
   }
@@ -494,7 +495,11 @@ export function wireCompose(ctx) {
       const to = ($('c-to').value || '').trim();
       const subj = ($('c-subject').value || '').trim();
       const who = to ? `To: ${to.split(',')[0].trim()}` : 'No recipient';
-      title.textContent = subj ? `${who} — ${subj}` : who;
+      // A parked draft with files must not look text-only (round 46 #40).
+      const files = pendingFiles.length
+        ? ` · ${pendingFiles.length} file${pendingFiles.length === 1 ? '' : 's'}`
+        : '';
+      title.textContent = `${subj ? `${who} — ${subj}` : who}${files}`;
     } else if (baseTitle) {
       title.textContent = baseTitle;
       baseTitle = '';
@@ -512,6 +517,26 @@ export function wireCompose(ctx) {
   }
 
   $('c-attach')?.addEventListener('click', () => $('c-file')?.click());
+  /*
+   * DRAG-AND-DROP (round 46 #36): the panel is a drop target, so attaching
+   * is a gesture, not a picker round trip. preventDefault on dragover is
+   * what tells the browser a drop is welcome here.
+   */
+  panel.addEventListener('dragover', (e) => {
+    if (e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files')) {
+      e.preventDefault();
+      panel.classList.add('dropping');
+    }
+  });
+  panel.addEventListener('dragleave', () => panel.classList.remove('dropping'));
+  panel.addEventListener('drop', async (e) => {
+    panel.classList.remove('dropping');
+    if (e.dataTransfer?.files?.length) {
+      e.preventDefault();
+      await addFiles(ctx, e.dataTransfer.files);
+    }
+  });
+
   $('c-file')?.addEventListener('change', async (e) => {
     await addFiles(ctx, e.target.files);
     // Reset, or choosing the same file twice in a row fires no change event.

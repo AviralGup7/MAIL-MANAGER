@@ -1903,21 +1903,31 @@ test('every pointer target is large enough to hit reliably', () => {
    * like and what it catches.
    */
   const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
-  const block = (sel) => {
-    const m = css.match(
-      new RegExp(`(^|\\})\\s*${sel.replace(/[.#[\\]='-]/g, '\\$&')}\\s*\\{([^}]*)\\}`, 'm')
-    );
-    assert.ok(m, `${sel} must have a rule`);
-    return m[2];
+  // EVERY rule for the selector, base and media-query overrides alike: an
+  // override that shrank the target below the base would defeat the guard,
+  // so each block is checked to hold at least the 24px minimum.
+  const blocks = (sel) => {
+    const re = new RegExp(`(^|\\})\\s*${sel.replace(/[.#[\\]='-]/g, '\\$&')}\\s*\\{([^}]*)\\}`, 'gm');
+    const out = [...css.matchAll(re)].map((m) => m[2]);
+    assert.ok(out.length, `${sel} must have a rule`);
+    return out;
+  };
+  const minPx = (b, prop) => {
+    const m = b.match(new RegExp(`${prop}:\\s*(\\d+)px`));
+    return m ? Number(m[1]) : 0;
   };
 
   for (const sel of ['.r-check', '.view-remove']) {
-    const b = block(sel);
-    assert.match(
-      b, /min-width:\s*24px/,
-      `${sel} needs a 24px minimum pointer target`
-    );
-    assert.match(b, /min-height:\s*24px/, `${sel} needs a 24px minimum height`);
+    const bs = blocks(sel);
+    // The BASE rule must declare the minimum target, and any override that
+    // re-declares it (e.g. a touch media query) must not shrink it. Rules
+    // that stay silent inherit the base, which is correct.
+    assert.ok(minPx(bs[0], 'min-width') >= 24, `${sel} base needs a >=24px target`);
+    assert.ok(minPx(bs[0], 'min-height') >= 24, `${sel} base needs a >=24px height`);
+    for (const b of bs.slice(1)) {
+      if (/min-width:/.test(b)) assert.ok(minPx(b, 'min-width') >= 24, `${sel} override must not shrink the target`);
+      if (/min-height:/.test(b)) assert.ok(minPx(b, 'min-height') >= 24, `${sel} override must not shrink the height`);
+    }
   }
 });
 

@@ -88,7 +88,10 @@ const browser = await chromium.launch({
   args: ['--no-sandbox'],
 });
 
+import { THEMES as THEMES_DATA } from '../src/app/themes.js';
+
 let taken = 0;
+const tokenFailures = [];
 try {
   for (const theme of THEMES) {
     for (const density of DENSITIES) {
@@ -100,6 +103,23 @@ try {
         const file = join(OUT, `${theme}.${density}.${width}.png`);
         await page.screenshot({ path: file });
         taken++;
+
+        /*
+         * RENDERED-TOKEN GUARD (round 46, arch #10): the screenshots are
+         * artefacts; this is the judge for token PROPAGATION. The theme's
+         * declared --bg must be what the document actually renders -- the
+         * density-in-reader and white-frame gaps were exactly "the token
+         * exists but never lands", found by audit instead of by tool.
+         */
+        if (density === 'comfortable' && width === 1280) {
+          const rendered = await page.evaluate(
+            () => getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()
+          );
+          const declared = (THEMES_DATA.find((t) => t.id === theme) || {}).bg;
+          if (declared && rendered && rendered.toLowerCase() !== declared.toLowerCase()) {
+            tokenFailures.push(`${theme}: declared ${declared}, rendered ${rendered}`);
+          }
+        }
         await page.close();
       }
     }
@@ -109,3 +129,9 @@ try {
   server.close();
 }
 console.log(`visual-regression: ${taken} screenshots in ${OUT}`);
+if (tokenFailures.length) {
+  console.error('rendered-token guard FAILURES:');
+  for (const f of tokenFailures) console.error('  ' + f);
+  process.exit(1);
+}
+console.log('rendered-token guard: every theme renders its declared surface');

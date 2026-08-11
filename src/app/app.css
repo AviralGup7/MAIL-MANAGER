@@ -33,6 +33,17 @@
  * Everything below is a closed set. If a value is not here, it does not go in
  * the file.
  */
+/*
+ * NO WRONG-THEME FRAME (round 46 #10). applyTheme stamps data-theme before
+ * anything paints, but a very slow boot could still show one frame of the
+ * default palette. Hiding the body until the stamp exists costs nothing --
+ * a boot without JS renders nothing useful today either -- and kills the
+ * flash the comment promises to avoid.
+ */
+html:not([data-theme]) body {
+  visibility: hidden;
+}
+
 :root {
   /* --- TYPE ---------------------------------------------------------------
    * A 1.2 minor-third scale off a 13px base. Six steps is enough for a mail
@@ -508,6 +519,18 @@ kbd {
   overscroll-behavior: contain;
 }
 
+.cat[data-muted='true'] .cat-name,
+.cat[data-muted='true'] .cat-count {
+  opacity: 0.6;
+}
+.cat[data-muted='true'] .cat-name::after {
+  /* The mute state must be visible WHERE it is managed: the rail. A muted
+     category that renders like an unmuted one hides its own rule. */
+  content: '· muted';
+  font-size: var(--t-xs);
+  color: var(--fg-faint);
+  margin-inline-start: var(--s-2);
+}
 .cat {
   position: relative;
   width: 100%;
@@ -2574,6 +2597,31 @@ textarea {
   /* An even split: at phone-ish widths neither pane is the subordinate. */
   #panes {
     grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+/* ------------------------------------------------------------------------- *
+ * TOUCH (round 46 #11). Coarse pointers get taller rows and full-size tick
+ * targets -- the 44px-ish minimum touch size -- without touching the mouse
+ * layout. Swipes are wired in app.js; this is the half CSS owns.
+ * ------------------------------------------------------------------------- */
+@media (pointer: coarse) {
+  :root {
+    --row-h: 64px;
+  }
+  /* MIN targets, not fixed sizes: enlarge what the finger catches without
+     changing what the eye sees, same distinction the pointer-target guard
+     pins for the base rules. */
+  .r-check {
+    min-width: 32px;
+    min-height: 32px;
+  }
+  .r-star {
+    min-width: 32px;
+    min-height: 32px;
+  }
+  .row {
+    touch-action: pan-y; /* horizontal swipes belong to the app */
   }
 }
 
@@ -5135,13 +5183,23 @@ kbd {
 }
 .c-budget-fill {
   display: block;
+  width: 100%;
   height: 100%;
   border-radius: var(--r-full);
   background: var(--accent);
-  transition: width var(--dur-base) var(--ease-out);
+  /* scaleX, not width: the fill is decoration, and animating layout in a
+     compose panel would trip the no-layout-animation doctrine the design
+     guards enforce (round 46). */
+  transform-origin: left center;
+  transition: transform var(--dur-base) var(--ease-out);
 }
 .c-budget[data-kind='warn'] .c-budget-fill { background: var(--warning); }
 .c-budget[data-kind='over'] .c-budget-fill { background: var(--danger); }
+/* Drag-over affordance: the whole panel says "drop here" (round 46 #36). */
+#compose.dropping {
+  outline: 2px dashed var(--accent);
+  outline-offset: -4px;
+}
 .c-file {
   display: inline-flex;
   align-items: center;

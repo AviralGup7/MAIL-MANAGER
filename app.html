@@ -399,9 +399,12 @@
                   permanent empty strip would push every body down for the
                   benefit of a minority.
                 -->
-                <div id="r-due" hidden></div>
-                <div id="r-timetable" hidden></div>
-                <div id="r-actions">
+                  <div id="r-due" hidden></div>
+                  <div id="r-timetable" hidden></div>
+                  <!-- Unfold every folded quote at once (round 46 #19).
+                       Shown only while folded quotes exist. -->
+                  <button id="r-unfold" class="ghost small" type="button" hidden>Unfold quotes</button>
+                  <div id="r-actions">
                   <button data-act="star" class="ghost" type="button" title="Star (s)">Star</button>
                   <button data-act="unread" class="ghost" type="button" title="Mark unread (u)">Mark unread</button>
                   <button data-act="snooze" class="ghost" type="button" title="Snooze (z)">Snooze</button>

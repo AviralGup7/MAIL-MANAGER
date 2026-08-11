@@ -71,6 +71,14 @@ export function openLayer(opts = {}, doc = globalThis.document) {
   const returnFocus =
     opts.restoreFocusTo !== undefined ? opts.restoreFocusTo : doc?.activeElement || null;
 
+  /*
+   * FOCUS TRAP BY DEFAULT (round 46, arch #6). role=dialog promises Tab stays
+   * inside; making the trap the default (opt out with trap:false) means every
+   * FUTURE layer inherits the contract instead of each call site remembering
+   * to ask. The untrap dies with the node, so there is nothing to clean up.
+   */
+  const untrap = opts.trap === false ? null : trapFocus(opts.node, doc);
+
   let onDocDown = null;
   if (opts.dismissOnOutsideClick && opts.node && doc) {
     onDocDown = (e) => {
@@ -83,6 +91,7 @@ export function openLayer(opts = {}, doc = globalThis.document) {
 
   const teardown = () => {
     if (onDocDown && doc) doc.removeEventListener('mousedown', onDocDown, true);
+    untrap?.();
     try {
       opts.onClose?.();
     } finally {
