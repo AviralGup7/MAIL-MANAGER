@@ -75,6 +75,7 @@ export const EXPORTED_KEYS = [
   'lanes',
   'markReadDelayMs',
   'autoRefreshMs',
+  'bgNotify',
   'signature',
   'undoSendSeconds',
   // Spatial-compression coach mark (concept #6 polish): a preference like

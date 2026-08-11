@@ -130,6 +130,10 @@ export const SCHEMA = {
    * 0 disables it, for anyone who genuinely wants manual control.
    */
   autoRefreshMs: { type: 'int', def: 120000, min: 0, max: 3600000 },
+  // P-3: notify on augsd/academics mail when it arrives while the app is
+  // closed. The worker reads this key directly from storage; the schema is
+  // where the default lives so options and app agree.
+  bgNotify: { type: 'bool', def: true },
 
   // ---- composing ----
   signature: { type: 'string', def: '' },

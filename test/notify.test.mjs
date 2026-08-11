@@ -1,0 +1,58 @@
+/**
+ * Background notification selection (P-3).
+ *
+ * The worker syncs every 15 minutes while the app is closed; this pins what
+ * may interrupt the user. The doctrine: category allow-list, burst cap,
+ * dedupe — a notification the user did not want is noise.
+ */
+
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { selectNotifiable, NOTIFY_CATEGORIES, NOTIFY_BURST_CAP } from '../src/background/notify.js';
+
+const m = (id, category, subject = 'S') => ({ id, category, subject, from: 'a@b.c' });
+
+test('only allow-listed categories are notifiable', () => {
+  const added = [
+    m('1', 'augsd', 'Registration deadline'),
+    m('2', 'academics', 'Exam schedule'),
+    m('3', 'external-promotions', 'Discount!'),
+    m('4', 'clubs', 'Hackathon'),
+  ];
+  const out = selectNotifiable(added);
+  assert.deepEqual(out.map((x) => x.id), ['1', '2'], 'only augsd + academics');
+  assert.deepEqual([...NOTIFY_CATEGORIES], ['augsd', 'academics']);
+});
+
+test('previously notified ids are never re-notified', () => {
+  const added = [m('1', 'augsd'), m('2', 'augsd')];
+  const out = selectNotifiable(added, ['1']);
+  assert.deepEqual(out.map((x) => x.id), ['2']);
+});
+
+test('a re-synced delta cannot notify twice for the same id', () => {
+  const added = [m('1', 'augsd'), m('2', 'augsd')];
+  const first = selectNotifiable(added, []);
+  const ids = [...first.map((x) => x.id), 'old'];
+  const second = selectNotifiable(added, ids);
+  assert.deepEqual(second, [], 'no repeats');
+});
+
+test('the burst is capped so a mail flood is one event, not a dozen', () => {
+  const added = Array.from({ length: 20 }, (_, i) => m(`f${i}`, 'augsd'));
+  const out = selectNotifiable(added);
+  assert.equal(out.length, NOTIFY_BURST_CAP);
+  assert.equal(out.length, 3);
+});
+
+test('malformed records are skipped, not fatal', () => {
+  const added = [null, undefined, { category: 'augsd' }, m('ok', 'academics')];
+  const out = selectNotifiable(added);
+  assert.deepEqual(out.map((x) => x.id), ['ok']);
+});
+
+test('the subject and sender survive for the notification body', () => {
+  const out = selectNotifiable([m('1', 'augsd', 'Fee payment reminder')]);
+  assert.equal(out[0].subject, 'Fee payment reminder');
+  assert.equal(out[0].from, 'a@b.c');
+});

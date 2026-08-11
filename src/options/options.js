@@ -175,6 +175,7 @@ function fmtHold(sec) {
   const autoLabel = $('autoRefreshLabel');
   const undoSend = $('undoSendSeconds');
   const undoSendLabel = $('undoSendLabel');
+  const bgNotify = $('bgNotify');
   if (!markRead || !delay || !images) return;
 
   // Reflect stored state.
@@ -191,6 +192,12 @@ function fmtHold(sec) {
   if (auto) {
     auto.value = String(settings.get('autoRefreshMs'));
     autoLabel.textContent = fmtEvery(Number(auto.value));
+  }
+  if (bgNotify) {
+    bgNotify.checked = settings.get('bgNotify');
+    bgNotify.addEventListener('change', async () => {
+      await settings.set('bgNotify', bgNotify.checked);
+    });
   }
   if (undoSend) {
     undoSend.value = String(settings.get('undoSendSeconds'));

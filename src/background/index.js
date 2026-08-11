@@ -12,8 +12,10 @@ import { signIn, signOut, isSignedIn } from './auth.js';
 import {
   getFull, modify, batchModify, trash, profile,
   buildMime, sendMessage, saveDraft, getDraftForMessage,
-  listLabels, createLabel, getAttachment, ensureLabel, headerMap,
+  listLabels, createLabel, getAttachment, ensureLabel, headerMap, normalise,
 } from './gmail.js';
+import { classify } from '../classify/index.js';
+import { selectNotifiable } from './notify.js';
 import { SNOOZE_LABEL } from '../shared/labels.js';
 import { loadSnoozed, removeSnooze, due } from '../app/snooze.js';
 import { syncPage, syncDelta } from './sync.js';
@@ -104,18 +106,14 @@ chrome.runtime.onInstalled?.addListener(async () => {
  * capability here already degrades rather than crashing -- see the alarms
  * block below, which has been guarded from the start.
  */
-chrome.action?.onClicked.addListener(async (tab) => {
-  if (!tab?.id) return;
-
-  if (isGmail(tab)) {
-    await toggleIn(tab.id);
-    return;
-  }
-
-  // Not on Gmail. Prefer an existing Gmail tab over opening another one --
-  // repeatedly spawning tabs is what the old behaviour did, and each new tab
-  // resolved to the browser's default account rather than the one the user was
-  // already reading.
+/**
+ * Open the takeover in a Gmail tab, reusing an existing one.
+ *
+ * Shared by the toolbar button and notification clicks. Preferring an
+ * existing tab over spawning a new one matters: repeated spawns resolved to
+ * the browser's default account rather than the one the user was reading.
+ */
+async function openGmailTab() {
   const [existing] = await chrome.tabs.query({ url: 'https://mail.google.com/*' });
   if (existing?.id) {
     await chrome.tabs.update(existing.id, { active: true });
@@ -125,10 +123,18 @@ chrome.action?.onClicked.addListener(async (tab) => {
     await toggleIn(existing.id);
     return;
   }
-
   // Genuinely no Gmail tab open. Opening the bare URL sends the user to
   // whichever account Chrome considers default, so this is a last resort.
   await chrome.tabs.create({ url: 'https://mail.google.com/' });
+}
+
+chrome.action?.onClicked.addListener(async (tab) => {
+  if (!tab?.id) return;
+  if (isGmail(tab)) {
+    await toggleIn(tab.id);
+    return;
+  }
+  await openGmailTab();
 });
 
 // Same reasoning as chrome.action above: a missing `commands` key must cost
@@ -394,6 +400,9 @@ async function handle(msg) {
  * mail is worse than no snooze at all.
  */
 const WAKE_ALARM = 'bmm-wake';
+/** Background sync + notification sweep. See `backgroundSync`. */
+const SYNC_ALARM = 'bmm-sync';
+const SYNC_PERIOD_MIN = 15;
 
 async function wakeDue(now = Date.now()) {
   let all;
@@ -454,15 +463,92 @@ async function scheduleWake() {
   await chrome.alarms.create(WAKE_ALARM, { when: Math.max(next, Date.now() + 5000) });
 }
 
+/**
+ * The background sweep (P-3 / repo TODO #5).
+ *
+ * Every 15 minutes, while the app may be closed: advance the history cursor
+ * so a long absence never builds a delta backlog that forces a resync, and —
+ * when the user opted in — notify on augsd/academics mail arriving in the
+ * meantime. The worker is deliberately stateless, so the sweep writes
+ * nothing but the cursor and the dedupe list; the app still paints from its
+ * own cache + full sync when it opens.
+ */
+async function backgroundSync() {
+  if (!(await isSignedIn().catch(() => false))) return;
+
+  let res;
+  try {
+    res = await syncDelta();
+  } catch {
+    return; // quiet: the next 15-minute run retries; the freshness line in
+    // the app is the honest status surface.
+  }
+  if (!res || res.kind !== 'delta' || !res.added?.length) return;
+
+  const { bgNotify = true, bgNotifiedIds = [] } = await chrome.storage.local.get([
+    'bgNotify', 'bgNotifiedIds',
+  ]);
+
+  const msgs = res.added.map(normalise).filter(Boolean).map((m) => ({
+    ...m,
+    category: classify(m).category,
+  }));
+  const fresh = selectNotifiable(msgs, bgNotifiedIds);
+  if (!fresh.length) return;
+
+  // Dedupe persists even when notifications are off, so toggling the
+  // setting back on cannot re-notify an already-seen message.
+  const merged = [...fresh.map((m) => m.id), ...(bgNotifiedIds || [])].slice(0, 100);
+  await chrome.storage.local.set({ bgNotifiedIds: merged }).catch(() => {});
+
+  if (bgNotify === false) return;
+  // A Gmail tab is already on screen: the user is looking at mail. A
+  // notification on top of that is noise, not service.
+  const open = await chrome.tabs.query({ url: 'https://mail.google.com/*' }).catch(() => []);
+  if (open.length) return;
+
+  for (const m of fresh) {
+    await chrome.notifications
+      .create(`bmm-${m.id}`, {
+        type: 'basic',
+        iconUrl: chrome.runtime.getURL('icons/icon128.png'),
+        title: `${m.category === 'augsd' ? 'AUGSD' : 'Academics'} — ${m.from || 'BITS mail'}`,
+        message: m.subject,
+      })
+      .catch(() => {});
+  }
+}
+
+function scheduleBackgroundSync() {
+  if (!chrome.alarms) return;
+  chrome.alarms.create(SYNC_ALARM, { periodInMinutes: SYNC_PERIOD_MIN }).catch?.();
+}
+
 if (chrome.alarms?.onAlarm) {
   chrome.alarms.onAlarm.addListener(async (alarm) => {
-    if (alarm.name !== WAKE_ALARM) return;
-    await wakeDue();
-    await scheduleWake(); // re-aim at whatever is next
+    if (alarm.name === WAKE_ALARM) {
+      await wakeDue();
+      await scheduleWake(); // re-aim at whatever is next
+    } else if (alarm.name === SYNC_ALARM) {
+      backgroundSync();
+    }
   });
 }
 
+chrome.notifications?.onClicked.addListener((id) => {
+  // Clicking a background notification opens the takeover; the notification
+  // is dismissed either way.
+  chrome.notifications.clear(id).catch?.(() => {});
+  openGmailTab();
+});
+
 // The catch-up sweep. Both hooks, because onStartup does not fire when the
 // extension is enabled mid-session or reloaded during development.
-chrome.runtime.onStartup?.addListener(() => { wakeDue().then(scheduleWake); });
-chrome.runtime.onInstalled?.addListener(() => { wakeDue().then(scheduleWake); });
+chrome.runtime.onStartup?.addListener(() => {
+  wakeDue().then(scheduleWake);
+  scheduleBackgroundSync();
+});
+chrome.runtime.onInstalled?.addListener(() => {
+  wakeDue().then(scheduleWake);
+  scheduleBackgroundSync();
+});
