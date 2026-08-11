@@ -29,6 +29,8 @@ import { loadCache, saveCache, clearCache, createSaver, CACHE_MAX } from './cach
 import { sanitizeHtml, escapeHtml } from './sanitize.js';
 import { THEMES, applyTheme, getTheme, DEFAULT_THEME } from './themes.js';
 import { icon, setIcon, middleTruncate } from './icons.js';
+import { setAttr, setText } from './dom.js';
+import { toast, hideToast, initToast } from './toast.js';
 import { Selection, selectionLabel } from './selection.js';
 import { loadViews, saveView, removeView } from './views.js';
 import { extractDeadline, relativeLabel, urgency } from './deadlines.js';
@@ -500,67 +502,6 @@ let toastTimer = 0;
  * @param {string} text
  * @param {{kind?:'info'|'success'|'error'|'undo', action?:{label:string, run:Function}, ms?:number}} [opts]
  */
-function toast(text, opts = {}) {
-  const kind = opts.kind || 'info';
-  const ms = opts.ms || (kind === 'error' ? 4000 : kind === 'undo' ? 3600 : 2200);
-
-  setText(el.toastText, text);
-  el.toast.dataset.kind = kind;
-  /*
-   * ERRORS ARE ANNOUNCED, NOT MERELY SHOWN (round 45 Phase 2). role=alert is
-   * assertive: an interruption the user must hear about, where 'polite'
-   * could wait behind whatever the screen reader is mid-sentence on. Every
-   * other kind stays a polite status.
-   */
-  el.toast.setAttribute('role', kind === 'error' ? 'alert' : 'status');
-
-  /*
-   * POLISH 7+11: the toast's kind is legible at a glance -- an icon names the
-   * event and the undo chip names the recovery key. Both are decoration over
-   * the live region, never inside it, so announcements stay clean.
-   */
-  const KIND_ICON = { success: 'check', error: 'warning', undo: 'back' };
-  if (KIND_ICON[kind]) {
-    setIcon(el.toastIcon, KIND_ICON[kind], { size: 14 });
-    el.toastIcon.hidden = false;
-  } else {
-    el.toastIcon.hidden = true;
-  }
-  el.toastKbd.hidden = kind !== 'undo';
-
-  const action = opts.action;
-  el.toastAction.hidden = !action;
-  if (action) {
-    setText(el.toastAction, action.label);
-    el.toastAction.onclick = () => {
-      hideToast();
-      action.run();
-    };
-  } else {
-    el.toastAction.onclick = null;
-  }
-
-  // Restart the drain from zero. Re-assigning the animation alone does not
-  // replay it; the reflow between is what does.
-  el.toastDrain.style.animation = 'none';
-  void el.toastDrain.offsetWidth;
-  el.toastDrain.style.animation = `toast-drain ${ms}ms linear forwards`;
-
-  // Toasts re-fire constantly -- a second one inside the 140ms exit is normal,
-  // not an edge case -- so the cancel matters more here than anywhere else.
-  cancelExit(el.toast);
-  el.toast.hidden = false;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(hideToast, ms);
-}
-
-function hideToast() {
-  clearTimeout(toastTimer);
-  closeWithMotion(el.toast);
-  el.toastAction.hidden = true;
-  el.toastAction.onclick = null;
-}
-
 // --------------------------------------------------------------- the render --
 
 let frame = 0;
@@ -1402,15 +1343,6 @@ function fillRow(li, m) {
 }
 
 /** Guarded attribute write, matching setText: no write if unchanged. */
-function setAttr(node, name, value) {
-  const v = value || '';
-  if (node.getAttribute(name) !== v) node.setAttribute(name, v);
-}
-
-function setText(node, value) {
-  const v = value || '';
-  if (node.textContent !== v) node.textContent = v;
-}
 
 /*
  * POLISH 13: a search hit should SHOW its hit. `mark` chunks are built as
@@ -5825,6 +5757,10 @@ async function boot() {
   state.theme = applyTheme(theme || (osDark ? 'midnight' : DEFAULT_THEME)).id;
   applyDensity();
 
+  initToast({
+    toast: el.toast, toastText: el.toastText, toastAction: el.toastAction,
+    toastDrain: el.toastDrain, toastIcon: el.toastIcon, toastKbd: el.toastKbd,
+  });
   buildSidebar();
   renderSidebar();
 

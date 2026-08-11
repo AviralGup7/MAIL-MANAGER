@@ -1356,8 +1356,9 @@ test('DELIGHT: the drain line restarts on every toast', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');
   // Re-assigning the same animation does not replay it; the reflow between is
   // what does. Without that, a second toast shows a drain line already spent.
-  const src = readFileSync(join(ROOT, 'src/app/app.js'), 'utf8');
-  const fn = src.slice(src.indexOf('function toast('), src.indexOf('function hideToast('));
+  // toast lives in toast.js after the round-46 extraction.
+  const src = readFileSync(join(ROOT, 'src/app/toast.js'), 'utf8');
+  const fn = src.slice(src.indexOf('export function toast('), src.indexOf('export function hideToast('));
   assert.ok(fn.includes("style.animation = 'none'"), 'must clear before re-applying');
   assert.ok(fn.includes('offsetWidth'), 'must force a reflow between');
 });
