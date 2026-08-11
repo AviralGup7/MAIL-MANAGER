@@ -93,13 +93,19 @@ function collectFailures(tap) {
 }
 
 const failures = collectFailures(res.stdout || '');
-const verdict = fail === 0 && skipped === 0 && pass > 0 ? 'PASS' : 'FAIL';
+// A run can DIE (OOM abort, SIGTERM) with zero failing counters -- counters
+// alone would call that a PASS. The child's exit status and signal are the
+// tie-breaker: `node --test` exits non-zero exactly when tests fail OR the
+// run did not complete.
+const crashed = !!(res.error || res.signal || (res.status !== 0 && fail === 0));
+const verdict = crashed ? 'CRASHED' : (fail === 0 && skipped === 0 && pass > 0 ? 'PASS' : 'FAIL');
 const bar = '='.repeat(56);
 const summary = [
   bar,
   `TEST SUMMARY — ${verdict}`,
   `tests: ${total} | passed: ${pass} | failed: ${fail} | skipped: ${skipped}` +
-    (dur ? ` | duration: ${Math.round(Number(dur[1]) / 1000)}s` : ''),
+    (dur ? ` | duration: ${Math.round(Number(dur[1]) / 1000)}s` : '') +
+    (crashed ? ` | RUN DID NOT COMPLETE (status=${res.status}${res.signal ? `, signal=${res.signal}` : ''})` : ''),
   ...(failures.length
     ? ['Failed tests:',
        ...failures.map((f, i) => [
@@ -125,6 +131,10 @@ if (process.env.GITHUB_STEP_SUMMARY) {
 
 console.log(`\nCI summary: ${pass} passed, ${fail} failed, ${skipped} skipped`);
 
+if (crashed) {
+  console.error('\n✗ The test run CRASHED before completing — counters above are partial.');
+  process.exit(1);
+}
 if (fail > 0) {
   console.error(`\n✗ ${fail} test(s) failed.`);
   process.exit(1);
