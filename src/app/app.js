@@ -39,7 +39,7 @@ import { openSnoozeMenu, wireSnoozeMenu } from './snooze-menu.js';
 import { openCategoryMenu, wireCategoryMenu } from './category-menu.js';
 import { renderNotices, wireNotices } from './notices-rail.js';
 import { wireBulkbar } from './bulkbar.js';
-import { parseQuery, buildReply } from './query.js';
+import { buildReply } from './query.js';
 import * as settings from './settings.js';
 import { addressOf } from './contacts.js';
 import { audienceOf } from './direct.js';
@@ -49,8 +49,6 @@ import * as followups from './followups.js';
 import * as deadlineStore from './deadline-store.js';
 import * as myCourses from './my-courses.js';
 import { detectNotice, shouldPromote, summarise } from './notices.js';
-import { rowSnippet } from './snippet.js';
-import * as sel from './selectors.js';
 import {
   wireReader, openMessage, closeReader, renderThreadStrip, syncReaderActions,
   repaintBody, cancelMarkRead, loadImageAllowList, openPartId,
@@ -58,10 +56,15 @@ import {
 import { wireSuggestUI, renderSuggestions, cancelSuggestBlur } from './suggest-ui.js';
 import {
   wireRails, renderSnoozed, renderOutbox, pumpOutbox, cancelOutboxTimer,
-  insertLaneHeaders,
 } from './rails.js';
 import {
-  CAT_COLOR, LOW_CONFIDENCE, displayName, shortDate, fullDate,
+  wireList, renderList, patchRow, reorientTo, rowDomId, visibleIds,
+  collapseThreads, setCount, setSkeleton, refreshSubjectClip, travelGhost,
+  clearRows, resetScrollState, capturePreSearchScroll, applySearchScroll,
+  saveScroll, recallScroll, announceNew, renderedIdsOf, nodeByIdOf,
+} from './list.js';
+import {
+  CAT_COLOR, displayName,
 } from './display.js';
 import { renderShortcuts } from './shortcuts.js';
 import { openLayer, closeTopLayer, hasLayers, closeAllLayers, closeWithMotion, cancelExit } from './layers.js';
@@ -70,7 +73,7 @@ import { promptDialog } from './dialog.js';
 import { openActivityLog } from './activity-ui.js';
 import {
   scheduleServerSearch, wireServerSearch, _resetServerSearch,
-  overlayIds, overlayGet, clearSearchOverlay,
+  clearSearchOverlay,
 } from './server-search.js';
 import {
   renderViews, refreshViews, suggestViewName, updateSaveAffordance, currentViews,
@@ -184,9 +187,6 @@ const state = {
  * must resolve through it, never through `store.idsFor('all')`, or a stale
  * frame repopulates the list after a clear (the sign-out render bug).
  */
-let renderedIds = [];
-/** Whether the list has ever been painted with content. */
-let firstPaint = false;
 
 /**
  * Multi-select.
@@ -196,15 +196,11 @@ let firstPaint = false;
  * cannot select the message you are looking at.
  */
 const selection = new Selection();
-/** id -> <li>. Lets a delta patch one row without re-rendering the list. */
-const nodeById = new Map();
 
 // ------------------------------------------------------------------- lookup --
 
 const $ = (id) => document.getElementById(id);
 
-/** DOM id for a message row. Namespaced so a Gmail id cannot collide. */
-const rowDomId = (id) => `bmm-row-${id}`;
 
 /**
  * Which Gmail account this tab is showing, as the `u/N` path segment.
@@ -616,8 +612,7 @@ function resetView({ allMailboxes = false } = {}) {
     }
     state.mailbox = DEFAULT_MAILBOX;
     store = wireStore(DEFAULT_MAILBOX);
-    pendingScrollRestore = 0;
-    lastUserScroll = 0;
+    resetScrollState();
     el.scroller.scrollTop = 0;
     // Freshness belongs to a SESSION. Leaving it set would tell the next
     // person to sign in that we had spoken to Gmail on their behalf.
@@ -640,8 +635,7 @@ function resetView({ allMailboxes = false } = {}) {
 
   closeReader();
   el.list.replaceChildren();
-  nodeById.clear();
-  renderedIds = [];
+  clearRows();
   renderList();
   renderSidebar();
   renderSelection();
@@ -676,718 +670,8 @@ let rules = emptyRules();
  * its deadline overrides, and the ephemeral overlay. `visibleIds()` remains
  * the single choke point every render path goes through.
  */
-function selectorsCtx() {
-  return {
-    mailbox: state.mailbox,
-    category: state.category,
-    query: state.query,
-    threaded: settings.get('threaded'),
-    muted: rules.muted,
-    parse: (q) => parseQuery(q, Date.now(), { dueAtOf: (m) => deadlineStore.dueAtOf(m, deadlineOverrides) }),
-    overlay: { ids: overlayIds, get: overlayGet },
-  };
-}
 
-function mutedHiddenCount() {
-  return sel.mutedHiddenCount(store, selectorsCtx());
-}
 
-function visibleIds() {
-  return sel.visibleIds(store, selectorsCtx());
-}
-
-/** Sidebar total: collapse at the same choke point as the list (see R-6). */
-function collapseThreads(ids) {
-  return sel.collapseThreads(ids, store, selectorsCtx());
-}
-
-/**
- * Diff-render the list.
- *
- * Not a full innerHTML rewrite. The old version rebuilt every row on every
- * refresh, which threw away scroll position, focus and the selection, and
- * forced a full style+layout pass over the whole list.
- */
-/**
- * Re-measure which subjects are actually clipped (audit 35 bloom gate).
- *
- * Runs after the rows are attached (a detached element reports scrollWidth
- * 0) and after density changes, where the clip condition changes. Reads
- * are one per row per render -- the same order of cost the ghost rect
- * measurement in audit 36 priced at 0.004ms each.
- */
-function refreshSubjectClip() {
-  for (const [, node] of nodeById) {
-    const s = node.querySelector('.r-subj');
-    if (s) node.classList.toggle('subj-clip', s.scrollWidth > s.clientWidth);
-  }
-}
-
-function renderList() {
-  // EVERY visible message is rendered. There is no cap.
-  //
-  // This used to be `ids.slice(0, 400)`, which was a render-cost guard that
-  // caused a correctness bug: `renderedIds` is what `move()` (j/k) and
-  // `selectNeighbourThen()` walk, so messages 401+ were unreachable by
-  // scroll, click AND keyboard. The sidebar counted them and nothing could
-  // open them, and "Load more" silently grew the hidden set.
-  //
-  // The guard was also unnecessary. `.row` carries `content-visibility: auto`
-  // with `contain-intrinsic-size`, so the browser skips rendering off-screen
-  // rows entirely — that is the documented reason this list has no
-  // hand-written virtualiser. The cap was defending against a cost the CSS
-  // had already removed.
-  const next = visibleIds();
-
-  // The empty state is set on BOTH paths.
-  //
-  // It used to live only after the diff, below the fast-path return. On a
-  // genuinely empty inbox `next` and `renderedIds` are both [], so the fast
-  // path returned early and "Nothing here." was never revealed — a new user
-  // with no mail, or any category with no messages, saw a blank pane and no
-  // explanation.
-  /*
-   * DID THE USER EMPTY THIS, OR WAS IT ALREADY EMPTY?
-   *
-   * Same distinction the departure loop below draws, but needed BEFORE the
-   * empty state is written. A view that just became empty because the last
-   * message was archived deserves a different sentence from one that was
-   * empty when you arrived — see updateEmptyState.
-   *
-   * The test is: something we were rendering is gone from `next` AND gone
-   * from the store. Gone-but-still-stored is a filter change, which is not an
-   * achievement. Computed only when the result is about to be empty, so the
-   * common case pays nothing.
-   */
-  /*
-   * The mailbox-switch case is ALREADY SAFE, and not by accident here.
-   *
-   * I suspected this detector would misfire on a mailbox switch: inbox ids are
-   * absent from the Sent store, so "gone from the store" is true of every row.
-   * It does not, because `selectMailbox` sets `renderedIds = []` before
-   * rendering, so `renderedIds.length > 0` is false on the first render of any
-   * new mailbox. I added a view-key guard, then removed it again: sabotaging
-   * it changed no test, and sabotaging `renderedIds.length > 0` changed no
-   * test either, because the reset makes both vacuous.
-   *
-   * Recording it because it is a LOAD-BEARING COINCIDENCE. If a future change
-   * stops clearing `renderedIds` on mailbox switch — a reasonable-looking
-   * optimisation — the empty Sent mailbox starts congratulating you for
-   * clearing an inbox you never touched. The test named
-   * "switching to an empty mailbox is not an achievement" is the tripwire.
-   */
-  const achieved = next.length === 0 && renderedIds.length > 0
-    && renderedIds.some((id) => !store.get(id));
-
-  updateEmptyState(next.length, achieved);
-
-  // Fast path: identical id list, only content changed.
-  if (sameOrder(next, renderedIds)) {
-    for (const id of next) patchRow(id);
-    updateCounts(next.length);
-    return;
-  }
-
-  const frag = document.createDocumentFragment();
-  const seen = new Set();
-  for (const id of next) {
-    seen.add(id);
-    let node = nodeById.get(id);
-    if (!node) {
-      node = buildRow(id);
-      nodeById.set(id, node);
-    } else {
-      fillRow(node, store.get(id));
-    }
-    frag.appendChild(node); // appendChild moves an existing node — no re-create
-  }
-
-  /*
-   * DEPARTING ROWS ARE CLAIMED BEFORE THE REBUILD, NOT AFTER.
-   *
-   * `replaceChildren` below detaches every node that is not in `frag` —
-   * including the ones being archived. Animating them after that point is
-   * invisible, because they are no longer in the document. (Found the hard
-   * way: the exit animation ran on orphaned nodes and the user saw nothing.)
-   *
-   * So each departing row is pulled out of `nodeById` here, appended to the
-   * fragment so it survives the swap, and handed to `dismissRow` to leave
-   * under its own animation. It is removed from the index immediately, so
-   * `move()`, `patchRow()` and the selection can never address a row that is
-   * on its way out.
-   */
-  for (const [id, node] of [...nodeById]) {
-    if (seen.has(id)) continue;
-    nodeById.delete(id);
-
-    /*
-     * ONLY A REAL DEPARTURE ANIMATES.
-     *
-     * A row disappears for two very different reasons, and they should not
-     * look the same:
-     *
-     *   REMOVED  — archived, deleted, snoozed. The message left the mailbox.
-     *              That is an action the user performed, and it earns motion.
-     *   FILTERED — a category was clicked, a search was typed, a mailbox was
-     *              switched. Nothing happened TO the message; the view simply
-     *              shows something else now. Animating these makes changing
-     *              filters feel laggy, and it briefly leaves stale rows on
-     *              screen next to the new ones.
-     *
-     * The distinction is whether the store still holds the message. If it
-     * does, this is a filter and the row goes immediately.
-     */
-    if (store.get(id)) {
-      node.remove();
-      continue;
-    }
-    frag.appendChild(node);
-    dismissRow(node);
-  }
-
-  /*
-   * TRIAGE LANES.
-   *
-   * Section headers are inserted into the fragment AFTER the rows are built,
-   * rather than by restructuring the loop above. That loop does the row
-   * diffing that keeps a delta sync free -- reusing nodes, skipping unchanged
-   * writes -- and threading a grouping concept through it would have meant
-   * rewriting the one part of this file that is genuinely performance-critical.
-   *
-   * Inserting headers is a pure DOM operation on an already-correct fragment,
-   * so the diffing is untouched and lanes cost nothing when the setting is off.
-   *
-   * Off by default: a flat date-ordered list is what a mail client is, and
-   * lanes are an opinion the user opts into.
-   */
-  if (settings.get('lanes') && !state.query) {
-    insertLaneHeaders(frag);
-  }
-
-  // SPATIAL MEMORY (audit 38): a structural render must not yank the
-  // viewport. Without this, every delta sync snapped a scrolled user back
-  // to the top -- the anchor held at the store level and died at the DOM
-  // level. Explicit resets (category switch, resync, search) assign
-  // scrollTop themselves after this runs.
-  el.list.replaceChildren(frag);
-  /*
-   * Restore on the NEXT frame from the position captured at the last real
-   * scroll event: the rebuild task clamps the live position before a
-   * same-task read can see it (measured). One deferred restore, cancellable
-   * by every explicit reset, is the whole mechanism.
-   */
-  if (lastUserScroll > 40) pendingScrollRestore = lastUserScroll;
-  if (pendingScrollRestore > 0 && !restoreQueued) {
-    restoreQueued = true;
-    requestAnimationFrame(() => {
-      restoreQueued = false;
-      if (pendingScrollRestore > 0 && el.scroller.scrollTop < 40) {
-        el.scroller.scrollTop = pendingScrollRestore;
-      }
-      pendingScrollRestore = 0;
-    });
-  }
-
-  // Freshly built rows measured their subject's clip while DETACHED, where
-  // scrollWidth is 0; now that they are in the document the condition is
-  // decidable. One pass per render, not per frame.
-  refreshSubjectClip();
-
-  // Stagger the FIRST populated render only.
-  //
-  // Replaying it whenever a message is starred would be nausea rather than
-  // delight, so the class is added once and removed as soon as the animation
-  // has had time to run. Guarded on `firstPaint` rather than on list length,
-  // because a cache hydrate followed by a delta must not re-trigger it.
-  if (!firstPaint && next.length) {
-    firstPaint = true;
-    el.list.classList.add('list-enter');
-    setTimeout(() => el.list.classList.remove('list-enter'), 600);
-  }
-
-  renderedIds = next;
-  updateCounts(next.length);
-
-  // Selection lives outside the store, so a re-render must reapply it or the
-  // ticks silently vanish the moment a delta arrives mid-triage.
-  if (selection.active) renderSelection();
-}
-
-/**
- * The empty state has to say WHICH kind of empty this is.
- *
- * "Nothing here." is the same message whether the user filtered too hard,
- * has an empty category, or has genuinely read everything — three different
- * situations needing three different next actions. A generic string makes the
- * user work out which one they are in.
- */
-function updateEmptyState(count, achieved = false) {
-  const showing = count === 0 && !state.loading;
-  el.empty.hidden = !showing;
-  if (!showing) return;
-
-  const clear = (label, fn) => {
-    el.emptyAction.hidden = false;
-    el.emptyAction.textContent = label;
-    el.emptyAction.onclick = fn;
-  };
-
-  if (state.query) {
-    el.emptyTitle.textContent = 'No matches';
-    el.emptySub.textContent = `Nothing matches "${state.query}". Try fewer words, or a different filter.`;
-    clear('Clear search', () => {
-      el.search.value = '';
-      state.query = '';
-      renderList();
-      el.search.focus();
-    });
-  } else if (state.category !== 'all') {
-    const label = CATEGORY_LABELS[state.category] || state.category;
-    el.emptyTitle.textContent = `No ${label} mail`;
-    el.emptySub.textContent = 'Nothing has been filed here yet.';
-    clear('Show all mail', () => ctx.selectCategory('all'));
-  } else if (store.size > 0 && mutedHiddenCount() > 0) {
-    /*
-     * The list is empty ONLY because of a mute rule.
-     *
-     * Saying "you're all caught up" here would be a lie, and a mute that can
-     * make mail vanish with no trace is exactly the kind of feature that
-     * loses people's trust. Name the rule and offer the way out.
-     */
-    const n = mutedHiddenCount();
-    el.emptyTitle.textContent = 'Everything here is muted';
-    el.emptySub.textContent =
-      `${n} message${n === 1 ? '' : 's'} hidden by your category rules.`;
-    clear('Show muted mail', () => {
-      rules = { ...rules, muted: [] };
-      saveRules(rules);
-      renderList();
-      renderSidebar();
-    });
-  } else if (achieved) {
-    /*
-     * THE USER JUST FINISHED. Say so, once, and quietly.
-     *
-     * This branch sits above the two below because it is about how the view
-     * BECAME empty, not about what the view is. Triage is a chore whose only
-     * satisfaction is finishing, and the product used to decline to notice —
-     * an inbox you cleared read exactly like a category that was never used.
-     *
-     * Deliberately dry: no confetti, no illustration, no exclamation mark.
-     * This product's voice is flat and that is an asset. One sentence, and
-     * no action button, because there is nothing left to do here.
-     */
-    el.emptyTitle.textContent = 'That was the last one';
-    el.emptySub.textContent = state.mailbox === 'inbox'
-      ? 'Your inbox is clear.'
-      : `Nothing left in ${getMailbox(state.mailbox).label}.`;
-    el.emptyAction.hidden = true;
-  } else if (store.size === 0) {
-    // Each mailbox says something true about itself. "Inbox empty" while
-    // looking at Trash is the kind of small wrongness that reads as a bug.
-    const mb = getMailbox(state.mailbox);
-    el.emptyTitle.textContent = state.mailbox === 'inbox' ? 'Inbox empty' : `${mb.label} is empty`;
-    el.emptySub.textContent = mb.empty || 'Nothing to show.';
-    clear('Refresh', () => refresh());
-  } else {
-    el.emptyTitle.textContent = "You're all caught up";
-    el.emptySub.textContent = 'Nothing left in this view.';
-    el.emptyAction.hidden = true;
-  }
-}
-
-/**
- * Skeleton rows during a COLD start only.
- *
- * With a warm cache there is real content to paint, and showing a skeleton
- * over it would be a step backwards — the user would watch real mail be
- * replaced by grey bars.
- */
-function setSkeleton(on) {
-  if (!el.skeleton) return;
-  if (on && !el.skeleton.childElementCount) {
-    const frag = document.createDocumentFragment();
-    for (let i = 0; i < 7; i++) {
-      const row = document.createElement('div');
-      row.className = 'sk-row';
-      row.innerHTML =
-        '<span></span><span class="sk-mid">' +
-        '<span class="sk-bar" style="width:38%"></span>' +
-        '<span class="sk-bar" style="width:76%"></span>' +
-        '</span><span class="sk-bar" style="width:34px"></span>';
-      frag.appendChild(row);
-    }
-    el.skeleton.replaceChildren(frag);
-  }
-  el.skeleton.hidden = !on;
-  el.list.hidden = on;
-}
-
-/**
- * SHARED-ELEMENT TRAVEL (audit 36, concept #4) — the archived row condenses
- * into the Undo toast.
- *
- * One body-level fixed ghost, ~200ms, transform/opacity only, overlapping the
- * existing row-out so it adds no state-transition latency: it occupies the
- * dead gap between "row gone" and "toast appears" that the audit measured at
- * 34ms. The destination is the toast's LIVE rect, measured at flight time by
- * laying it out invisibly -- never a hardcoded coordinate, so a future toast
- * move carries the travel with it.
- *
- * Deliberate limits, each from the audit:
- *   - single archive only; bulkAct never calls optimistic(), so bulk gets no
- *     ghost by construction;
- *   - under prefers-reduced-motion the node is NOT CREATED at all, not run at
- *     1ms -- creating motion to hide it is the wrong instinct;
- *   - exactly one ghost: a second archive cancels and replaces the first, the
- *     same ownership rule closeWithMotion uses;
- *   - pointer-events none and aria-hidden; the toast already announces;
- *   - removed on finish AND by a fallback timer, so no path leaks a node.
- *
- * The arc is restrained: one 24px mid-offset on a 200ms ease-in. A 400x68
- * rectangle flying across the screen is a cartoon; a condensed chip reads as
- * the message being filed.
- */
-let travelGhostEl = null;
-function travelGhost(fromRect, text) {
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-
-  // Live destination: lay the toast out invisibly, read it, put it back.
-  const wasHidden = el.toast.hidden;
-  const savedVis = el.toast.style.visibility;
-  if (wasHidden) { el.toast.hidden = false; el.toast.style.visibility = 'hidden'; }
-  const to = el.toast.getBoundingClientRect();
-  if (wasHidden) { el.toast.hidden = true; }
-  el.toast.style.visibility = savedVis;
-
-  if (travelGhostEl) { // single owner: cancel-and-replace
-    travelGhostEl.getAnimations?.().forEach((a) => a.cancel());
-    travelGhostEl.remove();
-    travelGhostEl = null;
-  }
-
-  const g = document.createElement('div');
-  g.className = 'travel-ghost';
-  g.setAttribute('aria-hidden', 'true');
-  g.textContent = text;
-  g.style.left = `${fromRect.left + 8}px`;
-  g.style.top = `${fromRect.top + fromRect.height / 2 - 14}px`;
-  document.body.appendChild(g);
-  travelGhostEl = g;
-
-  const s = g.getBoundingClientRect();
-  const dx = to.left + to.width / 2 - (s.left + s.width / 2);
-  const dy = to.top + to.height / 2 - (s.top + s.height / 2);
-
-  const finish = () => {
-    if (travelGhostEl === g) travelGhostEl = null;
-    g.remove(); // idempotent; the fallback timer may race onfinish
-  };
-  const fallback = setTimeout(finish, 400);
-
-  if (typeof g.animate === 'function') {
-    const anim = g.animate([
-      { transform: 'translate3d(0,0,0) scale(1)', opacity: 1 },
-      { transform: `translate3d(${dx * 0.5}px,${dy * 0.5 - 24}px,0) scale(0.6)`, opacity: 0.9, offset: 0.5 },
-      { transform: `translate3d(${dx}px,${dy}px,0) scale(0.32)`, opacity: 0 },
-    ], { duration: 200, easing: 'cubic-bezier(0.4, 0, 1, 1)' });
-    anim.onfinish = () => { clearTimeout(fallback); finish(); };
-    anim.oncancel = () => { if (travelGhostEl === g) finish(); };
-  } else {
-    // No Web Animations (jsdom): the contract under test is create/cleanup,
-    // not the flight.
-    setTimeout(finish, 220);
-  }
-}
-
-/**
- * Let a removed row leave, instead of deleting it mid-frame.
- *
- * CORRECTNESS FIRST: the node is removed on `animationend`, but that event is
- * not guaranteed — reduced motion zeroes the duration, a background tab may
- * not run animations at all, and the row may be detached by a re-render before
- * it finishes. A timeout slightly longer than the animation is therefore the
- * actual removal mechanism, and `animationend` is only an optimisation that
- * removes it sooner.
- *
- * Both paths funnel through one idempotent `done()`, so a row can never be
- * removed twice and can never be left behind.
- */
-function dismissRow(node) {
-  let finished = false;
-  const done = () => {
-    if (finished) return;
-    finished = true;
-    clearTimeout(timer);
-    node.remove();
-  };
-  // 220ms: --dur-fast is 140ms, and the margin covers a frame or two of
-  // scheduling jitter without leaving a ghost row visible.
-  const timer = setTimeout(done, 220);
-  node.addEventListener('animationend', done, { once: true });
-  node.classList.add('leaving');
-}
-
-function sameOrder(a, b) {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
-  return true;
-}
-
-function updateCounts(total) {
-  el.listTitle.textContent =
-    state.category === 'all' ? 'All mail' : CATEGORY_LABELS[state.category] || state.category;
-  // Every message in the list is rendered, so the count is the whole truth.
-  // It used to read "400 of 600", which implied the other 200 were merely
-  // below the fold rather than unreachable.
-  el.listCount.textContent = total === 0 ? '' : String(total);
-}
-
-/** Build a row's skeleton once. Text is filled by fillRow. */
-function buildRow(id) {
-  // A div, not an li: the listbox owns its options directly and nothing may
-  // sit between them. The stable DOM id is what aria-activedescendant points
-  // at, which is how a screen reader learns which row is current.
-  const li = document.createElement('div');
-  li.className = 'row';
-  li.dataset.id = id;
-  li.id = rowDomId(id);
-  li.setAttribute('role', 'option');
-  li.innerHTML =
-    '<span class="r-pick">' +
-    '<span class="r-bar"></span>' +
-    '<input class="r-check" type="checkbox" tabindex="-1" aria-label="Select message" />' +
-    '</span>' +
-    '<span class="r-mid">' +
-    '<span class="r-line1"><span class="r-from"></span>' +
-    // Conversation size. Empty and hidden on a single message, so most rows
-    // are shaped exactly as they always were.
-    '<span class="r-count" aria-hidden="true"></span></span>' +
-    '<div class="r-subj"></div>' +
-    '<div class="r-snip"></div>' +
-    '</span>' +
-    '<span class="r-right">' +
-    '<span class="r-course" hidden></span>' +
-    '<span class="r-date"></span>' +
-    '<button class="r-star" type="button" tabindex="-1" aria-label="Star"></button>' +
-    '<span class="tag"></span>' +
-    '</span>';
-  // The star is a real icon, not the `★` glyph. A glyph renders in whatever
-  // font the platform picks, so it never optically matches the stroked SVGs
-  // beside it and is never quite centred in its button.
-  setIcon(li.querySelector('.r-star'), 'star', { size: 15 });
-
-  fillRow(li, store.get(id));
-  return li;
-}
-
-/**
- * Write a message into an existing row.
- *
- * Every assignment is guarded by a comparison. Writing the same string to
- * textContent still dirties the node and costs a style recalc; skipping the
- * write when nothing changed is most of why a delta sync is free here.
- */
-function fillRow(li, m) {
-  if (!m) return;
-  const q = (s) => li.querySelector(s);
-  // Forty identical "Select message" names made the accessibility tree a
-  // list of clones; the subject gives each tick its own name (46 #46).
-  q('.r-check')?.setAttribute('aria-label', `Select ${m.subject || m.from}`);
-  const bar = q('.r-bar');
-  const color = CAT_COLOR[m.category] || CAT_COLOR.other;
-  if (bar.style.getPropertyValue('--c') !== color) bar.style.setProperty('--c', color);
-
-  /*
-   * Truncated text needs a title, or a clipped subject is simply unreadable.
-   *
-   * Institutional subject lines are long -- "Notification regarding revised
-   * schedule for the comprehensive examination…" clips well before the useful
-   * part. The full sender goes on too, because the row shows only the display
-   * name and the address is often what the user is checking.
-   *
-   * Set through the same guarded helper as the text, so an unchanged row still
-   * costs zero DOM writes.
-   */
-  /*
-   * A COLLAPSED CONVERSATION MUST SAY IT IS ONE.
-   *
-   * Without a count and the participants, three messages look exactly like
-   * one and collapsing becomes lossy rather than tidy. `thread()` returns null
-   * for anything with a single message, so the common case takes the original
-   * path unchanged.
-   */
-  /*
-   * A SEARCH HIT IS A MESSAGE, NOT A CONVERSATION.
-   *
-   * visibleIds() deliberately does not collapse while a query is active -- you
-   * searched for a message and hiding it behind a newer sibling is the wrong
-   * answer. The ROW has to agree: dressing a search hit in its conversation's
-   * subject, participants and count showed "Revised schedule" for a row found
-   * by matching the corrigendum, so the result did not contain what was
-   * searched for.
-   */
-  const conv = settings.get('threaded') && !state.query
-    ? store.thread(Store.threadOf(m))
-    : null;
-  const isConv = !!conv && conv.count > 1;
-
-  const fromEl = q('.r-from');
-  setHighlighted(fromEl, isConv ? conv.participants.join(', ') : displayName(m.from), state.query);
-  setAttr(fromEl, 'title', isConv
-    ? `${conv.count} messages · ${conv.participants.join(', ')}`
-    : m.from);
-
-  const countEl = q('.r-count');
-  if (countEl) {
-    setText(countEl, isConv ? String(conv.count) : '');
-    countEl.hidden = !isConv;
-  }
-
-  const subjEl = q('.r-subj');
-  // The ORIGINAL subject on a conversation: it is named for what it is about,
-  // not for the last reply, which is almost always "Re: ...".
-  const subject = isConv ? conv.subject : m.subject;
-  setHighlighted(subjEl, subject, state.query);
-  setAttr(subjEl, 'title', subject);
-
-  /*
-   * ATTENTION BLOOM gate (audit 35): only a subject that is ACTUALLY clipped
-   * may bloom when attended, so the class records the measured condition
-   * rather than a blanket rule. jsdom reports zero for both widths, so tests
-   * never bloom by accident — the bloom is a browser behaviour, verified in
-   * one. Re-measured on density change, where the clip condition changes.
-   */
-  const clipped = subjEl.scrollWidth > subjEl.clientWidth;
-  if (li.classList.contains('subj-clip') !== clipped) {
-    li.classList.toggle('subj-clip', clipped);
-  }
-
-  /*
-   * THE SNIPPET IS CLEANED, NOT PRINTED RAW.  (Feature 29.)
-   *
-   * Gmail's snippet is the first ~200 characters of the body. On institutional
-   * mail those characters are always the same -- "Dear Students, Greetings
-   * from AUGSD. This is to inform all students that..." -- so every row said
-   * the same thing and the one line of the list that exists to let you decide
-   * WITHOUT OPENING told you nothing.
-   *
-   * `rowSnippet` strips salutations, throat-clearing, disclaimers, quoted
-   * replies and signature blocks, and returns '' when what is left merely
-   * restates the subject. An empty string is a deliberate outcome: a blank
-   * second line is better than a redundant one.
-   *
-   * This is also why the elimination audit CUT the hover preview card -- with
-   * the row saying something useful, a popover repeating it 500ms later is a
-   * hover-intent state machine and a positioning engine bought for nothing.
-   */
-  setText(q('.r-snip'), rowSnippet(m));
-
-  /*
-   * THE COURSE CHIP.
-   *
-   * Shown only for a course the user is actually enrolled in. A chip for one
-   * of the other 682 courses is a lie on a row being scanned, and the standing
-   * rule for academic detection is that a wrong badge is worse than none --
-   * it teaches people to stop reading badges.
-   */
-  const chipEl = q('.r-course');
-  if (chipEl) {
-    const chip = myCourses.courseChip(m.courses || [], enrolment);
-    setText(chipEl, chip ? chip.label + (chip.more ? ` +${chip.more}` : '') : '');
-    setAttr(chipEl, 'title', chip ? chip.title : '');
-    chipEl.hidden = !chip;
-  }
-  setText(q('.r-date'), shortDate(m.date));
-
-  const tag = q('.tag');
-  setText(tag, CATEGORY_LABELS[m.category] || m.category);
-  tag.classList.toggle('low', (m.confidence ?? 1) < LOW_CONFIDENCE);
-  if (m.reason && tag.title !== m.reason) tag.title = m.reason;
-
-  /*
-   * A conversation you have not finished reading is unread. Deriving this from
-   * the newest message alone would hide an unread reply underneath a read one,
-   * which is the exact failure the rail-count bug had.
-   */
-  li.classList.toggle('unread', isConv ? conv.unread > 0 : !!m.unread);
-  li.classList.toggle('muted', MUTED_CATEGORIES.has(m.category));
-  const star = q('.r-star');
-  const starred = !!m.starred;
-  if (star.getAttribute('aria-pressed') !== String(starred)) {
-    star.setAttribute('aria-pressed', String(starred));
-    // Filled when on, stroked when off. This is the one place a fill carries
-    // meaning rather than being decoration.
-    setIcon(star, 'star', { size: 15, filled: starred });
-    star.setAttribute('aria-label', starred ? 'Unstar' : 'Star');
-  }
-  li.setAttribute('aria-selected', String(state.selected === m.id));
-}
-
-/** Guarded attribute write, matching setText: no write if unchanged. */
-
-/*
- * POLISH 13: a search hit should SHOW its hit. `mark` chunks are built as
- * text nodes plus mark elements -- never innerHTML -- so a subject that
- * contains literal query text cannot become markup. Operators (:, ") skip
- * highlighting entirely; matching "is:overdue" against prose is a lie.
- */
-function setHighlighted(node, text, query) {
-  if (!query || /[:"]/.test(query)) { setText(node, text); return; }
-  const q = query.trim().toLowerCase();
-  const hay = text.toLowerCase();
-  let pos = q ? hay.indexOf(q) : -1;
-  if (pos === -1) { setText(node, text); return; }
-  node.textContent = '';
-  let i = 0;
-  while (pos !== -1) {
-    if (pos > i) node.append(text.slice(i, pos));
-    const mk = document.createElement('mark');
-    mk.textContent = text.slice(pos, pos + q.length);
-    node.append(mk);
-    i = pos + q.length;
-    pos = hay.indexOf(q, i);
-  }
-  node.append(text.slice(i));
-}
-
-/*
- * THE RAIL COUNT, WRITTEN TO BE SCANNED RATHER THAN READ.
- *
- * This used to render the single string "3/41". That was honest -- it was the
- * fix for read mail looking absent -- but a slash is a *parsing* task, and the
- * rail repeats it across twenty-two entries. The eye has to stop at each one.
- *
- * So the two numbers are now two elements: unread in the accent colour at
- * medium weight, total immediately after in --fg-faint at --t-xs. The eye
- * separates them by weight and colour, which is pre-attentive, instead of by
- * finding a delimiter, which is not. No punctuation, no extra ink.
- *
- * The digits are aria-hidden and a visually-hidden sentence carries the real
- * meaning, because "3 41" read aloud is worse than the slash ever was.
- */
-function ensureCountParts(node) {
-  let parts = node._parts;
-  if (!parts) {
-    const un = document.createElement('span');
-    un.className = 'c-unread';
-    un.setAttribute('aria-hidden', 'true');
-    const tot = document.createElement('span');
-    tot.className = 'c-total';
-    tot.setAttribute('aria-hidden', 'true');
-    const sr = document.createElement('span');
-    sr.className = 'sr-only';
-    node.replaceChildren(un, tot, sr);
-    parts = node._parts = { un, tot, sr };
-  }
-  return parts;
-}
-
-/**
- * Render a rail count. `unread` may be 0; `total` may be null to mean "not
- * loaded yet", which renders nothing at all rather than asserting a zero we
- * have not checked.
- */
 /**
  * Build a Gmail URL for the CURRENT account index.
  * The old code hardcoded u/0, sending every "Open in Gmail" to the first
@@ -1397,63 +681,9 @@ function gmailUrl(threadId, mailbox = 'inbox') {
   return `https://mail.google.com/mail/u/${ACCOUNT_INDEX}/#${mailbox}/${threadId}`;
 }
 
-function setCount(node, unread, total) {
-  const { un, tot, sr } = ensureCountParts(node);
-  const known = total !== null && total !== undefined;
-  const u = known ? unread || 0 : 0;
-  const t = known ? total : 0;
 
-  setText(un, u ? String(u) : '');
-  // A bare total is the whole story when nothing is unread, so it takes the
-  // primary slot's job -- but it keeps the faint styling, because "nothing
-  // unread" should not shout.
-  setText(tot, known && t ? String(t) : '');
-  const label = known && t
-    ? `${t} message${t === 1 ? '' : 's'}, ${u} unread`
-    : '';
-  setText(sr, label);
-  setAttr(node, 'title', label);
-  node.classList.toggle('unread', u > 0);
-  return label;
-}
 
-/*
- * POLISH 12: double-click is the muscle memory for "open the real thing".
- * One row, the exact message, in Gmail's own tab -- the escape hatch a
- * takeover must keep visible, not hidden.
- */
-function openInGmail(id) {
-  window.open(gmailUrl(id), '_blank');
-}
 
-/*
- * SPATIAL MEMORY (audit 38, concept #6): returning from any detour drops the
- * eye back where it was. The scroll is the information; the pulse is the
- * confirmation, and reduced motion keeps the former and drops the latter.
- */
-const scrollMemory = new Map();
-let newCount = 0;
-let preQueryScroll = 0;
-let pendingScrollRestore = 0;
-let restoreQueued = false;
-let lastUserScroll = 0;
-function reorientTo(id) {
-  const node = nodeById.get(id);
-  if (!node) return;
-  if (typeof node.scrollIntoView === 'function') {
-    node.scrollIntoView({ block: 'nearest' });
-  }
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  node.classList.remove('reorient');
-  void node.offsetWidth;
-  node.classList.add('reorient');
-  setTimeout(() => node.classList.remove('reorient'), 800);
-}
-
-function patchRow(id) {
-  const node = nodeById.get(id);
-  if (node) fillRow(node, store.get(id));
-}
 
 // ---------------------------------------------------------------- sidebar --
 
@@ -1842,7 +1072,7 @@ function optimistic({
    */
   let travel = null;
   if (verb === 'ARCHIVE') {
-    const node = nodeById.get(id);
+    const node = nodeByIdOf().get(id);
     if (node) {
       travel = {
         rect: node.getBoundingClientRect(),
@@ -2087,8 +1317,9 @@ async function snoozeMessage(id, wakeAt, label) {
 /** Keep the reading pane useful after a destructive action. */
 function selectNeighbourThen(id) {
   if (state.selected !== id) return;
-  const i = renderedIds.indexOf(id);
-  const nextId = renderedIds[i + 1] || renderedIds[i - 1];
+  const ids = renderedIdsOf();
+  const i = ids.indexOf(id);
+  const nextId = ids[i + 1] || ids[i - 1];
   if (nextId) {
     // Defer: let the removal settle first so the row exists to be selected.
     queueMicrotask(() => openMessage(nextId));
@@ -2490,15 +1721,11 @@ async function refresh({ silent = false } = {}) {
 
     state.lastSync = Date.now();
     const n = res.added.length;
-    if (n && el.scroller.scrollTop > 200) {
-      // R3: the anchor held, but the arrival must not be invisible. The
-      // pill is the toast's spatial cousin: it says how many and takes you
-      // to them.
-      newCount += n;
-      el.newpill.hidden = false;
-      el.newpill.textContent = `${newCount} new — jump up`;
-    } else if (n) toast(`${n} new message${n > 1 ? 's' : ''}`);
-    else if (!silent) toast('Up to date');
+    // R3: the pill takes the announcement when the user is scrolled deep;
+    // the toast covers what the pill did not (list extraction, round 52).
+    const pillShown = announceNew(n);
+    if (n && !pillShown) toast(`${n} new message${n > 1 ? 's' : ''}`);
+    else if (!n && !silent) toast('Up to date');
     return 'delta';
   } catch (err) {
     reportError(err);
@@ -2722,92 +1949,6 @@ function hideGate() {
  * vertical pan never triggers -- CSS hands the pan back to the browser via
  * touch-action, and these own only the deliberate gestures.
  */
-let touchStart = null;
-let longPressTimer = 0;
-el.list.addEventListener('touchstart', (e) => {
-  const t = e.touches[0];
-  const row = e.target.closest('.row');
-  touchStart = { x: t.clientX, y: t.clientY, row, moved: false };
-  clearTimeout(longPressTimer);
-  if (row) {
-    longPressTimer = setTimeout(() => {
-      if (touchStart && !touchStart.moved) {
-        const id = row.dataset.id;
-        selection.toggle(id);
-        renderSelection();
-        renderList();
-        touchStart = null;
-      }
-    }, 500);
-  }
-}, { passive: true });
-el.list.addEventListener('touchmove', (e) => {
-  if (!touchStart) return;
-  const t = e.touches[0];
-  if (Math.abs(t.clientX - touchStart.x) > 8 || Math.abs(t.clientY - touchStart.y) > 8) {
-    touchStart.moved = true;
-    clearTimeout(longPressTimer);
-  }
-}, { passive: true });
-el.list.addEventListener('touchend', (e) => {
-  clearTimeout(longPressTimer);
-  if (!touchStart || !touchStart.row) { touchStart = null; return; }
-  const t = e.changedTouches[0];
-  const dx = t.clientX - touchStart.x;
-  const dy = t.clientY - touchStart.y;
-  const id = touchStart.row.dataset.id;
-  touchStart = null;
-  if (Math.abs(dx) > 60 && Math.abs(dx) > 2 * Math.abs(dy) && id) {
-    if (dx < 0) {
-      optimistic({ id, verb: 'ARCHIVE', undoVerb: 'UNARCHIVE', past: 'Archived', failed: 'Could not archive', done: 'Archived' });
-    } else {
-      optimistic({ id, verb: 'UNARCHIVE', undoVerb: 'ARCHIVE', past: 'Unarchived', failed: 'Could not unarchive', done: 'Moved back to the inbox' });
-    }
-  }
-}, { passive: true });
-
-el.list.addEventListener('click', (e) => {
-  el.list.addEventListener('dblclick', (e) => {
-    const row = e.target.closest('.row');
-    if (row?.dataset.id) openInGmail(row.dataset.id);
-  });
-  const row = e.target.closest('.row');
-  if (!row) return;
-  const id = row.dataset.id;
-
-  if (e.target.closest('.r-star')) {
-    e.stopPropagation();
-    act('star', id);
-    return;
-  }
-
-  // The checkbox, or its padding. Selecting must never also open the message:
-  // ticking twelve boxes would otherwise mark twelve messages read.
-  if (e.target.closest('.r-pick')) {
-    e.stopPropagation();
-    e.preventDefault();
-    selection.toggle(id);
-    renderSelection();
-    return;
-  }
-
-  // Shift extends a range; Ctrl/Cmd toggles one. Both are what a file manager
-  // has trained people to expect, so neither needs explaining.
-  if (e.shiftKey && selection.anchor) {
-    e.preventDefault();
-    selection.range(id, renderedIds);
-    renderSelection();
-    return;
-  }
-  if (e.ctrlKey || e.metaKey) {
-    e.preventDefault();
-    selection.toggle(id);
-    renderSelection();
-    return;
-  }
-
-  openMessage(id);
-});
 
 /*
  * Arrow-key navigation inside the sidebar.
@@ -2872,7 +2013,7 @@ el.cats.addEventListener('contextmenu', (e) => {
  */
 function selectCategory(key) {
   // R4: each mailbox keeps its place; returning is returning, not resetting.
-  scrollMemory.set(state.category, el.scroller.scrollTop);
+  saveScroll(state.category);
   state.category = key;
   if (state.query) {
     state.query = '';
@@ -2882,9 +2023,8 @@ function selectCategory(key) {
   renderList();
   // After the render: restoring before it would be overwritten by the
   // rebuild's own scroll preservation.
-  pendingScrollRestore = 0;
-  lastUserScroll = 0;
-  el.scroller.scrollTop = scrollMemory.get(key) || 0;
+  resetScrollState();
+  el.scroller.scrollTop = recallScroll(key);
   renderSidebar();
   // Clearing the query also clears whichever saved view was active. Leaving it
   // highlighted would claim a filter is applied when it is not.
@@ -2920,8 +2060,7 @@ async function selectMailbox(id) {
   selection.clear();
 
   closeReader();
-  nodeById.clear();
-  renderedIds = [];
+  clearRows();
   el.list.replaceChildren();
 
   // The category rail only makes sense where messages are classified.
@@ -3044,14 +2183,12 @@ el.search.addEventListener('input', () => {
   if (searchFrame) return;
   searchFrame = requestAnimationFrame(() => {
     searchFrame = 0;
-    if (!state.query && el.search.value) preQueryScroll = el.scroller.scrollTop;
+    if (!state.query && el.search.value) capturePreSearchScroll();
     const hadQuery = !!state.query;
     state.query = el.search.value;
     if (hadQuery && !state.query) clearSearchOverlay();
     // R5: clearing a search returns you to where the search began.
-    pendingScrollRestore = 0;
-    lastUserScroll = 0;
-    el.scroller.scrollTop = state.query ? 0 : preQueryScroll;
+    applySearchScroll(state.query);
     renderList();
     renderViews();
     updateSaveAffordance();
@@ -3084,13 +2221,6 @@ el.search.addEventListener('input', () => {
 
 $('btn-refresh').addEventListener('click', () => refresh());
   $('freshness').addEventListener('click', () => refresh());
-  $('newpill').addEventListener('click', () => {
-    pendingScrollRestore = 0;
-    lastUserScroll = 0;
-    el.scroller.scrollTop = 0;
-    el.newpill.hidden = true;
-    newCount = 0;
-  });
 el.helpClose?.addEventListener('click', closeHelp);
 // Clicking the backdrop closes, clicking the panel does not.
 el.help?.addEventListener('mousedown', (e) => {
@@ -3634,7 +2764,7 @@ document.addEventListener('keydown', (e) => {
     // Select-all inside the list only. Outside it, the browser's own
     // select-all is what the user meant.
     e.preventDefault();
-    selection.selectAll(renderedIds);
+    selection.selectAll(renderedIdsOf());
     renderSelection();
     return;
   }
@@ -3750,7 +2880,7 @@ document.addEventListener('keydown', (e) => {
       // Gmail's shortcut for "tick this row", and the keyboard path into bulk
       // mode. Operates on the row under the cursor keys, not the mouse.
       e.preventDefault();
-      const target = state.selected || renderedIds[0];
+      const target = state.selected || renderedIdsOf()[0];
       if (target) {
         selection.toggle(target);
         renderSelection();
@@ -3761,9 +2891,10 @@ document.addEventListener('keydown', (e) => {
 });
 
 function move(delta) {
-  if (renderedIds.length === 0) return;
-  const i = state.selected ? renderedIds.indexOf(state.selected) : -1;
-  const next = renderedIds[Math.max(0, Math.min(renderedIds.length - 1, i + delta))];
+  const ids = renderedIdsOf();
+  if (ids.length === 0) return;
+  const i = state.selected ? ids.indexOf(state.selected) : -1;
+  const next = ids[Math.max(0, Math.min(ids.length - 1, i + delta))];
   if (!next || next === state.selected) return;
   openMessage(next);
 
@@ -3773,7 +2904,7 @@ function move(delta) {
   // against a browser gap -- it is defending against the fact that an
   // exception thrown HERE aborts the whole keydown handler. A missing scroll
   // is cosmetic; a dead j/k key is not, and coupling the two is the bug.
-  const node = nodeById.get(next);
+  const node = nodeByIdOf().get(next);
   if (typeof node?.scrollIntoView === 'function') {
     node.scrollIntoView({ block: 'nearest' });
   }
@@ -3848,9 +2979,10 @@ function syncContextActions(m) {
  * threaded client can do, because the row appears to survive the action.
  */
 function selectedMessageIds() {
+  const ids = renderedIdsOf();
   return settings.get('threaded')
-    ? selection.liveThreaded(store, renderedIds)
-    : selection.live(store, renderedIds);
+    ? selection.liveThreaded(store, ids)
+    : selection.live(store, ids);
 }
 
 function renderSelection() {
@@ -3861,7 +2993,7 @@ function renderSelection() {
   el.listhead.hidden = n > 0;
   document.body.classList.toggle('selecting', n > 0);
 
-  for (const [id, node] of nodeById) {
+  for (const [id, node] of nodeByIdOf()) {
     /*
      * A row reads as ticked when ANY message in its conversation is. A reply
      * arriving replaces the rendered root, and without this the tick the user
@@ -3879,8 +3011,9 @@ function renderSelection() {
   // Tri-state "select all": checked when everything visible is picked,
   // indeterminate when only some is. A plain checkbox that reads "checked"
   // while half the list is selected is a lie.
-  const visible = renderedIds.length;
-  const picked = renderedIds.filter((id) => selection.has(id)).length;
+  const visibleIdsNow = renderedIdsOf();
+  const visible = visibleIdsNow.length;
+  const picked = visibleIdsNow.filter((id) => selection.has(id)).length;
   el.bulkAll.checked = picked === visible && visible > 0;
   el.bulkAll.indeterminate = picked > 0 && picked < visible;
 }
@@ -4525,6 +3658,31 @@ async function boot() {
     toast: el.toast, toastText: el.toastText, toastAction: el.toastAction,
     toastDrain: el.toastDrain, toastIcon: el.toastIcon, toastKbd: el.toastKbd,
   });
+  wireList({
+    get store() { return store; },
+    state, el,
+    getRules: () => rules,
+    setRules: (r) => { rules = r; },
+    saveRules: () => saveRules(rules),
+    overrides: () => deadlineOverrides,
+    getEnrolment: () => enrolment,
+    selectCategory,
+    refresh: (o) => refresh(o),
+    renderSidebar,
+    renderSelection,
+    selection,
+    act,
+    optimistic,
+    openMessage,
+    gmailUrl,
+  });
+  wireRails({
+    get store() { return store; },
+    send, state,
+    refresh: (o) => refresh(o),
+    overrides: () => deadlineOverrides,
+  });
+
   buildSidebar();
   renderSidebar();
 
@@ -4551,46 +3709,9 @@ async function boot() {
     act({ 'ctx-archive': 'archive', 'ctx-star': 'star', 'ctx-trash': 'trash' }[b.id], state.selected);
   });
 
-  /*
-   * Scroll-edge fade.
-   *
-   * `passive: true` matters: a non-passive scroll listener forces the browser
-   * to wait and see whether the handler calls preventDefault before it can
-   * scroll, which is a classic source of scroll jank. We only read a number.
-   *
-   * The class is toggled only when it actually changes, so a fast scroll does
-   * not write to the DOM on every one of its hundred events.
-   */
-  let scrolledOn = false;
-  function onScrollerScroll() {
-    const on = el.scroller.scrollTop > 4;
-    // Spatial memory: the user's last real scroll position, captured at
-    // the event, because the rebuild task that follows a delta can clamp
-    // the live position before renderList gets to read it (measured).
-    lastUserScroll = el.scroller.scrollTop;
-    if (on !== scrolledOn) {
-      scrolledOn = on;
-      el.listpane.classList.toggle('scrolled', on);
-      document.body.classList.toggle('list-scrolled', on);
-      // The rebuild's clamp emits a scrollTop-0 event milliseconds before
-      // the deferred restore lands; never treat that as "user went home".
-      if (on === false && el.scroller.scrollTop < 80 && !el.newpill.hidden
-          && pendingScrollRestore === 0) {
-        el.newpill.hidden = true;
-        newCount = 0;
-      }
-    }
-  }
-  el.scroller.addEventListener('scroll', onScrollerScroll, { passive: true });
 
   // Extracted tenants (architecture audit phase 9): wiring only; state
   // ownership stays with the shell.
-  wireRails({
-    get store() { return store; },
-    send, state,
-    refresh: (o) => refresh(o),
-    overrides: () => deadlineOverrides,
-  });
   wireSuggestUI({
     get store() { return store; },
     el,
@@ -4624,7 +3745,7 @@ async function boot() {
   wireBulkbar({
     move, bulkAct, renderSelection,
     clearSelection: () => { selection.clear(); renderSelection(); },
-    selectAll: () => selection.selectAll(renderedIds),
+    selectAll: () => selection.selectAll(renderedIdsOf()),
     getBulkAll: () => el.bulkAll,
   });
 

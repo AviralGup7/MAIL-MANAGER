@@ -17,9 +17,12 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const css = readFileSync(join(ROOT, 'src/app/app.css'), 'utf8');
+// The list cluster moved out of app.js in the round-52 workspace extraction:
+// the ghost lives in list.js; optimistic()/bulkAct() stayed in the shell.
 const js = readFileSync(join(ROOT, 'src/app/app.js'), 'utf8');
+const list = readFileSync(join(ROOT, 'src/app/list.js'), 'utf8');
 
-const fn = js.slice(js.indexOf('function travelGhost('), js.indexOf('function travelGhost(') + 4000);
+const fn = list.slice(list.indexOf('function travelGhost('), list.indexOf('function travelGhost(') + 4000);
 
 test('the ghost is fixed, click-transparent and hidden from AT', () => {
   const rule = css.slice(css.indexOf('.travel-ghost {'));

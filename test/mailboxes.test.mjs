@@ -237,9 +237,11 @@ test('the outbox pump dispatches through the worker, never per-item from the app
   // prize was a duplicated email. The contract: the app ASKS the worker to
   // pump; it does not dispatch items itself. A revert to flushOutbox+SEND
   // reintroduces the race, so the wiring is pinned, not implied.
-  const at = app.indexOf('function pumpOutbox');
+  // The pump moved to rails.js in the round-52 workspace extraction.
+  const rails = readFileSync(new URL('../src/app/rails.js', import.meta.url), 'utf8');
+  const at = rails.indexOf('function pumpOutbox');
   assert.notEqual(at, -1);
-  const body = app.slice(at, at + 1200);
+  const body = rails.slice(at, at + 1200);
   assert.ok(body.includes("send('OUTBOX_PUMP')"),
     'the pump goes through the single worker owner');
   assert.ok(!body.includes('flushOutbox'),

@@ -439,9 +439,13 @@ test('every element the app hides with [hidden] actually disappears', async () =
   const dom = new JSDOM(html);
   const { window: win } = dom;
 
-  // Every element the app toggles via `.hidden` in app.js.
+  // Every element the app toggles via `.hidden`, across the app modules
+  // (the list and reader clusters left app.js in the workspace extractions).
+  const appSrc = readdirSync(join(ROOT, 'src/app'))
+    .filter((f) => f.endsWith('.js'))
+    .map((f) => read(`src/app/${f}`)).join('\n');
   const toggled = new Set(
-    [...read('src/app/app.js').matchAll(/el\.(\w+)\.hidden\s*=/g)].map((m) => m[1])
+    [...appSrc.matchAll(/el\.(\w+)\.hidden\s*=/g)].map((m) => m[1])
   );
   assert.ok(toggled.size >= 5, `expected several hidden-toggled elements, found ${toggled.size}`);
 
@@ -847,7 +851,8 @@ test('the empty state explains WHICH kind of empty it is', () => {
   assert.ok(html.includes('id="empty-sub"'), 'empty state needs an explanation');
   assert.ok(html.includes('id="empty-action"'), 'empty state needs a way out');
 
-  const js = read('src/app/app.js');
+  // The empty-state copy moved with the list cluster (round 52).
+  const js = read('src/app/app.js') + read('src/app/list.js');
   assert.match(js, /No matches/, 'must handle the over-filtered case');
   assert.match(js, /Clear search/, 'must offer an escape from a bad search');
 });
@@ -914,7 +919,8 @@ test('scroll listeners are passive', () => {
   // the handler calls preventDefault before it can scroll. That is a classic
   // source of scroll jank, and this list is the one surface where jank would
   // be most visible.
-  const js = read('src/app/app.js');
+  // The list's scroller listener moved with the list cluster (round 52).
+  const js = read('src/app/app.js') + read('src/app/list.js');
   const scrollHandlers = [...js.matchAll(/addEventListener\(\s*\n?\s*'scroll'/g)];
   assert.ok(scrollHandlers.length > 0, 'expected at least one scroll listener');
   for (const m of scrollHandlers) {

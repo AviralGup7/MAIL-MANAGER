@@ -164,9 +164,10 @@ test('OUTBOX_PUMP is batched and answers sentIds on both paths (bug-hunt #32/#27
   assert.match(f, /outbox\.flushOutbox/, 'fallback runs the shared runner');
   const o = read('src/app/outbox.js');
   assert.match(o, /sentIds/, 'the shared runner collects what left');
-  // The app records those ids, not an empty array.
-  const app = read('src/app/app.js');
-  assert.match(app, /ids: result\.sentIds \|\| \[\]/,
+  // The pump records those ids, not an empty array. The pump moved to
+  // rails.js in the round-52 workspace extraction.
+  const rails = read('src/app/rails.js');
+  assert.match(rails, /ids: result\.sentIds \|\| \[\]/,
     'the activity entry names the messages that were sent');
 });
 
@@ -230,8 +231,8 @@ test('OUTBOX_PUMP answers the ONE canonical PumpResult shape (bug-hunt 43 #50)',
   assert.match(w, /`g:\$\{res\.id\}`/, 'worker ids carry the g: namespace');
   assert.match(o, /`g:\$\{res\.id\}` : `q:\$\{item\.id\}`/, 'runner ids are namespaced');
   assert.match(h, /g:sent-/, 'the harness emulation speaks the same namespace');
-  // The app consumes the contract, not a guess.
-  const a = read('src/app/app.js');
+  // The pump consumes the contract, not a guess (rails.js since round 52).
+  const a = read('src/app/rails.js');
   assert.match(a, /result\.sentIds/, 'the consumer reads sentIds');
   assert.match(a, /result\?\.more/, 'and the leftover flag');
 });

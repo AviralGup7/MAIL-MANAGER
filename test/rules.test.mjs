@@ -171,9 +171,11 @@ test('search overrides mute', () => {
 
 test('an all-muted list explains itself and offers a way out', () => {
   // "You're all caught up" over hidden mail would be a lie.
-  assert.ok(app.includes('Everything here is muted'));
-  assert.ok(app.includes('Show muted mail'));
-  assert.ok(app.includes('function mutedHiddenCount'));
+  // The empty-state copy and the counter moved to list.js (round 52).
+  const list = readFileSync(new URL('../src/app/list.js', import.meta.url), 'utf8');
+  assert.ok(list.includes('Everything here is muted'));
+  assert.ok(list.includes('Show muted mail'));
+  assert.ok(list.includes('function mutedHiddenCount'));
 });
 
 test('auto-archive reports what it did and can be undone', () => {

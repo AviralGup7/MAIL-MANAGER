@@ -17,7 +17,9 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 const css = read('src/app/app.css');
-const js = read('src/app/app.js') + read('src/app/compose.js');
+const js = read('src/app/app.js') + read('src/app/compose.js')
+  // The scroller-fade toggle moved with the list cluster (round 52).
+  + read('src/app/list.js');
 
 let JSDOM = null;
 try { ({ JSDOM } = await import('jsdom')); } catch { /* skip below */ }

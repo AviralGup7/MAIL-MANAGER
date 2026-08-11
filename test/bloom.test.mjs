@@ -16,6 +16,8 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const css = readFileSync(join(ROOT, 'src/app/app.css'), 'utf8');
 const js = readFileSync(join(ROOT, 'src/app/app.js'), 'utf8');
+// The list cluster moved out of app.js in the round-52 workspace extraction.
+const list = readFileSync(join(ROOT, 'src/app/list.js'), 'utf8');
 
 const BLOOM_SUBJ = ":root[data-density='comfortable'] .row[aria-selected='true'].subj-clip .r-subj {";
 const BLOOM_SNIP = ":root[data-density='comfortable'] .row[aria-selected='true'].subj-clip .r-snip {";
@@ -87,8 +89,8 @@ test('the JS gate blooms only subjects that are actually clipped', () => {
   // A fitting subject must never cost its row the snippet. The class is the
   // measurement (scrollWidth > clientWidth), written in fillRow and
   // refreshed on density change.
-  assert.match(js, /subjEl\.scrollWidth > subjEl\.clientWidth/);
-  assert.match(js, /classList\.toggle\('subj-clip', clipped\)/);
-  assert.ok(js.includes("node.classList.toggle('subj-clip', s.scrollWidth > s.clientWidth)"),
+  assert.match(list, /subjEl\.scrollWidth > subjEl\.clientWidth/);
+  assert.match(list, /classList\.toggle\('subj-clip', clipped\)/);
+  assert.ok(list.includes("node.classList.toggle('subj-clip', s.scrollWidth > s.clientWidth)"),
     'density change must re-decide the clip condition');
 });

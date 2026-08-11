@@ -11,11 +11,13 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 const js = read('src/app/app.js');
+// The list cluster moved out of app.js in the round-52 workspace extraction.
+const list = read('src/app/list.js');
 const css = read('src/app/app.css');
 const html = read('app.html');
 
 test('search highlighting is built from text nodes, never innerHTML', () => {
-  const fn = js.slice(js.indexOf('function setHighlighted('), js.indexOf('function setHighlighted(') + 1200);
+  const fn = list.slice(list.indexOf('function setHighlighted('), list.indexOf('function setHighlighted(') + 1200);
   assert.match(fn, /document\.createElement\('mark'\)/);
   assert.ok(!fn.includes('innerHTML'), 'query text must never become markup');
   assert.match(fn, /\/\[:"]\//, 'operator queries must not highlight');
