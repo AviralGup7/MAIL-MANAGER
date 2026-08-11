@@ -16,6 +16,8 @@ const js = readFileSync(join(ROOT, 'src/app/app.js'), 'utf8');
 const reader = readFileSync(join(ROOT, 'src/app/reader.js'), 'utf8');
 // The list cluster moved out in round 52 (workspace sequence step 2).
 const list = readFileSync(join(ROOT, 'src/app/list.js'), 'utf8');
+// The bulk cluster moved out in round 52 step 6.
+const bulk = readFileSync(join(ROOT, 'src/app/bulk.js'), 'utf8');
 
 test('R1: closing the reader reorients to the read row', () => {
   const close = reader.slice(reader.indexOf('function closeReader('), reader.indexOf('function closeReader(') + 1400);
@@ -57,5 +59,5 @@ test('R3: arrivals while scrolled surface as a pill, not a silent toast', () => 
 test('R2: undo restores pulse the row back into view', () => {
   assert.match(js, /requestAnimationFrame\(\(\) => reorientTo\(id\)\);/);
   // The bulk path renamed its snapshot list; the pin tracks the live name.
-  assert.match(js, /requestAnimationFrame\(\(\) => reorientTo\(appliedSnapshots\[0\]\?\.id\)\);/);
+  assert.match(bulk, /requestAnimationFrame\(\(\) => reorientTo\(appliedSnapshots\[0\]\?\.id\)\);/);
 });

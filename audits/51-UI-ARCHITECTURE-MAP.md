@@ -192,14 +192,24 @@ question behind the Timetable promotion, and nothing in this round moves it.
 
 | # | Move | Status |
 |---|------|--------|
-| 1 | `reader.js` + `display.js` | ✔ this round (408/408 affected tests) |
-| 2 | list render + its shared state (`renderedIds`/`nodeById`) — unblocked now that the reader has settled | next |
-| 3 | search-suggest cluster (`suggestContext` → `rememberQuery`, ~300 self-contained lines) | queued |
-| 4 | rails: snoozed + outbox + lane headers (rail-tenant pattern like notices-rail.js) | queued |
-| 5 | sidebar render (`buildSidebar`/`renderSidebar`/freshness/counts) | queued |
-| 6 | selection/bulk (after list settles — they share its state) | queued |
+| 1 | `reader.js` + `display.js` | ✔ round 51 (408/408 affected tests) |
+| 2 | list render + its shared state → `list.js` (bulk/keyboard go through `renderedIdsOf()`/`nodeByIdOf()`) | ✔ round 52 |
+| 3 | search-suggest cluster → `suggest-ui.js` | ✔ round 52 |
+| 4 | rails: snoozed + outbox + pump + lane headers → `rails.js` | ✔ round 52 |
+| 5 | sidebar render + rail wiring → `sidebar.js` | ✔ round 52 |
+| 6 | selection/bulk + j/k navigation → `bulk.js` | ✔ round 52 |
 | — | Timetable layer → workspace promotion: DESIGN DECISION FIRST (§5) | parked |
 | — | Settings stays on the options page; no in-app settings panels | doctrine |
+
+**The sequence is complete.** app.js went 6,020 → 3,321 lines and is now
+what the map always said it should be: the shell — worker bridge, sync
+engine (`opEpoch` stays the spine), mailbox switching, keyboard, boot —
+plus the triage verbs that feed every surface. Each extracted module carries
+the RESPONSIBILITY/OWNS/DOES NOT OWN/DEPENDS ON header, talks through a ctx
+seam, and has a `_reset*` test seam where module state outlives a
+cache-busted app.js re-import. Found and fixed in flight: the reader-store
+getter-capture hazard (round 51), the dblclick-inside-click listener leak
+(list wiring, round 52), and six pre-existing red pins (round 51 §4).
 
 ## 7. What this map forbids (the essay's danger list, adopted)
 

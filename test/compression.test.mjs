@@ -19,7 +19,9 @@ const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 const css = read('src/app/app.css');
 const js = read('src/app/app.js') + read('src/app/compose.js')
   // The scroller-fade toggle moved with the list cluster (round 52).
-  + read('src/app/list.js');
+  + read('src/app/list.js')
+  // The selecting-class toggle moved with the bulk cluster (step 6).
+  + read('src/app/bulk.js');
 
 let JSDOM = null;
 try { ({ JSDOM } = await import('jsdom')); } catch { /* skip below */ }
