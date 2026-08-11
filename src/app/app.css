@@ -1573,6 +1573,54 @@ a.ghost {
   color: var(--fg-faint);
 }
 /*
+ * IDLE READER PREVIEW (round 50). The resting reader pane now carries the
+ * due-soon list instead of sitting blank, so the default view is useful.
+ * Left-aligned rows inside the centred empty state; each is a real button.
+ */
+#reader-idle {
+  margin: var(--s-6) auto 0;
+  width: min(100%, 420px);
+  text-align: left;
+  display: grid;
+  gap: var(--s-2);
+}
+#reader-idle .reader-idle-head {
+  font-size: var(--t-sm);
+  font-weight: var(--w-semi);
+  color: var(--fg-dim);
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+}
+#reader-idle .reader-idle-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--s-3);
+  align-items: baseline;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-raised);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+#reader-idle .reader-idle-when {
+  font-size: var(--t-xs);
+  color: var(--fg-faint);
+  white-space: nowrap;
+}
+#reader-idle .reader-idle-what {
+  font-size: var(--t-sm);
+  /* min-width:0 lets the 1fr grid item shrink so the ellipsis can fire;
+     without it a grid/flex item refuses to truncate (min-width:auto). */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#reader-idle .reader-idle-overdue .reader-idle-when { color: var(--danger); }
+/*
  * Empty-slot copy inside a rail section.
  *
  * Deliberately quiet: it occupies the space a list would, explains the feature

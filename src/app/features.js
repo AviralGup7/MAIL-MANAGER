@@ -28,7 +28,7 @@
  */
 
 export { undoStack, recordUndo, performUndo } from './undo-actions.js';
-export { renderRadar, wireRadar } from './radar.js';
+export { renderRadar, wireRadar, renderReaderIdle } from './radar.js';
 export {
   openPalette, closePalette, wirePalette, refreshLabels, _setLabels, labelNames,
 } from './palette.js';

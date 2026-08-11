@@ -540,7 +540,12 @@ function openChooser(course) {
       'Lecture section',
       lectures.length
         ? lectures.map((s) => sectionButton(course, s))
-        : [note('No lecture section matches that teacher.')],
+        // Distinguish "this course has no lecture sections" (lab-only courses
+        // are normal) from "no lecture matches the teacher you picked" -- the
+        // old copy blamed a teacher even when the course simply has none.
+        : [note(chosenTeacher
+          ? 'No lecture section matches that teacher.'
+          : 'This course has no lecture sections.')],
       lectures.length ? 'Pick the section you are registered for.' : ''
     ));
   }

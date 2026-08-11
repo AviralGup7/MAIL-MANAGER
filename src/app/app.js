@@ -83,7 +83,7 @@ import {
 } from './snooze.js';
 import {
   undoStack, recordUndo, performUndo,
-  renderRadar, wireRadar,
+  renderRadar, wireRadar, renderReaderIdle,
   openPalette, closePalette, wirePalette,
   openCompose, closeCompose, wireCompose, startReply,
   restoreDraftIfAny, flushDraft, refreshLabels, _setLabels, editDraft, labelNames,
@@ -534,6 +534,7 @@ function scheduleRender({ changed, structural } = { changed: new Set(), structur
       renderSidebar();
     }
     renderRadar(ctx);
+    renderReaderIdle(ctx);
     renderViews();
     renderNotices();
   });
@@ -4313,6 +4314,7 @@ function openFollowupMenu(id, anchor) {
       await followups.saveFollowups(followupList);
       activity.record({ verb: 'FOLLOWUP_SET', ids: [id], actor: 'user' });
       renderRadar(ctx);
+    renderReaderIdle(ctx);
       toast(`Will remind you ${p.label.toLowerCase()}`);
     },
   }));
@@ -4324,6 +4326,7 @@ function openFollowupMenu(id, anchor) {
         followupList = followups.clearFollowup(followupList, m.threadId);
         await followups.saveFollowups(followupList);
         renderRadar(ctx);
+    renderReaderIdle(ctx);
         toast('Follow-up cleared');
       },
     });
@@ -4353,6 +4356,7 @@ function openDeadlineMenu(id, anchor) {
     await deadlineStore.saveOverrides(deadlineOverrides);
     activity.record({ verb: 'DEADLINE_SET', ids: [id], actor: 'user' });
     renderRadar(ctx);
+    renderReaderIdle(ctx);
     renderList();
     toast(origin === 'dismiss' ? 'Not a deadline' : 'Deadline set');
   };
@@ -5643,6 +5647,7 @@ async function start() {
       followupList = f;
       deadlineOverrides = d;
       renderRadar(ctx);
+    renderReaderIdle(ctx);
     })
     .catch(() => { /* the radar degrades to extracted deadlines only */ });
 
@@ -5894,6 +5899,11 @@ async function boot() {
   wirePalette(ctx);
   wireCompose(ctx);
   wireRadar(ctx);
+  const idle = document.getElementById('reader-idle');
+  if (idle) idle.addEventListener('click', (e) => {
+    const row = e.target.closest('.reader-idle-item');
+    if (row) ctx.openMessage(row.dataset.id);
+  });
   wireServerSearch(ctx);
   wireViews(ctx);
   $('btn-compose').addEventListener('click', () => openCompose(ctx));

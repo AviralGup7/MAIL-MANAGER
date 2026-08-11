@@ -27,11 +27,12 @@ const RADAR_MAX = 6;
  * true but not actionable, and padding the list with those is how a useful
  * panel becomes decoration people stop reading.
  */
-export function renderRadar(ctx) {
-  const wrap = $('radar');
-  const list = $('radar-list');
-  if (!wrap || !list) return;
-
+/**
+ * The merged due-soon items, shared by the sidebar radar and the idle reader
+ * preview (round 50). Extracted so the two surfaces cannot drift: one list of
+ * "what needs you", rendered two ways.
+ */
+export function collectDueItems(ctx) {
   const now = Date.now();
   const items = [];
 
@@ -76,13 +77,23 @@ export function renderRadar(ctx) {
     });
   }
 
+  items.sort((a, b) => a.m.dueAt - b.m.dueAt);
+  return items;
+}
+
+export function renderRadar(ctx) {
+  const wrap = $('radar');
+  const list = $('radar-list');
+  if (!wrap || !list) return;
+
+  const now = Date.now();
+  const items = collectDueItems(ctx);
+
   if (items.length === 0) {
     wrap.hidden = true;
     list.replaceChildren();
     return;
   }
-
-  items.sort((a, b) => a.m.dueAt - b.m.dueAt);
 
   /*
    * THE HEADING CARRIES THE COUNT AND THE WORST BAND.
@@ -140,6 +151,46 @@ export function renderRadar(ctx) {
   }
   list.replaceChildren(frag);
   wrap.hidden = false;
+}
+
+/**
+ * IDLE READER PREVIEW (round 50 layout redesign). When nothing is selected,
+ * the reader pane used to be a blank half-screen with a two-word legend —
+ * the single biggest waste of space in the default view. Now the same
+ * due-soon data the radar shows fills that space, so the resting state is
+ * useful instead of empty. Hidden when there is nothing due.
+ */
+export function renderReaderIdle(ctx) {
+  const box = $('reader-idle');
+  if (!box) return;
+  const items = collectDueItems(ctx);
+  if (items.length === 0) {
+    box.hidden = true;
+    box.replaceChildren();
+    return;
+  }
+  const now = Date.now();
+  const frag = document.createDocumentFragment();
+  const head = document.createElement('div');
+  head.className = 'reader-idle-head';
+  head.textContent = `Needs you · ${items.length}`;
+  frag.appendChild(head);
+  for (const { m, u } of items.slice(0, 4)) {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = `reader-idle-item reader-idle-${u}`;
+    row.dataset.id = m.id;
+    const when = document.createElement('span');
+    when.className = 'reader-idle-when';
+    when.textContent = relativeLabel(m.dueAt, now);
+    const what = document.createElement('span');
+    what.className = 'reader-idle-what';
+    what.textContent = m.subject;
+    row.append(when, what);
+    frag.appendChild(row);
+  }
+  box.replaceChildren(frag);
+  box.hidden = false;
 }
 
 export function wireRadar(ctx) {

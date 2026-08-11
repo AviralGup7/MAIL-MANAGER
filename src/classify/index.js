@@ -28,6 +28,20 @@ import { FALLBACK_CATEGORY } from './categories.js';
 import { classifyBySender, detectBitsSource, extractAddress } from './sender.js';
 import { lookupAddress } from './address-map.js';
 import { PATTERN_RULES } from './pattern-rules.js';
+
+/*
+ * LOCAL course-code detector (round 50). Deliberately NOT imported from
+ * timetable-mail.js: that module (via timetable.js) references `document`,
+ * and importing it here would pull DOM code into the service-worker graph,
+ * which the load-time doctor correctly rejects. The worker needs only the
+ * code-shape test, duplicated minimally and kept in sync by a pin.
+ */
+// `i` because classify() lowercases the subject before this runs; real course
+// codes are uppercase but the detector must see the lowercased form too.
+// The letter is MANDATORY and sits directly against the digits ("f311"), so
+// "day 123" can't false-positive while "che f311"/"chef311" both match.
+const COURSE_CODE = /\b([a-z]{2,5})\s?([a-z])(\d{3})\b/i;
+const hasCourseCode = (s) => COURSE_CODE.test(String(s || ''));
 import {
   FIELD_WEIGHTS,
   SENDER_EXACT_BONUS,
@@ -147,6 +161,17 @@ export function classify(msg) {
     if (score > 0) {
       scored.push({ category: rule.category, score, hasSenderMatch, hits });
     }
+  }
+
+  /*
+   * COURSE-CODE SIGNAL (round 50 rules audit). A subject that names a course
+   * ("CHE F311", "KINETICS & REACTOR DESIGN (CHE F311) new content") is, by
+   * definition, academic mail. Without this, such mail scored on stray
+   * keywords and could land in clubs/events. A course code is the strongest
+   * academics signal that exists, so it is added on top of the rule scores.
+   */
+  if (hasCourseCode(subject)) {
+    scored.push({ category: 'academics', score: 90, hasSenderMatch: false, hits: ['course-code'] });
   }
 
   if (scored.length === 0) {

@@ -631,3 +631,13 @@ test('the overlap ratio is inclusive at exactly 0.9', () => {
     '0.89 is below the overlap threshold; the higher score stands'
   );
 });
+
+test('a subject naming a course code classifies as academics (round 50 rules)', async () => {
+  const { classify } = await import('../src/classify/index.js');
+  // The live render showed course-content mail landing in clubs/events.
+  // A course code is the strongest academics signal; it must win.
+  const a = classify({ from: 'BHANU VARDHAN REDDY . (via Nalanda)', subject: 'KINETICS & REACTOR DESIGN (CHE F311) new content', snippet: '' });
+  assert.equal(a.category, 'academics');
+  const b = classify({ from: 'SOMAK CHATTERJEE . (via Nalanda)', subject: 'Regarding lecture session on 11th, 13th and 14th (CHE F311)', snippet: '' });
+  assert.equal(b.category, 'academics');
+});
