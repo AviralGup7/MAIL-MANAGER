@@ -245,3 +245,14 @@ test('the outbox pump dispatches through the worker, never per-item from the app
   assert.ok(!body.includes('flushOutbox'),
     'the app must not run the dispatch loop itself on this path');
 });
+
+test('worker recovery removes the degradation banner (bug-hunt 43 #25)', () => {
+  // The banner is a claim about the present; recovery makes it false. The
+  // probe's success path must remove it, or the UI says "unavailable" while
+  // the toast says "recovered".
+  const at = app.indexOf('function scheduleWorkerProbe');
+  assert.notEqual(at, -1);
+  const fn = app.slice(at, at + 1200);
+  assert.ok(fn.includes("document.getElementById('sw-warn')?.remove()"),
+    'recovery must take the banner down with the state it describes');
+});

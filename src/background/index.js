@@ -380,6 +380,18 @@ async function handle(msg) {
         // (bug-hunt #27). Gmail's send response carries the message id.
         const sentIds = [];
         for (const item of due) {
+          /*
+           * CANCEL RACE (bug-hunt 43 #11): the queue was loaded once, but
+           * cancel() writes to storage between iterations. An item the user
+           * just cancelled must not be resurrected by this pump's next
+           * saveOutbox -- re-check it against live storage before doing
+           * anything with it.
+           */
+          const live = await loadOutbox(chrome.storage.local);
+          if (!live.some((x) => x.id === item.id)) {
+            items = items.filter((x) => x.id !== item.id);
+            continue;
+          }
           // Persist `sending` BEFORE the request: the crash contract reads it
           // on next boot, and cancel() refuses a record in this state.
           items = items.map((x) => (x.id === item.id ? { ...x, state: 'sending' } : x));

@@ -441,6 +441,11 @@ function scheduleWorkerProbe() {
     try { alive = await probeWorker(); } catch { alive = false; }
     if (alive) {
       workerDown = false;
+      // The degradation banner is a claim about the present; a recovered
+      // worker makes it false, so it goes with the state it describes
+      // (bug-hunt 43 #25). Leaving it up made the UI say "unavailable"
+      // while the toast said "recovered".
+      document.getElementById('sw-warn')?.remove();
       toast('Background worker recovered');
       return; // chain ends
     }

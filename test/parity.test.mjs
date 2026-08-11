@@ -169,3 +169,15 @@ test('OUTBOX_PUMP is batched and answers sentIds on both paths (bug-hunt #32/#27
   assert.match(app, /ids: result\.sentIds \|\| \[\]/,
     'the activity entry names the messages that were sent');
 });
+
+test('the pump re-checks each item against live storage before dispatch (bug-hunt 43 #11)', () => {
+  // A cancel landing between the pump's load and its per-item write must not
+  // be resurrected by the pump's stale in-memory array. The re-check is the
+  // mitigation; without it a cancelled message can still go out.
+  const w = read('src/background/index.js');
+  const pump = w.slice(w.indexOf("case 'OUTBOX_PUMP'"), w.indexOf("case 'OUTBOX_PUMP'") + 3000);
+  assert.match(pump, /const live = await loadOutbox/,
+    'each item is re-verified against storage before dispatch');
+  assert.match(pump, /!live\.some/,
+    'a cancelled item is dropped, not dispatched');
+});
