@@ -389,7 +389,8 @@
                   <button data-act="star" class="ghost" type="button" title="Star (s)">Star</button>
                   <button data-act="unread" class="ghost" type="button" title="Mark unread (u)">Mark unread</button>
                   <button data-act="snooze" class="ghost" type="button" title="Snooze (z)">Snooze</button>
-                  <button data-act="archive" class="ghost" type="button" title="Archive (e)">Archive</button>
+                  <button data-act="archive" class="ghost" type="button"
+                          title="Archive and open the next message (e)">Archive &amp; next</button>
                   <!--
                     FOLLOW-UP. "I mailed a professor and never heard back" is
                     the highest-cost silent failure in a student mailbox, and
@@ -427,6 +428,22 @@
                           title="Continue writing this draft">Edit draft</button>
                   <button data-act="trash" class="ghost danger" type="button" title="Delete (#)">Delete</button>
                   <a id="r-open" class="ghost" target="_blank" rel="noopener">Open in Gmail</a>
+                  <!--
+                    MORE (round 65/d, F8). The three copies a reader actually
+                    reaches for -- link (paste into WhatsApp), subject (quote
+                    in a reply), sender address (add to contacts) -- used to
+                    mean selecting text by hand inside a styled header. They
+                    are commands, not mailbox verbs, so they live behind one
+                    kebab instead of growing the bar a third time.
+
+                    Icon-only is acceptable here for the same reason the
+                    contextual cluster is: the button carries a title, sits
+                    after eight labelled siblings, and the kebab is the most
+                    convention-bound glyph in mail UIs.
+                  -->
+                  <button id="r-more" data-act="more" class="ghost icon" type="button"
+                          title="More actions" aria-label="More actions"
+                          aria-haspopup="menu"></button>
                 </div>
               </div>
               <!--

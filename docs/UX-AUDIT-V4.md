@@ -107,16 +107,24 @@ reduced-motion safe, pointer-coarse exempt.*
 
 ## §3 Plan (checkpoints)
 
-- [ ] **65/a — this doc.** (plan commit)
-- [ ] **65/b — Row quick actions (F12) + row context menu (F3).** Both reuse
-  existing verbs/menu primitive; guard tests for menu mounting updated
-  accordingly. Screenshots: hover row, ctx menu open, Midnight theme.
-- [ ] **65/c — Selection v2 (F2):** Ctrl/⌘-click additive, Shift-click range
-  on the row body (not just checkbox), bulk bar shows count already; extend
-  aria (aria-multiselectable semantics stay listbox-correct), integration
-  tests.
-- [ ] **65/d — Reader flow (F1):** "Archive & next" action + shortcut (`]`?),
-  plus copy-actions group in reader (F8: copy link/subject/sender).
+- [x] **65/a — this doc.** (plan commit `4acd15d`)
+- [x] **65/b — Row quick actions (F12) + row context menu (F3).** `61da55f`.
+  Shipped as planned in `src/app/row-actions.js`; browser-probed hover plate
+  (opacity 1, 114px) and overlay-root menu float; screenshots at the time.
+- [x] **65/c — Selection v2 (F2).** `908baba`. As built: F2 was partly a
+  documentation gap — `selection.js` already had anchor/range/selectAll and
+  list.js already wired Ctrl/⌘-toggle and Shift-range. The round taught the
+  gestures (help sheet "Pointer" group) and pinned the wiring instead of
+  re-building it.
+- [x] **65/d — Reader flow (F1) + copy actions (F8).** F1 also turned out to
+  be an honesty gap, not a missing flow: `selectNeighbourThen` already
+  advanced after archive/trash, so the fix was the label — "Archive & next"
+  with a title that says so — plus tests pinning it. F8 shipped as the
+  reader kebab (`#r-more`, last control in `#r-actions`): Copy link (Gmail
+  URL), Copy subject, Copy sender address, on the shared menu primitive with
+  a clipboard-failure fallback that shows the text rather than toasting a
+  lie. Verified headless: real clipboard carries the thread URL/subject;
+  `test/reader-more.test.mjs` pins the set, order, fallback and visibility.
 - [ ] **65/e — Search chips + clear (F6):** chip row under listbar with
   active filters, one-click clear, "Save as view" promotion.
 - [ ] **65/f — Palette context + recents (F5):** MRU section, typed-down

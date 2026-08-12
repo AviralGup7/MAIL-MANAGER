@@ -32,6 +32,7 @@ import { READER_TYPOGRAPHY, readerCsp } from './reader-frame.js';
 import { overlayGet } from './server-search.js';
 import { toast } from './toast.js';
 import { openSnoozeMenu } from './snooze-menu.js';
+import { openMenu } from './menu.js';
 import {
   CAT_COLOR, LOW_CONFIDENCE, displayName, shortDate, fullDate,
 } from './display.js';
@@ -113,8 +114,64 @@ export function wireReader(c) {
       ctx.deadlineMenu(state.selected, b);
       return;
     }
+    // Like the pickers, `more` opens a menu rather than acting (65/d, F8).
+    if (b.dataset.act === 'more') {
+      openReaderMoreMenu(state.selected, b);
+      return;
+    }
     ctx.act(b.dataset.act, state.selected);
   });
+}
+
+/*
+ * The reader overflow menu (round 65/d, F8: the reader had verbs for filing
+ * but no way to take anything OUT of it). Three copies, in the order a
+ * student reaches for them: the link (paste the thread into a chat), the
+ * subject (quote it in a reply), the sender address (feed a contacts app or
+ * a mail rule). Everything else the reader can do already has a labelled
+ * button in the bar, so nothing else belongs behind the kebab — an overflow
+ * menu that duplicates the bar teaches the user to check two places for one
+ * action.
+ */
+function openReaderMoreMenu(id, anchor) {
+  const m = storeOf().get(id);
+  if (!m) return;
+  const address = addressOf(m.from);
+  openMenu({
+    name: 'reader-more',
+    label: 'More actions',
+    anchor,
+    items: [
+      {
+        text: 'Copy link',
+        hint: 'Gmail address of this thread',
+        run: () => copyOrShow(ctx.gmailUrl(m.threadId, state.mailbox), 'Link'),
+      },
+      { text: 'Copy subject', run: () => copyOrShow(m.subject || '', 'Subject') },
+      {
+        text: 'Copy sender address',
+        hint: address,
+        run: () => copyOrShow(address, 'Address'),
+      },
+    ],
+  });
+}
+
+/*
+ * Clipboard with an honest fallback. `navigator.clipboard` is undefined in
+ * insecure contexts (the file:// preview, plain-http mirrors) and writeText
+ * rejects when the document has lost focus; jsdom has no clipboard at all.
+ * Swallowing any of those failures would announce a copy that never
+ * happened — the toast IS the confirmation, so the failure path shows the
+ * text itself and keeps the value reachable by hand.
+ */
+async function copyOrShow(text, label) {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast(`${label} copied`);
+  } catch {
+    toast(text);
+  }
 }
 
 // ------------------------------------------------------------------ state --

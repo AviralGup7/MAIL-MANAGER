@@ -3397,6 +3397,9 @@ async function boot() {
   setIcon($('ctx-archive'), 'archive', { size: 15 });
   setIcon($('ctx-star'), 'star', { size: 15 });
   setIcon($('ctx-trash'), 'trash', { size: 15 });
+  // The reader's overflow kebab (round 65/d) — icon-only by the same rule
+  // as the contextual cluster above.
+  setIcon($('r-more'), 'more', { size: 15 });
   $('ctx-actions').addEventListener('click', (e) => {
     const b = e.target.closest('button');
     if (!b || !state.selected) return;

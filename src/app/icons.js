@@ -48,6 +48,9 @@ const PATHS = {
     '<path d="M10 3a7 7 0 1 0 0 14c.8 0 1.4-.6 1.4-1.4 0-.4-.1-.7-.4-1a1.4 1.4 0 0 1 1-2.4h1.6A3.4 3.4 0 0 0 17 8.8C17 5.6 13.9 3 10 3Z"/><circle cx="7" cy="8.6" r=".9" fill="currentColor" stroke="none"/><circle cx="10" cy="6.6" r=".9" fill="currentColor" stroke="none"/><circle cx="13" cy="8.6" r=".9" fill="currentColor" stroke="none"/>',
   clock: '<circle cx="10" cy="10" r="6.5"/><path d="M10 6.3V10l2.6 1.6"/>',
   back: '<path d="M15.5 10h-11"/><path d="M8.5 5.5 4 10l4.5 4.5"/>',
+  // The overflow kebab. Filled dots carry meaning here (this IS the more
+  // glyph), so fill is used exactly the way the active star uses it.
+  more: '<circle cx="4.5" cy="10" r="1.2" fill="currentColor" stroke="none"/><circle cx="10" cy="10" r="1.2" fill="currentColor" stroke="none"/><circle cx="15.5" cy="10" r="1.2" fill="currentColor" stroke="none"/>',
   // Spam. A triangle rather than an octagon: the octagon reads as "stop /
   // destructive", and spam is a place you visit, not an action you take.
   warning:
