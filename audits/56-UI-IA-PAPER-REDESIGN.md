@@ -241,6 +241,28 @@ The pilot is judged on two questions, each with a measured test:
 **Promotion gate for any future surface:** BOTH questions must be
 answerable the same way, with evidence, BEFORE code moves. No exceptions.
 
+### A5 VERDICT (round 57 — evaluation executed)
+
+**Q1 PASS, and completed.** The navigation claims are now contracts, not
+prose: empty rooms render no tab; counts ride full ones; the tablist keeps
+ONE tab stop (roving, the rail's doctrine) and arrow/Home/End keys switch
+rooms with focus re-placed; a conflicted room earns a counted tab; sidebar
+navigation and Esc and the header button all return to mail (four pinned
+paths). Round 57 also CLOSED the pilot's one real gap — the tabs were
+mouse-only; the workspace is now complete as an accessible surface.
+Nothing was hidden to achieve any of it: all four rooms still exist.
+Suite: 114/114 integration2 (23 original TIMETABLE + 4 EVAL contracts).
+
+**Q2 PASS, and enforced.** The bounded-domain property was measured from git
+history (above) and is now an architectural PIN (architecture.test.mjs,
+round 57): no `tt-*` DOM may appear in app.js; the shell keeps seams only
+(container, Esc rung, rail button). Boundary erosion fails CI, not review.
+
+**Consequence per step 4:** the evaluation found NO subordinate surface
+whose verdict should change — the §2 ✗ columns all stand. Therefore **no
+further promotion is scheduled**; the next promotion happens only when real
+usage produces §7-grade evidence for one.
+
 ---
 
 ## 8. MIGRATION ORDER (what is done, what is deliberately not planned)
@@ -252,7 +274,7 @@ answerable the same way, with evidence, BEFORE code moves. No exceptions.
 | A2 | Timetable workspace pilot + layout targets | ✔ round 54 |
 | A3 | Architecture audit (evidence base for this paper) | ✔ round 55 |
 | A4 | **This paper** | ✔ round 56 |
-| A5 | Pilot evaluation against §7 criteria | NEXT (runs on real usage) |
+| A5 | Pilot evaluation against §7 criteria | ✔ round 57 (verdict below) |
 | — | Search/Rules/Activity promotions | **NOT PLANNED** — subordinate verdicts stand until §7-style evidence overturns one |
 | — | Full peer workspace rail | **OUT OF SCOPE** — overturns the product claim; requires an explicit product decision, not architectural momentum |
 | — | app.js triage-verb extraction | **PARKED** — candidate acknowledged (55 M-3); extracts only when a concrete change crosses its boundary, never for size |
