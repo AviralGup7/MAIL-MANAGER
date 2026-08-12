@@ -113,6 +113,13 @@ export const SCHEMA = {
   lanes: { type: 'bool', def: false },
   coachDone: { type: 'bool', def: false },
   /*
+   * THE CONTEXT RAIL (V3). Whether the right rail (due soon / needs you /
+   * snoozed / outbox) is visible. ON by default: the rail is where the
+   * sidebar's overflow context moved to, and a first-run user should see
+   * what the classifier found without having to discover a toggle.
+   */
+  railOpen: { type: 'bool', def: true },
+  /*
    * Delay before a message opened in the reader is marked read. A mis-click
    * should not consume the unread state, which is the one bit of triage the
    * user cannot reconstruct. Gmail marks read almost instantly and is worse

@@ -95,6 +95,34 @@ verdicts, and any tab-stop budget that contradicts the new chrome. Rules that
 protect *correctness and accessibility* (listbox tree, contrast, named
 controls, reduced-motion) are NOT repealed.
 
+**R8 additions (round 64.5/b, measured while repairing the row):**
+
+- *Row scale revised: 54/46/40 → 62/58/40.* The first V3 draft cut
+  `--row-h` without re-deriving it from the density invariant the token
+  remap established (`--row-h = 2·--s-3 + content`). Measured content is
+  17.4px (sender) + 2px + 18.2px (subject) ≈ 38px; 62/58/40 are the smallest
+  values that keep the grid track inside the row box at each density's own
+  padding. At 54 the separator hairline crossed the subject text mid-stroke.
+- *Category tag moved from the right column into line 2.* `.r-right` had
+  date + star + tag stacked = 59.9px in a 38px slot — the actual mechanism
+  behind the strike-through. `.r-right` is now a single line (date · star);
+  the tag is flex-pinned to line 2's right end, capped at 42% (compact: 30%,
+  follows the subject instead).
+- *Attention bloom v2.* v1's two-line subject clamp only fitted inside the
+  old 68px row; at 62px the bloomed line hit the hairline. v2 lifts the
+  subject's 58% width cap and removes the snippet from the flex line
+  (`display: none`, not a fade — the space must actually transfer). Same
+  information priority, geometry untouched. `test/bloom.test.mjs` pins
+  updated deliberately.
+- *Compact density is a true single-line row* now: `[sender | subject | tag | date · star]`
+  with `display: contents` on both line wrappers; sender `flex: 0 0 auto`
+  capped at 38% (it never shrinks to invisibility, which `0 1 auto` did).
+  Previously "compact" only hid the snippet and overflowed its 44/40px row.
+- *Notice chips*: the chip-level `text-overflow: ellipsis` was dead code
+  (children are flexed spans); truncation lives on `.notice-why`, which
+  carries `min-width: 0` from the shared group. Chip is explicitly
+  `flex-direction: row` (the legacy `.notice` card rule set column).
+
 ---
 
 ## 2 · Execution checkpoints

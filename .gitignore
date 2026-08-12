@@ -15,3 +15,8 @@ preview.html
 tools/bisect/
 
 .benchlabs/
+
+# Local visual-polish harnesses (round 64.5) — scratch, not shipped.
+/.shot.mjs
+/.shot2.mjs
+/.probe*.mjs

@@ -192,21 +192,12 @@ export function openMenu({
   });
 
   /*
-   * POLISH 17: menus used to clip at the viewport's bottom edge -- filed in
-   * audit 34, fixed here for ALL four menus at once. Measure after mount and
-   * pull the menu up by exactly the overflow; a static margin, no animation.
+   * VIEWPORT CLAMPING (was POLISH 17; rewritten V3). With fixed coordinates
+   * the clamp is exact and synchronous: measure after mount, flip above the
+   * anchor when the menu would cross the viewport's bottom edge, and clamp
+   * sideways when it would cross the right one. The old marginTop pull is
+   * gone -- it could fight the fixed top and double-shift.
    */
-  const raf = typeof requestAnimationFrame === 'function'
-    ? requestAnimationFrame : (fn) => setTimeout(fn, 0);
-  raf(() => {
-    // Non-browser context guard: in tests the window global may already be
-    // detached when this one-shot clamp timer fires; a crash there fails the
-    // whole file. In a browser window.innerHeight is always defined.
-    if (typeof window === 'undefined' || !Number.isFinite(window.innerHeight)) return;
-    const r = node.getBoundingClientRect();
-    const over = r.bottom - (window.innerHeight - 8);
-    if (over > 0) node.style.marginTop = `-${Math.ceil(over)}px`;
-  });
 
   const layer = openLayer({
     name,
@@ -241,10 +232,41 @@ export function openMenu({
   });
   current = { node, layer };
 
-  const host = mountTo || anchor || document.body;
-  // Anchored menus position against their host, which needs a containing block.
-  if (host !== document.body && !host.style.position) host.style.position = 'relative';
-  host.appendChild(node);
+  /*
+   * MOUNT INTO THE OVERLAY ROOT (V3, docs/OVERHAUL-V3.md R5).
+   *
+   * Menus used to mount beside their anchor, inside whatever stacking context
+   * the anchor happened to live in -- a sidebar row, the toolbar wrapper, the
+   * reader -- which is the whole "the dropdown renders UNDER another pane"
+   * class of bug (baseline D5). Layering is no longer a property of where
+   * the trigger happens to sit: everything floating mounts under ONE root
+   * and positions with viewport-fixed coordinates measured from the anchor.
+   *
+   * jsdom note: offsetWidth/Height are 0 there; the math still lands on the
+   * anchor's rect, which is all the harness pins.
+   */
+  const root = document.getElementById('overlay-root') || mountTo || document.body;
+  if (anchor && root !== mountTo) {
+    node.style.position = 'fixed';
+    node.style.left = '0px';
+    node.style.top = '0px';
+    root.appendChild(node);
+    const ar = anchor.getBoundingClientRect();
+    const vw = window.innerWidth || 1024;
+    const vh = window.innerHeight || 768;
+    const mw = node.offsetWidth || 0;
+    const mh = node.offsetHeight || 0;
+    let left = Math.max(8, Math.min(ar.left, vw - mw - 8));
+    let top = ar.bottom + 8;
+    if (top + mh > vh - 8) top = Math.max(8, ar.top - mh - 8);
+    node.style.left = `${Math.round(left)}px`;
+    node.style.top = `${Math.round(top)}px`;
+  } else {
+    const host = mountTo || document.body;
+    // Anchored menus position against their host, which needs a containing block.
+    if (host !== document.body && !host.style.position) host.style.position = 'relative';
+    host.appendChild(node);
+  }
   /*
    * Open ON the current choice when there is one, so a one-of-many menu opens
    * where the user already is rather than resetting them to the top of the

@@ -3064,6 +3064,90 @@ window.__bmmTeardown = cancelPendingWork;
 
 // ------------------------------------------------------------------- start --
 
+/* ======================================================================== *
+ * VIEWS POPOVER + CONTEXT RAIL (V3 — docs/OVERHAUL-V3.md R2/R5)
+ * ======================================================================== */
+
+/*
+ * The context rail's visibility is CSS's job: `body.rail-open` + the rail's
+ * own "hide when every section is empty" :has() rule. All JS owns is the
+ * toggle — flip the class, mark the button, remember the choice.
+ */
+function wireRail() {
+  const btn = $('btn-rail');
+  const close = $('btn-rail-close');
+  if (!btn) return;
+  const apply = (on) => {
+    document.body.classList.toggle('rail-open', on);
+    btn.setAttribute('aria-pressed', String(on));
+  };
+  apply(settings.get('railOpen') !== false);
+  btn.addEventListener('click', () => {
+    const on = !document.body.classList.contains('rail-open');
+    settings.set('railOpen', on).catch(() => {});
+    apply(on);
+  });
+  close?.addEventListener('click', () => {
+    settings.set('railOpen', false).catch(() => {});
+    apply(false);
+  });
+}
+
+/*
+ * Saved views moved out of the sidebar into a topbar popover. The panel is
+ * plain markup under #overlay-root; saved-views.js keeps owning everything
+ * inside it. This wire owns only open/close — button, outside pointer,
+ * Escape — and the fixed placement measured from the button, the same way
+ * menu.js anchors. A popover is dismissed by its own actions too: choosing
+ * a view applies it and the panel leaves.
+ */
+function wireViewsPop() {
+  const btn = $('btn-views');
+  const pop = $('views-pop');
+  if (!btn || !pop) return;
+
+  let onOutside = null;
+  const close = () => {
+    if (pop.hidden) return;
+    pop.hidden = true;
+    btn.setAttribute('aria-expanded', 'false');
+    if (onOutside) {
+      document.removeEventListener('pointerdown', onOutside, true);
+      onOutside = null;
+    }
+  };
+  const open = () => {
+    pop.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
+    const r = btn.getBoundingClientRect();
+    const w = pop.offsetWidth || 260;
+    const left = Math.max(8, Math.min(r.left, (window.innerWidth || 1024) - w - 8));
+    pop.style.left = `${Math.round(left)}px`;
+    pop.style.top = `${Math.round(r.bottom + 8)}px`;
+    pop.style.right = 'auto';
+    onOutside = (e) => {
+      if (pop.contains(e.target) || btn.contains(e.target)) return;
+      close();
+    };
+    document.addEventListener('pointerdown', onOutside, true);
+    pop.querySelector('a, button')?.focus();
+  };
+
+  btn.addEventListener('click', () => (pop.hidden ? open() : close()));
+  $('views-list')?.addEventListener('click', () => close());
+  document.addEventListener('keydown', (e) => {
+    // Capture + stop: one Escape must not also close the reader behind.
+    if (e.key === 'Escape' && !pop.hidden) {
+      e.stopPropagation();
+      close();
+      btn.focus();
+    }
+  }, true);
+  // Rendered into a torn-down document would throw after release; the app's
+  // own teardown closes layers, and this popover is chrome, not a layer.
+  window.addEventListener('pagehide', close);
+}
+
 async function start() {
   try {
     const p = await send('PROFILE');
@@ -3380,6 +3464,8 @@ async function boot() {
   wirePalette(ctx);
   wireCompose(ctx);
   wireRadar(ctx);
+  wireRail();
+  wireViewsPop();
   const idle = document.getElementById('reader-idle');
   if (idle) idle.addEventListener('click', (e) => {
     const row = e.target.closest('.reader-idle-item');

@@ -1,10 +1,13 @@
 /**
- * Attention bloom (audit 35, concept #3).
+ * Attention bloom (audit 35, concept #3; mechanism v2 from round 64.5).
  *
- * The attended row spends its second line on the rest of a clipped subject
- * instead of the snippet. Fixed geometry, no layout animation, comfortable
- * density only, selection-driven, gated on the subject actually being
- * clipped. Each test sabotage-verified before being trusted.
+ * The attended row gives the rest of a clipped subject the snippet's share
+ * of the line: the snippet leaves the flex row and the subject's width cap
+ * lifts. v1 clamped the subject to two lines and faded the snippet; that
+ * only fitted inside the old 68px row and struck the separator at 62px.
+ * v2 re-prioritises width instead of height, keeping the fixed geometry the
+ * list contract depends on. Comfortable density only, selection-driven,
+ * gated on the subject actually being clipped.
  */
 
 import test from 'node:test';
@@ -33,14 +36,15 @@ function block(sel) {
   throw new Error('unbalanced');
 }
 
-test('the bloom completes the subject into the second line, on selection', () => {
+test('the bloom completes the subject across the full line, on selection', () => {
   const subj = block(BLOOM_SUBJ);
-  assert.match(subj, /-webkit-line-clamp:\s*2/, 'two lines when attended');
-  assert.match(subj, /white-space:\s*normal/);
+  // v2: the 58% cap lifts so the clipped subject runs to the category tag.
+  assert.match(subj, /max-width:\s*none/, 'subject cap lifts when attended');
   const snip = block(BLOOM_SNIP);
-  // Replaced, not stacked: the snippet yields its line entirely.
-  assert.match(snip, /opacity:\s*0/);
-  assert.ok(!/display/.test(snip), 'opacity only — the switch must stay composited');
+  // Replaced, not stacked: the snippet leaves the flex line entirely, which
+  // is what frees the width. A fade (v1) would leave it occupying space.
+  assert.match(snip, /display:\s*none/);
+  assert.ok(!/opacity/.test(snip), 'display, not opacity — the space must actually transfer');
 });
 
 test('the bloom is comfortable-density only, by selector, not by accident', () => {
@@ -58,12 +62,14 @@ test('selection drives the bloom; hover does not', () => {
   assert.ok(css.includes(".row[aria-selected='true'].subj-clip"), 'keyboard path guaranteed');
 });
 
-test('the bloom touches nothing but compositable properties', () => {
-  // The switch (clamp/display) is discrete and the only transition is the
-  // snippet's opacity. A layout property here — animated OR static — would
-  // change row geometry, which is the one thing the bloom may never do.
+test('the bloom touches nothing that changes row geometry', () => {
+  // v2 lifts the subject's width CAP (max-width) — legal because the row's
+  // height never moves: the subject was already on this line, it simply
+  // runs further along it. Anything else layout-flavoured — an explicit
+  // width, height, margin, padding — would move the row box, which is the
+  // one thing the bloom may never do.
   const FORBIDDEN = /(?:^|[,\s{])(?:width|height|max-height|top|left|right|bottom|margin|padding|font-size)\s*:/;
-  const ALLOWED = /^(white-space|display|-webkit-line-clamp|-webkit-box-orient|text-overflow|opacity|transition)\s*:/;
+  const ALLOWED = /^(white-space|display|-webkit-line-clamp|-webkit-box-orient|text-overflow|opacity|transition|max-width)\s*:/;
   for (const sel of [BLOOM_SUBJ, BLOOM_SNIP]) {
     for (const raw of block(sel).split('\n')) {
       const line = raw.trim();

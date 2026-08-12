@@ -37,8 +37,15 @@ test('the coach mark is one-time and schema-backed', () => {
 });
 
 test('menus flip inside the viewport for all four menus at once', () => {
+  // Round 64.5: menus mount into #overlay-root with position: fixed and the
+  // flip is a simple measure-after-mount decision -- if the menu would cross
+  // the viewport's lower edge it opens above the anchor instead. The old pin
+  // matched raf-clamp arithmetic from when menus lived inside the anchor's
+  // (clipping, stacking) context; that whole failure class is gone.
   const menu = read('src/app/menu.js');
-  assert.match(menu, /r\.bottom - \(window\.innerHeight - 8\)/);
+  assert.match(menu, /top \+ mh > vh - 8/, 'the flip decision must remain');
+  assert.match(menu, /overlay-root/, 'menus mount in the overlay root');
+  assert.match(menu, /position:\s*'fixed'|position:\s*"fixed"|\.fixed\b|style\.position = 'fixed'/, 'menus are fixed-position');
   assert.ok(!/scroll-snap/.test(menu));
 });
 

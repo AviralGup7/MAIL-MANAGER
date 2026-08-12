@@ -540,7 +540,7 @@ test('every theme token used in CSS has a :root fallback', () => {
   const used = new Set([...css.matchAll(/var\((--[a-z0-9-]+)/g)].map((m) => m[1]));
   const defined = new Set([...css.matchAll(/^ {2}(--[a-z0-9-]+)\s*:/gm)].map((m) => m[1]));
 
-  const PER_ELEMENT = new Set(['--c']);
+  const PER_ELEMENT = new Set(['--c', '--rk']);
   const missing = [...used].filter((v) => !defined.has(v) && !PER_ELEMENT.has(v));
 
   assert.deepEqual(
@@ -2196,21 +2196,18 @@ test('only one animation is allowed to force layout, and it is documented', () =
 
 /* ================================================== product identity: mail == */
 
-test('the sidebar leads with mail, not with academics', async () => {
+test('the sidebar leads with mail, and only mail navigation (V3)', async () => {
   /*
-   * PRODUCT IDENTITY, ENFORCED STRUCTURALLY.
+   * PRODUCT IDENTITY, ENFORCED STRUCTURALLY -- V3 UPDATE (docs/OVERHAUL-V3.md).
    *
-   * This is a Gmail replacement that understands student life -- not a student
-   * platform that has mail. Measured, the sidebar had drifted the other way:
-   * the deadline radar sat directly under the brand, ABOVE saved views and
-   * above the mailbox navigation itself. The first thing the product showed
-   * was academic data.
+   * The pre-V3 sidebar drifted into a drawer of everything: saved views, the
+   * deadline radar, snoozed and outbox all competed with the navigation until
+   * the nav itself clipped to 52px (baseline D2). V3 makes the sidebar carry
+   * exactly two jobs -- brand+compose and navigation -- and moves every
+   * contextual panel to the context rail, which is part of #panes.
    *
-   * The radar is genuinely useful and stays. But the inbox is the centre of
-   * gravity, so navigation comes first and academic context orbits it.
-   *
-   * Order is asserted rather than described, because "keep it mail-first" in a
-   * comment is a preference and this is a rule.
+   * The identity rule survives and sharpens: the sidebar leads with mail
+   * because the sidebar is ONLY mail. Asserted structurally, again.
    */
   let JSDOM;
   try {
@@ -2219,32 +2216,36 @@ test('the sidebar leads with mail, not with academics', async () => {
     return; // graceful skip, as elsewhere
   }
   const doc = new JSDOM(read('app.html')).window.document;
-  const order = [...doc.getElementById('sidebar').children].map((el) => el.id);
-
-  const cats = order.indexOf('cats');
-  const radar = order.indexOf('radar');
-  const views = order.indexOf('views');
-
-  assert.ok(cats > -1 && radar > -1 && views > -1, 'all three sections must exist');
-  assert.ok(
-    cats < radar,
-    `mailbox navigation must come before the deadline radar (got ${order.join(' > ')})`
+  const sidebar = [...doc.getElementById('sidebar').children].map((el) => el.id);
+  assert.deepEqual(
+    sidebar, ['brand', 'side-actions', 'cats', 'side-foot'],
+    `sidebar = brand, compose, nav, foot — nothing else (got ${sidebar.join(' > ')})`
   );
+
+  // The context moved, it was not deleted: the rail holds it, inside #panes.
+  const rail = doc.getElementById('rail');
+  assert.ok(rail, 'the context rail exists');
+  for (const id of ['radar', 'snoozed', 'outbox', 'reader-idle']) {
+    assert.ok(rail.querySelector('#' + id), `#${id} lives in the rail`);
+    assert.ok(
+      doc.getElementById('panes').contains(rail.querySelector('#' + id)),
+      `#${id} is part of the panes, not the sidebar`
+    );
+  }
+  // Views left the sidebar for the topbar popover, which sits in the
+  // overlay root so it can never render under a pane.
   assert.ok(
-    views < radar,
-    `saved mail searches must come before the deadline radar (got ${order.join(' > ')})`
+    doc.getElementById('overlay-root').contains(doc.getElementById('views')),
+    'saved views live in the overlay-root popover'
   );
 });
 
 test('Compose is the only primary action in the sidebar', async () => {
   /*
-   * Timetable was `ghost full` -- the same full-bleed width as Compose, one
-   * step down in colour only, and carrying a badge that competes for
-   * attention. Two full-width buttons stacked together read as two equal
-   * choices, which is the wrong claim about what this product is for.
-   *
-   * Compose is the one thing a mail client asks you to do. Everything else in
-   * that footer is secondary by definition.
+   * V3 (docs/OVERHAUL-V3.md R1): Compose rose from the footer pile to the
+   * dedicated #side-actions row directly under the brand -- the one thing a
+   * mail client asks you to do, first. The footer is secondary exits only:
+   * no primaries, nothing full-width.
    */
   let JSDOM;
   try {
@@ -2253,19 +2254,20 @@ test('Compose is the only primary action in the sidebar', async () => {
     return;
   }
   const doc = new JSDOM(read('app.html')).window.document;
+
+  const actions = [...doc.querySelectorAll('#side-actions button')];
+  assert.deepEqual(
+    actions.map((b) => b.id), ['btn-compose'],
+    'the compose row holds exactly Compose'
+  );
+  assert.ok(actions[0].classList.contains('primary'), 'Compose is primary');
+  assert.ok(actions[0].classList.contains('full'), 'Compose spans the rail');
+
   const foot = [...doc.querySelectorAll('#side-foot button')];
-
   const primaries = foot.filter((b) => b.classList.contains('primary'));
-  assert.deepEqual(
-    primaries.map((b) => b.id), ['btn-compose'],
-    'exactly one primary action, and it is Compose'
-  );
-
+  assert.deepEqual(primaries, [], 'the footer has no primary action');
   const full = foot.filter((b) => b.classList.contains('full'));
-  assert.deepEqual(
-    full.map((b) => b.id), ['btn-compose'],
-    'no other footer button may claim Compose\'s full width'
-  );
+  assert.deepEqual(full, [], 'nothing in the footer claims full width');
 });
 
 test('the collapsed rail hides everything that needs width', () => {
@@ -2697,9 +2699,13 @@ test('every ellipsis can actually fire', () => {
   const bodyOf = (sel) => rules.filter((r) => r.sels.includes(sel)).map((r) => r.body).join(';');
 
   // Surfaces whose ellipsis is NOT covered by a parent, checked individually.
-  // (.r-subj/.r-snip/.r-from sit inside .r-mid, which is constrained; #account
-  // and #freshness are block children of #brand-text, not flex items.)
-  const PARENT_CONSTRAINED = new Set(['.r-subj', '.r-snip', '.r-from', '#account', '#freshness',
+  // (.r-subj/.r-snip/.r-from sit inside .r-mid, which is constrained; #account,
+  // #freshness and #brand-text small are block children with max-width: 100%,
+  // not flex items -- a block box is always as narrow as its parent, so the
+  // ellipsis can fire without a min-width anywhere.)
+  // (.r-line2 > .tag is a flex: none item whose MAX-width (42%) is the
+  // constraint -- the cap is what lets the ellipsis fire.)
+  const PARENT_CONSTRAINED = new Set(['.r-subj', '.r-snip', '.r-from', '#account', '#freshness', '#brand-text small', '.r-line2 > .tag',
     '.tt-cell-course', '.tt-who', '.tt-exam-course', '.r-msg-from',
     // .tt-* live in `flex-direction: column` cells. min-width governs
     // shrinking along the MAIN axis, so in a column it is min-height that

@@ -825,14 +825,19 @@ function buildRow(id) {
     // Conversation size. Empty and hidden on a single message, so most rows
     // are shaped exactly as they always were.
     '<span class="r-count" aria-hidden="true"></span></span>' +
-    '<div class="r-subj"></div>' +
-    '<div class="r-snip"></div>' +
+    // Line 2 is one flex row: subject, snippet, and the category tag pinned
+    // to the right end. The tag used to stack under the date in the right
+    // column -- date + star + tag summed to ~60px in a ~38px slot (round
+    // 64.5 probe), which grew the grid track past the row box and laid the
+    // separator hairline across the subject text.
+    '<span class="r-line2"><span class="r-subj"></span>' +
+    '<span class="r-snip"></span>' +
+    '<span class="tag"></span></span>' +
     '</span>' +
     '<span class="r-right">' +
     '<span class="r-course" hidden></span>' +
     '<span class="r-date"></span>' +
     '<button class="r-star" type="button" tabindex="-1" aria-label="Star"></button>' +
-    '<span class="tag"></span>' +
     '</span>';
   // The star is a real icon, not the `★` glyph. A glyph renders in whatever
   // font the platform picks, so it never optically matches the stroked SVGs

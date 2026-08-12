@@ -28,108 +28,47 @@
               not on a timer -- a ticking clock is motion nobody asked for.
             -->
             <button id="freshness" type="button" class="fresh-btn" aria-live="polite" title="Sync now" aria-label="Sync now"></button>
-            <!--
-              ACTIVITY belongs beside freshness (round 58 IA audit, H1): both
-              answer "what is happening with my mail", and before this the log
-              lived only behind Ctrl+K — information you had to remember was
-              hidden, the exact failure the audit exists to remove.
-            -->
-            <button id="btn-activity" type="button" class="ghost icon" title="Activity log" aria-label="Activity log"></button>
           </span>
+          <!--
+            ACTIVITY. V3: moved OUT of #brand-text, where an icon button in an
+            inline span ballooned into a 150px white clock card (baseline D3).
+            It is a proper icon button in the brand row now, fixed-size by
+            rule. Id unchanged -- modules address ids, not positions.
+          -->
+          <button id="btn-activity" type="button" class="ghost icon" title="Activity log" aria-label="Activity log"></button>
         </div>
 
         <!--
-          SAVED VIEWS.
-
-          A filter you cannot keep is a filter you use once. Ships with four
-          built-ins that double as worked examples of the query syntax —
-          nobody discovers `has:deadline` by staring at a text box.
+          COMPOSE. V3: the one primary action lives at the TOP of the sidebar,
+          first thing under the brand, where every mail client puts it. It used
+          to sit in the footer pile, below four stacked buttons of equal
+          visual weight, none of which was the action this app exists for.
         -->
-        <section id="views" aria-labelledby="views-title">
-          <h2 id="views-title">Views</h2>
-          <ul id="views-list"></ul>
-          <!--
-            A HEADING OVER BLANK SPACE IS THE CLASSIC UNFINISHED SIGNAL.
-
-            With no saved views this section rendered its label and then
-            nothing: no copy, no hint, no way to discover what a view is. The
-            adjacent #radar hides itself when empty, so two neighbouring rail
-            sections handled emptiness two different ways and one left a titled
-            void.
-
-            Shown and hidden by renderViews(), which is the only writer.
-          -->
-          <p id="views-empty" class="rail-empty">Save a search to keep it here.</p>
-        </section>
-
-        <nav id="cats" aria-label="Categories"><!-- built once by app.js --></nav>
-
-        <!--
-          DEADLINE RADAR — academic context, deliberately BELOW the mail
-          navigation.
-
-          It used to sit directly under the brand, above saved views and above
-          the mailbox list, so the first thing this product showed was academic
-          data. That is the wrong claim: this is a mail client that understands
-          student life, not a student platform with a mailbox attached.
-
-          The feature earns its place -- deadlines extracted from mail are the
-          single most useful thing the classifier does -- but it orbits the
-          inbox rather than leading it. Still hidden when empty, so a
-          non-academic user never sees it at all.
-        -->
-        <!--
-          THE OUTBOX.
-
-          Hidden until the queue has something in it, the same rule #radar
-          follows. A permanently-visible empty section is the "heading over
-          dead whitespace" problem the completeness audit found in Views.
-        -->
-        <!--
-          SNOOZED.
-
-          SNOOZE and UNSNOOZE both had UI; WAKE_DUE did not, so the feature was
-          two-thirds surfaced. Mail the user deliberately hid was unreachable by
-          ANY route -- not in a view, not in search -- until its alarm fired,
-          which is a trust gap in the one feature whose promise is "it comes
-          back".
-        -->
-        <section id="snoozed" aria-labelledby="snoozed-title" hidden>
-          <h2 id="snoozed-title">Snoozed</h2>
-          <ul id="snoozed-list"></ul>
-        </section>
-
-        <section id="outbox" aria-labelledby="outbox-title" hidden>
-          <h2 id="outbox-title">Outbox</h2>
-          <ul id="outbox-list"></ul>
-        </section>
-
-        <section id="radar" aria-labelledby="radar-title" hidden>
-          <h2 id="radar-title">Due soon</h2>
-          <ul id="radar-list"></ul>
-        </section>
-
-        <div id="side-foot">
+        <div id="side-actions">
           <button id="btn-compose" class="primary full" type="button" title="Compose (c)">
             Compose
           </button>
-          <!--
-            Timetable — a secondary tool, sized like one.
+        </div>
 
-            It was `ghost full`: the same full-bleed width as Compose, one step
-            down in colour only. Two stacked full-width buttons read as two
-            equal choices, and they are not. Compose is the one thing a mail
-            client asks you to do.
+        <!--
+          NAVIGATION. The sidebar's second and only other job. Mailboxes, then
+          categories -- everything else moved out (views to the topbar menu,
+          radar/snoozed/outbox to the right rail). This nav is the sidebar's
+          ONE scrollable, flexible region and can never be starved to 52px by
+          its siblings again (baseline D2): the sidebar grid reserves its row.
+        -->
+        <nav id="cats" aria-label="Categories"><!-- built once by app.js --></nav>
 
-            The badge stays: when a class needs attention that IS mail-adjacent
-            news, and it is the only way the panel can ask for you without
-            opening itself.
-          -->
+        <!--
+          Footer: secondary exits, compact, equal, quiet. Not stacked
+          full-width buttons shouting beside Compose.
+        -->
+        <div id="side-foot">
           <button id="btn-timetable" class="ghost small" type="button" title="Build your timetable">
             Timetable
             <span class="tt-badge" data-kind="count" aria-hidden="true"></span>
           </button>
-          <button id="btn-gmail" class="ghost" type="button" title="Return to Gmail (Esc)">
+          <button id="btn-gmail" class="ghost small" type="button" title="Return to Gmail (Esc)">
             Back to Gmail
           </button>
           <button id="btn-signout" class="ghost small" type="button">Sign out</button>
@@ -204,6 +143,16 @@
               <span class="tb-sep" aria-hidden="true"></span>
             </div>
             <button id="btn-refresh" class="ghost" type="button" title="Refresh (r)">Refresh</button>
+            <!--
+              SAVED VIEWS (V3, R2). A filter you cannot keep is a filter you use
+              once -- but a permanent sidebar section of eight rows was the D4
+              crowding. Views now live in a topbar popover beside the search
+              that creates them: one click away, zero pixels when closed. The
+              panel content is the same #views markup, re-homed under
+              #overlay-root; saved-views.js still owns what is inside it.
+            -->
+            <button id="btn-views" class="ghost" type="button" title="Saved views"
+                    aria-haspopup="dialog" aria-expanded="false">Views</button>
             <button id="btn-more" class="ghost" type="button" title="Load 100 more">Load more</button>
             <span class="tb-sep" aria-hidden="true"></span>
             <!-- Help has a visible home, not just a key (round 58, H4). -->
@@ -236,6 +185,21 @@
                 the document waiting to fall out of sync with it.
               -->
             </div>
+            <!--
+              RAIL TOGGLE (V3). The right rail holds the context that used to
+              crowd the sidebar; this shows/hides it. State persists in
+              settings.
+            -->
+            <button id="btn-rail" class="ghost icon" type="button"
+                    title="Toggle the context rail" aria-label="Toggle the context rail"
+                    aria-pressed="true">
+              <svg viewBox="0 0 20 20" aria-hidden="true" width="16" height="16"
+                   fill="none" stroke="currentColor" stroke-width="1.6"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="14" height="12" rx="2"/>
+                <path d="M13.2 4v12"/>
+              </svg>
+            </button>
           </div>
         </header>
 
@@ -380,9 +344,6 @@
               </div>
               <p>Select a message.</p>
               <p class="hint"><kbd>j</kbd>/<kbd>k</kbd> move · <kbd>e</kbd> archive · <kbd>s</kbd> star · <kbd>u</kbd> unread · <kbd>Esc</kbd> Gmail</p>
-              <!-- Idle preview: the due-soon list fills the resting reader pane
-                   (round 50), so the default view is useful, not blank. -->
-              <div id="reader-idle" hidden></div>
             </div>
             <article id="reader" role="article" aria-labelledby="r-subject" tabindex="-1" hidden>
               <div id="reader-head">
@@ -511,6 +472,7 @@
               -->
               <div id="r-thread" role="list" aria-label="Messages in this conversation" hidden></div>
 
+
               <div id="r-bodywrap">
                 <!--
                   A BODY-SHAPED PLACEHOLDER, not the word "Loading".
@@ -552,6 +514,64 @@
               </div>
             </article>
           </div>
+
+          <!--
+            THE CONTEXT RAIL (V3, R1/R2). Everything that used to crowd the
+            sidebar and was not navigation lived there; it lives here now:
+            deadlines, the needs-you panel, snoozed and the outbox. Element
+            ids are unchanged -- radar.js, rails.js and followups write by
+            id, so the move is a housing change, not a module change.
+
+            Hidden when every section is empty (each section keeps its own
+            hidden-when-empty rule) and collapsible via #btn-rail; below the
+            wide breakpoint it becomes a drawer instead of a column.
+          -->
+          <aside id="rail" aria-label="For you">
+            <div id="rail-head">
+              <h2 id="rail-title">For you</h2>
+              <button id="btn-rail-close" class="ghost icon" type="button"
+                      title="Close the rail" aria-label="Close the rail">
+                <svg viewBox="0 0 20 20" aria-hidden="true" width="15" height="15"
+                     fill="none" stroke="currentColor" stroke-width="1.6"
+                     stroke-linecap="round">
+                  <path d="M5 5l10 10M15 5L5 15"/>
+                </svg>
+              </button>
+            </div>
+            <div id="rail-scroll">
+              <!--
+                DEADLINE RADAR. Deadlines extracted from mail are the single
+                most useful thing the classifier does; hidden entirely when
+                there is nothing due.
+              -->
+              <section id="radar" aria-labelledby="radar-title" hidden>
+                <h2 id="radar-title">Due soon</h2>
+                <ul id="radar-list"></ul>
+              </section>
+
+              <!--
+                NEEDS YOU. The idle-reader panel (follow-ups, waiting-on)
+                re-homed from the collapsed reader pane, where at 0px wide it
+                rendered as vertical poetry (baseline D1).
+              -->
+              <div id="reader-idle" hidden></div>
+
+              <!--
+                SNOOZED and OUTBOX. Hidden until they hold something; a
+                permanently-visible empty section is the classic unfinished
+                signal this product audits against.
+              -->
+              <section id="snoozed" aria-labelledby="snoozed-title" hidden>
+                <h2 id="snoozed-title">Snoozed</h2>
+                <ul id="snoozed-list"></ul>
+              </section>
+
+              <section id="outbox" aria-labelledby="outbox-title" hidden>
+                <h2 id="outbox-title">Outbox</h2>
+                <ul id="outbox-list"></ul>
+              </section>
+            </div>
+          </aside>
         </section>
         <!--
           THE TIMETABLE WORKSPACE (round 54).
@@ -568,6 +588,28 @@
           <div id="tt-panel" class="tt-panel" role="region" aria-label="Timetable"></div>
         </section>
       </main>
+
+      <!--
+        THE OVERLAY ROOT (V3, R5). Every floating surface lives under ONE
+        fixed root above the app: gate, compose, palette, help, toast, the
+        views popover, and every menu the primitive mounts. One root = one
+        stacking context = z-order is a local decision inside this container,
+        and a floating surface can never again render inside a content pane
+        where it falls under another pane (the D5 class of bug).
+      -->
+      <div id="overlay-root">
+      <!--
+        VIEWS POPOVER. The same #views markup that used to be a permanent
+        sidebar section; opened from #btn-views in the topbar. saved-views.js
+        remains the only writer of #views-list and #views-empty.
+      -->
+      <div id="views-pop" role="dialog" aria-label="Saved views" hidden>
+        <section id="views" aria-labelledby="views-title">
+          <h2 id="views-title">Views</h2>
+          <ul id="views-list"></ul>
+          <p id="views-empty" class="rail-empty">Save a search to keep it here.</p>
+        </section>
+      </div>
 
       <!-- Sign-in gate. Shown instead of the panes when there is no token. -->
       <!--
@@ -763,6 +805,7 @@
             <button id="toast-action" type="button" aria-label="Undo" hidden></button>
         <span id="toast-drain" aria-hidden="true"></span>
       </div>
+      </div><!-- /#overlay-root -->
     </div>
 
     <script type="module" src="src/app/app.js"></script>
