@@ -151,8 +151,22 @@ reduced-motion safe, pointer-coarse exempt.*
   Selection-gated commands still vanish whole (never state-ambiguous, just
   absent — a different doctrine, deliberately kept). Browser-verified and
   integration-driven end to end.
-- [ ] **65/g — Hash deep links (F7):** view/category/query/selection mirrored
-  to location.hash; back/forward walks views; no per-keystroke entries.
+- [x] **65/g — Hash deep links (F7).** `src/app/deep-links.js`:
+  `#inbox/augsd?q=…&m=…` round-trips through format/parse; deliberate views
+  (category, mailbox, settled runQuery) push ONE history entry each; every
+  settled frame mirrors the full state via replaceState only, so j/k and
+  typing can never pollute history (pinned in source: nothing outside
+  deep-links.js calls the History API). popstate and boot share one apply
+  path through the shell's own navigation functions with echo suppression;
+  a deep-linked message that has not synced yet latches until its data
+  lands. Writing the round surfaced a real bleed: each sandboxed-iframe
+  srcdoc write was a joint-session-history entry (+2 per message read —
+  Back would have chewed forty dead items per twenty mails). Fixed in
+  reader.js as `writeBodyDoc`: swap-in an identical fresh frame per write
+  (attrs clone across, sandbox intact; the load handler became a
+  parameter), measured zero net entries over four reads, Back walking
+  views one press per view. Integration drives boot → category → type →
+  j/k → real back()/forward() restorations, plus cold-load at a deep link.
 - [ ] **65/h — Recovery polish (F9):** toast action slots wired to retry for
   sync/classify failures where cheap; outbox retry surfaced in rail card.
 - [ ] **65/i — Final pass:** re-run interactive flows headless at 3 widths,

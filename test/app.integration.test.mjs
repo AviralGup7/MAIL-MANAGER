@@ -3222,6 +3222,61 @@ test('PALETTE: recents lead the untyped list; Undo explains why it cannot run (6
   }
 });
 
+test('DEEP LINKS: views push entries, keystrokes never do, Back walks views (65/g)', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, win, settle, restore } = await boot();
+  try {
+    // Boot canonicalizes the URL to the default view.
+    await settle(4);
+    assert.equal(win.location.hash, '#inbox/all', 'the settled frame mirrors into the URL');
+    const len0 = win.history.length;
+
+    // A category click is a deliberate view: one history entry appears.
+    doc.querySelector('#cats .cat[data-cat="augsd"]').click();
+    await settle();
+    assert.equal(win.location.hash, '#inbox/augsd');
+    assert.equal(win.history.length, len0 + 1, 'one push per view, not per frame');
+
+    // Typing a query and j/k-ing through results only mirror — zero entries.
+    const search = doc.getElementById('search');
+    search.value = 'regis';
+    search.dispatchEvent(new win.Event('input'));
+    await settle();
+    assert.match(win.location.hash, /^#inbox\/augsd\?q=regis(&m=|$)/);
+    press(doc, win, 'j');
+    await settle();
+    const withM = win.location.hash;
+    const selId = doc.querySelector(".row[aria-selected='true']")?.dataset.id;
+    assert.ok(selId, 'j opened a message');
+    assert.equal(withM, `#inbox/augsd?q=regis&m=${selId}`, 'the open message is in the URL');
+    press(doc, win, 'j');
+    await settle();
+    press(doc, win, 'k');
+    await settle();
+    assert.equal(win.history.length, len0 + 1,
+      'j/k moved the selection twice and history did not grow — pollution is impossible');
+
+    // Back walks the VIEW: category, query and reader all return to default.
+    win.history.back();
+    await settle(6);
+    assert.equal(win.location.hash, '#inbox/all');
+    assert.equal(search.value, '', 'the query left with its entry');
+    assert.equal(doc.querySelector('#listquery').hidden, true);
+    assert.equal(doc.querySelector(".row[aria-selected='true']"), null, 'the reader closed with its entry');
+    assert.deepEqual(rowText(doc), ['Registration for Semester II', 'PS-II station allotment', 'Run failed: CI on main']);
+
+    // Forward re-applies the whole deep link, selection included.
+    win.history.forward();
+    await settle(8);
+    assert.equal(win.location.hash, withM, 'the entry remembered the open message');
+    assert.equal(doc.querySelector(".row[aria-selected='true']")?.dataset.id, selId,
+      'forward restored the message, not just the view');
+    assert.equal(search.value, 'regis');
+  } finally {
+    restore();
+  }
+});
+
 test('MAILBOX: the rail exposes the system mailboxes and switching works', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');
   const { doc, win, settle, restore } = await boot();

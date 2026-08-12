@@ -49,7 +49,8 @@ import * as deadlineStore from './deadline-store.js';
 import * as myCourses from './my-courses.js';
 import { detectNotice, shouldPromote, summarise } from './notices.js';
 import {
-  wireReader, openMessage, closeReader, renderThreadStrip, syncReaderActions,
+  wireReader, openMessage as openMessageRaw, closeReader as closeReaderRaw,
+  renderThreadStrip, syncReaderActions,
   repaintBody, cancelMarkRead, loadImageAllowList, openPartId, renderReaderTags,
 } from './reader.js';
 import { wireSuggestUI, renderSuggestions, cancelSuggestBlur } from './suggest-ui.js';
@@ -72,6 +73,10 @@ import { openLayer, closeTopLayer, hasLayers, closeAllLayers, closeWithMotion, c
 import { openMenu, closeMenu, menuIsOpen } from './menu.js';
 import { wireRowActions } from './row-actions.js';
 import { wireSearchChips } from './search-chips.js';
+import {
+  wireDeepLinks, navigateHash, mirrorHash, applyHash, checkPendingSelection,
+  clearHash,
+} from './deep-links.js';
 import { promptDialog } from './dialog.js';
 import { openActivityLog } from './activity-ui.js';
 import {
@@ -510,8 +515,44 @@ function scheduleRender({ changed, structural } = { changed: new Set(), structur
     renderReaderIdle(ctx);
     renderViews();
     renderNotices();
+    /*
+     * 65/g: the URL mirrors the SETTLED FRAME — whatever is on screen once
+     * the frame lands is what the hash says. j/k history pollution is
+     * structurally impossible here: the mirror only ever replaceStates.
+     * And a deep-linked message whose data arrives with this frame opens now.
+     */
+    checkPendingSelection();
+    mirrorHash();
   });
 }
+
+/*
+ * 65/g: the hash mirror, coalesced like the renders it describes.
+ *
+ * scheduleRender's frame covers store-driven change, but typing a query and
+ * opening a message render DIRECTLY (responsiveness is the point of those
+ * paths) and would otherwise leave the URL describing yesterday's view.
+ * Anything that commits view state outside a store notification queues a
+ * mirror here — same one-frame discipline, deduplicated inside deep-links.
+ */
+let mirrorFrame = 0;
+function queueHashMirror() {
+  if (mirrorFrame) return;
+  mirrorFrame = requestAnimationFrame(() => {
+    mirrorFrame = 0;
+    checkPendingSelection();
+    mirrorHash();
+  });
+}
+
+/*
+ * The shell's open/close, wrapped ONCE so every path — row clicks, Enter,
+ * j/k's move, the thread strip, notices, the palette — mirrors its
+ * selection without each caller learning about URLs. reader.js itself
+ * stays ignorant of the address bar: its job is showing a conversation.
+ */
+const openMessage = (id) => { openMessageRaw(id); queueHashMirror(); };
+const closeReader = () => { closeReaderRaw(); queueHashMirror(); };
 
 /**
  * Subscribe a mailbox's store to rendering.
@@ -1769,6 +1810,8 @@ function selectCategory(key) {
   // highlighted would claim a filter is applied when it is not.
   renderViews();
   updateSaveAffordance();
+  // 65/g: a category switch is a deliberate VIEW navigation — one Back step.
+  navigateHash();
 }
 
 /**
@@ -1818,6 +1861,8 @@ async function selectMailbox(id) {
   // places and READ NOWHERE, so clicking a mailbox behind the sign-in gate
   // still issued a SYNC_PAGE and repainted the previous account's mail.
   if (state.signedIn && !mbState(id).loaded) await loadMailboxPage(id, '');
+  // 65/g: mailbox switches are deliberate view navigations — one Back step.
+  navigateHash();
 }
 
 /** Fetch one page of a non-inbox mailbox. */
@@ -1949,6 +1994,7 @@ function applySearchTyping() {
   updateSaveAffordance();
   scheduleServerSearch();
   renderSuggestions();
+  queueHashMirror(); // 65/g: typing renders directly; the URL must keep up.
 }
 
 
@@ -2004,6 +2050,7 @@ $('btn-signout').addEventListener('click', async () => {
   opEpoch++; // late responses from this session are now stale
   // A signed-out app that keeps polling is a privacy problem, not just a bug.
   stopAutoRefresh();
+  clearHash(); // 65/g: the gate has no view state worth a URL.
   showGate('Signed out.');
 });
 $('btn-signin').addEventListener('click', doSignIn);
@@ -3002,6 +3049,12 @@ const ctx = {
     // affordance must not offer to save something already saved.
     renderViews();
     updateSaveAffordance();
+    /*
+     * 65/g: choosing a saved view or palette filter is a SETTLED query —
+     * typed into existence at once, so it earns one history entry, unlike
+     * keystrokes which only ever mirror.
+     */
+    navigateHash();
   },
   // The timetable panel quotes email and offers to open it, and needs a
   // failure channel for a storage write.
@@ -3532,6 +3585,42 @@ async function boot() {
     save: () => $('btn-save-view').click(),
   });
 
+  /*
+   * Deep links (65/g). Applies run through the shell's OWN navigation
+   * functions — selectMailbox/selectCategory/applySearchTyping — with the
+   * module suppressing the history echo, so Back landing on a hash is
+   * indistinguishable from the user clicking their way to the same view.
+   */
+  wireDeepLinks({
+    snapshot: () => ({
+      mailbox: state.mailbox,
+      category: state.category,
+      query: state.query,
+      selected: state.selected,
+    }),
+    validMailbox: isMailbox,
+    applyMailbox: (mb) => { if (mb !== state.mailbox) void selectMailbox(mb); },
+    applyCategory: (cat) => {
+      // A deep-linked category the install does not know would render an
+      // empty list under a foreign name; unknown means 'all'.
+      const known = cat === 'all' || ctx.categoryList().some(([k]) => k === cat);
+      const target = known ? cat : 'all';
+      if (target !== state.category) selectCategory(target);
+    },
+    applyQuery: (q) => {
+      if (el.search.value === q && state.query === q) return;
+      el.search.value = q;
+      applySearchTyping();
+    },
+    trySelect: (id) => {
+      if (!store.get(id)) return false;
+      openMessage(id);
+      return true;
+    },
+    hasSelection: () => Boolean(state.selected),
+    closeMessage: () => closeReader(),
+  });
+
   wirePalette(ctx);
   wireCompose(ctx);
   wireRadar(ctx);
@@ -3589,6 +3678,13 @@ async function boot() {
     rules = await loadRules();
     await loadImageAllowList();
     await start();
+    /*
+     * 65/g: the boot deep link is applied only once the app can honour
+     * every part of it — stores exist, rules are loaded, the first sync is
+     * underway. A selection whose message has not landed yet stays latched
+     * in deep-links and opens when its data does.
+     */
+    applyHash(window.location.hash);
     // Only after the inbox is up: an unsent message from a previous session
     // is offered back rather than silently lost.
     restoreDraftIfAny(ctx).catch(() => {});
