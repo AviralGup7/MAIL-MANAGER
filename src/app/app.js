@@ -253,6 +253,7 @@ const el = {
   search: $('search'),
   listTitle: $('listtitle'),
   listCount: $('listcount'),
+  listQuery: $('listquery'),
   account: $('account'),
   freshness: $('freshness'),
   toastIcon: $('toast-icon'),

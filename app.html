@@ -254,6 +254,14 @@
             <div id="listhead">
               <span id="listtitle">Inbox</span>
               <span id="listcount"></span>
+              <!--
+                MODE READOUT (round 62, P-3). Search mode used to be
+                signalled only by the suggestion list — an inference. The
+                active query is now a readout in the same bar as the title,
+                so the mode is stated, not guessed. Selection mode already
+                swaps this bar for the bulkbar.
+              -->
+              <span id="listquery" hidden></span>
             </div>
 
             <!--

@@ -794,6 +794,15 @@ function updateCounts(total) {
   // It used to read "400 of 600", which implied the other 200 were merely
   // below the fold rather than unreachable.
   el.listCount.textContent = total === 0 ? '' : String(total);
+  // P-3: the active query is a READOUT, not an inference. Present while a
+  // query filters the list; gone the moment it clears.
+  if (state.query) {
+    el.listQuery.textContent = `Searching: “${state.query}”`;
+    el.listQuery.hidden = false;
+  } else {
+    el.listQuery.textContent = '';
+    el.listQuery.hidden = true;
+  }
 }
 
 /** Build a row's skeleton once. Text is filled by fillRow. */

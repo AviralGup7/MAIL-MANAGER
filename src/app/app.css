@@ -906,6 +906,23 @@ a.ghost {
   font-size: var(--t-md);
 }
 
+/* Mode readout (round 62 P-3): the active query, stated where the title
+   lives. Quieter than the title — context, not content — and baseline-aligned
+   so the fixed-height listhead slot (audit 33) keeps its height. */
+#listquery {
+  /* Flex child of #listhead: min-width 0 or the ellipsis is dead code. */
+  min-width: 0;
+  padding: 1px var(--s-2);
+  border-radius: var(--r-sm);
+  background: var(--accent-soft);
+  color: var(--fg-dim);
+  font-size: var(--t-xs);
+  max-width: 40ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 #scroller {
   flex: 1;
   min-height: 0;

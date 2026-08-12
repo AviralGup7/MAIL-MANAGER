@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  # THE SUITE, IN FOUR PORTIONS (round 53).
+  # THE SUITE, IN EIGHT PORTIONS (round 53, widened round 62).
   #
   # One job used to run every test file serially: every jsdom document,
   # every crash risk and every minute of wall time concentrated in one
@@ -15,13 +15,14 @@ jobs:
   # prints its own TEST SUMMARY block (verdict, counts, duration, per-failure
   # name/location/time/reason). fail-fast is OFF on purpose: all four
   # summaries must land, because the point of portions is seeing the whole
-  # picture, not stopping at the first cut.
+  # picture, not stopping at the first cut. Eight slices keep each job small
+  # and fast, and a failure isolates to a narrower band of files.
   test:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        shard: ['1/4', '2/4', '3/4', '4/4']
+        shard: ['1/8', '2/8', '3/8', '4/8', '5/8', '6/8', '7/8', '8/8']
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 

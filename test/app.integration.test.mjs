@@ -902,10 +902,17 @@ test('search filters by subject and by sender, and clears', async (t) => {
     await settle();
     assert.deepEqual(rowText(doc), ['Registration for Semester II']);
 
+    // P-3 (round 62): search mode is a READOUT, not an inference — the bar
+    // states the active query while it filters, and drops it on clear.
+    const readout = doc.getElementById('listquery');
+    assert.equal(readout.hidden, false, 'the query is stated while active');
+    assert.match(readout.textContent, /augsd/);
+
     search.value = '';
     search.dispatchEvent(new win.Event('input'));
     await settle();
     assert.equal(rows(doc).length, 3);
+    assert.equal(readout.hidden, true, 'and gone the moment it clears');
   } finally {
     restore();
   }
