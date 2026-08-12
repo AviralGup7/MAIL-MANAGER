@@ -250,6 +250,13 @@ export function openMenu({
     node.style.position = 'fixed';
     node.style.left = '0px';
     node.style.top = '0px';
+    /* Older menu classes declare `right: 0` (theme) as their anchoring half
+       of the old host-mounted design. Once left AND top are pinned inline a
+       surviving `right: 0` stretches the menu across the whole viewport and
+       the measured width then clamps it to the left edge. Fixed placement
+       owns all four insets. */
+    node.style.right = 'auto';
+    node.style.bottom = 'auto';
     root.appendChild(node);
     const ar = anchor.getBoundingClientRect();
     const vw = window.innerWidth || 1024;

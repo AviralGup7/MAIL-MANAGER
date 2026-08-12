@@ -317,8 +317,10 @@ test('every setting in the schema has a control on this page', async (t) => {
   /*
    * `clientId` and `theme` are handled elsewhere (its own fieldset, and the
    * in-app theme picker). `coachDone` is an internal one-time flag (the
-   * coach toast) that deliberately has no user-facing control; it is
-   * schema-backed so backup/restore round-trips it. Everything else must be
+   * coach toast) that deliberately has no user-facing control; `railOpen`
+   * is the same class -- its control is the in-app rail toggle, which is
+   * where a user actually looks for it (round 64.5). Both are schema-backed
+   * so backup/restore round-trips them. Everything else must be
    * reachable, or it is a setting the user cannot change -- which is how
    * dead schema entries start.
    */
@@ -328,7 +330,7 @@ test('every setting in the schema has a control on this page', async (t) => {
     const declared = [...schema.matchAll(/^ {2}([a-zA-Z][a-zA-Z0-9]*): \{ type:/gm)]
       .map((m) => m[1]);
 
-    const ELSEWHERE = new Set(['clientId', 'theme', 'coachDone']);
+    const ELSEWHERE = new Set(['clientId', 'theme', 'coachDone', 'railOpen']);
     const missing = declared
       .filter((k) => !ELSEWHERE.has(k))
       .filter((k) => !doc.getElementById(k));

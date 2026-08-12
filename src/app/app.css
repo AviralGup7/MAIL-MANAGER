@@ -5520,14 +5520,15 @@ kbd {
    exemption, named and justified, so the relaxation cannot spread silently.
    ========================================================================= */
 
-/* O1 -- the idle reader hands its column to the list. 640, not 1fr: a
-   full-bleed list is unscannable; 640 shows the subject audit 35 measured
-   as clipped, plus most of its snippet, and stops there. */
+/* O1 -- RETIRED BY NAME in the V3 overhaul (round 64.5, docs/OVERHAUL-V3.md
+   R8): the idle reader used to hand its column to the list (minmax(300px,
+   640px) 0), which is what produced the 0px readpane with content spilling
+   past its box (baseline D1). The empty reader now keeps its real column as
+   a designed resting surface -- "Select a message", centered, with the
+   keyboard legend. The transition stays: the rail opening still animates
+   the columns. */
 #panes {
   transition: grid-template-columns var(--dur-fast) var(--ease-out);
-}
-#panes:has(#reader[hidden]) {
-  grid-template-columns: minmax(300px, 640px) 0;
 }
 
 /* O3 -- the topbar yields while the list is in motion. The guards are the

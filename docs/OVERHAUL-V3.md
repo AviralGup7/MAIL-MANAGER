@@ -95,6 +95,31 @@ verdicts, and any tab-stop budget that contradicts the new chrome. Rules that
 protect *correctness and accessibility* (listbox tree, contrast, named
 controls, reduced-motion) are NOT repealed.
 
+Retirements/adjustments that happened *during implementation*, discovered by
+the browser probes (all re-pinned deliberately):
+
+1. **Row scale 54/46/40 → 62/58/40.** The probe on the first build showed
+   the separator hairline crossing every subject: date+star+tag stacked to
+   ~60px in the right column, the grid track outgrew a 54px row, and
+   `align-items: center` laid the mid column across the hairline. The
+   density invariant `--row-h = 2 × --s-3 + two text lines (36px)` is now
+   respected, and `.r-right` is one line (date + star) with the tag living
+   on line 2 next to the subject.
+2. **Attention bloom v1 → v2.** v1 spent height (two-line subject clamp)
+   that only ever fitted inside the old 68px row. v2 spends width: the
+   snippet leaves the line, the subject's 58% cap lifts, geometry untouched.
+   `bloom.test.mjs` re-pinned (`max-width: none` / `display: none`).
+3. **Legacy 860px ladder block deleted.** It hid `#views`/`#radar`, neither
+   of which is a sidebar tenant after V3 — at 860px the rail drawer's
+   Due-soon card was being erased. The icon-rail contract lives in one V3
+   block now (`#cats min-width: 0` is the load-bearing line).
+4. **Fixed menus neutralise all four insets.** `.snooze-menu.theme-menu`
+   still declared the old host-mounted `right: 0`; with inline `left`+`top`
+   that stretched the menu to full viewport width before clamp.
+5. **`railOpen` joins the options-page exemption set** (its control is the
+   in-app rail toggle), and the collapsed-rail guard re-pins to the prose
+   that actually remains in the rail.
+
 **R8 additions (round 64.5/b, measured while repairing the row):**
 
 - *Row scale revised: 54/46/40 → 62/58/40.* The first V3 draft cut
@@ -128,15 +153,24 @@ controls, reduced-motion) are NOT repealed.
 ## 2 · Execution checkpoints
 
 1. ✅ Baseline screenshots + DOM metrics (this file's §0)
-2. Plan commit (this file) — pushed
-3. Skeleton restructure: `app.html` zones + `app.css` layout/overflow rewrite
+2. ✅ Plan commit (this file) — pushed (`60044f4`)
+3. ✅ Skeleton restructure: `app.html` zones + `app.css` layout/overflow rewrite
    → screenshot loop at 6 widths
-4. Sidebar rebuild: brand fix, compose top, nav floor, compact footer
-5. Rail build: moved sections styled as cards; rail toggle + persistence
-6. Overlay root + menu.js fixed-position anchoring → dropdown repro test
-7. Motion system: tokens, keyframes, row cascade, reader slide, press/hover
-8. Rows: one-line scannable anatomy at all three densities
-9. Screenshot polish loop (themes × widths × states) until clean
-10. Test reconciliation: update layout-contract/polish/menu pins to the new
-    contract; targeted suites green locally; CI is the full-suite authority
+4. ✅ Sidebar rebuild: brand fix, compose top, nav floor, compact footer
+5. ✅ Rail build: moved sections styled as cards; rail toggle + persistence
+   (+ drawer manners below 1240px: outside-click / Escape close)
+6. ✅ Overlay root + menu.js fixed-position anchoring → dropdown repro:
+   category menu rendered over list+sidebar, theme menu anchored to its
+   button (inset bug found by probe, fixed)
+7. ✅ Motion system: tokens, keyframes, row cascade (measured running:
+   `v3-row-in` 260ms × 22ms stagger), reader slide, press/hover springs
+8. ✅ Rows: rebuilt anatomy at all three densities (strikethrough bug
+   diagnosed via rect probes, see R8 #1/#2)
+9. ✅ Screenshot polish loop — Daylight + Midnight × 480/600/720/860/1080/
+   1280 × (idle / category / menu / popover / compose / palette / message
+   open / rail open+closed)
+10. ✅ Test reconciliation: package, bloom, compression, layout-contract,
+    polish, menu, options pins updated deliberately (never loosened —
+    re-pointed at the new contract); every suite green when run in targeted
+    batches locally; CI (8 shards) is the full-suite authority
 11. Push; before/after evidence table in the commit message

@@ -26,11 +26,22 @@ const js = read('src/app/app.js') + read('src/app/compose.js')
 let JSDOM = null;
 try { ({ JSDOM } = await import('jsdom')); } catch { /* skip below */ }
 
-test('O1: the idle reader hands its column to the list, capped at 640', () => {
-  assert.match(css, /#panes:has\(#reader\[hidden\]\) \{\n  grid-template-columns: minmax\(300px, 640px\) 0;/);
+test('O1: RETIRED — the idle reader keeps a real, designed column', () => {
+  /*
+   * V3 (round 64.5, OVERHAUL-V3 R8) repealed "idle reader yields its
+   * column": the 0-width column was baseline defect D1 (content painting
+   * past a 0px box). The new contract pins the replacement instead:
+   * the same two columns whether the reader is hidden or live, a third
+   * column only while the rail is open AND has live sections, and the
+   * column animation preserved.
+   */
+  assert.match(css, /#panes:has\(#reader\[hidden\]\) \{\n  grid-template-columns: minmax\(340px, 42%\) minmax\(0, 1fr\);/);
+  // The collapse-to-zero column must never come back.
+  assert.ok(!/#panes:has\(#reader\[hidden\]\)[^{]*\{[^}]*\b0\s*;/.test(css.replace(/minmax\(0, 1fr\)/g, '')),
+    'the 0-width reader column is retired by name');
   assert.match(css, /#panes \{\n  transition: grid-template-columns var\(--dur-fast\)/);
-  // 640, not 1fr: a full-bleed list is unscannable. The cap is the design.
-  assert.ok(!/#panes:has\(#reader\[hidden\]\)[^{]*\{[^}]*1fr/.test(css));
+  // The rail column exists only while the rail is actually live.
+  assert.match(css, /body\.rail-open #panes:has\(#rail-scroll > :not\(\[hidden\]\)\) \{\n  grid-template-columns: minmax\(340px, 40%\) minmax\(0, 1fr\) var\(--rail-w\);/);
 });
 
 test('O3: the topbar yields, and the guards are the design', () => {
