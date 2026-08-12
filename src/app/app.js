@@ -66,7 +66,7 @@ import { wireSidebar, buildSidebar, renderSidebar } from './sidebar.js';
 import {
   wireBulk, selection, move, renderSelection, bulkAct, reconcileBulk, BULK_ACTIONS,
 } from './bulk.js';
-import { displayName } from './display.js';
+import { displayName, fullDate } from './display.js';
 import { renderShortcuts } from './shortcuts.js';
 import { openLayer, closeTopLayer, hasLayers, closeAllLayers, closeWithMotion, cancelExit } from './layers.js';
 import { openMenu, closeMenu, menuIsOpen } from './menu.js';
@@ -2118,22 +2118,38 @@ function openDeadlineMenu(id, anchor) {
     toast(origin === 'dismiss' ? 'Not a deadline' : 'Deadline set');
   };
 
+  /*
+   * P-2 (round 61): the menu OPENS BY SAYING WHAT IS CURRENTLY IN EFFECT.
+   * Extraction and correction are deliberately separate stores — the
+   * separation is load-bearing — so the menu must do the reconciliation the
+   * user otherwise does in their head: name the effective value and who
+   * decided it. Each preset previews its absolute date, so "Next week" can
+   * never mean a day the user did not expect.
+   */
+  const stateDesc = eff.at === null
+    ? 'none set'
+    : eff.source === 'user'
+      ? `your correction — ${fullDate(eff.at)}`
+      : `extracted — ${fullDate(eff.at)}`;
+  const preset = (text, at) => ({ text, hint: fullDate(at), run: () => set(at) });
+
   const items = [
-    { text: 'Today', run: () => set(endOfDay(Date.now())) },
-    { text: 'Tomorrow', run: () => set(endOfDay(Date.now() + DAY)) },
-    { text: 'In 3 days', run: () => set(endOfDay(Date.now() + 3 * DAY)) },
-    { text: 'Next week', run: () => set(endOfDay(Date.now() + 7 * DAY)) },
+    preset('Today', endOfDay(Date.now())),
+    preset('Tomorrow', endOfDay(Date.now() + DAY)),
+    preset('In 3 days', endOfDay(Date.now() + 3 * DAY)),
+    preset('Next week', endOfDay(Date.now() + 7 * DAY)),
   ];
 
   // Only offer to remove what is actually there.
   if (eff.at !== null) {
     items.push({
       text: eff.source === 'extracted' ? 'Not a deadline' : 'Clear',
+      hint: eff.source === 'user' ? `Removes your correction` : `Keeps the text, drops the date`,
       run: () => set(null, 'dismiss'),
     });
   }
 
-  openMenu({ anchor, name: 'deadline', label: 'Deadline', items });
+  openMenu({ anchor, name: 'deadline', label: `Deadline — currently: ${stateDesc}`, items });
 }
 
 /** End of the given day, local time -- the same convention deadlines.js uses. */

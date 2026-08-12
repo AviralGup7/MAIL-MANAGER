@@ -599,6 +599,41 @@ test('READER: a message with a deadline says so, in the message', async (t) => {
   }
 });
 
+test('DEADLINE: the correction menu opens by stating what is in effect (P-2)', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * Round 61 P-2. Extraction and correction stay separate stores — the
+   * separation is load-bearing — so the MENU does the reconciliation: it
+   * names the effective value, who decided it, and every choice previews its
+   * absolute date. The user never infers state; the menu states it.
+   */
+  const { doc, settle, restore } = await boot({ messages: DUE_MESSAGES });
+  try {
+    await settle(6);
+    rows(doc)[0].click();
+    await settle(8);
+
+    const btn = doc.querySelector('#r-actions button[data-act="deadline"]');
+    assert.ok(btn, 'the reader offers deadline correction');
+    btn.click();
+    await settle(4);
+
+    const menu = doc.querySelector('[role="menu"]');
+    assert.ok(menu, 'the deadline menu opens');
+    assert.match(
+      menu.getAttribute('aria-label'),
+      /Deadline — currently: extracted — /,
+      'the menu states the effective value AND that the extractor decided it'
+    );
+    const hints = [...menu.querySelectorAll('.sc-when')].map((n) => n.textContent);
+    assert.ok(hints.length >= 4, 'every preset previews its outcome');
+    assert.ok(hints.slice(0, 4).every((h) => /\d/.test(h)),
+      'and every preset preview carries a real date');
+  } finally {
+    restore();
+  }
+});
+
 test('READER: a message with no deadline shows no deadline strip', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');
   // The counterpart. An always-present empty strip is chrome, and it would
