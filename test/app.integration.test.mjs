@@ -1621,7 +1621,14 @@ test('THEME: the menu is keyboard operable and Escape closes it', async (t) => {
     menu.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'End', bubbles: true }));
     await settle();
     const items = [...doc.querySelectorAll('.theme-item')];
-    assert.equal(doc.activeElement, items[items.length - 1], 'End reaches the last theme');
+    /*
+     * Round 58: the menu is Appearance now — End reaches the menu's last
+     * item, which is a density option; the themes are still one Home away.
+     */
+    const all = [...menu.querySelectorAll('.snooze-opt')];
+    assert.equal(doc.activeElement, all[all.length - 1],
+      'End reaches the last appearance option');
+    assert.ok(doc.activeElement.classList.contains('density-item'));
     menu.dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
     await settle();
     assert.equal(doc.activeElement, items[0], 'Home reaches the first');
@@ -1764,7 +1771,11 @@ test('A11Y: the tab order is constant, not proportional to message count', async
       Math.abs(nLarge - nSmall) <= 1,
       `tab stops scale with message count: ${nSmall} for 3 vs ${nLarge} for 200`
     );
-    assert.ok(nLarge < 20, `expected a small constant number of stops, got ${nLarge}`);
+    // Budget raised 20 -> 22 in round 58: the IA audit added exactly two
+    // persistent stops — the topbar Help button and the sidebar Activity
+    // button, both previously keyboard-only/undiscoverable. Any further
+    // increase must be accounted the same way.
+    assert.ok(nLarge < 22, `expected a small constant number of stops, got ${nLarge}`);
   } finally {
     large.restore();
   }
