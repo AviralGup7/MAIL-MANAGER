@@ -71,6 +71,7 @@ import { renderShortcuts } from './shortcuts.js';
 import { openLayer, closeTopLayer, hasLayers, closeAllLayers, closeWithMotion, cancelExit } from './layers.js';
 import { openMenu, closeMenu, menuIsOpen } from './menu.js';
 import { wireRowActions } from './row-actions.js';
+import { wireSearchChips } from './search-chips.js';
 import { promptDialog } from './dialog.js';
 import { openActivityLog } from './activity-ui.js';
 import {
@@ -1922,19 +1923,33 @@ el.search.addEventListener('input', () => {
   if (searchFrame) return;
   searchFrame = requestAnimationFrame(() => {
     searchFrame = 0;
-    if (!state.query && el.search.value) capturePreSearchScroll();
-    const hadQuery = !!state.query;
-    state.query = el.search.value;
-    if (hadQuery && !state.query) clearSearchOverlay();
-    // R5: clearing a search returns you to where the search began.
-    applySearchScroll(state.query);
-    renderList();
-    renderViews();
-    updateSaveAffordance();
-    scheduleServerSearch();
-    renderSuggestions();
+    applySearchTyping();
   });
 });
+
+/*
+ * The ONE query-application path.
+ *
+ * Extracted at 65/e so the search chips share it instead of growing a
+ * second route to the same state. Typing reaches it through the rAF
+ * coalescer (keystrokes arrive in bursts; one render per frame is the
+ * doctrine). A chip gesture calls it directly after syncing the input,
+ * because the click is already a single deliberate event — and every
+ * consequence below still runs exactly once, in the same order.
+ */
+function applySearchTyping() {
+  if (!state.query && el.search.value) capturePreSearchScroll();
+  const hadQuery = !!state.query;
+  state.query = el.search.value;
+  if (hadQuery && !state.query) clearSearchOverlay();
+  // R5: clearing a search returns you to where the search began.
+  applySearchScroll(state.query);
+  renderList();
+  renderViews();
+  updateSaveAffordance();
+  scheduleServerSearch();
+  renderSuggestions();
+}
 
 
 /* ========================================================================== *
@@ -3463,6 +3478,10 @@ async function boot() {
       // storage call left the view on screen with no toast and no error.
       const res = await removeView(rm.dataset.removeView);
       await refreshViews();
+      // 65/e: the chip strip's Save affordance derives from the saved set,
+      // so a removal must re-render it — otherwise Save stays hidden for a
+      // query that is no longer backed by a view.
+      renderList();
       toast(res?.ok === false ? res.error : 'View removed');
       return;
     }
@@ -3489,7 +3508,28 @@ async function boot() {
     if (name === null) return;
     await refreshViews();
     updateSaveAffordance();
+    // 65/e: re-render the chip strip too, so its Save control disappears the
+    // moment the query becomes a view — derived from the same saved set, not
+    // toggled independently (two affordance states would diverge).
+    renderList();
     toast(`Saved "${name}"`, { kind: 'success' });
+  });
+
+  /*
+   * Search chips (round 65/e, F6). The chips render inside list.js's
+   * readout slot; the BEHAVIOUR lives here because the consequences are the
+   * shell's: the input element, the one query path, the save dialog.
+   * Every gesture funnels into applySearchTyping — chips never get a
+   * second, subtly-different route to the filtered state.
+   */
+  wireSearchChips({
+    head: el.listhead,
+    search: el.search,
+    applyQuery: (q) => { el.search.value = q; applySearchTyping(); },
+    clearQuery: () => { el.search.value = ''; applySearchTyping(); },
+    // Delegating to the toolbar button, not duplicating its guts: the
+    // dialog, validation and storage error handling exist exactly once.
+    save: () => $('btn-save-view').click(),
   });
 
   wirePalette(ctx);

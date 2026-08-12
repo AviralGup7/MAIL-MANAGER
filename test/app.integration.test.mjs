@@ -918,6 +918,55 @@ test('search filters by subject and by sender, and clears', async (t) => {
   }
 });
 
+test('search chips edit the query, clear it, and promote it to a view (65/e)', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, win, settle, restore } = await boot();
+  try {
+    const search = doc.getElementById('search');
+    const strip = () => doc.getElementById('listquery');
+
+    search.value = 'from:augsd registration';
+    search.dispatchEvent(new win.Event('input'));
+    await settle();
+    assert.deepEqual(rowText(doc), ['Registration for Semester II']);
+    assert.equal(strip().hidden, false);
+    const chips = strip().querySelectorAll('.q-chip');
+    assert.equal(chips.length, 2, 'scope and free text are separate chips');
+    assert.match(strip().textContent, /^Searching/, 'P-3 mode statement leads');
+
+    // Removing the scope chip is string surgery on the one query.
+    chips[0].querySelector('.q-x').click();
+    await settle();
+    assert.equal(search.value, 'registration', 'the scope left, the thought stayed');
+    assert.equal(strip().querySelectorAll('.q-chip').length, 1);
+    assert.equal(doc.activeElement, search, 'focus returns to the field');
+
+    // Save promotes the result state into a view — from the strip itself.
+    const saveChip = strip().querySelector('[data-chip-action="save"]');
+    assert.ok(saveChip, 'unsaved queries offer save where the results are');
+    saveChip.click();
+    await settle();
+    const dialog = doc.querySelector('.prompt-box');
+    assert.ok(dialog, 'the save dialog opens, not a native prompt');
+    dialog.querySelector('.prompt-actions .primary').click();
+    await settle();
+    assert.equal(strip().querySelector('[data-chip-action="save"]'), null,
+      'a saved query stops offering save — derived, not toggled');
+    assert.equal(doc.getElementById('btn-save-view').hidden, true);
+    assert.ok(doc.querySelector('.view-item[data-query="registration"]'),
+      'the view joins the saved list');
+
+    // One-click clear returns the whole list.
+    strip().querySelector('[data-chip-action="clear"]').click();
+    await settle();
+    assert.equal(search.value, '');
+    assert.equal(strip().hidden, true, 'gone the moment the query clears');
+    assert.equal(rows(doc).length, 3);
+  } finally {
+    restore();
+  }
+});
+
 test('opening a message shows it and optimistically marks it read', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');
   const { doc, calls, settle, restore } = await boot();

@@ -125,8 +125,20 @@ reduced-motion safe, pointer-coarse exempt.*
   a clipboard-failure fallback that shows the text rather than toasting a
   lie. Verified headless: real clipboard carries the thread URL/subject;
   `test/reader-more.test.mjs` pins the set, order, fallback and visibility.
-- [ ] **65/e — Search chips + clear (F6):** chip row under listbar with
-  active filters, one-click clear, "Save as view" promotion.
+- [x] **65/e — Search chips + clear (F6).** `src/app/search-chips.js`: the
+  round-62 readout slot became an editor — one removable chip per lexical
+  token (the parser's own `tokenize`, now exported; free-text runs merge
+  into ONE chip because five single-word chips are five deletion tariffs on
+  one thought), plus Clear and Save-view trailing. Chips funnel into the
+  extracted `applySearchTyping` — the one query-application path typing
+  also uses — and Save delegates to the toolbar button so the dialog exists
+  exactly once. Two latent bugs found by writing the round: saving or
+  removing a view never re-rendered the strip's save affordance (both
+  handlers now `renderList()`), and `#listquery[hidden]` needed restating
+  because the UA rule loses specificity to `inline-flex`. Fixed-slot
+  contract verified in-browser: listhead 41px and scroller top identical
+  before/after; integration test drives type → chip → remove → save →
+  clear through the real boot.
 - [ ] **65/f — Palette context + recents (F5):** MRU section, typed-down
   categories, dynamic enablement (disabled-with-reason pattern from menu.js).
 - [ ] **65/g — Hash deep links (F7):** view/category/query/selection mirrored

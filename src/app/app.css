@@ -918,19 +918,74 @@ a.ghost {
   opacity: 0.55;
 }
 
+/*
+ * Search chips (round 65/e, F6). The round-62 P-3 readout became an editor:
+ * one chip per query token, rendered INSIDE the same fixed-height listhead
+ * slot (audit 33). The strip clips sideways, never downward — the scroller
+ * top still cannot move, so the overflow is horizontal and scrollbarless,
+ * and `hidden` is restated because the UA rule loses specificity to
+ * `display: inline-flex` and the strip would never hide.
+ */
 #listquery {
-  /* Flex child of #listhead: min-width 0 or the ellipsis is dead code. */
+  /* Flex child of #listhead: min-width 0 or the overflow rule is dead code. */
   min-width: 0;
-  padding: 1px var(--s-2);
-  border-radius: var(--r-sm);
-  background: var(--accent-soft);
-  color: var(--fg-dim);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
   font-size: var(--t-xs);
-  max-width: 40ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
+#listquery::-webkit-scrollbar { display: none; }
+#listquery[hidden] { display: none; }
+#listquery .q-label { flex: none; color: var(--fg-dim); }
+.q-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  height: 20px;
+  padding: 0 var(--s-1) 0 var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  background: var(--bg-raised);
+  color: var(--fg);
+  min-width: 0;
+}
+.q-chip .q-k { flex: none; color: var(--fg-dim); }
+.q-chip .q-v {
+  min-width: 0;
+  max-width: 18ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.q-chip.not { border-style: dashed; }
+.q-chip .q-x {
+  flex: none;
+  border: 0;
+  background: none;
+  color: var(--fg-dim);
+  font-size: var(--t-xs);
+  padding: 2px;
+  cursor: pointer;
+  border-radius: 50%;
+}
+.q-chip .q-x:hover { color: var(--fg); background: var(--accent-soft); }
+#listquery .q-act {
+  flex: none;
+  border: 0;
+  background: none;
+  color: var(--fg-dim);
+  font-size: var(--t-xs);
+  padding: 1px var(--s-1);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+#listquery .q-act:hover { color: var(--fg); }
 
 #scroller {
   flex: 1;

@@ -219,13 +219,18 @@
               <span id="listtitle">Inbox</span>
               <span id="listcount"></span>
               <!--
-                MODE READOUT (round 62, P-3). Search mode used to be
-                signalled only by the suggestion list — an inference. The
-                active query is now a readout in the same bar as the title,
-                so the mode is stated, not guessed. Selection mode already
-                swaps this bar for the bulkbar.
+                MODE READOUT (round 62, P-3) → SEARCH CHIPS (round 65/e, F6).
+                Search mode used to be signalled only by the suggestion list
+                — an inference. Round 62 made it a readout in the same bar as
+                the title; round 65/e makes the readout an EDITOR: the query
+                renders as one removable chip per token, with Clear and
+                Save-view controls trailing. Same slot, same bar height —
+                the strip overflows horizontally, never vertically, so the
+                audit-33 fixed-slot contract holds. Content comes from
+                search-chips.js via list.js updateCounts; behaviour is wired
+                once in app.js against the stable #listhead.
               -->
-              <span id="listquery" hidden></span>
+              <span id="listquery" role="group" aria-label="Active search filters" hidden></span>
             </div>
 
             <!--

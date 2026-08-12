@@ -33,6 +33,7 @@ import * as deadlineStore from './deadline-store.js';
 import { rowSnippet } from './snippet.js';
 import * as myCourses from './my-courses.js';
 import { icon, setIcon } from './icons.js';
+import { renderSearchChips } from './search-chips.js';
 import { setAttr, setText } from './dom.js';
 import { getMailbox } from './mailboxes.js';
 import { buildRowActions, syncRowActions } from './row-actions.js';
@@ -797,8 +798,11 @@ function updateCounts(total) {
   el.listCount.textContent = total === 0 ? '' : String(total);
   // P-3: the active query is a READOUT, not an inference. Present while a
   // query filters the list; gone the moment it clears.
+  // 65/e: the readout's text became a chip STRIP (search-chips.js) — same
+  // slot, same slot discipline (the bar never gains height), but each token
+  // of the query is now an object that can be removed, cleared, or saved.
   if (state.query) {
-    el.listQuery.textContent = `Searching: “${state.query}”`;
+    renderSearchChips(el.listQuery, state.query);
     el.listQuery.hidden = false;
   } else {
     el.listQuery.textContent = '';

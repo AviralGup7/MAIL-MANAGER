@@ -36,8 +36,12 @@ import { addressOf as addr } from './contacts.js';
 /**
  * Split a query into tokens, respecting quotes.
  * `from:a "b c" -is:read` -> ['from:a', '"b c"', '-is:read']
+ *
+ * Exported (round 65/e): the search chips reuse this same splitter because
+ * they EDIT the string the parser reads — two quote-aware lexers would be
+ * two truths about where one token ends.
  */
-function tokenize(q) {
+export function tokenize(q) {
   const out = [];
   let cur = '';
   let quoted = false;
