@@ -1879,6 +1879,123 @@ test('TIMETABLE: Escape closes the panel without leaving Gmail', async (t) => {
   }
 });
 
+/*
+ * ROUND-57 PILOT EVALUATION (audits/56 §7). The workspace model is judged on
+ * two questions — is the UI easier to navigate, and does an agent get a
+ * bounded domain. These tests turn Q1 claims into contracts: honest rooms,
+ * the roving keyboard pattern, and exits back to mail from every door.
+ */
+const buildCS = async (doc, win, settle) => {
+  const results = await ttSearch(doc, win, settle, 'CS F111');
+  results[0].querySelector('button').click();
+  await settle(4);
+  const lectures = [...doc.querySelectorAll('.tt-chooser .tt-section')];
+  lectures.find((b) => b.textContent.startsWith('L1')).click();
+  await settle(8);
+  const labs = [...doc.querySelectorAll('.tt-chooser .tt-section')];
+  labs.find((b) => b.textContent.startsWith('P2')).click();
+  await settle(8);
+};
+
+test('TIMETABLE EVAL: rooms with no content render no tab; counts ride full ones', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // CS F111 carries exam dates, so Schedule and Exams exist; nothing here
+  // produces pending findings or conflicts, so those rooms stay unrendered —
+  // a tab that says nothing is the heading-over-dead-whitespace problem.
+  const { doc, win, settle, restore } = await boot({ timetableData: TT_DATA });
+  try {
+    await openTT(doc, win, settle);
+    await buildCS(doc, win, settle);
+    const labels = [...doc.querySelectorAll('#tt-panel .tt-tab')]
+      .map((b) => b.textContent.replace(/\d+/g, '').trim());
+    assert.deepEqual(labels, ['Schedule', 'Exams'],
+      'only rooms with content get a tab');
+  } finally {
+    restore();
+  }
+});
+
+test('TIMETABLE EVAL: tabs keep ONE tab stop and arrow keys switch rooms', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, win, settle, restore } = await boot({ timetableData: TT_DATA });
+  try {
+    await openTT(doc, win, settle);
+    await buildCS(doc, win, settle);
+
+    const tabstop = [...doc.querySelectorAll('#tt-panel .tt-tab')]
+      .filter((b) => b.tabIndex === 0);
+    assert.equal(tabstop.length, 1, 'roving tabindex: one stop for the tablist');
+
+    tabstop[0].focus();
+    press(doc, win, 'ArrowRight');
+    await settle(4);
+    let active = doc.querySelector('#tt-panel .tt-tab.active');
+    assert.equal(active.dataset.tab, 'exams', 'right arrow enters the next room');
+    assert.equal(doc.activeElement, active, 'and focus lands on it');
+
+    press(doc, win, 'ArrowLeft');
+    await settle(4);
+    active = doc.querySelector('#tt-panel .tt-tab.active');
+    assert.equal(active.dataset.tab, 'schedule', 'left arrow returns');
+  } finally {
+    restore();
+  }
+});
+
+test('TIMETABLE EVAL: a conflicted room carries its count on its tab', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const clash = {
+    ...TT_DATA,
+    courses: [
+      TT_DATA.courses[0],
+      {
+        comCode: '9999', courseNo: 'ZZ F999', title: 'CLASH', credits: ['3'],
+        sections: [{
+          section: 'L1', kind: 'lecture', instructors: ['Someone'], room: '1111',
+          daysHours: 'M 3', unresolved: [],
+          meetings: [{ day: 'M', dayName: 'Monday', hour: 3, startMin: 600, endMin: 650 }],
+        }],
+      },
+    ],
+  };
+  const { doc, win, settle, restore } = await boot({ timetableData: clash });
+  try {
+    await openTT(doc, win, settle);
+    await buildCS(doc, win, settle);
+    const zz = await ttSearch(doc, win, settle, 'ZZ F999');
+    zz[0].querySelector('button').click();
+    await settle(4);
+    doc.querySelector('.tt-chooser .tt-section').click();
+    await settle(8);
+
+    const tab = [...doc.querySelectorAll('#tt-panel .tt-tab')]
+      .find((b) => b.textContent.startsWith('Conflicts'));
+    assert.ok(tab, 'the conflicted room earns a tab');
+    assert.ok(tab.querySelector('.tt-tab-count'), 'and its count rides the tab');
+  } finally {
+    restore();
+  }
+});
+
+test('TIMETABLE EVAL: sidebar navigation returns to mail from the workspace', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // The sidebar is mail's home turf: choosing a category while the workspace
+  // is open is a request to be back in mail first (round-54 rule, pinned).
+  const { doc, win, settle, restore } = await boot({ timetableData: TT_DATA });
+  try {
+    await openTT(doc, win, settle);
+    assert.equal(doc.getElementById('tt-workspace').hidden, false);
+    doc.querySelector('#cats .cat[data-cat="all"]').click();
+    await settle(4);
+    assert.equal(doc.getElementById('tt-workspace').hidden, true,
+      'the workspace steps aside');
+    assert.equal(doc.getElementById('panes').hidden, false,
+      'and mail comes back');
+  } finally {
+    restore();
+  }
+});
+
 test('TIMETABLE: exams are listed with times converted from the legend', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');
   /*

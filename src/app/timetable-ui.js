@@ -762,8 +762,15 @@ function tabBar(rooms, counts) {
   const mk = (name, label) => {
     const t = el('button', 'tt-tab' + (tab === name ? ' active' : ''));
     t.type = 'button';
+    t.dataset.tab = name;
     t.setAttribute('role', 'tab');
     t.setAttribute('aria-selected', String(tab === name));
+    /*
+     * Roving tabindex, the same doctrine the sidebar rail is pinned to: ONE
+     * tab stop for the whole tablist. Four tab stops would make a keyboard
+     * user traverse every room to get past the workspace header.
+     */
+    t.tabIndex = tab === name ? 0 : -1;
     t.textContent = label;
     const n = counts[name] || 0;
     if (n > 0) {
@@ -778,6 +785,32 @@ function tabBar(rooms, counts) {
     });
     return t;
   };
+
+  /*
+   * Arrow keys SWITCH ROOMS (automatic activation): the tabs are destinations,
+   * not options in a menu, so landing on one enters it. The render rebuilds
+   * this bar, so focus is re-placed on the fresh active tab afterwards.
+   */
+  bar.addEventListener('keydown', (e) => {
+    const tabs = [...bar.querySelectorAll('.tt-tab')];
+    const i = tabs.indexOf(document.activeElement);
+    if (i === -1) return;
+    let next = -1;
+    if (e.key === 'ArrowRight') next = (i + 1) % tabs.length;
+    else if (e.key === 'ArrowLeft') next = (i - 1 + tabs.length) % tabs.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = tabs.length - 1;
+    else return;
+    e.preventDefault();
+    const name = tabs[next]?.dataset.tab;
+    if (name && name !== tab) {
+      tab = name;
+      render();
+      $('tt-panel')?.querySelector('.tt-tab.active')?.focus();
+    } else {
+      tabs[next]?.focus();
+    }
+  });
 
   bar.appendChild(mk('schedule', 'Schedule'));
   if (rooms.changes) bar.appendChild(mk('changes', 'Changes'));

@@ -177,3 +177,24 @@ test('the ctx store binding is a getter, never a value capture', () => {
     }
   }
 });
+
+test('the timetable workspace renders in exactly one module (round 57 boundary pin)', () => {
+  /*
+   * The pilot evaluation's Q2, enforced: an agent improving the timetable
+   * must start — and finish — in timetable-ui.js. The shell's role is seams
+   * only: the #tt-workspace container, the Esc rung, the rail button. Any
+   * tt-* DOM construction migrating into the shell is the boundary eroding,
+   * and it is caught here, not in review.
+   */
+  const app = readFileSync(join(SRC, 'app', 'app.js'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/\/\/[^\n]*/g, ' ');
+  const tt = readFileSync(join(SRC, 'app', 'timetable-ui.js'), 'utf8');
+
+  assert.ok(!/['"`]tt-[a-z]/.test(app),
+    'app.js must construct no tt-* DOM: the workspace renders itself');
+  assert.match(tt, /setAttribute\('role', 'tablist'\)/,
+    'the tablist lives in the workspace module');
+  assert.match(app, /timetableIsOpen\(\)/,
+    'the shell keeps exactly its seam: the Esc-ladder rung');
+});
