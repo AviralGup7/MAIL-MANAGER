@@ -746,7 +746,13 @@ reconciled derivation; no circular state dependencies; every async edge has a
 named staleness guard; every context loss is an intentional, documented
 decision.
 
-Two moderate weaknesses remain, both with cheap additive fixes (N-1 mode
-aggregator, N-2 in-flight registry) and neither blocks anything. The
+Two moderate weaknesses were identified, and BOTH were implemented in the
+same round (additive only, as proposed): N-2 the in-flight registry
+(`inFlight` Map projected onto rows as `.in-flight`, cleared on both settle
+branches — roadmap H1) and N-1 the read-only `modeOf()` aggregator (exposed
+via ctx and a test hook; no writers changed). The cross-tab outbox race
+(M3) was also REPRODUCED under test and fixed (nonce-and-settle claims plus
+a one-writer pump lock). After these, no moderate-or-worse state weakness
+remains open. The
 round-56 conclusion survives at the state level: **the architecture needs no
 redesign — the remaining work is projection and visibility, not structure.**

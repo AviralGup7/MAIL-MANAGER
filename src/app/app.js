@@ -2511,6 +2511,29 @@ function release() {
 }
 
 // Keyboard. Gmail-compatible where it makes sense, so muscle memory survives.
+/*
+ * MODE AGGREGATOR (roadmap M1 / round-62 N-1).
+ *
+ * READ-ONLY. Mode truth is distributed across body classes, state flags, the
+ * layer state and worker health; every existing consumer reads the one signal
+ * it needs and that stays true. This adds the one read nobody had: the
+ * aggregate answer to "what mode is the application in right now", so future
+ * cross-mode features derive instead of inventing a sixth way to ask.
+ * No writers change. No state moves. Consumers opt in.
+ */
+function modeOf() {
+  return {
+    searching: state.query !== '' || document.activeElement === el.search,
+    selecting: selection.active,
+    composing: !$('compose')?.hidden,
+    reading: state.selected !== null,
+    scrolled: document.body.classList.contains('list-scrolled'),
+    workspace: timetableIsOpen(),
+    degraded: workerDown,
+    offline: isOffline(),
+  };
+}
+
 document.addEventListener('keydown', (e) => {
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
 
@@ -2999,6 +3022,7 @@ window.__bmmPumpOutbox = () => pumpOutbox();
 /* Test seam: the gate is reached through several error paths; driving it
    directly is what lets a test assert which explanation each one shows. */
 window.__bmmShowGate = (m) => showGate(m);
+window.__bmmModeOf = modeOf;
 window.__bmmHideGate = () => hideGate();
 // Same live-binding hazard as ctx.store: defined as a getter so a harness
 // inspecting it after a mailbox switch sees the ACTIVE store, not the inbox.
@@ -3222,6 +3246,7 @@ async function boot() {
     openMessage,
     gmailUrl,
     isInFlight,
+    modeOf,
   });
   wireRails({
     get store() { return store; },

@@ -2248,6 +2248,40 @@ test('UNDO: a FAILED action must not leave an undo entry behind', async (t) => {
   }
 });
 
+test('MODE: modeOf aggregates the distributed mode truth (M1)', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * Round-62 N-1. Mode truth lives across body classes, state flags and
+   * layer state; modeOf is the read-only aggregate so cross-mode features
+   * derive instead of inventing another way to ask. Read-only: no writers.
+   */
+  const { doc, win, settle, restore } = await boot();
+  try {
+    await settle(6);
+    let mode = win.__bmmModeOf();
+    assert.equal(mode.searching, false, 'no query, no focus');
+    assert.equal(mode.reading, false);
+    assert.equal(mode.selecting, false);
+
+    rows(doc)[0].click();
+    await settle(6);
+    assert.equal(win.__bmmModeOf().reading, true, 'an open message is reading');
+
+    press(doc, win, 'Escape');
+    await settle(4);
+    assert.equal(win.__bmmModeOf().reading, false, 'Esc ends reading');
+
+    const search = doc.getElementById('search');
+    search.focus();
+    search.value = 'allotment';
+    search.dispatchEvent(new win.Event('input'));
+    await settle(4);
+    assert.equal(win.__bmmModeOf().searching, true, 'an active query is searching');
+  } finally {
+    restore();
+  }
+});
+
 test('IN-FLIGHT: a pending verb marks the row and clears on the outcome (H1)', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');
   /*
