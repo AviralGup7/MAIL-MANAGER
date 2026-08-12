@@ -222,7 +222,12 @@ test('EVERY SETTING IN THE SCHEMA IS EXPORTED (or deliberately withheld)', async
   const { SCHEMA } = await import('../src/app/settings.js');
 
   // Withheld on purpose, with the reason, so this is a decision and not a gap.
-  const WITHHELD = { clientId: 'per-installation OAuth client id' };
+  const WITHHELD = {
+    clientId: 'per-installation OAuth client id',
+    // 65/f: the palette MRU is observed usage history, not a preference;
+    // restoring it would import a habit nobody chose.
+    paletteRecents: 'per-installation usage history, not a preference',
+  };
 
   const missing = Object.keys(SCHEMA).filter(
     (k) => !EXPORTED_KEYS.includes(k) && !(k in WITHHELD)

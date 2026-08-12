@@ -3174,6 +3174,54 @@ test('LABELS: signing out drops the previous account\'s label names', async (t) 
   }
 });
 
+test('PALETTE: recents lead the untyped list; Undo explains why it cannot run (65/f)', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, win, settle, restore } = await boot();
+  try {
+    const paletteItems = () => [...doc.querySelectorAll('#palette-list .palette-item')];
+    const openPalette = async () => { press(doc, win, 'k', { ctrlKey: true }); await settle(4); };
+
+    // First open with nothing recorded: no section labels, canonical order.
+    await openPalette();
+    assert.equal(doc.querySelectorAll('.palette-sep').length, 0, 'no recents → no sections');
+
+    // Undo with an empty stack stays visible but cannot run — the reason
+    // sits where the shortcut would.
+    const undoRow = paletteItems().find((li) => li.textContent.includes('Undo last action'));
+    assert.ok(undoRow, 'undo is listed');
+    assert.ok(undoRow.classList.contains('disabled'), 'an inert command is stated, not silently clickable');
+    assert.equal(undoRow.getAttribute('aria-disabled'), 'true');
+    assert.match(undoRow.querySelector('.palette-hint-key').textContent, /Nothing to undo/);
+    undoRow.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+    await settle(4);
+    assert.equal(doc.getElementById('palette').hidden, false,
+      'clicking a disabled row leaves the palette open, reason still on screen');
+
+    // Run a real command; it must lead the next untyped open.
+    paletteItems().find((li) => li.textContent.includes('Search mail'))
+      .dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+    await settle(4);
+    assert.equal(doc.getElementById('palette').hidden, true, 'a real command closes the palette');
+
+    await openPalette();
+    const seps = [...doc.querySelectorAll('.palette-sep')].map((li) => li.textContent);
+    assert.deepEqual(seps, ['Recent', 'Everything'], 'recents form a labelled group ahead of the rest');
+    assert.ok(paletteItems()[0].textContent.includes('Search mail'),
+      'the most recently used command leads the untyped list');
+
+    // A typed query is an explicit act: no habit reorders it.
+    const input = doc.getElementById('palette-input');
+    input.value = 'ref';
+    input.dispatchEvent(new win.Event('input', { bubbles: true }));
+    await settle(4);
+    assert.equal(doc.querySelectorAll('.palette-sep').length, 0, 'typed intent outranks habit');
+    press(doc, win, 'Escape');
+    await settle(4);
+  } finally {
+    restore();
+  }
+});
+
 test('MAILBOX: the rail exposes the system mailboxes and switching works', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');
   const { doc, win, settle, restore } = await boot();

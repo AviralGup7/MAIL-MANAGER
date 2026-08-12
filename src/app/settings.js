@@ -147,6 +147,17 @@ export const SCHEMA = {
   // ---- composing ----
   signature: { type: 'string', def: '' },
 
+  // ---- palette (65/f) ----
+  /*
+   * The last few command ids invoked from the command palette, JSON-encoded
+   * — this schema has no array type, and ids embed label names that may
+   * contain commas, so a delimiter would eventually split one. USAGE
+   * HISTORY, not a preference: it is withheld from backups (backup.test's
+   * WITHHELD list states the reason) and never shown in options — a habit
+   * the machine observes is not a knob the user should have to polish.
+   */
+  paletteRecents: { type: 'string', def: '' },
+
   // ---- auth ----
   clientId: { type: 'string', def: '' },
 };

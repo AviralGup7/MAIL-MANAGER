@@ -10,7 +10,8 @@
 import { icon } from './icons.js';
 import { openLayer, closeWithMotion, cancelExit } from './layers.js';
 import { openCompose } from './compose.js';
-import { performUndo } from './undo-actions.js';
+import { performUndo, undoStack } from './undo-actions.js';
+import * as settings from './settings.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -23,6 +24,68 @@ let paletteFiltered = [];
 let paletteIndex = 0;
 /** The live query, so the empty state can quote it and offer a fallback. */
 let paletteQuery = '';
+/** Untyped listings lead with this many recents; 0 while anything is typed. */
+let paletteRecentCount = 0;
+
+/* ========================================================================== *
+ * RECENTS (round 65/f, F5)
+ *
+ * The palette used to open to the same flat dozen every time: the command
+ * you ran five minutes ago could be fourteen rows away AGAIN. A palette is
+ * a habit machine — the cost of a command is not finding it once but
+ * finding it every time. The MRU is that memory: up to four ids, persisted
+ * through settings as JSON (the schema has no array type, and ids embed
+ * Gmail label names that may contain commas, so a delimiter would someday
+ * split one). Withheld from backups as usage history, not preference.
+ * ========================================================================== */
+const RECENTS_MAX = 4;
+
+/** The persisted list, decode-failures and all folded to empty. */
+export function parseRecents(raw) {
+  try {
+    const v = JSON.parse(raw || '[]');
+    return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Untyped order: what you used lately, then everything in canonical order.
+ *
+ * Recents resolve against TODAY's command list — an id whose command no
+ * longer exists right now (a renamed label, a message context that went
+ * away) drops out silently instead of rendering a row that lies. Exported
+ * for tests; the render path consumes only the return value.
+ */
+export function orderForEmptyQuery(cmds, recentIds) {
+  const recent = [];
+  const seen = new Set();
+  for (const id of recentIds) {
+    if (recent.length >= RECENTS_MAX) break;
+    const c = cmds.find((x) => x.id === id);
+    if (c && !seen.has(c)) { recent.push(c); seen.add(c); }
+  }
+  return {
+    ordered: [...recent, ...cmds.filter((c) => !seen.has(c))],
+    recentCount: recent.length,
+  };
+}
+
+/**
+ * Remember an invocation. Fire-and-forget: a lost MRU write costs one
+ * reordering, so a storage hiccup must never surface at the user. The
+ * 'fallback' row (no-match → search mail) is a phrase, not a command, and
+ * recording it would teach the MRU a key that resolves to nothing.
+ */
+function recordRecent(id) {
+  if (!id || id === 'fallback') return;
+  const next = [
+    id,
+    ...parseRecents(settings.get('paletteRecents')).filter((x) => x !== id),
+  ].slice(0, RECENTS_MAX);
+  settings.set('paletteRecents', JSON.stringify(next)).catch(() => {});
+}
 
 /**
  * Build the command list.
@@ -36,7 +99,17 @@ function buildCommands(ctx) {
   const cmds = [
     { id: 'compose', icon: 'compose', label: 'Compose new message', hint: 'c', run: () => openCompose(ctx) },
     { id: 'refresh', icon: 'refresh', label: 'Refresh inbox', hint: 'r', run: () => ctx.refresh() },
-    { id: 'undo', icon: 'back', label: 'Undo last action', hint: 'ctrl+z', run: () => performUndo(ctx) },
+    /*
+     * 65/f: Undo is the one command that CAN be offered while inert — an
+     * empty undo stack used to invoke, do nothing, and say nothing. Now the
+     * row stays but is disabled WITH the reason ("Nothing to undo" replaces
+     * the shortcut where it sits), because an offered command that silently
+     * no-ops teaches the user the palette lies. Selection-gated commands
+     * still vanish whole — they were never state-ambiguous, just absent.
+     */
+    { id: 'undo', icon: 'back', label: 'Undo last action', hint: 'ctrl+z',
+      disabled: undoStack.peek() ? '' : 'Nothing to undo',
+      run: () => performUndo(ctx) },
     { id: 'search', icon: 'search', label: 'Search mail', hint: '/', run: () => $('search')?.focus() },
     { id: 'gmail', icon: 'back', label: 'Back to Gmail', hint: 'esc', run: () => ctx.release() },
     { id: 'shortcuts', icon: 'keyboard', label: 'Show keyboard shortcuts', hint: '?', run: () => ctx.toggleHelp?.() },
@@ -173,6 +246,20 @@ function renderPalette() {
   if (!list) return;
   const frag = document.createDocumentFragment();
   paletteFiltered.forEach((c, i) => {
+    /*
+     * Group labels exist only around an UNTYPED listing's recents: a typed
+     * query is one ranked answer set, not sections, so separators appear
+     * exactly when paletteRecentCount is non-zero and never mid-fuzzy.
+     * role=presentation — the listbox's options stay the only children a
+     * screen reader counts.
+     */
+    if (paletteRecentCount > 0 && (i === 0 || i === paletteRecentCount)) {
+      const sep = document.createElement('li');
+      sep.className = 'palette-sep';
+      sep.setAttribute('role', 'presentation');
+      sep.textContent = i === 0 ? 'Recent' : 'Everything';
+      frag.appendChild(sep);
+    }
     const li = document.createElement('li');
     li.className = 'palette-item' + (i === paletteIndex ? ' active' : '');
     li.setAttribute('role', 'option');
@@ -191,7 +278,19 @@ function renderPalette() {
 
     const hint = document.createElement('kbd');
     hint.className = 'palette-hint-key';
-    hint.textContent = c.hint || '';
+    /*
+     * A disabled command states its reason IN the shortcut slot (65/f) —
+     * the truth lives exactly where the affordance would. aria-disabled,
+     * not the attribute: the row must stay discoverable to arrows/screen
+     * readers, merely non-runnable.
+     */
+    if (c.disabled) {
+      li.classList.add('disabled');
+      li.setAttribute('aria-disabled', 'true');
+      hint.textContent = c.disabled;
+    } else {
+      hint.textContent = c.hint || '';
+    }
 
     li.append(ico, label, hint);
     frag.appendChild(li);
@@ -234,6 +333,7 @@ function renderPalette() {
 
     // Make Enter and click work through the paths that already exist.
     paletteFiltered = q ? [{ id: 'fallback', label, run: () => ctx.runQuery(q) }] : [];
+    paletteRecentCount = 0;
     paletteIndex = 0;
   }
 
@@ -242,13 +342,32 @@ function renderPalette() {
 
 function filterPalette(q) {
   paletteQuery = q;
-  paletteFiltered = paletteCommands
-    .map((c) => ({ c, s: fuzzyScore(q, c.label) }))
-    .filter((x) => x.s > 0)
-    .sort((a, b) => b.s - a.s)
-    .slice(0, 12)
-    .map((x) => x.c);
-  paletteIndex = 0;
+  if (q.trim()) {
+    /*
+     * Typed intent outranks habit (65/f): fuzzy ranking only, no recents
+     * injected — the user has SAID what they want, and reordering it toward
+     * what they did yesterday would be second-guessing an explicit act.
+     */
+    paletteFiltered = paletteCommands
+      .map((c) => ({ c, s: fuzzyScore(q, c.label) }))
+      .filter((x) => x.s > 0)
+      .sort((a, b) => b.s - a.s)
+      .slice(0, 12)
+      .map((x) => x.c);
+    paletteRecentCount = 0;
+  } else {
+    const { ordered, recentCount } = orderForEmptyQuery(
+      paletteCommands, parseRecents(settings.get('paletteRecents'))
+    );
+    paletteFiltered = ordered.slice(0, 12);
+    paletteRecentCount = Math.min(recentCount, paletteFiltered.length);
+  }
+  /*
+   * Land on the first RUNNABLE row. A recent Undo with a since-emptied
+   * stack is exactly the case where the first row cannot run; starting the
+   * highlight there would make Enter look broken.
+   */
+  paletteIndex = Math.max(0, paletteFiltered.findIndex((c) => !c.disabled));
   renderPalette();
 }
 
@@ -304,15 +423,29 @@ export function wirePalette(ctx) {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       if (!paletteFiltered.length) return;
-      paletteIndex =
-        (paletteIndex + (e.key === 'ArrowDown' ? 1 : -1) + paletteFiltered.length) %
-        paletteFiltered.length;
+      /*
+       * Disabled rows are skipped, not merely unclickable (65/f): focus
+       * landing on a row that cannot run would make the next Enter feel
+       * broken. The walk is bounded, so a hypothetical all-disabled list
+       * settles instead of spinning.
+       */
+      const dir = e.key === 'ArrowDown' ? 1 : -1;
+      let next = paletteIndex;
+      for (let step = 0; step < paletteFiltered.length; step++) {
+        next = (next + dir + paletteFiltered.length) % paletteFiltered.length;
+        if (!paletteFiltered[next].disabled) break;
+      }
+      paletteIndex = next;
       renderPalette();
     } else if (e.key === 'Enter') {
       e.preventDefault();
       const cmd = paletteFiltered[paletteIndex];
+      // A disabled row is a statement, not a button: Enter leaves the
+      // palette OPEN, so the reason stays on screen instead of vanishing.
+      if (!cmd || cmd.disabled) return;
       closePalette();
-      cmd?.run();
+      recordRecent(cmd.id);
+      cmd.run();
     } else if (e.key === 'Escape') {
       e.preventDefault();
       closePalette();
@@ -323,8 +456,10 @@ export function wirePalette(ctx) {
     const li = e.target.closest('.palette-item');
     if (!li) return;
     const cmd = paletteFiltered[Number(li.dataset.index)];
+    if (!cmd || cmd.disabled) return;
     closePalette();
-    cmd?.run();
+    recordRecent(cmd.id);
+    cmd.run();
   });
 
   // Clicking the backdrop closes; clicking the box must not.
@@ -346,6 +481,7 @@ export function _resetPalette() {
   paletteFiltered = [];
   paletteIndex = 0;
   paletteQuery = '';
+  paletteRecentCount = 0;
   knownLabels = [];
   // Close through the layer, not by nulling: the layer stack holds its own
   // reference, and an orphan there breaks the Escape chain.

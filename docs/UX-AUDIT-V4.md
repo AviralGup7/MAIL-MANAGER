@@ -139,8 +139,18 @@ reduced-motion safe, pointer-coarse exempt.*
   contract verified in-browser: listhead 41px and scroller top identical
   before/after; integration test drives type → chip → remove → save →
   clear through the real boot.
-- [ ] **65/f — Palette context + recents (F5):** MRU section, typed-down
-  categories, dynamic enablement (disabled-with-reason pattern from menu.js).
+- [x] **65/f — Palette context + recents (F5).** Untyped opens now lead
+  with a "Recent" group (MRU ≤ 4, persisted as JSON-in-string
+  `paletteRecents` — withheld from backups as usage history via the
+  WITHHELD decision list), then "Everything" in canonical order; typed
+  queries stay pure fuzzy because explicit intent outranks habit. Inert
+  commands became honest: with an empty stack, Undo renders disabled with
+  "Nothing to undo" in the shortcut slot — click/Enter refuse without
+  closing (reason stays on screen), arrows skip it through a bounded walk,
+  and the first-runnable-row rule keeps the initial highlight runnable.
+  Selection-gated commands still vanish whole (never state-ambiguous, just
+  absent — a different doctrine, deliberately kept). Browser-verified and
+  integration-driven end to end.
 - [ ] **65/g — Hash deep links (F7):** view/category/query/selection mirrored
   to location.hash; back/forward walks views; no per-keystroke entries.
 - [ ] **65/h — Recovery polish (F9):** toast action slots wired to retry for
