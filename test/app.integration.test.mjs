@@ -90,7 +90,7 @@ const MESSAGES = [
  * Boot app.html in jsdom.
  * Returns { win, doc, calls, settle } — `calls` records every worker message.
  */
-async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bodyOverride = {}, syncLatency = 0, perLabel = false, emptyLabels = [], labels = [], timetableData = null, storageTimetable = undefined, deadWorker = false, failVerbs = [] } = {}) {
+async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bodyOverride = {}, syncLatency = 0, slowVerbs = {}, perLabel = false, emptyLabels = [], labels = [], timetableData = null, storageTimetable = undefined, deadWorker = false, failVerbs = [] } = {}) {
   const html = readFileSync(join(ROOT, 'app.html'), 'utf8');
   const dom = new JSDOM(html, {
     url: 'chrome-extension://test/app.html',
@@ -157,7 +157,7 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
         // ordering bugs that only appear across a await boundary.
         // `syncLatency` makes a slow mailbox fetch reproducible, which is what
         // exposes ordering bugs between two concurrent loads.
-        const delay = msg.type === 'SYNC_PAGE' ? syncLatency : 0;
+        const delay = msg.type === 'SYNC_PAGE' ? syncLatency : (slowVerbs[msg.type] || 0);
         setTimeout(() => cb(respond(msg)), delay);
       },
     },
@@ -2243,6 +2243,63 @@ test('UNDO: a FAILED action must not leave an undo entry behind', async (t) => {
       'undo sent a STAR for an action that never succeeded — this mutates the '
       + 'mailbox in the opposite direction'
     );
+  } finally {
+    restore();
+  }
+});
+
+test('IN-FLIGHT: a pending verb marks the row and clears on the outcome (H1)', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * Roadmap H1. The optimistic model moved the row instantly, but nothing
+   * distinguished "landed" from "still on the wire". The flag verbs keep
+   * the row in the list, so the row can carry the truth: an in-flight mark
+   * while the verb is pending, gone the moment it settles. This test slows
+   * STAR down enough to observe the pending window.
+   */
+  const { doc, win, settle, restore } = await boot({ slowVerbs: { STAR: 20 } });
+  try {
+    rows(doc)[0].click();
+    await settle(6);
+    const id = MESSAGES[0].id;
+
+    press(doc, win, 's');
+    await settle(1); // a frame, but not the 20ms STAR reply
+
+    const row = doc.querySelector(`#list .row[data-id="${id}"]`);
+    assert.ok(row, 'the starred row stays in the list (flag verb)');
+    assert.ok(row.classList.contains('in-flight'),
+      'while the verb is pending, the row says so');
+
+    await new Promise((r) => setTimeout(r, 40)); // let the slow STAR land
+    await settle(4);
+
+    assert.equal(win.__bmmStore.get(id).starred, true, 'the star landed');
+    assert.ok(!row.classList.contains('in-flight'),
+      'the mark clears once the verb settles');
+  } finally {
+    restore();
+  }
+});
+
+test('IN-FLIGHT: a failed verb still clears the mark (no stuck pending row)', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  // The failure path rolls the flag back AND clears the mark — a row must
+  // never be left wearing "pending" after its verb has already failed.
+  const { doc, win, settle, restore } = await boot({ failVerbs: ['STAR'] });
+  try {
+    rows(doc)[0].click();
+    await settle(6);
+    const id = MESSAGES[0].id;
+
+    press(doc, win, 's');
+    await settle(8);
+
+    assert.equal(win.__bmmStore.get(id).starred, false, 'failed star rolled back');
+    const row = doc.querySelector(`#list .row[data-id="${id}"]`);
+    assert.ok(row, 'the row is back');
+    assert.ok(!row.classList.contains('in-flight'),
+      'a settled (failed) verb must not leave the mark up');
   } finally {
     restore();
   }

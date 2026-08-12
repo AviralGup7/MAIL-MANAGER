@@ -974,6 +974,10 @@ function fillRow(li, m) {
    */
   li.classList.toggle('unread', isConv ? conv.unread > 0 : !!m.unread);
   li.classList.toggle('muted', MUTED_CATEGORIES.has(m.category));
+  // In-flight (roadmap H1): while the verb is on the wire, the row wears a
+  // subtle mark so "changed optimistically" and "landed" are distinguishable.
+  // Only meaningful for verbs whose row stays (flags); remove-verbs vanish.
+  li.classList.toggle('in-flight', ctx.isInFlight ? ctx.isInFlight(m.id) : false);
   const star = q('.r-star');
   const starred = !!m.starred;
   if (star.getAttribute('aria-pressed') !== String(starred)) {

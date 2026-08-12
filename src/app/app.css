@@ -909,6 +909,15 @@ a.ghost {
 /* Mode readout (round 62 P-3): the active query, stated where the title
    lives. Quieter than the title — context, not content — and baseline-aligned
    so the fixed-height listhead slot (audit 33) keeps its height. */
+/* In-flight (roadmap H1): the row is mid-request. Deliberately quiet --
+   the optimistic change already happened; this only says "still landing".
+   Opacity alone, so no layout shifts and nothing is misread as selected. */
+/* The row's own opacity dims the star with it; no per-child rule needed
+   (a nested `.r-star` rule would also shadow the size gate's first-match). */
+.row.in-flight {
+  opacity: 0.55;
+}
+
 #listquery {
   /* Flex child of #listhead: min-width 0 or the ellipsis is dead code. */
   min-width: 0;

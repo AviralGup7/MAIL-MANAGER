@@ -779,8 +779,10 @@ function flagAction({
    * is unchanged: that is the optimistic store.patch above, which still runs
    * before the request. Only the confirmation waits.
    */
+  setInFlight(id, verb);
   const sent = send(verb, { id, ...payload }).then(
     () => {
+      clearInFlight(id);
       /*
        * THE ACTIVITY LOG IS WRITTEN HERE, ON THE SETTLED BRANCH.
        *
@@ -798,6 +800,7 @@ function flagAction({
       });
     },
     (err) => {
+      clearInFlight(id);
       store.patch(id, undoPatch);
       if (id === state.selected) syncContextActions(store.get(id));
       activity.record({ verb, ids: [id], actor: 'user', outcome: 'failed', error: err?.message });
@@ -806,6 +809,34 @@ function flagAction({
   );
 
   return sent;
+}
+
+/*
+ * IN-FLIGHT REGISTRY (roadmap H1 / round-62 N-2).
+ *
+ * The optimistic model is right, but until now the UI could not distinguish
+ * "the action landed" from "the UI moved and we are still waiting". For the
+ * flag verbs the row STAYS, so it can carry the truth: while the verb is on
+ * the wire the row wears a subtle in-flight mark, cleared the moment the
+ * request settles either way. Remove-verbs vanish from the list, so the mark
+ * is set but never seen -- harmless, and the rollback path still clears it.
+ *
+ * Purely additive: the optimistic mutation, rollback, undo and batch
+ * machinery are untouched. This only projects in-flightness onto the row.
+ */
+const inFlight = new Map(); // messageId -> verb, while the request is live
+
+function isInFlight(id) {
+  return inFlight.has(id);
+}
+
+function setInFlight(id, verb) {
+  inFlight.set(id, verb);
+  patchRow(id);
+}
+
+function clearInFlight(id) {
+  if (inFlight.delete(id)) patchRow(id);
 }
 
 function optimistic({
@@ -851,6 +882,7 @@ function optimistic({
 
   const run = async () => {
     if (before) await before(id);
+    setInFlight(id, verb);
     return send(verb, { id });
   };
 
@@ -870,6 +902,7 @@ function optimistic({
    */
   const sent = run().then(
     () => {
+      clearInFlight(id);
       activity.record({ verb, ids: [id], actor: 'user' });
       if (undoVerb) {
         recordUndo(ctx, past, async () => {
@@ -884,6 +917,7 @@ function optimistic({
       if (done) toast(done);
     },
     (err) => {
+      clearInFlight(id);
       activity.record({ verb, ids: [id], actor: 'user', outcome: 'failed', error: err?.message });
       return rollback(err);
     }
@@ -3187,6 +3221,7 @@ async function boot() {
     optimistic,
     openMessage,
     gmailUrl,
+    isInFlight,
   });
   wireRails({
     get store() { return store; },
