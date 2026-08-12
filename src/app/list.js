@@ -35,6 +35,7 @@ import * as myCourses from './my-courses.js';
 import { icon, setIcon } from './icons.js';
 import { setAttr, setText } from './dom.js';
 import { getMailbox } from './mailboxes.js';
+import { buildRowActions, syncRowActions } from './row-actions.js';
 import { CATEGORY_LABELS, MUTED_CATEGORIES } from '../classify/categories.js';
 import { CAT_COLOR, LOW_CONFIDENCE, displayName, shortDate } from './display.js';
 import { insertLaneHeaders } from './rails.js';
@@ -839,6 +840,9 @@ function buildRow(id) {
     '<span class="r-date"></span>' +
     '<button class="r-star" type="button" tabindex="-1" aria-label="Star"></button>' +
     '</span>';
+  /* Hover verbs (round 65/b): appended after the right column so CSS can park
+     the four icons over the date's slot without touching the grid. */
+  li.appendChild(buildRowActions(li));
   // The star is a real icon, not the `★` glyph. A glyph renders in whatever
   // font the platform picks, so it never optically matches the stroked SVGs
   // beside it and is never quite centred in its button.
@@ -983,6 +987,8 @@ function fillRow(li, m) {
   // subtle mark so "changed optimistically" and "landed" are distinguishable.
   // Only meaningful for verbs whose row stays (flags); remove-verbs vanish.
   li.classList.toggle('in-flight', ctx.isInFlight ? ctx.isInFlight(m.id) : false);
+  // The hover verb cluster's read/unread toggle names the CURRENT message.
+  syncRowActions(li, m);
   const star = q('.r-star');
   const starred = !!m.starred;
   if (star.getAttribute('aria-pressed') !== String(starred)) {

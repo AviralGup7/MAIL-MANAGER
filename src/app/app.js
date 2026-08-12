@@ -70,6 +70,7 @@ import { displayName, fullDate } from './display.js';
 import { renderShortcuts } from './shortcuts.js';
 import { openLayer, closeTopLayer, hasLayers, closeAllLayers, closeWithMotion, cancelExit } from './layers.js';
 import { openMenu, closeMenu, menuIsOpen } from './menu.js';
+import { wireRowActions } from './row-actions.js';
 import { promptDialog } from './dialog.js';
 import { openActivityLog } from './activity-ui.js';
 import {
@@ -3492,6 +3493,9 @@ async function boot() {
   wireCompose(ctx);
   wireRadar(ctx);
   wireRail();
+  // Row hover-verbs + the row's right-click menu (round 65/b). Same verbs
+  // the keyboard already had; now visible from the object itself.
+  wireRowActions(ctx);
   wireViewsPop();
   const idle = document.getElementById('reader-idle');
   if (idle) idle.addEventListener('click', (e) => {

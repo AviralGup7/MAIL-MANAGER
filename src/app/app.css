@@ -6076,6 +6076,85 @@ body.rail-open #rail:has(#rail-scroll > :not([hidden])) {
   max-width: 42%;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* With the hover verbs parked over the right column, the tag's right edge
+     is the new collision point; they sit just past it together. */
+  margin-right: var(--s-2);
+}
+
+/* ---- V3 ROW HOVER VERBS (round 65/b) — see row-actions.js ---------------- */
+
+/*
+ * The date is a FACT you read once; the verbs are what you do NEXT. On an
+ * attended row (pointer hover, keyboard selection via aria-selected, or
+ * focus within -- all three, so pointer and keyboard users see the same
+ * capability) the fact yields and the verbs take its place, Gmail-style.
+ *
+ * The cluster has its own plate: row backgrounds change on hover/selection
+ * and the verbs must not inherit a moving wash behind them.
+ */
+.r-actions {
+  position: absolute;
+  right: var(--s-2);
+  top: 50%;
+  transform: translateY(-50%) scale(0.96);
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--r-md);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+.r-act {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--fg-dim);
+  cursor: pointer;
+}
+.r-act:hover {
+  background: var(--bg-sunken);
+  color: var(--fg);
+}
+/* Touch rows keep their targets honest instead: hovering never happens, so
+   the verbs stay hidden and the row keeps its full-width tap. The context
+   menu remains on long-pressable right-click equivalents of each platform. */
+@media (hover: hover) {
+  .row:hover .r-actions,
+  .row:focus-within .r-actions,
+  .row[aria-selected='true'] .r-actions {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(-50%) scale(1);
+  }
+  .row:hover .r-date,
+  .row:focus-within .r-date,
+  .row[aria-selected='true'] .r-date,
+  .row:hover .r-star:not([aria-pressed='true']),
+  .row:focus-within .r-star:not([aria-pressed='true']),
+  .row[aria-selected='true'] .r-star:not([aria-pressed='true']) {
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+.r-date,
+.r-star {
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+/* The row's right-click menu is one of the shared primitive's tenants; only
+   its width is new. */
+.row-menu {
+  min-width: 268px;
 }
 /* Date and star now share the right column's single line, so the tallest
    thing in the column is the 24px star target and the grid track always
