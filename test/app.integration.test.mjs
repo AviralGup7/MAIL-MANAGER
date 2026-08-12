@@ -2424,6 +2424,60 @@ test('UNDO: a failed ARCHIVE leaves no undo entry either', async (t) => {
   }
 });
 
+test('RECOVERY: a failed verb\'s toast RETRIES the whole act (65/h)', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /* The array is consulted live by the worker contract: draining it
+   * mid-test simulates the service recovering. */
+  const failing = ['ARCHIVE'];
+  const { doc, win, calls, settle, restore } = await boot({ failVerbs: failing });
+  try {
+    const before = rows(doc).length;
+    rows(doc)[0].click(); // open = select, in the threaded-inbox default
+    await settle(6);
+    press(doc, win, 'e');
+    await settled(doc, settle);
+    assert.equal(rows(doc).length, before, 'the rollback restored the row');
+    assert.equal(doc.getElementById('toast-text').textContent, 'Could not archive');
+    const retryChip = doc.getElementById('toast-action');
+    assert.equal(retryChip.hidden, false, 'the failure ends in a way forward');
+    assert.equal(retryChip.textContent, 'Retry');
+
+    calls.length = 0;
+    failing.length = 0; // the service recovers
+    retryChip.click();
+    await settled(doc, settle);
+
+    assert.deepEqual(calls.filter((c) => c.type === 'ARCHIVE').length, 1,
+      'the chip re-ran the act — not a bare resend, the act');
+    assert.equal(rows(doc).length, before - 1, 'and the archive landed this time');
+  } finally {
+    restore();
+  }
+});
+
+test('RECOVERY: a failed sync ends in Retry, and the retry resyncs (65/h)', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const failing = ['SYNC_DELTA'];
+  const { doc, calls, settle, restore } = await boot({ failVerbs: failing });
+  try {
+    doc.getElementById('btn-refresh').click();
+    await settle(8);
+    const retryChip = doc.getElementById('toast-action');
+    assert.match(doc.getElementById('toast-text').textContent, /SYNC_DELTA failed/);
+    assert.equal(retryChip.hidden, false, 'a sync failure is an invitation, not an epitaph');
+
+    calls.length = 0;
+    failing.length = 0;
+    retryChip.click();
+    await settle(10);
+    assert.ok(calls.some((c) => c.type === 'SYNC_DELTA'), 'the retry issued a real delta sync');
+    assert.equal(doc.getElementById('toast-text').textContent, 'Up to date',
+      'recovery confirms in the same surface that carried the failure');
+  } finally {
+    restore();
+  }
+});
+
 test('UNDO: a failed auto-archive leaves no undo entry', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');
   /*

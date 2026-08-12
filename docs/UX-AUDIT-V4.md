@@ -167,8 +167,28 @@ reduced-motion safe, pointer-coarse exempt.*
   parameter), measured zero net entries over four reads, Back walking
   views one press per view. Integration drives boot → category → type →
   j/k → real back()/forward() restorations, plus cold-load at a deep link.
-- [ ] **65/h — Recovery polish (F9):** toast action slots wired to retry for
-  sync/classify failures where cheap; outbox retry surfaced in rail card.
+- [x] **65/h — Recovery polish (F9).** Every verb failure now ends in a
+  way forward: one failure surface (`toastFailure`) serves both rollback
+  paths (`flagAction` + `optimistic`), and the Retry chip carries the
+  whole act — `retryAct = () => act(action, id)` threaded through all
+  seven verb cases — so a re-attempt replays thread spans, undo records
+  and optimistic travel exactly as the first attempt did, never a bare
+  wire resend. The rollback had already restored the data; what the user
+  lost was intent, and intent is what the chip carries. The three sync
+  loads (`loadPage`, `refresh`, `loadMailboxPage`) hand `reportError`
+  their own retry, whose error-toast branch grew the same chip; the
+  chip exists only where a retry exists, so a failure without a way
+  forward stays honest about it. Deliberately NOT wired, with the
+  reasons pinned in `test/recovery-retry.test.mjs`: the offline banner
+  (a network failure is a STATE, not an event — its design comment
+  already forbids an action, and recovery is wired to the `online`
+  event), the outbox rail (Retry/Discard already lived there), and
+  classification (local and exception-contained — no discrete failure
+  toast exists to attach to; a mis-file is corrected through the
+  category menu). Browser-probed: sabotaged ARCHIVE → role=alert toast
+  with Retry + 20 rows (rollback), healed + click → "Archived" + 19
+  rows + the undo kbd; integration drives failure→retry→success through
+  the real boot for both a verb and a delta sync.
 - [ ] **65/i — Final pass:** re-run interactive flows headless at 3 widths,
   evidence table, doc close-out.
 

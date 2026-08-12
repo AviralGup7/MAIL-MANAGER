@@ -792,8 +792,23 @@ function gmailUrl(threadId, mailbox = 'inbox') {
  * @param {string}   o.past        undo label, e.g. "Starred"
  * @param {string}   o.failed      error toast
  */
+/*
+ * 65/h (F9): one failure surface for every verb. The rollback already put
+ * the message back as if nothing happened, so what the user lost is not
+ * data but INTENT — they still want the thing archived/starred/reported.
+ * An error toast that only announces makes them reconstruct that intent;
+ * the Retry chip carries it: re-run the very act that failed. `retry` is a
+ * closure over the act, not the wire call, so undo entries, thread spans
+ * and optimistic motion all replay exactly as the first attempt did.
+ */
+function toastFailure(text, retry) {
+  toast(text, retry
+    ? { kind: 'error', action: { label: 'Retry', run: retry } }
+    : { kind: 'error' });
+}
+
 function flagAction({
-  id, patch, undoPatch, verb, undoVerb, payload = {}, undoPayload = {}, past, failed,
+  id, patch, undoPatch, verb, undoVerb, payload = {}, undoPayload = {}, past, failed, retry,
 }) {
   const m = store.get(id);
   if (!m) return Promise.resolve();
@@ -847,7 +862,7 @@ function flagAction({
       store.patch(id, undoPatch);
       if (id === state.selected) syncContextActions(store.get(id));
       activity.record({ verb, ids: [id], actor: 'user', outcome: 'failed', error: err?.message });
-      toast(failed, { kind: 'error' });
+      toastFailure(failed, retry); // 65/h
     }
   );
 
@@ -883,7 +898,7 @@ function clearInFlight(id) {
 }
 
 function optimistic({
-  id, verb, undoVerb, past, failed, done, before, rollback: undoLocal, undoBefore,
+  id, verb, undoVerb, past, failed, done, before, rollback: undoLocal, undoBefore, retry,
 }) {
   const m = store.get(id);
   if (!m) return Promise.resolve();
@@ -920,7 +935,7 @@ function optimistic({
     if (undoLocal) await undoLocal(id);
     store.upsert(snapshot);
     renderList();
-    toast(failed, { kind: 'error' });
+    toastFailure(failed, retry); // 65/h
   };
 
   const run = async () => {
@@ -998,6 +1013,14 @@ async function act(action, id) {
     }
   }
 
+  /*
+   * 65/h: every failure path below offers Retry, and Retry is this whole
+   * act again — not a bare wire resend — so the re-attempt replays
+   * thread-spanning, undo recording and the optimistic travel exactly as
+   * the first attempt did. One closure stated once, passed everywhere.
+   */
+  const retryAct = () => act(action, id);
+
   switch (action) {
     /*
      * STAR AND UNREAD ARE *FLAGS*, NOT REMOVALS.
@@ -1028,6 +1051,7 @@ async function act(action, id) {
         undoPayload: { on: !on },
         past: on ? 'Starred' : 'Unstarred',
         failed: 'Could not update star',
+        retry: retryAct,
       });
       break;
     }
@@ -1041,6 +1065,7 @@ async function act(action, id) {
         undoVerb: on ? 'MARK_READ' : 'MARK_UNREAD',
         past: on ? 'Marked unread' : 'Marked read',
         failed: 'Could not update',
+        retry: retryAct,
       });
       break;
     }
@@ -1050,12 +1075,14 @@ async function act(action, id) {
       optimistic({
         id, verb: 'ARCHIVE', undoVerb: 'UNARCHIVE',
         past: 'Archived', failed: 'Could not archive',
+        retry: retryAct,
       });
       break;
     case 'trash':
       optimistic({
         id, verb: 'TRASH', undoVerb: 'UNTRASH',
         past: 'Deleted', failed: 'Could not delete',
+        retry: retryAct,
       });
       break;
     /*
@@ -1087,6 +1114,7 @@ async function act(action, id) {
         id, verb: 'UNTRASH', undoVerb: 'TRASH',
         past: 'Restored', failed: 'Could not restore',
         done: 'Moved back to the inbox',
+        retry: retryAct,
       });
       break;
     /*
@@ -1105,6 +1133,7 @@ async function act(action, id) {
         // Clear the local schedule before the request, so a failure cannot
         // leave a message scheduled locally but not remotely.
         before: (mid) => removeSnooze(mid, STORAGE),
+        retry: retryAct,
       });
       break;
     case 'spam': {
@@ -1115,6 +1144,7 @@ async function act(action, id) {
         undoVerb: rescuing ? 'SPAM' : 'NOT_SPAM',
         past: rescuing ? 'Moved out of spam' : 'Reported spam',
         failed: rescuing ? 'Could not rescue' : 'Could not report spam',
+        retry: retryAct,
       });
       break;
     }
@@ -1444,7 +1474,7 @@ async function loadPage(pageToken = '') {
   try {
     await fetchPage(pageToken);
   } catch (err) {
-    reportError(err);
+    reportError(err, { retry: () => loadPage(pageToken) }); // 65/h
   } finally {
     ms.loading = false;
     syncBusy();
@@ -1556,7 +1586,7 @@ async function refresh({ silent = false } = {}) {
     else if (!n && !silent) toast('Up to date');
     return 'delta';
   } catch (err) {
-    reportError(err);
+    reportError(err, { retry: () => refresh() }); // 65/h
     return 'error';
   } finally {
     ims.loading = false;
@@ -1569,7 +1599,7 @@ function setBusy(on) {
   $('btn-refresh').disabled = on;
 }
 
-function reportError(err) {
+function reportError(err, { retry } = {}) {
   const msg = String(err?.message || err);
   if (/client ID/i.test(msg)) {
     showGate(msg);
@@ -1591,7 +1621,16 @@ function reportError(err) {
      */
     showOfflineBanner();
   } else {
-    toast(msg.slice(0, 140), { kind: 'error' });
+    /*
+     * 65/h (F9): an error toast that names no way forward is an epitaph.
+     * Sync call sites hand in the operation that failed, so the toast ends
+     * in Retry; a retry that fails re-enters through this same funnel and
+     * earns the same button, which is the honest loop.
+     */
+    toast(msg.slice(0, 140), {
+      kind: 'error',
+      ...(retry ? { action: { label: 'Retry', run: retry } } : {}),
+    });
   }
 }
 
@@ -1917,7 +1956,7 @@ async function loadMailboxPage(id, pageToken = '') {
       renderSidebar();
     }
   } catch (err) {
-    reportError(err);
+    reportError(err, { retry: () => loadMailboxPage(id, pageToken) }); // 65/h
   } finally {
     ms.loading = false;
     syncBusy();
