@@ -3077,9 +3077,31 @@ function wireRail() {
   const btn = $('btn-rail');
   const close = $('btn-rail-close');
   if (!btn) return;
+  /* At <=1240px the rail stops being a column and becomes a drawer: it
+     floats over the reader. Drawer manners apply there -- a pointer outside
+     it or Escape puts it away -- while at desktop widths it is a sibling
+     column and stays put until toggled. The persisted setting still decides
+     the initial state either way. */
+  const drawerMq = window.matchMedia('(max-width: 1240px)');
+  let onOutside = null;
+
+  const detachOutside = () => {
+    if (onOutside) {
+      document.removeEventListener('pointerdown', onOutside, true);
+      onOutside = null;
+    }
+  };
   const apply = (on) => {
     document.body.classList.toggle('rail-open', on);
     btn.setAttribute('aria-pressed', String(on));
+    detachOutside();
+    if (on && drawerMq.matches) {
+      onOutside = (e) => {
+        if (e.target.closest('#rail') || e.target.closest('#btn-rail')) return;
+        apply(false);
+      };
+      document.addEventListener('pointerdown', onOutside, true);
+    }
   };
   apply(settings.get('railOpen') !== false);
   btn.addEventListener('click', () => {
@@ -3090,6 +3112,11 @@ function wireRail() {
   close?.addEventListener('click', () => {
     settings.set('railOpen', false).catch(() => {});
     apply(false);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && drawerMq.matches && document.body.classList.contains('rail-open')) {
+      apply(false);
+    }
   });
 }
 

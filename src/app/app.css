@@ -2604,30 +2604,13 @@ textarea {
     grid-template-columns: minmax(280px, 340px) 1fr;
   }
 }
-@media (max-width: 860px) {
-  :root {
-    --sidebar-w: 64px;
-  }
-  /*
-   * At 64px the rail is PURE NAVIGATION: things you can hit, nothing you have
-   * to read. Saved views and the deadline radar are headed lists of prose --
-   * "Due soon", a full subject line -- and were being squeezed into 64 pixels.
-   * The timetable button loses its label the same way the other footer
-   * buttons do; its badge and title remain.
-   */
-  #brand-text,
-  .cat-name,
-  #views,
-  #radar,
-  #btn-timetable,
-  #btn-gmail,
-  #btn-signout {
-    display: none;
-  }
-  .cat {
-    justify-content: center;
-  }
-}
+/*
+ * The <=860px icon-rail contract now lives in ONE place: the V3 responsive
+ * ladder at the end of this file. It used to be split with a block here that
+ * hid #views and #radar -- both stopped being sidebar tenants in V3 (views
+ * is a topbar popover, the radar moved to the right rail), so the rule was
+ * half dead selector and was actively erasing the rail's Due-soon card.
+ */
 
 /* ------------------------------------------------------------------------- *
  * RESPONSIVE CONTRACT (round 45 H1).
@@ -6072,7 +6055,11 @@ body.rail-open #rail:has(#rail-scroll > :not([hidden])) {
   max-width: 58%;
 }
 .r-snip {
-  flex: 0 1 auto;
+  /* The snippet yields three times as fast as the subject: when the line is
+     short of space the deficit should come out of the preview you were
+     probably not going to read, not out of the title you scan by. The tag
+     stays flex: none, so the order of sacrifice is snippet → subject → tag. */
+  flex: 0 3 auto;
   min-width: 0;
 }
 .r-snip::before {
@@ -6253,9 +6240,22 @@ body.rail-open #rail:has(#rail-scroll > :not([hidden])) {
   }
 }
 @media (max-width: 860px) {
-  /* Icon rail: brand mark, compose icon, nav icons, foot icons. */
+  /* THE ICON RAIL, in one block: the sidebar is pure navigation -- things
+     you can hit, nothing you have to read. Every prose element steps out at
+     the same breakpoint (the palette still reaches footer actions), so the
+     64px column never displays a clipped half-word. */
+  :root { --sidebar-w: 64px; }
   #brand { padding: var(--s-3) 0 0; justify-content: center; }
-  #btn-activity { display: none; }
+  #brand-text,
+  .cat-name,
+  .cat-count,
+  .rail-heading,
+  #btn-activity,
+  #btn-timetable,
+  #btn-gmail,
+  #btn-signout {
+    display: none;
+  }
   #side-actions { padding: var(--s-2) var(--s-1); }
   #side-actions .primary {
     width: 46px;
@@ -6266,8 +6266,12 @@ body.rail-open #rail:has(#rail-scroll > :not([hidden])) {
     gap: 0;
     border-radius: var(--r-lg);
   }
-  #searchwrap ~ #toolbar .ghost:not(.icon),
-  #btn-views { font-size: var(--t-hide); }
+  /* Grid items refuse to shrink below their content by default (min-width:
+     auto). Unpinned, a 64px rail column is content-sized in practice and
+     the centered nav icon lands OUTSIDE the visible column -- measured in
+     the round-64.5 probe (`.cat` at 210px wide inside a 64px track). */
+  #cats { min-width: 0; }
+  .cat { justify-content: center; min-width: 0; padding-inline: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {

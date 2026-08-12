@@ -2272,29 +2272,35 @@ test('Compose is the only primary action in the sidebar', async () => {
 
 test('the collapsed rail hides everything that needs width', () => {
   /*
-   * PRE-EXISTING RESPONSIVE BUG, found while re-ordering the sidebar.
+   * Below 860px the rail collapses to 64px: pure navigation, icons you can
+   * hit, nothing you have to read. Brand text, category names, counts and
+   * the footer buttons all step out together.
    *
-   * Below 860px the rail collapses to 64px and hides the brand text, category
-   * names and two footer buttons. It did NOT hide the saved-views section or
-   * the deadline radar -- both of which are headed lists of prose ("Due soon",
-   * "Registration for Semester II") being squeezed into 64 pixels.
-   *
-   * These are secondary surfaces. On a narrow window the rail should be pure
-   * navigation: icons you can hit, nothing you have to read.
+   * The pin used to assert #views and #radar here -- but in the V3 shell
+   * neither lives in the sidebar any more (views is a topbar popover, the
+   * radar moved to the right rail), so the old assertion was guarding two
+   * dead selectors while the LIVE prose elements were inherited from
+   * another breakpoint whose source order no longer held. Round 64.5
+   * re-pinned it to the elements that actually remain in the rail.
    */
   const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
-  const rail = css.match(/@media \(max-width: 860px\)\s*\{([\s\S]*?)\n\}/);
-  assert.ok(rail, 'the collapsed-rail breakpoint must exist');
+  // Several components own a 860px block (the icon rail, the timetable
+  // grid): read them all, not just the first.
+  const blocks = [...css.matchAll(/@media \(max-width: 860px\)\s*\{([\s\S]*?)\n\}/g)];
+  assert.ok(blocks.length > 0, 'the collapsed-rail breakpoint must exist');
 
-  const hidden = [...rail[1].matchAll(/([^{}]+)\{\s*display:\s*none/g)]
+  const hidden = blocks.flatMap((b) => [...b[1].matchAll(/([^{}]+)\{\s*display:\s*none/g)])
     .map((m) => m[1]).join(' ');
 
-  for (const sel of ['#views', '#radar']) {
+  for (const sel of ['#brand-text', '.cat-name', '.cat-count', '#btn-timetable', '#btn-gmail', '#btn-signout']) {
     assert.ok(
       hidden.includes(sel),
       `${sel} is prose and must be hidden in the 64px rail`
     );
   }
+  // And the opposite half: the elements that moved OUT of the sidebar must
+  // never be hidden by this breakpoint again.
+  assert.ok(!hidden.includes('#radar'), 'the radar is a rail tenant now, not sidebar prose');
 });
 
 test('COMPLEXITY: removal actions share one optimistic helper', () => {
