@@ -743,7 +743,14 @@ function manageView() {
   if (pending.length) changesChildren.push(pendingSection());
   b.appendChild(pane('changes', changesChildren));
   b.appendChild(pane('conflicts', problems.length ? [conflictSection(problems)] : []));
-  b.appendChild(pane('schedule', [gridSection(), listSection(), courseSearch()]));
+  /*
+   * The creation action leads the room (round 58 IA audit, H2): it was
+   * beneath the grid AND the course list, so adding a class meant scrolling
+   * past everything the room already shows — information buried under
+   * information. State follows the action, matching the build view where
+   * search is the hero.
+   */
+  b.appendChild(pane('schedule', [courseSearch(), gridSection(), listSection()]));
   b.appendChild(pane('exams', exams ? [exams] : []));
   return b;
 }

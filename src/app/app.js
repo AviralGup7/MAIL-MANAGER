@@ -2211,25 +2211,49 @@ function setTheme(id) {
 function openThemeMenu() {
   const btn = $('btn-theme');
   btn.setAttribute('aria-expanded', 'true');
+  /*
+   * APPEARANCE, NOT JUST THEME (round 58 IA audit, H10). Density is an
+   * appearance preference too, but it lived only on the options page, so
+   * changing how the app LOOKS required leaving the app for one of its two
+   * halves. Both groups now share one menu; each group stays one-of-many
+   * (radio semantics), and the divider is the only thing between them.
+   * settings.set fires the subscriber that applies density + re-measures
+   * subject clipping — the same path the options page uses.
+   */
+  const density = settings.get('density');
+  const DENSITIES = [
+    ['comfortable', 'Comfortable'],
+    ['cosy', 'Cosy'],
+    ['compact', 'Compact'],
+  ];
   openMenu({
     name: 'theme',
-    label: 'Theme',
+    label: 'Appearance',
     anchor: btn,
     className: 'theme-menu',
     // The header wrapper is the positioning context, so the menu hangs under
     // the button rather than being clipped by it.
     mountTo: $('themewrap'),
-    items: THEMES.map((t) => ({
-      text: t.name,
-      // `selected`, not `checked`: six themes are one-of-many, and a screen
-      // reader should say so.
-      selected: state.theme === t.id,
-      className: 'theme-item',
-      data: { theme: t.id },
-      prefix: themeDot(t.swatch),
-      suffix: themeTick(),
-      run: () => setTheme(t.id),
-    })),
+    items: [
+      ...THEMES.map((t) => ({
+        text: t.name,
+        // `selected`, not `checked`: six themes are one-of-many, and a screen
+        // reader should say so.
+        selected: state.theme === t.id,
+        className: 'theme-item',
+        data: { theme: t.id },
+        prefix: themeDot(t.swatch),
+        suffix: themeTick(),
+        run: () => setTheme(t.id),
+      })),
+      ...DENSITIES.map(([id, name], i) => ({
+        text: name,
+        selected: density === id,
+        className: 'density-item' + (i === 0 ? ' menu-sep' : ''),
+        suffix: themeTick(),
+        run: () => settings.set('density', id),
+      })),
+    ],
     // One place unsets aria-expanded, whichever way the menu went away.
     onClose: () => btn.setAttribute('aria-expanded', 'false'),
   });
@@ -2243,6 +2267,9 @@ $('btn-theme').addEventListener('click', (e) => {
   e.stopPropagation();
   menuIsOpen() ? closeMenu() : openThemeMenu();
 });
+
+$('btn-help').addEventListener('click', () => toggleHelp());
+$('btn-activity').addEventListener('click', () => openActivityLog(ctx));
 
 async function doSignIn() {
   const btn = $('btn-signin');
@@ -3149,6 +3176,7 @@ async function boot() {
   decorate('btn-compose', 'compose');
   decorate('btn-refresh', 'refresh');
   decorate('btn-gmail', 'back');
+  setIcon($('btn-activity'), 'clock', { size: 15 });
   decorate('compose-min', 'minimise');
   decorate('compose-close', 'close');
 

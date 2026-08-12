@@ -2698,6 +2698,14 @@ textarea {
  * it hangs from the RIGHT edge of the header button rather than the left,
  * and it is narrower because a theme name is short.
  */
+/* The appearance menu's divider (round 58): the only thing separating the
+   theme group from the density group. Border rides the first density item;
+   no empty separator node exists. */
+.theme-menu .menu-sep {
+  border-top: 1px solid var(--line);
+  margin-top: var(--s-1);
+}
+
 .snooze-menu.theme-menu {
   top: calc(100% + 6px);
   right: 0;

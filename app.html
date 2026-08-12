@@ -28,6 +28,13 @@
               not on a timer -- a ticking clock is motion nobody asked for.
             -->
             <button id="freshness" type="button" class="fresh-btn" aria-live="polite" title="Sync now" aria-label="Sync now"></button>
+            <!--
+              ACTIVITY belongs beside freshness (round 58 IA audit, H1): both
+              answer "what is happening with my mail", and before this the log
+              lived only behind Ctrl+K — information you had to remember was
+              hidden, the exact failure the audit exists to remove.
+            -->
+            <button id="btn-activity" type="button" class="ghost icon" title="Activity log" aria-label="Activity log"></button>
           </span>
         </div>
 
@@ -199,6 +206,8 @@
             <button id="btn-refresh" class="ghost" type="button" title="Refresh (r)">Refresh</button>
             <button id="btn-more" class="ghost" type="button" title="Load 100 more">Load more</button>
             <span class="tb-sep" aria-hidden="true"></span>
+            <!-- Help has a visible home, not just a key (round 58, H4). -->
+            <button id="btn-help" class="ghost" type="button" title="Keyboard shortcuts (?)">Help</button>
             <div id="themewrap">
               <button
                 id="btn-theme"
