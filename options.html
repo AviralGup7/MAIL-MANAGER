@@ -99,6 +99,48 @@
     </fieldset>
 
     <fieldset>
+      <legend>Setting up your own client ID</legend>
+      <ol>
+        <li>Open <code>console.cloud.google.com</code> and create (or pick) a project.</li>
+        <li>Enable the <strong>Gmail API</strong>.</li>
+        <li>OAuth consent screen → External → add your BITS address as a test user.</li>
+        <li>
+          Credentials → Create credentials → <strong>OAuth client ID</strong> →
+          application type <strong>Web application</strong>.
+          <span class="hint" style="margin:0">
+            Yes, “Web application”, even though this is an extension. Google’s
+            “Chrome Extension” client type only supports
+            <code>getAuthToken</code>, which is Chrome-only and does not work in
+            Brave.
+          </span>
+        </li>
+        <li>
+          Under <strong>Authorized redirect URIs</strong>, add this exactly —
+          trailing slash included:<br />
+          <code id="redirect">loading…</code>
+          <span class="hint" style="margin:0">
+            Derived from the extension ID
+            (<code id="extid">loading…</code>), which is fixed by the
+            <code>"key"</code> field in the manifest and never changes between
+            reloads.
+          </span>
+        </li>
+        <li>
+          OAuth consent screen → <strong>Test users</strong> → add your BITS
+          address, or Google refuses consent before anything else happens.
+        </li>
+        <li>
+          Copy the client ID into the box above. <strong>Ignore the client
+          secret</strong> — this build never sends one, which is why it uses
+          the implicit flow rather than an authorization-code exchange.
+        </li>
+      </ol>
+      <p class="hint">
+        Scope requested: <code>gmail.modify</code> only. Version 1 asked for six scopes including
+        <code>gmail.send</code>; this build cannot send mail, so it does not ask.
+      </p>
+
+    <fieldset>
       <legend>Appearance</legend>
 
       <label for="density">Row density</label>
@@ -264,47 +306,6 @@
       </p>
     </fieldset>
 
-    <fieldset>
-      <legend>Setting up your own client ID</legend>
-      <ol>
-        <li>Open <code>console.cloud.google.com</code> and create (or pick) a project.</li>
-        <li>Enable the <strong>Gmail API</strong>.</li>
-        <li>OAuth consent screen → External → add your BITS address as a test user.</li>
-        <li>
-          Credentials → Create credentials → <strong>OAuth client ID</strong> →
-          application type <strong>Web application</strong>.
-          <span class="hint" style="margin:0">
-            Yes, “Web application”, even though this is an extension. Google’s
-            “Chrome Extension” client type only supports
-            <code>getAuthToken</code>, which is Chrome-only and does not work in
-            Brave.
-          </span>
-        </li>
-        <li>
-          Under <strong>Authorized redirect URIs</strong>, add this exactly —
-          trailing slash included:<br />
-          <code id="redirect">loading…</code>
-          <span class="hint" style="margin:0">
-            Derived from the extension ID
-            (<code id="extid">loading…</code>), which is fixed by the
-            <code>"key"</code> field in the manifest and never changes between
-            reloads.
-          </span>
-        </li>
-        <li>
-          OAuth consent screen → <strong>Test users</strong> → add your BITS
-          address, or Google refuses consent before anything else happens.
-        </li>
-        <li>
-          Copy the client ID into the box above. <strong>Ignore the client
-          secret</strong> — this build never sends one, which is why it uses
-          the implicit flow rather than an authorization-code exchange.
-        </li>
-      </ol>
-      <p class="hint">
-        Scope requested: <code>gmail.modify</code> only. Version 1 asked for six scopes including
-        <code>gmail.send</code>; this build cannot send mail, so it does not ask.
-      </p>
     </fieldset>
 
     <script src="src/options/options.js" type="module"></script>
