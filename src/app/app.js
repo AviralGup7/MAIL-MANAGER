@@ -50,7 +50,7 @@ import * as myCourses from './my-courses.js';
 import { detectNotice, shouldPromote, summarise } from './notices.js';
 import {
   wireReader, openMessage, closeReader, renderThreadStrip, syncReaderActions,
-  repaintBody, cancelMarkRead, loadImageAllowList, openPartId,
+  repaintBody, cancelMarkRead, loadImageAllowList, openPartId, renderReaderTags,
 } from './reader.js';
 import { wireSuggestUI, renderSuggestions, cancelSuggestBlur } from './suggest-ui.js';
 import {
@@ -2323,6 +2323,16 @@ function closeCategoryMenu() {
  * corrections map is consulted on ingest, so re-ingesting what is in memory
  * re-files everything from that sender at once.
  */
+/** How many loaded messages from this sender currently sit in a category. */
+function countFromSenderIn(sender, cat) {
+  let n = 0;
+  for (const id of store.idsFor('all')) {
+    const m = store.get(id);
+    if (m && m.category === cat && addressOf(m.from) === sender) n++;
+  }
+  return n;
+}
+
 function openRecategoriseMenu(msg, anchor) {
   const current = msg.category;
   const taught = Object.prototype.hasOwnProperty.call(
@@ -2342,10 +2352,12 @@ function openRecategoriseMenu(msg, anchor) {
       text: 'Use the automatic category',
       hint: 'Forget what I taught you about this sender.',
       run: async () => {
+        const sender = addressOf(msg.from);
+        const moved = countFromSenderIn(sender, msg.category);
         rules = clearCorrection(rules, msg.from);
         await saveRules(rules);
         reclassifyAll();
-        toast('Back to the automatic category');
+        toast(`Back to the automatic category${moved ? ` — ${moved} re-filed` : ''}`);
       },
     });
   }
@@ -2356,10 +2368,14 @@ function openRecategoriseMenu(msg, anchor) {
       text: CATEGORY_LABELS[cat] || cat,
       hint: `File mail from ${displayName(msg.from)} here.`,
       run: async () => {
+        const sender = addressOf(msg.from);
+        // Count BEFORE the re-file: the effect must be reported with its
+        // scope, not discovered by hunting the list (round 61, P-1).
+        const moved = countFromSenderIn(sender, msg.category);
         rules = correctSender(rules, msg.from, cat);
         await saveRules(rules);
         reclassifyAll();
-        toast(`${displayName(msg.from)} now files under ${CATEGORY_LABELS[cat] || cat}`);
+        toast(`${displayName(msg.from)} now files under ${CATEGORY_LABELS[cat] || cat} — ${moved} re-filed`);
       },
     });
   }
@@ -2387,7 +2403,13 @@ function reclassifyAll() {
   renderList();
   renderSidebar();
   const open = state.selected && store.get(state.selected);
-  if (open) syncContextActions(open);
+  if (open) {
+    syncContextActions(open);
+    // P-1: the OPEN message re-files itself visibly — its tag row shows the
+    // new category immediately, so the effect of the correction is seen in
+    // the place the user is looking, not inferred from the list behind them.
+    renderReaderTags(open);
+  }
 }
 
 // ----------------------------------------------------------------- snooze --

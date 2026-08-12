@@ -162,6 +162,47 @@ let lastSwapAt = 0;
  * it is on the surface rather than in a title, because the reader has the
  * width for it and a tooltip is not reachable by touch or keyboard.
  */
+/**
+ * The reader's tag row: category, confidence (only when it matters), and the
+ * correction affordance. Extracted from openMessage so a reclassification can
+ * refresh the OPEN message in place — the message re-files itself the moment
+ * the user picks a category, no reopen needed (round 61, P-1).
+ *
+ * The classifier's own confidence is DIAGNOSTIC, not something a reader needs
+ * on every message. It is shown only when the classifier is unsure, or when a
+ * human overrode it -- the two cases where "why is this here?" is a real
+ * question. On a confident rule match it is noise competing with the subject.
+ */
+export function renderReaderTags(m) {
+  const confident = (m.confidence ?? 1) >= LOW_CONFIDENCE && m.source !== 'you';
+  /*
+   * The category tag doubles as the correction affordance.
+   *
+   * Putting "wrong category?" next to the category itself is the only place a
+   * user looks when the category is wrong. A separate control elsewhere in the
+   * toolbar would be a second thing to find.
+   */
+  const recat = document.createElement('button');
+  recat.id = 'r-recat';
+  recat.type = 'button';
+  recat.className = 'ghost small';
+  recat.textContent = 'Wrong category?';
+  recat.title = `File mail from ${displayName(m.from)} somewhere else`;
+  recat.addEventListener('click', () => {
+    const msg = storeOf().get(state.selected);
+    if (msg) ctx.openRecategoriseMenu(msg, recat);
+  });
+
+  el.rTags.replaceChildren(
+    tagNode(CATEGORY_LABELS[m.category] || m.category, CAT_COLOR[m.category]),
+    ...(confident
+      ? []
+      : [tagNode(`${Math.round((m.confidence ?? 1) * 100)}% · ${m.source || 'rule'}`)]),
+    ...(m.reason && !confident ? [tagNode(m.reason)] : []),
+    recat
+  );
+}
+
 function renderMessageDeadline(m) {
   const box = el.rDue;
   if (!box) return;
@@ -448,40 +489,7 @@ export async function openMessage(id) {
   const urlMailbox = state.mailbox === 'snoozed' ? 'all' : state.mailbox;
   el.rOpen.href = ctx.gmailUrl(m.threadId, urlMailbox);
 
-  /*
-   * The classifier's own confidence is DIAGNOSTIC, not something a reader
-   * needs on every message. It is shown only when the classifier is unsure,
-   * or when a human overrode it -- the two cases where "why is this here?" is
-   * a real question. On a confident rule match it is noise competing with the
-   * subject line.
-   */
-  const confident = (m.confidence ?? 1) >= LOW_CONFIDENCE && m.source !== 'you';
-  /*
-   * The category tag doubles as the correction affordance.
-   *
-   * Putting "wrong category?" next to the category itself is the only place a
-   * user looks when the category is wrong. A separate control elsewhere in the
-   * toolbar would be a second thing to find.
-   */
-  const recat = document.createElement('button');
-  recat.id = 'r-recat';
-  recat.type = 'button';
-  recat.className = 'ghost small';
-  recat.textContent = 'Wrong category?';
-  recat.title = `File mail from ${displayName(m.from)} somewhere else`;
-  recat.addEventListener('click', () => {
-    const msg = storeOf().get(state.selected);
-    if (msg) ctx.openRecategoriseMenu(msg, recat);
-  });
-
-  el.rTags.replaceChildren(
-    tagNode(CATEGORY_LABELS[m.category] || m.category, CAT_COLOR[m.category]),
-    ...(confident
-      ? []
-      : [tagNode(`${Math.round((m.confidence ?? 1) * 100)}% · ${m.source || 'rule'}`)]),
-    ...(m.reason && !confident ? [tagNode(m.reason)] : []),
-    recat
-  );
+  renderReaderTags(m);
 
   renderMessageDeadline(m);
   renderTimetableEffects(id);

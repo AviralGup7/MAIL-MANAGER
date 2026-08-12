@@ -17,6 +17,7 @@
  */
 
 import { confirmDialog } from './dialog.js';
+import { recordUndo } from './undo-actions.js';
 import { icon } from './icons.js';
 import {
   emptyState, addCourse, removeCourse, manualEdit, setLocked,
@@ -271,6 +272,9 @@ export async function acceptFinding(finding) {
   }
 
   const src = finding.noticeRef ? 'notice' : 'mail';
+  // P-5 (round 61): snapshot BEFORE mutating — accepts become reversible,
+  // bringing the academic surface to the same standard as mail triage.
+  const prevEntry = JSON.parse(JSON.stringify(entry));
   const r = applyFieldChange(entry, finding.field, finding.value, {
     source: src,
     ref: finding.messageId || finding.noticeRef || '',
@@ -286,6 +290,27 @@ export async function acceptFinding(finding) {
   };
   state.conflicts = detectConflicts(state.entries);
   await dismissFinding(finding, 'applied');
+
+  /*
+   * The undo is HONEST ON BOTH SIDES: the entry reverts AND the proposal
+   * returns to the Changes room, so the user is never left with a reverted
+   * schedule and no way to re-apply what they just undid.
+   */
+  const key = finding.messageId || `notice:${finding.noticeRef}:${finding.kind}`;
+  recordUndo(ctxRef, `Timetable: ${finding.field} change applied`, async () => {
+    state = {
+      ...state,
+      entries: state.entries.map((e) => (e.id === entry.id ? prevEntry : e)),
+      appliedMail: (state.appliedMail || []).filter((k) => k !== key),
+      updatedAt: Date.now(),
+    };
+    state.conflicts = detectConflicts(state.entries);
+    pending = dedupePending([...pending, finding]);
+    await persist();
+    updateBadge();
+    render();
+  });
+
   return { ok: true, reason: '' };
 }
 

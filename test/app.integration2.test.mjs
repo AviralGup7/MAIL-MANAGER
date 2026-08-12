@@ -2089,6 +2089,65 @@ test('TIMETABLE: an official room-change notice applies without asking', async (
   }
 });
 
+test('TIMETABLE: accepting a change is reversible — undo restores and re-offers (P-5)', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /*
+   * Round 61 P-5. An accepted finding used to be irreversible — the one
+   * academic action with no instrument, while every mail triage verb has
+   * one. The undo must be honest on BOTH sides: the entry reverts AND the
+   * proposal returns, so undoing never strands the user without the choice.
+   */
+  const withNotice = {
+    ...TT_DATA,
+    changes: [{
+      type: 'room', comCode: '1008', courseNo: 'CS F111', section: 'L1',
+      raw: '1008   COMPUTER PROGRAMMING   L1   5105   6101 CS F111',
+      effective: '05-Aug-2026',
+    }],
+  };
+  const { doc, win, settle, restore } = await boot({ timetableData: withNotice });
+  try {
+    await openTT(doc, win, settle);
+    const r = await ttSearch(doc, win, settle, 'CS F111');
+    r[0].querySelector('button').click();
+    await settle(4);
+    [...doc.querySelectorAll('.tt-chooser .tt-section')]
+      .find((b) => b.textContent.startsWith('L1')).click();
+    await settle(8);
+
+    const { getTimetableState, scanForUpdates, closeTimetable, openTimetable } =
+      await import('../src/app/timetable-ui.js');
+    scanForUpdates([]);
+    closeTimetable();
+    await settle(4);
+    openTimetable();
+    await settle(6);
+
+    const apply = doc.querySelector('#tt-panel .tt-proposal .primary');
+    assert.ok(apply, 'precondition: the proposal is applyable');
+    apply.click();
+    await settle(8);
+    assert.equal(
+      getTimetableState().entries.find((e) => e.section === 'L1').room, '6101',
+      'precondition: applied'
+    );
+
+    press(doc, win, 'z', { ctrlKey: true });
+    await settle(8);
+
+    assert.equal(
+      getTimetableState().entries.find((e) => e.section === 'L1').room, '5105',
+      'undo restores the previous room'
+    );
+    assert.ok(
+      doc.querySelector('#tt-panel .tt-proposal'),
+      'and the proposal returns to the Changes room — undo never strands the choice'
+    );
+  } finally {
+    restore();
+  }
+});
+
 test('TIMETABLE: a section can be switched without losing the course', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');
   /*
@@ -3681,6 +3740,19 @@ test('CLASSIFY: a miscategorised message can be corrected from the reader', asyn
       doc.querySelector('#list .row[aria-selected="true"] .tag').textContent,
       'Library',
       'and the message must move immediately, not on next sync'
+    );
+    // Round 61 P-1: the effect is SEEN in both places the user looks —
+    // the open message re-files itself in place, and the toast names the
+    // scope, so nobody infers what happened from the list behind them.
+    assert.equal(
+      doc.querySelector('#r-tags .tag').textContent,
+      'Library',
+      'the open message re-tags itself without a reopen'
+    );
+    assert.match(
+      doc.getElementById('toast-text').textContent,
+      /now files under Library — \d+ re-filed/,
+      'and the toast reports the future rule with its measured scope'
     );
   } finally {
     restore();
