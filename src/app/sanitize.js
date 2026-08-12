@@ -145,7 +145,15 @@ export function sanitizeHtml(html, doc = globalThis.document, opts = {}) {
   const Parser =
     doc?.defaultView?.DOMParser || globalThis.DOMParser;
   if (typeof Parser !== 'function') {
-    // No parser available: return nothing rather than unsanitised HTML.
+    /*
+     * No parser available: return nothing rather than unsanitised HTML.
+     *
+     * FAIL CLOSED, BUT NOT SILENTLY (roadmap Phase 1 / HIGH #3). A blank
+     * return used to render as an apparently EMPTY email — the user could
+     * not tell "this message says nothing" from "we dared not show you what
+     * it says". The flag lets the reader say so and offer the alternative.
+     */
+    if (opts.stats) opts.stats.failedClosed = true;
     return '';
   }
   const parser = new Parser();

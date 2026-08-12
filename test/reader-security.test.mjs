@@ -88,3 +88,16 @@ test('the reader frame contract is declared once, in reader-frame.js (arch A2)',
   assert.deepEqual(m[1].trim().split(/\s+/).sort(), [...rf.READER_SANDBOX].sort(),
     'the iframe flags ARE the contract');
 });
+
+test('a fail-closed body is announced, never rendered blank (roadmap HIGH #3)', () => {
+  /*
+   * Source pin by intent: this is a SECURITY communication contract, and the
+   * integration harness cannot remove DOMParser from jsdom to exercise it.
+   * The branch must (a) trigger on the sanitiser's flag, (b) say the message
+   * is intact, and (c) point at Gmail as the alternative.
+   */
+  assert.match(reader, /if \(stats\.failedClosed\)/, 'the reader honours the flag');
+  assert.match(reader, /could not be safely displayed/, 'it says what happened');
+  assert.match(reader, /intact/, 'it does not imply the mail is empty');
+  assert.match(reader, /Open in Gmail/, 'and it names the alternative');
+});

@@ -726,9 +726,23 @@ function renderBody(body, { allowRemote = false, stats = {} } = {}) {
     if (p.filename) cid.set(p.filename, p.dataUrl);
   }
 
-  const html = body.html
+  let html = body.html
     ? sanitizeHtml(body.html, document, { allowRemote, cid, stats })
     : `<pre>${escapeHtml(body.text || '(no content)')}</pre>`;
+
+  /*
+   * SECURE BLANK READER (roadmap Phase 1 / HIGH #3). If the sanitiser had
+   * to fail closed, a blank body would read as an empty email — a safe
+   * failure disguised as missing mail. Say what happened, leak nothing, and
+   * point at the alternative: the message is intact in Gmail.
+   */
+  if (stats.failedClosed) {
+    html = `<div class="bmm-failed-closed">
+      <p><strong>This message could not be safely displayed here.</strong></p>
+      <p>Its content is intact — BITS Mail chose not to guess at rendering
+      it. Use “Open in Gmail” above to read it.</p>
+    </div>`;
+  }
 
 
   // The body iframe is a separate document and inherits nothing from us, so
@@ -832,6 +846,13 @@ function renderBody(body, { allowRemote = false, stats = {} } = {}) {
     margin-bottom:18px;padding:10px 13px;background:${t.accentSoft};
     color:${t.fgDim};border-radius:10px;font-size:13px;
   }
+  .bmm-failed-closed{
+    max-width:60ch;margin:24px 0;padding:16px 18px;
+    border:1px dashed ${t.line};border-radius:10px;
+    background:${t.accentSoft};color:${t.fg};
+  }
+  .bmm-failed-closed p{margin:0 0 8px}
+  .bmm-failed-closed p:last-child{margin:0;color:${t.fgDim}}
 </style></head><body>${html}</body></html>`;
 }
 

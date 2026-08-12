@@ -514,3 +514,22 @@ test('unknown elements are unwrapped, not dropped', async (t) => {
   assert.match(out, /Real content/);
   assert.ok(!out.includes('mj-section'));
 });
+
+test('FAIL CLOSED: no parser means no HTML, and the reader is told why', async (t) => {
+  /*
+   * Roadmap Phase 1 / HIGH #3. The safe failure must not LOOK like an empty
+   * email: the sanitiser returns nothing AND raises a flag the reader turns
+   * into an honest notice with an alternative. Silent blankness was the bug.
+   */
+  const { sanitizeHtml } = await import('../src/app/sanitize.js');
+  const stats = {};
+  const out = sanitizeHtml('<p>hidden content</p>', { defaultView: {} }, { stats });
+  assert.equal(out, '', 'no parser -> no HTML, never unsanitised HTML');
+  assert.equal(stats.failedClosed, true, 'and the failure is reported');
+
+  // The flag is for the FAILURE, not for ordinary emptiness: an empty input
+  // is a message with nothing to show, not a rendering refusal.
+  const stats2 = {};
+  assert.equal(sanitizeHtml('', { defaultView: {} }, { stats2 }), '');
+  assert.ok(!stats2.failedClosed, 'empty input is not a fail-closed event');
+});
