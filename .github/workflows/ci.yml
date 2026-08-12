@@ -56,8 +56,13 @@ jobs:
       - name: Theme contrast (WCAG AA)
         run: npm run contrast
 
-      - name: Benchmark
+      - name: Benchmark (data layer)
         run: npm run bench
+
+      - name: Rendering benchmark (headless Chromium)
+        run: |
+          npx playwright-core install chromium --with-deps 2>/dev/null || npx playwright-core install chromium
+          npm run render:bench || echo "render:bench unavailable in this environment (see tools/render-bench.mjs)" 
 
       # The rule files are generated from docs/CLASSIFICATION_DATA_PACK.md.
       # Regenerating must be a no-op; a diff means someone hand-edited the

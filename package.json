@@ -22,7 +22,8 @@
     "verify": "node tools/verify-here.mjs",
     "why": "node tools/why.mjs",
     "operators": "node tools/check-operators.mjs",
-    "departments": "node tools/check-departments.mjs"
+    "departments": "node tools/check-departments.mjs",
+    "render:bench": "node tools/render-bench.mjs"
   },
   "devDependencies": {
     "axe-core": "^4.13.0",
