@@ -92,3 +92,17 @@ test('the context menu is mailbox-aware', () => {
   assert.match(src, /state\.mailbox === 'spam'/, 'spam rescues instead of reporting');
   assert.match(src, /Report spam/, 'and reporting exists where it means something');
 });
+
+test('selection v2 is wired: range, additive, and taught on the help sheet', () => {
+  // The model (selection.js) has anchor + pre-range snapshot semantics; the
+  // list handler is where the pointer meets it. Pin the wiring so neither
+  // side can silently regress to "checkbox only".
+  assert.match(listjs, /if \(e\.shiftKey && ctx\.selection\.anchor\)/, 'shift-click extends a range');
+  assert.match(listjs, /ctx\.selection\.range\(id, renderedIds\)/, 'ranges track the RENDERED order');
+  assert.match(listjs, /if \(e\.ctrlKey \|\| e\.metaKey\)/, 'ctrl/cmd toggles additively');
+  const shortcuts = read('src/app/shortcuts.js');
+  assert.match(shortcuts, /title: 'Pointer'/, 'the pointer half is documented');
+  assert.match(shortcuts, /Shift', 'Click'/, 'range selection is taught');
+  assert.match(shortcuts, /Ctrl', 'Click'/, 'additive selection is taught');
+  assert.match(shortcuts, /Right-click.*row you aimed at/s, 'the row menu is taught');
+});

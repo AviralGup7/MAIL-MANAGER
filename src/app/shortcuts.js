@@ -68,6 +68,23 @@ export const SHORTCUTS = [
       { keys: ['Alt', 'Shift', 'M'], label: 'Toggle the takeover from Gmail' },
     ],
   },
+  {
+    /*
+     * The pointer half of the product. It predates this panel and works
+     * exactly like a file manager, but nothing SAID so -- and capabilities
+     * that are never announced do not exist for most people (round 65/c).
+     * These are gestures, not key chords, so the "every documented key is
+     * handled" test deliberately cannot see them.
+     */
+    title: 'Pointer',
+    items: [
+      { keys: ['Hover'], label: 'Archive / read / snooze / delete, right on the row' },
+      { keys: ['Right-click'], label: 'Every verb, from the row you aimed at' },
+      { keys: ['Ctrl', 'Click'], label: 'Add one row to the selection' },
+      { keys: ['Shift', 'Click'], label: 'Select the range from the last pick' },
+      { keys: ['Double-click'], label: 'Open the conversation in Gmail' },
+    ],
+  },
 ];
 
 /** Flat list of every documented key combination. Used by the tests. */
