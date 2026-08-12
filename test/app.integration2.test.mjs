@@ -1926,14 +1926,18 @@ test('TIMETABLE EVAL: tabs keep ONE tab stop and arrow keys switch rooms', async
       .filter((b) => b.tabIndex === 0);
     assert.equal(tabstop.length, 1, 'roving tabindex: one stop for the tablist');
 
+    // A real keydown targets the FOCUSED element and bubbles — press()
+    // dispatches on the document, which never reaches the tablist.
+    const arrow = (key) => doc.activeElement.dispatchEvent(
+      new win.KeyboardEvent('keydown', { key, bubbles: true }));
     tabstop[0].focus();
-    press(doc, win, 'ArrowRight');
+    arrow('ArrowRight');
     await settle(4);
     let active = doc.querySelector('#tt-panel .tt-tab.active');
     assert.equal(active.dataset.tab, 'exams', 'right arrow enters the next room');
     assert.equal(doc.activeElement, active, 'and focus lands on it');
 
-    press(doc, win, 'ArrowLeft');
+    arrow('ArrowLeft');
     await settle(4);
     active = doc.querySelector('#tt-panel .tt-tab.active');
     assert.equal(active.dataset.tab, 'schedule', 'left arrow returns');
