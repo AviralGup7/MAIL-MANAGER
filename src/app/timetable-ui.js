@@ -1028,7 +1028,23 @@ function gridSection() {
   const week = weekView(state.entries);
   const grid = el('div', 'tt-grid');
 
-  for (const d of DAYS) {
+  /*
+   * ONLY DAYS WITH CLASSES GET A COLUMN (round 54).
+   *
+   * Six equal columns for a timetable that meets on two days is four bands
+   * of dead whitespace with one floating block in them — the exact shape the
+   * round-50 screenshots were complaining about, and the workspace surface
+   * made it worse, not better. A class-less day carries no information; its
+   * header saying "nothing" is a column that exists to say nothing. The
+   * labelled headers keep the weekday orientation, so pruning costs no
+   * spatial memory. A timetable whose entries map to NO day (the transient
+   * state while a parse is partial) keeps the full week rather than an
+   * empty room.
+   */
+  const classed = DAYS.filter((d) => week[d].length > 0);
+  const showDays = classed.length ? classed : DAYS;
+
+  for (const d of showDays) {
     const col = el('div', 'tt-col');
     const head = el('div', 'tt-col-head');
     head.textContent = DAY_LABEL[d];

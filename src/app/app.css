@@ -5031,7 +5031,10 @@ kbd {
 
 .tt-grid {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  /* Columns follow the pruned day set (round 54): as many tracks as there
+     are classed days, never narrower than a readable column, never wider
+     than one — a lone Monday must not become a banner. */
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: var(--s-2);
 }
 .tt-col {
@@ -5039,6 +5042,7 @@ kbd {
   flex-direction: column;
   gap: var(--s-1);
   min-width: 0;
+  max-width: 340px;
 }
 .tt-col-head {
   font-size: var(--t-xs);
@@ -5529,6 +5533,18 @@ body #topbar {
     padding var(--dur-fast) var(--ease-out),
     opacity var(--dur-fast) linear;
 }
+/*
+ * SHORT SCREENS GET A SHORTER BAR (round 54, the R50-deferred target).
+ * On a low viewport the 61px bar is a tenth of the room; the list is the
+ * surface, so the chrome yields. The token drives the same height the O3
+ * collapse animates from, so the two systems agree by construction.
+ * 48 + 1px hairline = 49, measured the same way as the 61 below.
+ */
+@media (max-height: 700px) {
+  :root { --topbar-h: 49px; }
+  body #topbar { padding: var(--s-2) var(--s-4); }
+}
+
 body.list-scrolled:not(.searching):not(.selecting) #topbar {
   height: 0;
   padding-block: 0;
