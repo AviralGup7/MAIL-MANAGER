@@ -45,21 +45,47 @@ function parseShard(argv) {
   return { i, n };
 }
 
+const ALL_TEST_FILES = readdirSync('test').filter((f) => f.endsWith('.test.mjs')).sort();
+
 function shardFiles(shard) {
-  const all = readdirSync('test').filter((f) => f.endsWith('.test.mjs')).sort();
   if (!shard) return null; // run the whole directory, as before
-  return all
+  return ALL_TEST_FILES
     .filter((_, idx) => idx % shard.n === shard.i - 1)
     .map((f) => join('test', f));
 }
 
+/**
+ * COMPLETENESS PROOF (round 61). A shard run must never silently shrink the
+ * suite: every test file belongs to EXACTLY ONE shard of the n-way split.
+ * The deal is deterministic, so this is checked, not assumed — if the
+ * sharding arithmetic ever changes, a hidden file fails the shard here
+ * instead of quietly never running in CI.
+ */
+function proveCompleteCoverage(n) {
+  const dealt = [];
+  for (let i = 1; i <= n; i++) {
+    dealt.push(...ALL_TEST_FILES.filter((_, idx) => idx % n === i - 1));
+  }
+  const unique = new Set(dealt);
+  if (dealt.length !== ALL_TEST_FILES.length || unique.size !== ALL_TEST_FILES.length) {
+    console.error(
+      `✗ shard coverage is incomplete: ${dealt.length} dealt vs ${ALL_TEST_FILES.length} files`
+    );
+    process.exit(2);
+  }
+}
+
 const shard = parseShard(process.argv.slice(2));
+if (shard) proveCompleteCoverage(shard.n);
 const files = shardFiles(shard);
 const args = ['--max-old-space-size=3072', '--test'].concat(files ?? ['test/']);
 
 if (files) {
-  const total = readdirSync('test').filter((f) => f.endsWith('.test.mjs')).length;
-  console.log(`Shard ${shard.i}/${shard.n}: running ${files.length} of ${total} test files`);
+  console.log(`Shard ${shard.i}/${shard.n}: running ${files.length} of ${ALL_TEST_FILES.length} test files`);
+  // The manifest: exactly which files this shard owns, visible in the CI
+  // log. Summing the four manifests reproduces the full suite — nothing can
+  // hide between shards.
+  console.log(`  files: ${files.map((f) => f.replace(/^test\//, '')).join(', ')}`);
 }
 
 /*
@@ -150,7 +176,7 @@ const shardTag = shard ? ` — shard ${shard.i}/${shard.n}` : '';
 const summary = [
   bar,
   `TEST SUMMARY${shardTag} — ${verdict}`,
-  `tests: ${total} | passed: ${pass} | failed: ${fail} | skipped: ${skipped}` +
+  `files: ${files ? files.length : ALL_TEST_FILES.length} | tests: ${total} | passed: ${pass} | failed: ${fail} | skipped: ${skipped}` +
     (dur ? ` | duration: ${Math.round(Number(dur[1]) / 1000)}s` : '') +
     (crashed ? ` | RUN DID NOT COMPLETE (status=${res.status}${res.signal ? `, signal=${res.signal}` : ''})` : ''),
   ...(failures.length
