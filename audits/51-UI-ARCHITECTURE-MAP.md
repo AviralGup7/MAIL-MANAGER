@@ -225,6 +225,14 @@ assertion), and the harness gained a layers teardown seam — close WITH
 teardown first, wipe second, because tenants null their cached layer
 handles inside onClose.
 
+Round 54 also closed the two R50-deferred layout targets that the
+promotion made urgent: the week grid now renders ONLY classed days
+(auto-fit columns, 340px cap — a lone Monday reads as a column, not a
+banner, and four bands of dead whitespace are gone), and short viewports
+get a 49px topbar through the same --topbar-h token the O3 collapse
+animates from. The Esc-ladder pin that outgrew its 1600-char window in
+CI (shard 2/4) was widened with its order-only intent recorded.
+
 ## 7. What this map forbids (the essay's danger list, adopted)
 
 - No complete UI redesign + complete modularization in one operation.
