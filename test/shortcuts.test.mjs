@@ -150,7 +150,11 @@ test('Escape unwinds the layer stack rather than a hand-written ladder', () => {
   assert.ok(handler > 0, 'global keydown handler not found');
   const esc = appSrc.indexOf("if (e.key === 'Escape')", handler);
   assert.ok(esc > 0);
-  const block = appSrc.slice(esc, esc + 1600);
+  // Window, not offset arithmetic: the ladder gained the timetable
+  // workspace rung in round 54 and outgrew the old 1600-char slice.
+  // The assertion is still about ORDER (stack popped before release),
+  // never about where the block ends.
+  const block = appSrc.slice(esc, esc + 3000);
 
   assert.ok(block.includes('closeTopLayer()'), 'Escape must pop the layer stack');
   for (const gone of ['closeHelp()', 'closeSnoozeMenu()', 'closeCategoryMenu()']) {
