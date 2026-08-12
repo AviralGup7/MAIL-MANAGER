@@ -377,26 +377,91 @@ async function releaseClaim(storage, id) {
   } catch { /* best-effort; the TTL is the backstop */ }
 }
 
+/*
+ * ACQUISITION IS A RACE, SO OWNERSHIP IS VERIFIED, NOT ASSUMED (round 62,
+ * roadmap M3 — reproduced: two tabs get-check-set concurrently, BOTH read
+ * "no claim" before either writes, and the item double-sends). Storage
+ * offers no compare-and-set, so the protocol is last-writer-wins with a
+ * settle-and-verify: write a nonce, wait long enough for any concurrent
+ * claimant's write to land, then re-read; ONLY the tab whose nonce is
+ * stored may send. Two writes serialize through storage, so after the settle
+ * exactly one nonce survives, and exactly one tab sees itself.
+ */
+const CLAIM_SETTLE_MS = 25;
+
+/*
+ * PUMP LOCK (round 62, M3 — the real fix for the reproduced race). Per-item
+ * claims stop two tabs SENDING the same item, but both tabs still save their
+ * own queue snapshot, and the last save resurrects the other tab's removals.
+ * The queue has ONE writer per pump window instead: whoever acquires the
+ * lock processes the whole queue; the other tab stands down entirely and
+ * retries on its next re-arm. Same settle-and-verify protocol as the claim:
+ * write a nonce, settle, and only the tab whose nonce survived owns the
+ * window. The TTL is the crash backstop, exactly like item claims.
+ */
+const PUMP_LOCK_KEY = 'outboxPumpLock';
+const PUMP_LOCK_TTL = CLAIM_TTL;
+async function acquirePumpLock(storage, now, settleMs) {
+  try {
+    const got = (await storage.get(PUMP_LOCK_KEY)) || {};
+    const lock = got[PUMP_LOCK_KEY];
+    if (lock && lock.tab !== TAB_ID && now - lock.at < PUMP_LOCK_TTL) return false;
+    const nonce = Math.random().toString(36).slice(2);
+    await storage.set({ [PUMP_LOCK_KEY]: { tab: TAB_ID, at: now, nonce } });
+    // Settle so a concurrent claimant's write lands, then verify ownership.
+    // Single-tab callers (and tests) may pass 0; the cross-tab default is
+    // CLAIM_SETTLE_MS.
+    if (settleMs > 0) await new Promise((r) => setTimeout(r, settleMs));
+    const check = (await storage.get(PUMP_LOCK_KEY)) || {};
+    return check[PUMP_LOCK_KEY]?.nonce === nonce;
+  } catch {
+    return true; // storage broken: fall back to per-tab behaviour
+  }
+}
+async function releasePumpLock(storage) {
+  try {
+    const got = (await storage.get(PUMP_LOCK_KEY)) || {};
+    if (got[PUMP_LOCK_KEY]?.tab === TAB_ID) {
+      await storage.remove(PUMP_LOCK_KEY);
+    }
+  } catch { /* the TTL remains the backstop */ }
+}
+
 async function claim(storage, id, now) {
   try {
     const got = (await storage.get(CLAIM_KEY)) || {};
     const claims = got[CLAIM_KEY] || {};
     const c = claims[id];
     if (c && c.tab !== TAB_ID && now - c.at < CLAIM_TTL) return false;
-    claims[id] = { tab: TAB_ID, at: now };
+    const nonce = Math.random().toString(36).slice(2);
+    claims[id] = { tab: TAB_ID, at: now, nonce };
     await storage.set({ [CLAIM_KEY]: claims });
-    return true;
+    // Settle so a concurrent claimant's write lands, then verify ownership.
+    if (CLAIM_SETTLE_MS > 0) await new Promise((r) => setTimeout(r, CLAIM_SETTLE_MS));
+    const check = (await storage.get(CLAIM_KEY)) || {};
+    return check[CLAIM_KEY]?.[id]?.nonce === nonce;
   } catch {
     return true; // storage broken: fall back to per-tab behaviour
   }
 }
 
-export async function flushOutbox({ send, storage = STORAGE, now = Date.now(), onChange } = {}) {
+export async function flushOutbox({ send, storage = STORAGE, now = Date.now(), onChange, settleMs = CLAIM_SETTLE_MS } = {}) {
   if (inFlight) return { sent: 0, failed: 0, skipped: true };
+  let items = await loadOutbox(storage);
+  let due = prioritizeDue(dueItems(items, now));
+  // An idle pump touches NOTHING: no lock, no writes.
+  if (due.length === 0) return { sent: 0, failed: 0, skipped: false };
+  // ONE writer per pump window across ALL tabs (round 62, M3). The loser
+  // stands down and catches the queue on its next re-arm.
+  if (!(await acquirePumpLock(storage, now, settleMs))) {
+    return { sent: 0, failed: 0, skipped: true };
+  }
   inFlight = true;
   try {
-    let items = await loadOutbox(storage);
-    const due = prioritizeDue(dueItems(items, now));
+    // Re-read under the lock: another tab may have drained or changed the
+    // queue while we were acquiring it.
+    items = await loadOutbox(storage);
+    due = prioritizeDue(dueItems(items, now));
     if (due.length === 0) return { sent: 0, failed: 0, skipped: false };
 
     let sent = 0;
@@ -424,6 +489,20 @@ export async function flushOutbox({ send, storage = STORAGE, now = Date.now(), o
         // queue id otherwise -- never a bare value from mixed spaces.
         sentIds.push(res?.id ? `g:${res.id}` : `q:${item.id}`);
         items = items.filter((x) => x.id !== item.id);
+        /*
+         * REMOVAL MUST SURVIVE THE OTHER TAB'S SAVES (round 62, M3 — the
+         * second reproduced race: two tabs each save their own snapshot, the
+         * last save wins, and the first tab's removal is lost — a sent item
+         * reappears in the queue and double-sends on the next pump). The
+         * item is under OUR claim, so no other tab will SEND it; the only
+         * hazard is a lost removal, so remove by read-modify-write and
+         * verify, retrying while it keeps reappearing.
+         */
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const fresh = await loadOutbox(storage);
+          if (!fresh.some((x) => x.id === item.id)) break; // already gone
+          await saveOutbox(fresh.filter((x) => x.id !== item.id), storage);
+        }
         await releaseClaim(storage, item.id);
         sent++;
       } catch (err) {
@@ -457,6 +536,10 @@ export async function flushOutbox({ send, storage = STORAGE, now = Date.now(), o
     return { sent, failed, skipped: false, sentIds };
   } finally {
     inFlight = false;
+    // Release the pump lock on EVERY exit path that acquired it (the early
+    // returns inside the try also pass through here). The TTL is only the
+    // crash backstop, not the normal path.
+    await releasePumpLock(storage);
   }
 }
 

@@ -86,6 +86,9 @@ test('A MESSAGE ON THE WIRE CANNOT BE CANCELLED', async () => {
     send: async () => { await gate; },
     storage: s,
     now: NOW,
+    // Single-tab test: no cross-tab claimant to settle against, and the wait
+    // below is the race under test, not a lock settle.
+    settleMs: 0,
   });
 
   // Let the flush claim the item and reach the await.

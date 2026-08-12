@@ -62,6 +62,7 @@ test('source sweep: every KEY a module declares is registered', () => {
     /\bKEY\s*=\s*'([a-zA-Z][a-zA-Z0-9]*)'/g,
     /\bCLAIM_KEY\s*=\s*'([a-zA-Z][a-zA-Z0-9]*)'/g,
     /\bHISTORY_KEY\s*=\s*'([a-zA-Z][a-zA-Z0-9]*)'/g,
+    /\bPUMP_LOCK_KEY\s*=\s*'([a-zA-Z][a-zA-Z0-9]*)'/g,
   ];
   for (const f of files) {
     if (f.endsWith('storage-registry.js')) continue;

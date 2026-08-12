@@ -63,6 +63,7 @@ const DOMAIN_KEYS = [
   { key: 'activityLog', owner: 'src/app/activity.js', purpose: 'what the app did to your mail', backup: false, reason: 'a log about THIS installation' },
   { key: 'outbox', owner: 'src/app/outbox.js', purpose: 'pending-send queue', backup: false, reason: 'importing pending sends on a second machine would send them twice' },
   { key: 'outboxClaims', owner: 'src/app/outbox.js', purpose: 'dispatch coordination claims', backup: false, reason: 'transient coordination state' },
+  { key: 'outboxPumpLock', owner: 'src/app/outbox.js', purpose: 'one pump writer per window across tabs', backup: false, reason: 'transient coordination state; TTL is the crash backstop' },
   { key: 'historyId', owner: 'src/background/sync.js', purpose: 'Gmail delta-sync cursor', backup: false, reason: 'server-side truth; a stale cursor forces a resync at worst' },
   { key: 'accessToken', owner: 'src/background/auth.js', purpose: 'OAuth token (session area preferred)', backup: false, reason: 'credential — never travels' },
   { key: 'expiresAt', owner: 'src/background/auth.js', purpose: 'OAuth token expiry', backup: false, reason: 'credential metadata — never travels' },
