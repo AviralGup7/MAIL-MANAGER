@@ -261,23 +261,13 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
   // Cache-bust so each boot gets a fresh module instance with its own Store.
   const url = pathToFileURL(join(ROOT, 'src/app/app.js')).href + `?t=${Math.random()}`;
   await import(url);
-  // Captured once the module graph exists, so teardown can scrub the state
-  // that outlives a single boot.
-  ({ _resetFeatureState: featureState } = await import('../src/app/features.js'));
-  ({ _resetTimetableUI: timetableState } = await import('../src/app/timetable-ui.js'));
-  // menu.js holds the single open menu in module state, for the same reason.
-  ({ _resetMenu: menuState } = await import('../src/app/menu.js'));
-  // The undo stack is module-level too, and leaks entries between boots.
-  ({ _resetUndo: undoState } = await import('../src/app/undo-actions.js'));
-  // list.js keeps the row index across boots for the same reason (round 52).
-  ({ _resetList: listState } = await import('../src/app/list.js'));
-  // bulk.js keeps the selection across boots for the same reason.
-  ({ _resetBulk: bulkState } = await import('../src/app/bulk.js'));
-  // layers.js keeps its stack across boots; a stray layer from one test
-  // eats the next test's Escape (round 54, workspace promotion). Close
-  // properly FIRST — teardown fires each tenant's onClose, which is what
-  // nulls their cached layer handles — then wipe whatever is left.
-  ({ _resetLayers: layersState, closeAllLayers: layersCloseAll } = await import('../src/app/layers.js'));
+  // Round 59 (roadmap M-2): stateful modules SELF-REGISTER their resets
+  // (reset-registry.js), so the harness runs one call instead of seven
+  // hand-maintained captures. layers.js is special: close WITH teardown
+  // FIRST — tenants null their cached handles inside onClose — then the
+  // registered raw wipe runs with the rest.
+  ({ resetAll: resetRegistered } = await import('../src/app/reset-registry.js'));
+  ({ closeAllLayers: layersCloseAll } = await import('../src/app/layers.js'));
   const ttStore = await import('../src/app/timetable-store.js');
   ttStore._resetSourceData(); // the catalogue is memoised per module, not per boot
 
@@ -303,58 +293,16 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
     }
     /*
      * app.js is re-imported per boot with a cache-busting URL, but its IMPORTS
-     * are cached -- so features.js keeps its module state across tests, still
+     * are cached -- so stateful modules keep their state across tests, still
      * pointing at the document we are about to discard. Left alone it produces
-     * tests that pass on a previous test's data. See _resetFeatureState.
+     * tests that pass on a previous test's data. Each module SELF-REGISTERS
+     * its reset (reset-registry.js, roadmap M-2); layers close WITH teardown
+     * first so tenants null their cached handles, then the registered wipe
+     * runs with the rest.
      */
-    try {
-      featureState?.();
-    } catch {
-      // Same rule: never mask the real result.
-    }
-    // timetable-ui.js holds module state for the same reason features.js does.
-    try {
-      timetableState?.();
-    } catch {
-      // Never mask the real result.
-    }
-    /*
-     * menu.js holds the ONE open menu in module state. A test that leaves the
-     * theme picker open would otherwise hand the next boot a live layer
-     * pointing at a closed document -- and the next `openMenu` would try to
-     * close it.
-     */
-    try {
-      menuState?.();
-    } catch {
-      // Never mask the real result.
-    }
-    /*
-     * Empty the undo stack. Without this a test's Ctrl+Z pops an entry left
-     * by an EARLIER test and fires that test's verb -- which is exactly how
-     * two new failure-path tests passed alone and failed in the suite.
-     */
-    try {
-      undoState?.();
-    } catch {
-      // Never mask the real result.
-    }
-    // list.js row index / scroll memory (round-52 workspace extraction).
-    try {
-      listState?.();
-    } catch {
-      // Never mask the real result.
-    }
-    // bulk.js selection (round-52 workspace extraction, step 6).
-    try {
-      bulkState?.();
-    } catch {
-      // Never mask the real result.
-    }
-    // layers.js stack (round 54): close with teardown, then wipe.
     try {
       layersCloseAll?.();
-      layersState?.();
+      resetRegistered?.();
     } catch {
       // Never mask the real result.
     }
@@ -395,20 +343,8 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
   return { win, doc: win.document, calls, storage, settle, restore, changeSetting };
 }
 
-/** features.js reset, captured at boot. See restore(). */
-let featureState = null;
-/** timetable-ui.js reset, same reasoning. */
-let timetableState = null;
-/** @type {null | (() => void)} */
-let menuState = null;
-/** @type {null | (() => void)} */
-let undoState = null;
-/** list.js reset, same reasoning (round 52). */
-let listState = null;
-/** bulk.js reset, same reasoning (round 52 step 6). */
-let bulkState = null;
-/** layers.js reset, same reasoning (round 54). */
-let layersState = null;
+/** Reset-registry runner + layers teardown, captured at boot. See restore(). */
+let resetRegistered = null;
 let layersCloseAll = null;
 
 const rows = (doc) => [...doc.querySelectorAll('#list .row')];

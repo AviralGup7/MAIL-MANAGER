@@ -27,6 +27,7 @@
  */
 
 import { openLayer } from './layers.js';
+import { registerReset } from './reset-registry.js';
 
 /** The single open menu, or null. Two menus at once is never intended. */
 let current = null;
@@ -255,3 +256,7 @@ export function openMenu({
 
   return current;
 }
+
+// Self-registered test seam (reset-registry.js, roadmap M-2): cached module
+// state must not outlive a cache-busted app.js re-import in the harness.
+registerReset('menu', _resetMenu);

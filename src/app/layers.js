@@ -284,3 +284,9 @@ export function trapFocus(node, doc = globalThis.document) {
   node.addEventListener('keydown', onDown);
   return () => node.removeEventListener('keydown', onDown);
 }
+
+import { registerReset } from './reset-registry.js';
+// Self-registered test seam (reset-registry.js, roadmap M-2). NOTE: this is
+// the raw wipe; the integration harness closes layers WITH teardown first,
+// because tenants null their cached layer handles inside onClose.
+registerReset('layers', _resetLayers);

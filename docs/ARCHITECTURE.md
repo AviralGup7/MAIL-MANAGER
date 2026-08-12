@@ -3,13 +3,15 @@
 **Status:** living document. Steps 1–7 of the migration are complete; the
 layering rules below are now enforced by tests rather than described. Written
 at `c04eadb`, after audit
-[`09-ARCHITECTURE-POST-CHANGE.md`](../audits/09-ARCHITECTURE-POST-CHANGE.md).
+[`09-ARCHITECTURE-POST-CHANGE.md`](../audits/09-ARCHITECTURE-POST-CHANGE.md);
+refreshed in round 59 (roadmap Phase 3) to match the workspace extractions of
+rounds 51–58.
 
-This is not a rewrite plan. The system has 11,600 lines under 639 tests and a
-dependency graph with no cycles; discarding that would destroy far more value
-than any redesign creates. What follows is the architecture the codebase is
-*already most of the way toward*, stated explicitly so that the remaining gap
-is visible and closeable in increments.
+This is not a rewrite plan. The system has ~27,400 lines of `src/` under
+1,500+ tests and a dependency graph with no cycles; discarding that would
+destroy far more value than any redesign creates. What follows is the
+architecture the codebase is *already most of the way toward*, stated
+explicitly so that the remaining gap is visible and closeable in increments.
 
 Every rule below is either **already true** (and now written down so it stays
 true) or **a named gap** with the migration that closes it.
@@ -26,9 +28,17 @@ by a test.
 │  SHELL          app.js, app.html                        │
 │                 owns: layout, render loop, routing      │
 ├─────────────────────────────────────────────────────────┤
-│  FEATURES       features.js, and one module per surface │
+│  SURFACES       one module per surface: list, reader,   │
+│                 sidebar, rails, bulk, suggest-ui,       │
+│                 timetable-ui, compose, palette, …       │
 │                 owns: self-contained UI + its own state │
-│                 talks to the shell ONLY through `ctx`   │
+│                 talks to the shell ONLY through `ctx`;  │
+│                 two WORKSPACES own the main area:       │
+│                 Mail (default) and Timetable (r. 54)    │
+├─────────────────────────────────────────────────────────┤
+│  PRIMITIVES     layers, menu, dialog, toast, dom,       │
+│                 icons, themes, display, reader-frame    │
+│                 the shared UI vocabulary surfaces use   │
 ├─────────────────────────────────────────────────────────┤
 │  DOMAIN         store, query, classify, deadlines,      │
 │                 rules, snooze, contacts, selection      │

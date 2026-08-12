@@ -25,6 +25,7 @@ import * as settings from './settings.js';
 import * as activity from './activity.js';
 import { toast } from './toast.js';
 import { recordUndo } from './undo-actions.js';
+import { registerReset } from './reset-registry.js';
 
 /** Set by wireBulk at boot. */
 let ctx = null;
@@ -341,3 +342,7 @@ export function reconcileBulk(res, snapshots) {
   });
   return failed;
 }
+
+// Self-registered test seam (reset-registry.js, roadmap M-2): cached module
+// state must not outlive a cache-busted app.js re-import in the harness.
+registerReset('bulk', _resetBulk);

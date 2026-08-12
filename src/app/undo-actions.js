@@ -7,6 +7,7 @@
  */
 
 import { UndoStack } from './undo.js';
+import { registerReset } from './reset-registry.js';
 
 /* ========================================================================== *
  * UNDO
@@ -65,3 +66,7 @@ export async function performUndo(ctx) {
 export function _resetUndo() {
   undoStack.clear();
 }
+
+// Self-registered test seam (reset-registry.js, roadmap M-2): cached module
+// state must not outlive a cache-busted app.js re-import in the harness.
+registerReset('undo', _resetUndo);

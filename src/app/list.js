@@ -38,6 +38,7 @@ import { getMailbox } from './mailboxes.js';
 import { CATEGORY_LABELS, MUTED_CATEGORIES } from '../classify/categories.js';
 import { CAT_COLOR, LOW_CONFIDENCE, displayName, shortDate } from './display.js';
 import { insertLaneHeaders } from './rails.js';
+import { registerReset } from './reset-registry.js';
 
 /** Set by wireList at boot. */
 let ctx = null;
@@ -1086,3 +1087,7 @@ export function patchRow(id) {
   const node = nodeById.get(id);
   if (node) fillRow(node, storeOf().get(id));
 }
+
+// Self-registered test seam (reset-registry.js, roadmap M-2): cached module
+// state must not outlive a cache-busted app.js re-import in the harness.
+registerReset('list', _resetList);

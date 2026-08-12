@@ -41,6 +41,7 @@ export { wireAutocomplete, refreshContacts } from './autocomplete.js';
 import { _resetPalette } from './palette.js';
 import { _resetCompose } from './compose.js';
 import { _resetContacts } from './autocomplete.js';
+import { registerReset } from './reset-registry.js';
 
 /**
  * Test seam: drop the module state of every feature module.
@@ -54,3 +55,7 @@ export function _resetFeatureState() {
   _resetCompose();
   _resetContacts();
 }
+
+// Self-registered test seam (reset-registry.js, roadmap M-2): cached module
+// state must not outlive a cache-busted app.js re-import in the harness.
+registerReset('features', _resetFeatureState);

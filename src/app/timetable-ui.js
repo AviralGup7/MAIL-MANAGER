@@ -30,6 +30,7 @@ import {
   loadTimetable, saveTimetable, searchCourses, courseByComCode, loadSourceData,
 } from './timetable-store.js';
 import { scanMessages, matchNotice, isAcademicSender, courseNumbersIn } from './timetable-mail.js';
+import { registerReset } from './reset-registry.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -1376,3 +1377,7 @@ function fieldset(legend, children, hint) {
   f.appendChild(box);
   return f;
 }
+
+// Self-registered test seam (reset-registry.js, roadmap M-2): cached module
+// state must not outlive a cache-busted app.js re-import in the harness.
+registerReset('timetable-ui', _resetTimetableUI);
