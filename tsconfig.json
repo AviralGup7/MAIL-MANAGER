@@ -1,0 +1,21 @@
+{
+  "//": "M5 (2026-08-13): compiler-checked contracts WITHOUT a framework. The ctx contract, the settings schema and the store used to be pinned only by regex tests — clever but text-fragile. checkJs turns them into compiler law. SCOPE IS DELIBERATE: the contract surfaces (system/*, the store) only; widening is a separate decision per folder, never a flood.",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "strict": false,
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": [],
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": [
+    "src/globals.d.ts",
+    "src/app/system/**/*.js",
+    "src/app/mail/store.js"
+  ]
+}

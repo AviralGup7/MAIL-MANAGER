@@ -24,12 +24,14 @@
     "operators": "node tools/check-operators.mjs",
     "departments": "node tools/check-departments.mjs",
     "render:bench": "node tools/render-bench.mjs",
-    "ci:smoke": "node tools/ci-smoke.mjs"
+    "ci:smoke": "node tools/ci-smoke.mjs",
+    "types": "tsc -p tsconfig.json"
   },
   "devDependencies": {
     "axe-core": "^4.13.0",
     "jsdom": "^24.0.0",
-    "pngjs": "^7.0.0"
+    "pngjs": "^7.0.0",
+    "typescript": "^7.0.2"
   },
   "dependencies": {
     "playwright-core": "^1.62.1"
