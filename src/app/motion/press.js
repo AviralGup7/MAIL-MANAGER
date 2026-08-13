@@ -22,6 +22,7 @@
 
 import { SPRINGS, reducedMotion } from './tokens.js';
 import { animateValue } from './spring.js';
+import { yieldTransform } from './magnetic.js';
 
 /** Per-element press state. WeakMap: rows come and go; never a leak. */
 const yours = new WeakMap();
@@ -60,6 +61,9 @@ export function makePressable(el, opts = {}) {
     if (el.getAttribute('aria-disabled') === 'true' || el.disabled) return;
 
     el.dataset.pressing = '1';
+    // Claim the transform era from the magnetic field: its in-flight
+    // springs would otherwise out-write this press's rest frame.
+    yieldTransform(el);
     // Capture the pointer: without it, press-drag-release-OUTSIDE never
     // fires this element's pointerup and the button stays compressed
     // forever. Guarded — jsdom does not implement capture.

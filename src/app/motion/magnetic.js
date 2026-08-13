@@ -130,3 +130,22 @@ export function detachMagnetic(el) {
     }
   }
 }
+
+/**
+ * HAND THE TRANSFORM OVER, mid-flight, without leaving the field. press.js
+ * calls this on pointerdown: the step loop already skips [data-pressing]
+ * for FUTURE frames, but springs scheduled before the press would keep
+ * writing over the press era (measured in the P3 live probe: Compose ended
+ * a press at translate3d(0,0,0) — the magnetic rest write outliving the
+ * press's own rest). Cancel + zero + erase; the registration STAYS, so the
+ * element re-engages on the next pointermove after release.
+ */
+export function yieldTransform(el) {
+  for (const t of [...__targets]) {
+    if (t.el !== el) continue;
+    t.hx?.cancel(); t.hy?.cancel();
+    t.hx = null; t.hy = null;
+    t.x = 0; t.y = 0; t.tx = 0; t.ty = 0;
+    writeTransform(t);
+  }
+}

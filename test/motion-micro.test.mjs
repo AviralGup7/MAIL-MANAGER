@@ -179,6 +179,29 @@ test('magnetic: coarse pointer and reduced motion never even listen', () => {
   } finally { resetSeams(); restore(); }
 });
 
+test('era handoff: pressing a LEANING magnetic element leaves zero magnetic ink at rest', () => {
+  // Live-probe finding (P3 fix cycle 3): Compose ended a press at
+  // translate3d(0,0,0) — the magnetic rest write outliving the press era.
+  // press.js must claim the transform the moment pointerdown lands.
+  const { win, doc, restore } = dom('<button id="b" class="primary">Go</button>');
+  const clock = fakeClock();
+  tokens._setReducedForTest(false);
+  magnetic._setFineForTest(true);
+  try {
+    const el = doc.getElementById('b');
+    giveBox(el, { left: 200, top: 200, width: 120, height: 40 });
+    magnetic.attachMagnetic(el, { radius: 60, strength: 0.3 });
+    el.dispatchEvent(Object.assign(new win.Event('pointermove', { bubbles: true }), { clientX: 160, clientY: 220 })); // left-of-centre: lean
+    for (let i = 0; i < 30; i++) clock.frame(); // mid-lean, springs still flying
+    assert.match(el.style.transform, /translate3d\(-/, 'precondition: leaning');
+    el.dispatchEvent(downEvt(win, 210, 210));
+    assert.match(el.style.transform, /scale/, 'press owns the transform the same task');
+    el.dispatchEvent(new win.Event('pointerup', { bubbles: true }));
+    for (let i = 0; i < 400 && el.dataset.pressing; i++) clock.frame();
+    assert.equal(el.style.transform, '', 'rest is CLEAN — no orphaned translate3d(0,0,0) from the field');
+  } finally { clock.restore(); resetSeams(); restore(); }
+});
+
 test('wiring: the roster, menus and search are NEVER motion-wired (doctrine exclusion)', () => {
   const { win, doc, restore } = dom(`
     <div class="row"><button class="ghost">in a row</button></div>
