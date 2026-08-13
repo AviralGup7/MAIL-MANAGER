@@ -86,7 +86,9 @@ test('focus is captured on open and restored on close', () => {
   L._resetLayers();
   const doc = fakeDoc();
   let focused = 0;
-  const trigger = { isConnected: true, focus: () => focused++ };
+  // Post-A-A2 the restore gate also asks `matches(FOCUSABLE)` — these fakes
+  // play real focusable controls, so they must model that honestly.
+  const trigger = { isConnected: true, matches: () => true, focus: () => focused++ };
   doc.activeElement = trigger;
 
   const a = L.openLayer({ name: 'a' }, doc);
@@ -113,8 +115,8 @@ test('an explicit restoreFocusTo overrides the captured element', () => {
   L._resetLayers();
   const doc = fakeDoc();
   let onTrigger = 0;
-  doc.activeElement = { isConnected: true, focus() {} };
-  const trigger = { isConnected: true, focus: () => onTrigger++ };
+  doc.activeElement = { isConnected: true, matches: () => true, focus() {} };
+  const trigger = { isConnected: true, matches: () => true, focus: () => onTrigger++ };
   const a = L.openLayer({ restoreFocusTo: trigger }, doc);
   a.close();
   assert.equal(onTrigger, 1);
@@ -159,7 +161,7 @@ test('a throwing onClose still tears down its listener and restores focus', () =
   L._resetLayers();
   const doc = fakeDoc();
   let focused = 0;
-  doc.activeElement = { isConnected: true, focus: () => focused++ };
+  doc.activeElement = { isConnected: true, matches: () => true, focus: () => focused++ };
   const a = L.openLayer({
     node: el(),
     dismissOnOutsideClick: true,
