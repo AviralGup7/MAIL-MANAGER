@@ -131,8 +131,9 @@ export function popFrom(el, anchor, opts = {}) {
   el.style.animation = 'none';
 
   // First pose synchronously — no flash of the destination before frame 1.
-  el.style.opacity = '0.2';
-  el.style.transform = 'scale(0.86)';
+  // (Same formatting as onUpdate so a frame-diff never catches a haircut.)
+  el.style.opacity = (0.2).toFixed(3);
+  el.style.transform = `scale(${(0.86).toFixed(4)})`;
 
   return animateValue({
     from: 0,
