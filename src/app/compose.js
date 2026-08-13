@@ -12,6 +12,7 @@ import { openMenu } from './menu.js';
 import { middleTruncate } from './icons.js';
 import { closeWithMotion, cancelExit } from './layers.js';
 import { popFrom } from './motion/morph.js';
+import { burst as fxBurst } from './motion/particles.js';
 import * as outbox from './outbox.js';
 import * as templates from './templates.js';
 import { createDraftSaver, loadDraft, isMeaningful } from './draft-store.js';
@@ -661,7 +662,16 @@ async function doSend(ctx) {
     await outbox.saveOutbox([...queue, item]);
 
     await ensureDraftSaver().discard();
+    /*
+     * P6: the send burst. The rect is read BEFORE the panel leaves — after
+     * closeCompose there is no Send button left to measure. The panel's job
+     * ends here; the energy stays behind in the viewport for ~700ms to say
+     * what the toast's words say slower. Reduced-motion politely no-ops
+     * inside fxBurst, by its contract.
+     */
+    const sendAt = btn.getBoundingClientRect();
     closeCompose();
+    fxBurst(sendAt.left + sendAt.width / 2, sendAt.top + sendAt.height / 2, { count: 46 });
 
     const who = draft.to.split(',')[0].trim();
     ctx.toast(`Sending to ${who}`, {

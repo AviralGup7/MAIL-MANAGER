@@ -26,6 +26,7 @@ import * as activity from './activity.js';
 import { toast } from './toast.js';
 import { recordUndo } from './undo-actions.js';
 import { registerReset } from './reset-registry.js';
+import { burst as fxBurst } from './motion/particles.js';
 
 /** Set by wireBulk at boot. */
 let ctx = null;
@@ -199,6 +200,22 @@ export async function bulkAct(kind, explicitIds = null) {
   const removal = kind === 'archive' || kind === 'trash' || kind === 'spam';
   if (removal && state.selected && ids.includes(state.selected)) ctx.closeReader();
 
+  /*
+   * P6 DUST: only 'trash' — the one explicitly destructive verb — turns the
+   * condemned rows to dust. Archive and spam stay silent: spectacle is a
+   * budget, and routine verbs must not spend it.
+   * Rects are measured BEFORE the batch: after storeOf().remove there is no
+   * row left to measure. The pool caps the total at 240 particles whatever
+   * the selection size; 8 spots × 18 stays well inside it by design.
+   */
+  const dustSpots = [];
+  if (kind === 'trash') {
+    for (const id of ids.slice(0, 8)) {
+      const r = nodeByIdOf().get(id)?.getBoundingClientRect?.();
+      if (r?.width) dustSpots.push([r.left + r.width / 2, r.top + r.height / 2]);
+    }
+  }
+
   storeOf().batch(() => {
     for (const id of ids) {
       if (kind === 'archive' || kind === 'trash' || kind === 'spam') storeOf().remove(id);
@@ -220,6 +237,9 @@ export async function bulkAct(kind, explicitIds = null) {
      */
     el.list.focus({ preventScroll: true });
   }
+
+  // The rows are gone; the dust they left settles over the next second.
+  for (const [x, y] of dustSpots) fxBurst(x, y, { count: 18, speed: [90, 300] });
 
   const { verb, add = [], remove = [] } = BULK_ACTIONS[kind];
 

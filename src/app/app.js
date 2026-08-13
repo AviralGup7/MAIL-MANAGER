@@ -56,6 +56,7 @@ import {
 import { wireSuggestUI, renderSuggestions, cancelSuggestBlur } from './suggest-ui.js';
 import { wireMicroInteractions } from './motion/wire-micro.js';
 import { wireLight } from './motion/light.js';
+import { assemble as fxAssemble } from './motion/particles.js';
 import {
   wireRails, renderSnoozed, renderOutbox, pumpOutbox, cancelOutboxTimer,
 } from './rails.js';
@@ -1767,7 +1768,16 @@ function showGate(message) {
   // Remember where focus was so hideGate() can hand it back (modal dialog
   // lifecycle: focus in on show, focus out on hide).
   gateFocusFrom = document.activeElement;
+  const gateWasHidden = el.gate.hidden;
   el.gate.hidden = false;
+  /* P6: first-paint hero — the gate card assembles out of particles. The one
+   * T5 spectacle the tier budget allows (spec §2 gate row): the FIRST screen
+   * a user meets earns the flourish; every later surface behaves. Only on a
+   * real hidden→shown edge — an error re-render must not re-fire it. */
+  if (gateWasHidden) {
+    const r = document.getElementById('gate-card')?.getBoundingClientRect();
+    if (r?.width) fxAssemble(r);
+  }
   el.gateError.hidden = !message;
   el.gateError.textContent = message || '';
 
