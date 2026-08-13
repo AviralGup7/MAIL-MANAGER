@@ -128,6 +128,7 @@ test('a poison intent gives up at the cap, honestly, across SEPARATE drains', as
 test('a corrupt blob reads as an empty queue; salvage is row-by-row', async () => {
   const bad = fakeStorage({ intents: { v: 99, q: 'junk' } });
   assert.equal(await queuedIntentCount(bad), 0, 'unreadable version/shape ⇒ empty, never a crash');
+  _reset(); // the module holds one session mirror — each scenario primes fresh
   const mixed = fakeStorage({
     intents: { v: 1, q: [
       { id: 'ok', verb: 'ARCHIVE', targetId: 'm1' },
