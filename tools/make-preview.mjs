@@ -264,6 +264,29 @@ function respond(msg) {
     // which is exactly what happened the first time I tried.
     case 'SEND':       return { ok: true, data: { id: 'sent-1' } };
     case 'SAVE_DRAFT': return { ok: true, data: { id: 'draft-1' } };
+    // The fake worker owns the send loop here exactly as the real one owns
+    // it in the extension (rails.js: dispatch goes through the worker, the
+    // page only asks). Without this verb the undo-send queue dead-ended in
+    // the preview: rows queued, the pump answered empty, nothing ever left,
+    // and a reviewer could not watch the lifecycle the roadmap asks to be
+    // measured (queue -> rail repaint -> sent).
+    // Effect contract only: due items leave store_.outbox and the answer is
+    // the canonical PumpResult shape (outbox.js); all scheduling, in-page
+    // claiming, rendering and toasting stay real app code.
+    case 'OUTBOX_PUMP': {
+      const q = store_.outbox || [];
+      const now = Date.now();
+      const due = q.filter((it) =>
+        (it.state === 'held' && it.releaseAt <= now) ||
+        (it.state === 'failed' && (it.nextAttempt || 0) <= now && it.attempts < 4));
+      if (!due.length) return { ok: true, data: { sent: 0, failed: 0, skipped: false, more: false, sentIds: [] } };
+      const gone = new Set(due.map((it) => it.id));
+      store_.outbox = q.filter((it) => !gone.has(it.id));
+      // g:-namespaced: this verb plays the WORKER path, whose sentIds are
+      // Gmail ids, not queue ids (the typedef pins the two id spaces apart).
+      return { ok: true, data: { sent: due.length, failed: 0, skipped: false, more: false,
+                                 sentIds: [...gone].map((id) => 'g:prev-' + id) } };
+    }
     case 'LIST_LABELS':return { ok: true, data: [] };
     case 'GET_ATTACHMENT':
       return { ok: true, data: { dataUrl: 'data:application/pdf;base64,JVBERi0xLjQK' } };
