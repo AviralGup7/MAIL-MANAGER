@@ -49,12 +49,22 @@ function writeTransform(t) {
 }
 
 function drive(t, tx, ty) {
+  // Remember the field's claim: settling at a NON-ZERO offset is the whole
+  // point of magnetism (the element holds against the cursor); only a rest
+  // AT ORIGIN may erase the ink. (Fix cycle 2 — the first draft zeroed
+  // state at every settle, so "hold" flashed back to home.)
+  t.tx = tx; t.ty = ty;
   const mkAxis = (axis, set) => animateValue({
     from: t[axis],
     to: set,
     preset: SPRINGS.WHISPER, // ambient: dead settle, no bounce toward a cursor
     onUpdate: (v) => { t[axis] = v; writeTransform(t); },
-    onRest: () => { t[axis === 'x' ? 'hx' : 'hy'] = null; if (!t.hx && !t.hy) { t.x = 0; t.y = 0; writeTransform(t); } },
+    onRest: () => {
+      t[axis === 'x' ? 'hx' : 'hy'] = null;
+      if (t.hx || t.hy) return;
+      if (t.tx === 0 && t.ty === 0) { t.x = 0; t.y = 0; }
+      writeTransform(t);
+    },
   });
   if (!t.hx) t.hx = mkAxis('x', tx); else t.hx.retarget(tx);
   if (!t.hy) t.hy = mkAxis('y', ty); else t.hy.retarget(ty);
