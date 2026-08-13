@@ -91,8 +91,12 @@ function step() {
     const gapX = Math.max(0, Math.abs(lastClientX - cx) - r.width / 2);
     const gapY = Math.max(0, Math.abs(lastClientY - cy) - r.height / 2);
     const inside = Math.hypot(gapX, gapY) < t.radius;
-    drive(t, inside ? (lastClientX - cx) * t.strength : 0,
-             inside ? (lastClientY - cy) * t.strength : 0);
+    // DEAD ZONE: claims below half a pixel quantize to an exact 0 — a
+    // dead-centre cursor must rest CLEAN (the live probe caught a hovering
+    // centre-leave residue: translate3d(0px,0px,0px) staying on Compose).
+    const q = (v) => (Math.abs(v) < 0.5 ? 0 : v);
+    drive(t, inside ? q((lastClientX - cx) * t.strength) : 0,
+             inside ? q((lastClientY - cy) * t.strength) : 0);
   }
 }
 
