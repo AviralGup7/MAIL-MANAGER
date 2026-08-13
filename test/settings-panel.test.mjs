@@ -113,7 +113,12 @@ test('the dialog shell exists, starts hidden, and is genuinely modal', () => {
 test('the surface is sized as a dialog, on the ladder, off the geometry pins', () => {
   const css = read('src/styles/87-settings.css');
   assert.match(css, /width: min\(880px, 100%\);/, '880px — inside the asked-for 40–80% band at 1440px');
-  assert.match(css, /height: min\(760px, 84vh\);/, 'a surface you read, not a prompt you squeeze through');
+  assert.match(css, /height: min\(760px, 80vh\);/, 'both axes inside the 40–80% band the surface was asked to cover');
+  /* Wide cells must be block, not flex: a shrink-to-fit flex item starves
+     the theme grid's auto-fill to one column (probe-measured 2026-08-13 —
+     six themes stacked as a ladder instead of tiling side by side). */
+  assert.match(css, /\.set-control\.wide \{[^}]*display: block;/,
+    'wide cells stretch so the themes auto-fill can tile');
   assert.doesNotMatch(css, /z-index/, 'the z-level is one rung of the V3 ladder, not a local decision');
   assert.match(css, /@media \(max-width: 600px\)/, 'phones get a sheet, not a peephole');
   const skin = read('src/styles/86-v3-skin.css');

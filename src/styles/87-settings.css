@@ -5,11 +5,12 @@
 /* be: inside the app, one click from the mail. The controls' content comes   */
 /* from overlays/settings-panel.js; this file owns only how they look.        */
 /*                                                                            */
-/* SIZE. Width min(880px, 100%), height min(760px, 84vh): at the reference    */
-/* 1440x900 that is 61% of the window's width and most of its height — a      */
-/* surface you READ, not a prompt you squeeze through, and still visibly a    */
-/* dialog floating over the list beneath. Below 600px it becomes a full-      */
-/* screen sheet, because a centred card with margins on a phone is a peephole.*/
+/* SIZE. Width min(880px, 100%), height min(760px, 80vh): at the reference    */
+/* 1440x900 window that is 61% by 80% — both axes inside the 40–80% band the  */
+/* surface was asked to cover. A dialog you READ, not a prompt you squeeze    */
+/* through, and still visibly floating over the list beneath. Below 600px it  */
+/* becomes a full-screen sheet, because a centred card with margins on a      */
+/* phone is a peephole.                                                       */
 /*                                                                            */
 /* The z-level is NOT here: it is one rung on the overlay ladder in           */
 /* 86-v3-skin (--z-settings 650 — above compose and popovers, below the       */
@@ -30,7 +31,7 @@
 
 #settings-box {
   width: min(880px, 100%);
-  height: min(760px, 84vh);
+  height: min(760px, 80vh);
   display: flex;
   flex-direction: column;
   background: var(--bg-raised);
@@ -115,7 +116,14 @@
    beneath their label. */
 .set-control.wide {
   grid-column: 1 / -1;
-  justify-content: stretch;
+  /* display: block, NOT the row's flex. A shrink-to-fit flex item hands the
+     theme grid's auto-fill an indefinite width, and that resolves as ONE
+     column — the six themes painted as a tall ladder of half-empty rows
+     (probe-measured 2026-08-13: tiles 183px wide, stacked six deep). A block
+     cell stretches to the row, so auto-fill sees the real width and lays the
+     tiles out side by side. (`justify-content: stretch` was never a flex
+     value — the declaration was inert.) */
+  display: block;
 }
 
 .set-control input[type='checkbox'] {
