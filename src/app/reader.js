@@ -362,10 +362,37 @@ function renderTimetableEffects(id) {
  * prefetch and the same mark-read grace period; two copies of that is how two
  * readers drift apart.
  */
+/**
+ * Write a body document WITHOUT a session-history bleed (65/g).
+ *
+ * A srcdoc assignment on a SANDBOXED frame is a real navigation of an
+ * opaque-origin document, and Chromium appends each one to the JOINT
+ * session history — measured headless: the two writes per open message
+ * (clear, then body) grew `history.length` by two per message read,
+ * burying the deep-link view entries under invisible items. Twenty mails
+ * read = forty dead Back presses; the sandbox can never come off, because
+ * body HTML is hostile territory, and the opacity means the document can
+ * never be DOM-written from here either.
+ *
+ * What prunes a frame's pending history items is REMOVING the frame. So
+ * every write swaps in an identical fresh element: its first load replaces
+ * its own initial item, net zero entries (measured: four writes, length
+ * steady). Attributes — sandbox, csp referral policy, title, aria, id —
+ * carry across the clone; properties do not, so the load handler arrives
+ * as a parameter and is attached before the write.
+ */
+function writeBodyDoc(html, { onload } = {}) {
+  const fresh = el.rBody.cloneNode(false);
+  if (onload) fresh.onload = onload;
+  el.rBody.replaceWith(fresh);
+  el.rBody = fresh;
+  fresh.srcdoc = html;
+}
+
 async function loadBody(id) {
   const token = ++bodyToken;
   el.rLoading.hidden = false;
-  el.rBody.srcdoc = '';
+  writeBodyDoc('');
   try {
     const body = await send('GET_BODY', { id });
     if (token !== bodyToken) return; // user moved on; drop the stale response
@@ -393,7 +420,7 @@ async function loadBody(id) {
     renderBodyInto(body);
   } catch (err) {
     if (token !== bodyToken) return;
-    el.rBody.srcdoc = escapeDoc(`Could not load this message.\n\n${err.message}`);
+    writeBodyDoc(escapeDoc(`Could not load this message.\n\n${err.message}`));
   } finally {
     if (token === bodyToken) el.rLoading.hidden = true;
   }
@@ -746,21 +773,14 @@ function renderBodyInto(body, forceRemote = false) {
     (policy !== 'never' && imageAllowList.has(sender));
 
   const stats = {};
-  el.rBody.srcdoc = renderBody(body, { allowRemote, stats });
   // Restore the remembered reading position once the frame has laid out
   // (round 46 #23), and surface the unfold-all control only while folded
-  // quotes exist (round 46 #19).
-  el.rBody.onload = () => {
-    const at = readPosition.get(body.id);
-    if (at) el.rBody.contentWindow?.scrollTo({ top: at });
-    const doc = el.rBody.contentDocument;
-    const folds = doc ? [...doc.querySelectorAll('details.quote-fold')] : [];
-    const unfold = $('r-unfold');
-    unfold.hidden = folds.length === 0;
-    // Name the control with the count so its purpose is audible (round 48).
-    unfold.setAttribute('aria-label', `Unfold ${folds.length} quoted ${folds.length === 1 ? 'section' : 'sections'}`);
-    unfold.onclick = () => { for (const d of folds) d.open = true; unfold.hidden = true; };
-  };
+  // quotes exist (round 46 #19). The handler travels as a PARAMETER —
+  // writeBodyDoc clones the frame per write, and clones carry attributes,
+  // not properties.
+  writeBodyDoc(renderBody(body, { allowRemote, stats }), {
+    onload: () => bodyLoaded(body),
+  });
 
   // The bar only appears when there is something to unblock.
   const blocked = stats.blockedRemote || 0;
@@ -780,6 +800,25 @@ function renderBodyInto(body, forceRemote = false) {
       toast(`Images will load from ${sender}`, { kind: 'success' });
     };
   }
+}
+
+/**
+ * The body frame finished laying out: restore where this message was read
+ * to (round 46 #23) and wire the unfold-all control while folded quotes
+ * exist (round 46 #19). One function, shared by the first render and by
+ * theme repaints — previously the repaint inherited the still-attached
+ * .onload from the SAME element, an accident the 65/g frame swap ended.
+ */
+function bodyLoaded(body) {
+  const at = readPosition.get(body.id);
+  if (at) el.rBody.contentWindow?.scrollTo({ top: at });
+  const doc = el.rBody.contentDocument;
+  const folds = doc ? [...doc.querySelectorAll('details.quote-fold')] : [];
+  const unfold = $('r-unfold');
+  unfold.hidden = folds.length === 0;
+  // Name the control with the count so its purpose is audible (round 48).
+  unfold.setAttribute('aria-label', `Unfold ${folds.length} quoted ${folds.length === 1 ? 'section' : 'sections'}`);
+  unfold.onclick = () => { for (const d of folds) d.open = true; unfold.hidden = true; };
 }
 
 /** SECURITY BOUNDARY, not duplication (see background/index.js:extractBody). */
@@ -949,7 +988,7 @@ export function closeReader() {
   ctx.syncContextActions(null);
   el.reader.hidden = true;
   el.readerEmpty.hidden = false;
-  el.rBody.srcdoc = '';
+  writeBodyDoc('');
   el.rAttachments.hidden = true;
   el.rAttachments.replaceChildren();
   // R1: the eye returns to the row it was reading, not to the top.
@@ -973,7 +1012,9 @@ export function openPartId() {
  * change; the body is already in memory, so this costs no refetch.
  */
 export function repaintBody() {
-  if (state.selected && lastBody) el.rBody.srcdoc = renderBody(lastBody);
+  if (state.selected && lastBody) {
+    writeBodyDoc(renderBody(lastBody), { onload: () => bodyLoaded(lastBody) });
+  }
 }
 
 /**

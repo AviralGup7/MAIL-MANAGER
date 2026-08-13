@@ -151,10 +151,44 @@ reduced-motion safe, pointer-coarse exempt.*
   Selection-gated commands still vanish whole (never state-ambiguous, just
   absent — a different doctrine, deliberately kept). Browser-verified and
   integration-driven end to end.
-- [ ] **65/g — Hash deep links (F7):** view/category/query/selection mirrored
-  to location.hash; back/forward walks views; no per-keystroke entries.
-- [ ] **65/h — Recovery polish (F9):** toast action slots wired to retry for
-  sync/classify failures where cheap; outbox retry surfaced in rail card.
+- [x] **65/g — Hash deep links (F7).** `src/app/deep-links.js`:
+  `#inbox/augsd?q=…&m=…` round-trips through format/parse; deliberate views
+  (category, mailbox, settled runQuery) push ONE history entry each; every
+  settled frame mirrors the full state via replaceState only, so j/k and
+  typing can never pollute history (pinned in source: nothing outside
+  deep-links.js calls the History API). popstate and boot share one apply
+  path through the shell's own navigation functions with echo suppression;
+  a deep-linked message that has not synced yet latches until its data
+  lands. Writing the round surfaced a real bleed: each sandboxed-iframe
+  srcdoc write was a joint-session-history entry (+2 per message read —
+  Back would have chewed forty dead items per twenty mails). Fixed in
+  reader.js as `writeBodyDoc`: swap-in an identical fresh frame per write
+  (attrs clone across, sandbox intact; the load handler became a
+  parameter), measured zero net entries over four reads, Back walking
+  views one press per view. Integration drives boot → category → type →
+  j/k → real back()/forward() restorations, plus cold-load at a deep link.
+- [x] **65/h — Recovery polish (F9).** Every verb failure now ends in a
+  way forward: one failure surface (`toastFailure`) serves both rollback
+  paths (`flagAction` + `optimistic`), and the Retry chip carries the
+  whole act — `retryAct = () => act(action, id)` threaded through all
+  seven verb cases — so a re-attempt replays thread spans, undo records
+  and optimistic travel exactly as the first attempt did, never a bare
+  wire resend. The rollback had already restored the data; what the user
+  lost was intent, and intent is what the chip carries. The three sync
+  loads (`loadPage`, `refresh`, `loadMailboxPage`) hand `reportError`
+  their own retry, whose error-toast branch grew the same chip; the
+  chip exists only where a retry exists, so a failure without a way
+  forward stays honest about it. Deliberately NOT wired, with the
+  reasons pinned in `test/recovery-retry.test.mjs`: the offline banner
+  (a network failure is a STATE, not an event — its design comment
+  already forbids an action, and recovery is wired to the `online`
+  event), the outbox rail (Retry/Discard already lived there), and
+  classification (local and exception-contained — no discrete failure
+  toast exists to attach to; a mis-file is corrected through the
+  category menu). Browser-probed: sabotaged ARCHIVE → role=alert toast
+  with Retry + 20 rows (rollback), healed + click → "Archived" + 19
+  rows + the undo kbd; integration drives failure→retry→success through
+  the real boot for both a verb and a delta sync.
 - [ ] **65/i — Final pass:** re-run interactive flows headless at 3 widths,
   evidence table, doc close-out.
 

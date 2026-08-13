@@ -2424,6 +2424,60 @@ test('UNDO: a failed ARCHIVE leaves no undo entry either', async (t) => {
   }
 });
 
+test('RECOVERY: a failed verb\'s toast RETRIES the whole act (65/h)', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  /* The array is consulted live by the worker contract: draining it
+   * mid-test simulates the service recovering. */
+  const failing = ['ARCHIVE'];
+  const { doc, win, calls, settle, restore } = await boot({ failVerbs: failing });
+  try {
+    const before = rows(doc).length;
+    rows(doc)[0].click(); // open = select, in the threaded-inbox default
+    await settle(6);
+    press(doc, win, 'e');
+    await settled(doc, settle);
+    assert.equal(rows(doc).length, before, 'the rollback restored the row');
+    assert.equal(doc.getElementById('toast-text').textContent, 'Could not archive');
+    const retryChip = doc.getElementById('toast-action');
+    assert.equal(retryChip.hidden, false, 'the failure ends in a way forward');
+    assert.equal(retryChip.textContent, 'Retry');
+
+    calls.length = 0;
+    failing.length = 0; // the service recovers
+    retryChip.click();
+    await settled(doc, settle);
+
+    assert.deepEqual(calls.filter((c) => c.type === 'ARCHIVE').length, 1,
+      'the chip re-ran the act — not a bare resend, the act');
+    assert.equal(rows(doc).length, before - 1, 'and the archive landed this time');
+  } finally {
+    restore();
+  }
+});
+
+test('RECOVERY: a failed sync ends in Retry, and the retry resyncs (65/h)', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const failing = ['SYNC_DELTA'];
+  const { doc, calls, settle, restore } = await boot({ failVerbs: failing });
+  try {
+    doc.getElementById('btn-refresh').click();
+    await settle(8);
+    const retryChip = doc.getElementById('toast-action');
+    assert.match(doc.getElementById('toast-text').textContent, /SYNC_DELTA failed/);
+    assert.equal(retryChip.hidden, false, 'a sync failure is an invitation, not an epitaph');
+
+    calls.length = 0;
+    failing.length = 0;
+    retryChip.click();
+    await settle(10);
+    assert.ok(calls.some((c) => c.type === 'SYNC_DELTA'), 'the retry issued a real delta sync');
+    assert.equal(doc.getElementById('toast-text').textContent, 'Up to date',
+      'recovery confirms in the same surface that carried the failure');
+  } finally {
+    restore();
+  }
+});
+
 test('UNDO: a failed auto-archive leaves no undo entry', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');
   /*
@@ -3217,6 +3271,61 @@ test('PALETTE: recents lead the untyped list; Undo explains why it cannot run (6
     assert.equal(doc.querySelectorAll('.palette-sep').length, 0, 'typed intent outranks habit');
     press(doc, win, 'Escape');
     await settle(4);
+  } finally {
+    restore();
+  }
+});
+
+test('DEEP LINKS: views push entries, keystrokes never do, Back walks views (65/g)', async (t) => {
+  if (!JSDOM) return t.skip('jsdom not installed');
+  const { doc, win, settle, restore } = await boot();
+  try {
+    // Boot canonicalizes the URL to the default view.
+    await settle(4);
+    assert.equal(win.location.hash, '#inbox/all', 'the settled frame mirrors into the URL');
+    const len0 = win.history.length;
+
+    // A category click is a deliberate view: one history entry appears.
+    doc.querySelector('#cats .cat[data-cat="augsd"]').click();
+    await settle();
+    assert.equal(win.location.hash, '#inbox/augsd');
+    assert.equal(win.history.length, len0 + 1, 'one push per view, not per frame');
+
+    // Typing a query and j/k-ing through results only mirror — zero entries.
+    const search = doc.getElementById('search');
+    search.value = 'regis';
+    search.dispatchEvent(new win.Event('input'));
+    await settle();
+    assert.match(win.location.hash, /^#inbox\/augsd\?q=regis(&m=|$)/);
+    press(doc, win, 'j');
+    await settle();
+    const withM = win.location.hash;
+    const selId = doc.querySelector(".row[aria-selected='true']")?.dataset.id;
+    assert.ok(selId, 'j opened a message');
+    assert.equal(withM, `#inbox/augsd?q=regis&m=${selId}`, 'the open message is in the URL');
+    press(doc, win, 'j');
+    await settle();
+    press(doc, win, 'k');
+    await settle();
+    assert.equal(win.history.length, len0 + 1,
+      'j/k moved the selection twice and history did not grow — pollution is impossible');
+
+    // Back walks the VIEW: category, query and reader all return to default.
+    win.history.back();
+    await settle(6);
+    assert.equal(win.location.hash, '#inbox/all');
+    assert.equal(search.value, '', 'the query left with its entry');
+    assert.equal(doc.querySelector('#listquery').hidden, true);
+    assert.equal(doc.querySelector(".row[aria-selected='true']"), null, 'the reader closed with its entry');
+    assert.deepEqual(rowText(doc), ['Registration for Semester II', 'PS-II station allotment', 'Run failed: CI on main']);
+
+    // Forward re-applies the whole deep link, selection included.
+    win.history.forward();
+    await settle(8);
+    assert.equal(win.location.hash, withM, 'the entry remembered the open message');
+    assert.equal(doc.querySelector(".row[aria-selected='true']")?.dataset.id, selId,
+      'forward restored the message, not just the view');
+    assert.equal(search.value, 'regis');
   } finally {
     restore();
   }

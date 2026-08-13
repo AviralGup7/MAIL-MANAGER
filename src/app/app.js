@@ -49,7 +49,8 @@ import * as deadlineStore from './deadline-store.js';
 import * as myCourses from './my-courses.js';
 import { detectNotice, shouldPromote, summarise } from './notices.js';
 import {
-  wireReader, openMessage, closeReader, renderThreadStrip, syncReaderActions,
+  wireReader, openMessage as openMessageRaw, closeReader as closeReaderRaw,
+  renderThreadStrip, syncReaderActions,
   repaintBody, cancelMarkRead, loadImageAllowList, openPartId, renderReaderTags,
 } from './reader.js';
 import { wireSuggestUI, renderSuggestions, cancelSuggestBlur } from './suggest-ui.js';
@@ -72,6 +73,10 @@ import { openLayer, closeTopLayer, hasLayers, closeAllLayers, closeWithMotion, c
 import { openMenu, closeMenu, menuIsOpen } from './menu.js';
 import { wireRowActions } from './row-actions.js';
 import { wireSearchChips } from './search-chips.js';
+import {
+  wireDeepLinks, navigateHash, mirrorHash, applyHash, checkPendingSelection,
+  clearHash,
+} from './deep-links.js';
 import { promptDialog } from './dialog.js';
 import { openActivityLog } from './activity-ui.js';
 import {
@@ -510,8 +515,44 @@ function scheduleRender({ changed, structural } = { changed: new Set(), structur
     renderReaderIdle(ctx);
     renderViews();
     renderNotices();
+    /*
+     * 65/g: the URL mirrors the SETTLED FRAME — whatever is on screen once
+     * the frame lands is what the hash says. j/k history pollution is
+     * structurally impossible here: the mirror only ever replaceStates.
+     * And a deep-linked message whose data arrives with this frame opens now.
+     */
+    checkPendingSelection();
+    mirrorHash();
   });
 }
+
+/*
+ * 65/g: the hash mirror, coalesced like the renders it describes.
+ *
+ * scheduleRender's frame covers store-driven change, but typing a query and
+ * opening a message render DIRECTLY (responsiveness is the point of those
+ * paths) and would otherwise leave the URL describing yesterday's view.
+ * Anything that commits view state outside a store notification queues a
+ * mirror here — same one-frame discipline, deduplicated inside deep-links.
+ */
+let mirrorFrame = 0;
+function queueHashMirror() {
+  if (mirrorFrame) return;
+  mirrorFrame = requestAnimationFrame(() => {
+    mirrorFrame = 0;
+    checkPendingSelection();
+    mirrorHash();
+  });
+}
+
+/*
+ * The shell's open/close, wrapped ONCE so every path — row clicks, Enter,
+ * j/k's move, the thread strip, notices, the palette — mirrors its
+ * selection without each caller learning about URLs. reader.js itself
+ * stays ignorant of the address bar: its job is showing a conversation.
+ */
+const openMessage = (id) => { openMessageRaw(id); queueHashMirror(); };
+const closeReader = () => { closeReaderRaw(); queueHashMirror(); };
 
 /**
  * Subscribe a mailbox's store to rendering.
@@ -751,8 +792,23 @@ function gmailUrl(threadId, mailbox = 'inbox') {
  * @param {string}   o.past        undo label, e.g. "Starred"
  * @param {string}   o.failed      error toast
  */
+/*
+ * 65/h (F9): one failure surface for every verb. The rollback already put
+ * the message back as if nothing happened, so what the user lost is not
+ * data but INTENT — they still want the thing archived/starred/reported.
+ * An error toast that only announces makes them reconstruct that intent;
+ * the Retry chip carries it: re-run the very act that failed. `retry` is a
+ * closure over the act, not the wire call, so undo entries, thread spans
+ * and optimistic motion all replay exactly as the first attempt did.
+ */
+function toastFailure(text, retry) {
+  toast(text, retry
+    ? { kind: 'error', action: { label: 'Retry', run: retry } }
+    : { kind: 'error' });
+}
+
 function flagAction({
-  id, patch, undoPatch, verb, undoVerb, payload = {}, undoPayload = {}, past, failed,
+  id, patch, undoPatch, verb, undoVerb, payload = {}, undoPayload = {}, past, failed, retry,
 }) {
   const m = store.get(id);
   if (!m) return Promise.resolve();
@@ -806,7 +862,7 @@ function flagAction({
       store.patch(id, undoPatch);
       if (id === state.selected) syncContextActions(store.get(id));
       activity.record({ verb, ids: [id], actor: 'user', outcome: 'failed', error: err?.message });
-      toast(failed, { kind: 'error' });
+      toastFailure(failed, retry); // 65/h
     }
   );
 
@@ -842,7 +898,7 @@ function clearInFlight(id) {
 }
 
 function optimistic({
-  id, verb, undoVerb, past, failed, done, before, rollback: undoLocal, undoBefore,
+  id, verb, undoVerb, past, failed, done, before, rollback: undoLocal, undoBefore, retry,
 }) {
   const m = store.get(id);
   if (!m) return Promise.resolve();
@@ -879,7 +935,7 @@ function optimistic({
     if (undoLocal) await undoLocal(id);
     store.upsert(snapshot);
     renderList();
-    toast(failed, { kind: 'error' });
+    toastFailure(failed, retry); // 65/h
   };
 
   const run = async () => {
@@ -957,6 +1013,14 @@ async function act(action, id) {
     }
   }
 
+  /*
+   * 65/h: every failure path below offers Retry, and Retry is this whole
+   * act again — not a bare wire resend — so the re-attempt replays
+   * thread-spanning, undo recording and the optimistic travel exactly as
+   * the first attempt did. One closure stated once, passed everywhere.
+   */
+  const retryAct = () => act(action, id);
+
   switch (action) {
     /*
      * STAR AND UNREAD ARE *FLAGS*, NOT REMOVALS.
@@ -987,6 +1051,7 @@ async function act(action, id) {
         undoPayload: { on: !on },
         past: on ? 'Starred' : 'Unstarred',
         failed: 'Could not update star',
+        retry: retryAct,
       });
       break;
     }
@@ -1000,6 +1065,7 @@ async function act(action, id) {
         undoVerb: on ? 'MARK_READ' : 'MARK_UNREAD',
         past: on ? 'Marked unread' : 'Marked read',
         failed: 'Could not update',
+        retry: retryAct,
       });
       break;
     }
@@ -1009,12 +1075,14 @@ async function act(action, id) {
       optimistic({
         id, verb: 'ARCHIVE', undoVerb: 'UNARCHIVE',
         past: 'Archived', failed: 'Could not archive',
+        retry: retryAct,
       });
       break;
     case 'trash':
       optimistic({
         id, verb: 'TRASH', undoVerb: 'UNTRASH',
         past: 'Deleted', failed: 'Could not delete',
+        retry: retryAct,
       });
       break;
     /*
@@ -1046,6 +1114,7 @@ async function act(action, id) {
         id, verb: 'UNTRASH', undoVerb: 'TRASH',
         past: 'Restored', failed: 'Could not restore',
         done: 'Moved back to the inbox',
+        retry: retryAct,
       });
       break;
     /*
@@ -1064,6 +1133,7 @@ async function act(action, id) {
         // Clear the local schedule before the request, so a failure cannot
         // leave a message scheduled locally but not remotely.
         before: (mid) => removeSnooze(mid, STORAGE),
+        retry: retryAct,
       });
       break;
     case 'spam': {
@@ -1074,6 +1144,7 @@ async function act(action, id) {
         undoVerb: rescuing ? 'SPAM' : 'NOT_SPAM',
         past: rescuing ? 'Moved out of spam' : 'Reported spam',
         failed: rescuing ? 'Could not rescue' : 'Could not report spam',
+        retry: retryAct,
       });
       break;
     }
@@ -1403,7 +1474,7 @@ async function loadPage(pageToken = '') {
   try {
     await fetchPage(pageToken);
   } catch (err) {
-    reportError(err);
+    reportError(err, { retry: () => loadPage(pageToken) }); // 65/h
   } finally {
     ms.loading = false;
     syncBusy();
@@ -1515,7 +1586,7 @@ async function refresh({ silent = false } = {}) {
     else if (!n && !silent) toast('Up to date');
     return 'delta';
   } catch (err) {
-    reportError(err);
+    reportError(err, { retry: () => refresh() }); // 65/h
     return 'error';
   } finally {
     ims.loading = false;
@@ -1528,7 +1599,7 @@ function setBusy(on) {
   $('btn-refresh').disabled = on;
 }
 
-function reportError(err) {
+function reportError(err, { retry } = {}) {
   const msg = String(err?.message || err);
   if (/client ID/i.test(msg)) {
     showGate(msg);
@@ -1550,7 +1621,16 @@ function reportError(err) {
      */
     showOfflineBanner();
   } else {
-    toast(msg.slice(0, 140), { kind: 'error' });
+    /*
+     * 65/h (F9): an error toast that names no way forward is an epitaph.
+     * Sync call sites hand in the operation that failed, so the toast ends
+     * in Retry; a retry that fails re-enters through this same funnel and
+     * earns the same button, which is the honest loop.
+     */
+    toast(msg.slice(0, 140), {
+      kind: 'error',
+      ...(retry ? { action: { label: 'Retry', run: retry } } : {}),
+    });
   }
 }
 
@@ -1769,6 +1849,8 @@ function selectCategory(key) {
   // highlighted would claim a filter is applied when it is not.
   renderViews();
   updateSaveAffordance();
+  // 65/g: a category switch is a deliberate VIEW navigation — one Back step.
+  navigateHash();
 }
 
 /**
@@ -1818,6 +1900,8 @@ async function selectMailbox(id) {
   // places and READ NOWHERE, so clicking a mailbox behind the sign-in gate
   // still issued a SYNC_PAGE and repainted the previous account's mail.
   if (state.signedIn && !mbState(id).loaded) await loadMailboxPage(id, '');
+  // 65/g: mailbox switches are deliberate view navigations — one Back step.
+  navigateHash();
 }
 
 /** Fetch one page of a non-inbox mailbox. */
@@ -1872,7 +1956,7 @@ async function loadMailboxPage(id, pageToken = '') {
       renderSidebar();
     }
   } catch (err) {
-    reportError(err);
+    reportError(err, { retry: () => loadMailboxPage(id, pageToken) }); // 65/h
   } finally {
     ms.loading = false;
     syncBusy();
@@ -1949,6 +2033,7 @@ function applySearchTyping() {
   updateSaveAffordance();
   scheduleServerSearch();
   renderSuggestions();
+  queueHashMirror(); // 65/g: typing renders directly; the URL must keep up.
 }
 
 
@@ -2004,6 +2089,7 @@ $('btn-signout').addEventListener('click', async () => {
   opEpoch++; // late responses from this session are now stale
   // A signed-out app that keeps polling is a privacy problem, not just a bug.
   stopAutoRefresh();
+  clearHash(); // 65/g: the gate has no view state worth a URL.
   showGate('Signed out.');
 });
 $('btn-signin').addEventListener('click', doSignIn);
@@ -3002,6 +3088,12 @@ const ctx = {
     // affordance must not offer to save something already saved.
     renderViews();
     updateSaveAffordance();
+    /*
+     * 65/g: choosing a saved view or palette filter is a SETTLED query —
+     * typed into existence at once, so it earns one history entry, unlike
+     * keystrokes which only ever mirror.
+     */
+    navigateHash();
   },
   // The timetable panel quotes email and offers to open it, and needs a
   // failure channel for a storage write.
@@ -3532,6 +3624,42 @@ async function boot() {
     save: () => $('btn-save-view').click(),
   });
 
+  /*
+   * Deep links (65/g). Applies run through the shell's OWN navigation
+   * functions — selectMailbox/selectCategory/applySearchTyping — with the
+   * module suppressing the history echo, so Back landing on a hash is
+   * indistinguishable from the user clicking their way to the same view.
+   */
+  wireDeepLinks({
+    snapshot: () => ({
+      mailbox: state.mailbox,
+      category: state.category,
+      query: state.query,
+      selected: state.selected,
+    }),
+    validMailbox: isMailbox,
+    applyMailbox: (mb) => { if (mb !== state.mailbox) void selectMailbox(mb); },
+    applyCategory: (cat) => {
+      // A deep-linked category the install does not know would render an
+      // empty list under a foreign name; unknown means 'all'.
+      const known = cat === 'all' || ctx.categoryList().some(([k]) => k === cat);
+      const target = known ? cat : 'all';
+      if (target !== state.category) selectCategory(target);
+    },
+    applyQuery: (q) => {
+      if (el.search.value === q && state.query === q) return;
+      el.search.value = q;
+      applySearchTyping();
+    },
+    trySelect: (id) => {
+      if (!store.get(id)) return false;
+      openMessage(id);
+      return true;
+    },
+    hasSelection: () => Boolean(state.selected),
+    closeMessage: () => closeReader(),
+  });
+
   wirePalette(ctx);
   wireCompose(ctx);
   wireRadar(ctx);
@@ -3589,6 +3717,13 @@ async function boot() {
     rules = await loadRules();
     await loadImageAllowList();
     await start();
+    /*
+     * 65/g: the boot deep link is applied only once the app can honour
+     * every part of it — stores exist, rules are loaded, the first sync is
+     * underway. A selection whose message has not landed yet stays latched
+     * in deep-links and opens when its data does.
+     */
+    applyHash(window.location.hash);
     // Only after the inbox is up: an unsent message from a previous session
     // is offered back rather than silently lost.
     restoreDraftIfAny(ctx).catch(() => {});
