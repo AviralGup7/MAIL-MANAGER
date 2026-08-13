@@ -12,11 +12,12 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { JSDOM } from 'jsdom';
+import { readBundle } from './helpers/css.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 const src = read('src/app/row-actions.js');
-const css = read('src/app/app.css');
+const css = readBundle();
 const appjs = read('src/app/app.js');
 const listjs = read('src/app/list.js');
 

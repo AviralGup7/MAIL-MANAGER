@@ -1,0 +1,328 @@
+/* ========================================================================= */
+/* FEATURES: radar, palette, compose                                         */
+/* Same five rules: 3 durations, 2 easings, transform/opacity only, nothing  */
+/* infinite, all disabled under prefers-reduced-motion (block at the end).   */
+/* ========================================================================= */
+
+/* --------------------------------------------------------- deadline radar -- */
+
+/*
+ * The radar now sits BELOW the mailbox nav rather than above it, so its
+ * separator flips: it divides itself from the scrolling category list above,
+ * not from content below. `#cats` carries flex:1 and absorbs the free space,
+ * which pins the radar to the bottom of the rail just above the footer --
+ * present, glanceable, and clearly not the headline.
+ */
+#radar {
+  padding: var(--s-3) var(--s-2) var(--s-1);
+  border-top: 1px solid var(--line);
+  margin-top: var(--s-1);
+  flex-shrink: 0;
+}
+
+
+
+#radar-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.radar-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: var(--s-2) var(--s-2);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  transition: background-color var(--dur-fast) linear;
+}
+.radar-item:hover {
+  background: var(--bg-raised);
+}
+.radar-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.radar-when {
+  font-size: var(--t-xs);
+  font-weight: var(--w-bold);
+  letter-spacing: var(--track-tiny);
+}
+.radar-what {
+  font-size: var(--t-sm);
+  color: var(--fg-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Urgency is carried by colour AND by the word in .radar-when, never colour
+   alone -- the same rule the category tags follow. */
+.radar-overdue { border-left-color: var(--danger); }
+.radar-overdue .radar-when { color: var(--danger); }
+.radar-today { border-left-color: var(--danger); }
+.radar-today .radar-when { color: var(--danger); }
+.radar-soon { border-left-color: var(--warning); }
+.radar-soon .radar-when { color: var(--warning); }
+.radar-week { border-left-color: var(--accent); }
+.radar-week .radar-when { color: var(--accent); }
+
+/* --------------------------------------------------------------- palette -- */
+
+#palette {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-palette);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 14vh;
+  background: rgba(0, 0, 0, 0.42);
+}
+
+#palette-box {
+  width: min(560px, 92vw);
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  animation: palette-in var(--dur-base) var(--ease-out) both;
+}
+
+@keyframes palette-in {
+  from { opacity: 0; transform: translate3d(0, -8px, 0) scale(0.98); }
+  to   { opacity: 1; transform: none; }
+}
+
+#palette-input {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: var(--t-lg);
+  padding: var(--s-4) var(--s-5);
+}
+#palette-input:focus {
+  outline: none;
+}
+
+#palette-list {
+  list-style: none;
+  margin: 0;
+  padding: var(--s-2);
+  max-height: 46vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.palette-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  font-size: var(--t-md);
+  color: var(--fg-dim);
+  /*
+   * The palette had no transition, so its highlight snapped while every other
+   * list surface in the app eased. Colour only: a row that moves under the
+   * cursor turns the item you are aiming at into a moving target.
+   */
+  transition:
+    background-color var(--dur-instant) linear,
+    color var(--dur-instant) linear;
+}
+.palette-item.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: var(--w-semi);
+}
+/*
+ * The palette is driven by the keyboard, so the ACTIVE row -- not the hovered
+ * one -- is the source of truth. Hover still responds, quietly, so the mouse
+ * is not left feeling dead.
+ */
+.palette-item:hover:not(.active) {
+  background: var(--bg-sunken);
+  color: var(--fg);
+}
+.palette-label {
+  flex: 1;
+}
+.palette-hint-key {
+  font-size: var(--t-xs);
+  color: var(--fg-faint);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 1px var(--s-1);
+}
+
+/*
+ * Recents + disabled-with-reason (65/f). The separator states the group a
+ * row belongs to, so an ordering never has to explain itself; a disabled
+ * command dims and carries its reason where the shortcut would be, turning
+ * "offered but inert" into "offered with an explanation".
+ */
+.palette-sep {
+  list-style: none;
+  padding: var(--s-2) var(--s-3) var(--s-1);
+  font-size: var(--t-xs);
+  color: var(--fg-faint);
+}
+.palette-item.disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+.palette-item.disabled:hover:not(.active) {
+  background: none;
+  color: var(--fg-dim);
+}
+.palette-item.disabled .palette-hint-key {
+  border-style: dashed;
+}
+
+#palette-hint {
+  padding: var(--s-2) var(--s-5);
+  border-top: 1px solid var(--line);
+  font-size: var(--t-xs);
+  color: var(--fg-faint);
+}
+
+/* --------------------------------------------------------------- compose -- */
+
+/*
+ * A PANEL, not a modal. Mail is often written while referring to another
+ * message, and a modal makes that impossible -- which is why Gmail's compose
+ * is also a panel.
+ */
+#compose {
+  position: fixed;
+  right: 22px;
+  bottom: 0;
+  z-index: var(--z-compose);
+  width: min(580px, calc(100vw - 44px));
+  display: flex;
+  flex-direction: column;
+  max-height: min(620px, 82vh);
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  box-shadow: var(--shadow-lg);
+  animation: compose-in var(--dur-base) var(--ease-out) both;
+}
+
+@keyframes compose-in {
+  from { opacity: 0; transform: translate3d(0, 16px, 0); }
+  to   { opacity: 1; transform: none; }
+}
+
+#compose.minimised #compose-body,
+#compose.minimised #compose-foot {
+  display: none;
+}
+
+#compose-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+  background: var(--bg-sunken);
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  border-bottom: 1px solid var(--line);
+}
+#compose-title {
+  flex: 1;
+  margin: 0;
+  font-size: var(--t-md);
+  font-weight: var(--w-semi);
+}
+#compose-head-actions {
+  display: flex;
+  gap: var(--s-1);
+}
+
+#compose-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: var(--s-1) var(--s-4) 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.c-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  border-bottom: 1px solid var(--line);
+}
+.c-row span {
+  width: 54px;
+  font-size: var(--t-sm);
+  color: var(--fg-faint);
+  flex: none;
+}
+.c-row input {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: var(--t-md);
+  padding: var(--s-3) 0;
+}
+.c-row input:focus {
+  outline: none;
+}
+
+#c-text {
+  flex: 1;
+  min-height: 190px;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  font-size: var(--t-md);
+  line-height: var(--lh-compose);
+  padding: var(--s-3) 0;
+  resize: none;
+}
+#c-text:focus {
+  outline: none;
+}
+
+#compose-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+  border-top: 1px solid var(--line);
+}
+#c-status {
+  font-size: var(--t-sm);
+  transition: color var(--dur-fast) linear;
+}
+/* Outcome is carried by colour AND by the wording, never colour alone. */
+#c-status[data-kind='ok'] {
+  color: var(--success);
+  font-weight: var(--w-medium);
+}
+#c-status[data-kind='err'] {
+  color: var(--danger);
+  font-weight: var(--w-medium);
+}
+
+
+.primary.full {
+  width: 100%;
+  justify-content: center;
+}
+

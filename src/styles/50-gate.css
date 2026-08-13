@@ -1,0 +1,161 @@
+/* ------------------------------------------------------------------ gate -- */
+
+#gate {
+  animation: gate-in var(--dur-slow) var(--ease-out) both;
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  z-index: var(--z-gate);
+}
+
+#gate-card {
+  width: min(420px, 88vw);
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
+  padding: var(--s-6);
+  text-align: center;
+}
+#gate-card h2 {
+  margin: 0 0 var(--s-2);
+  font-size: var(--t-2xl);
+  font-weight: var(--w-semi);
+  letter-spacing: var(--track-tight);
+  line-height: var(--lh-tight);
+}
+#gate-card p {
+  color: var(--fg-dim);
+  font-size: var(--t-md);
+  line-height: var(--lh-body);
+  /* Was a raw 12px. The gate is the first screen a new user sees and it was
+     the one place still spacing itself off the grid. */
+  margin: 0 0 var(--s-3);
+}
+#gate-card .fine {
+  font-size: var(--t-sm);
+  color: var(--fg-faint);
+}
+#gate-card code {
+  font-size: var(--t-xs);
+  background: var(--bg-sunken);
+  padding: 1px var(--s-1);
+  border-radius: var(--r-sm);
+}
+#gate-card .primary {
+  /* Was `6px 0 10px` -- two more off-grid values, and asymmetric for no
+     stated reason. The button is the one thing on this card the user must
+     find, so it gets real breathing room above and below. */
+  margin: var(--s-5) 0 var(--s-3);
+  width: 100%;
+}
+.err {
+  color: var(--danger) !important;
+  font-size: var(--t-sm);
+  /* Auth errors are multi-line and carry a FIX: paragraph. Without pre-wrap
+     the remedy collapses into one unreadable run. */
+  white-space: pre-wrap;
+  text-align: left;
+  line-height: var(--lh-body);
+  margin-top: var(--s-3);
+  padding: var(--s-3) var(--s-3);
+  border: 1px solid var(--danger);
+  border-radius: var(--r-md);
+  background: var(--bg-sunken);
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+/*
+ * SHARED-ELEMENT TRAVEL (audit 36, concept #4).
+ *
+ * The condensed archived row, in flight toward the Undo toast. Body-level
+ * and fixed because rows live inside contain: paint and cannot render
+ * outside their own box. Pure decoration over an already-complete state
+ * change: pointer-events none, aria-hidden (the toast announces), no
+ * transition of its own -- the flight is transform/opacity in WAAPI and the
+ * node is never created under prefers-reduced-motion. Static styles only
+ * here, so nothing animates while the app is idle.
+ */
+/*
+ * POLISH 9: native scrollbars in six themes read as an OS wearing our app.
+ * Thin, themed, both engines; the colour tokens keep contrast honest.
+ */
+#scroller, #cats, #views, .snooze-menu, .help-body, #views-pop, #rail-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+#scroller::-webkit-scrollbar, #cats::-webkit-scrollbar, #views::-webkit-scrollbar {
+  width: 8px;
+}
+#scroller::-webkit-scrollbar-thumb, #cats::-webkit-scrollbar-thumb, #views::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: var(--r-sm);
+}
+#scroller::-webkit-scrollbar-track, #cats::-webkit-scrollbar-track, #views::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.travel-ghost {
+  position: fixed;
+  z-index: var(--z-menu);
+  max-width: 240px;
+  /* the ellipsis guard: if this ever lands inside a flex, min-width auto
+     would grow it past the container instead of truncating */
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: var(--s-1) var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-raised);
+  color: var(--fg);
+  font-size: var(--t-sm);
+  box-shadow: var(--shadow-md);
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+/*
+ * POLISH 7/8/10/11: glanceable affordances.
+ *
+ * The undo chip names the recovery key on the toast itself; the bulk bar
+ * carries its own escape key; the reader's prev/next arrows make j/k
+ * discoverable by mouse. All colour/layout tokens, no motion added.
+ */
+#toast-icon {
+  display: inline-flex;
+  align-items: center;
+  margin-right: var(--s-2);
+}
+/* id beats the [hidden] UA-style rule; state it or the icon never hides */
+#toast-icon[hidden] {
+  display: none;
+}
+#toast-kbd {
+  margin-left: var(--s-2);
+  padding: 0 var(--s-2);
+  border: 1px solid currentColor;
+  border-radius: var(--r-sm);
+  opacity: 0.85;
+  font-family: inherit;
+  font-size: var(--t-xs);
+}
+.bar-kbd {
+  opacity: 0.7;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 0 var(--s-1);
+  font-family: inherit;
+  font-size: var(--t-xs);
+  color: var(--fg-faint);
+}
+#r-nav {
+  display: flex;
+  gap: var(--s-1);
+  margin-left: auto;
+}
+

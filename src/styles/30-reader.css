@@ -1,0 +1,197 @@
+/* ---------------------------------------------------------------- reader -- */
+
+#readpane {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-raised);
+}
+
+#reader-empty {
+  /* width + auto margins: in a column flex, `margin:auto` alone shrink-wraps
+     the block to its narrowest content, which collapsed the shortcut legend
+     into a two-word column (seen in the live render). Give it a real measure. */
+  width: min(100%, 480px);
+  margin: auto;
+  text-align: center;
+  color: var(--fg-faint);
+  padding: var(--s-6);
+  animation: empty-in var(--dur-base) var(--ease-out) both;
+}
+/*
+ * The lead line carries the instruction, so it should not be the same weight
+ * as the shortcut legend beneath it.
+ */
+#reader-empty > p:first-of-type {
+  margin: 0 0 var(--s-3);
+  font-size: var(--t-lg);
+  font-weight: var(--w-medium);
+  color: var(--fg-dim);
+  letter-spacing: var(--track-tight);
+}
+/*
+ * Was an empty 44px dashed square: a bordered void where the biggest surface
+ * in the app sits whenever nothing is selected. It read as a component that
+ * had failed to load rather than as a resting state.
+ *
+ * Now the same envelope mark the empty list uses, on the same soft disc, so
+ * "nothing here yet" looks like one idea in two places instead of two
+ * unrelated placeholders.
+ */
+#reader-empty-mark {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto var(--s-4);
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-full);
+  background: var(--bg-sunken);
+  color: var(--fg-faint);
+}
+/*
+ * IDLE READER PREVIEW (round 50). The resting reader pane now carries the
+ * due-soon list instead of sitting blank, so the default view is useful.
+ * Left-aligned rows inside the centred empty state; each is a real button.
+ */
+#reader-idle {
+  margin: var(--s-6) auto 0;
+  width: min(100%, 420px);
+  text-align: left;
+  display: grid;
+  gap: var(--s-2);
+}
+#reader-idle .reader-idle-head {
+  font-size: var(--t-sm);
+  font-weight: var(--w-semi);
+  color: var(--fg-dim);
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+}
+#reader-idle .reader-idle-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--s-3);
+  align-items: baseline;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-raised);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+#reader-idle .reader-idle-when {
+  font-size: var(--t-xs);
+  color: var(--fg-faint);
+  white-space: nowrap;
+}
+#reader-idle .reader-idle-what {
+  font-size: var(--t-sm);
+  /* min-width:0 lets the 1fr grid item shrink so the ellipsis can fire;
+     without it a grid/flex item refuses to truncate (min-width:auto). */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#reader-idle .reader-idle-overdue .reader-idle-when { color: var(--danger); }
+/*
+ * Empty-slot copy inside a rail section.
+ *
+ * Deliberately quiet: it occupies the space a list would, explains the feature
+ * at the one moment the user is looking at its absence, and never competes
+ * with the navigation above it. Same register as #reader-empty's hint.
+ */
+/*
+ * PRESSED FEEDBACK ON THE THREE CLICKABLE SURFACES THAT LACKED IT.
+ *
+ * `.tag`, `.palette-item` and `.radar-item` all responded to hover and then
+ * gave nothing back on the click itself, while `.cat` and `.snooze-opt` both
+ * had a press state. On a trackpad that gap is where an interface feels either
+ * responsive or laggy: hover says "this is clickable", :active says "I heard
+ * you". Without it a slow action reads as a missed click and the user clicks
+ * again.
+ *
+ * `.radar-item` was the worst of the three -- it opens a message, so it has a
+ * network fetch to cover and had no feedback during it.
+ *
+ * Reuses the existing scale idiom rather than inventing a treatment.
+ */
+.tag:active,
+.palette-item:active,
+.suggest-item:active,
+.outbox-item:active,
+.snoozed-item:active,
+/*
+ * POLISH 14: hovering the star previews the filled state with a soft fill,
+ * so the click is a confirmation rather than a gamble. Colour only.
+ */
+.r-star:hover svg path {
+  fill: var(--accent-soft);
+}
+
+.r-check:active {
+  transform: scale(0.985);
+}
+
+/*
+ * POLISH 2 (20-improvement round): the tick is noise while scanning and
+ * signal while aiming. Reveal it on hover/focus/selection -- colour-free
+ * opacity only -- but only where hover EXISTS; a touch device has no
+ * hover, so there the tick stays put. Keyboard gets it via focus-within,
+ * and a ticked row never hides its own tick.
+ */
+@media (hover: hover) {
+  .row .r-check {
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease-out);
+  }
+  .row:hover .r-check,
+  .row:focus-within .r-check,
+  .row.picked .r-check,
+  .row[aria-selected='true'] .r-check {
+    opacity: 1;
+  }
+}
+
+/*
+ * `.suggest-item` is the one of these that matters most: accepting a
+ * suggestion runs a query and re-renders the whole list, so it has the longest
+ * gap between press and result and had nothing covering it. On a trackpad that
+ * gap is where an interface feels responsive or laggy -- hover says "this is
+ * clickable", :active says "I heard you", and without it a slow action reads
+ * as a missed click and gets clicked again.
+ *
+ * `.r-check` is the tick on every message row -- the entry point to every bulk
+ * operation, and a REPETITIVE gesture: ten or twenty rows in sequence. It is
+ * exactly where per-click acknowledgement compounds, and it was the only
+ * control in the app giving none. The row beneath it responds, but that is the
+ * row's feedback, not the tick's, and on a small target the difference is felt.
+ */
+.outbox-item:hover,
+.snoozed-item:hover {
+  background: var(--bg-sunken);
+}
+
+/*
+ * `.radar-item` needs its own rule: it already carries
+ * `transform: translateX(2px)` on hover, and a bare `scale()` here would
+ * REPLACE that rather than compose with it -- so pressing a radar entry would
+ * snap it back to the left before opening. Caught by grepping for existing
+ * transforms on the selectors before adding a new one, which is the check that
+ * makes a shared idiom safe to apply.
+ */
+.radar-item:active {
+  transform: translateX(2px) scale(0.985);
+}
+
+/*
+ * The palette's no-match row is informational, not a command. It keeps the
+ * row shape so the list does not jump, but reads as quiet copy.
+ */
+.palette-empty .palette-label {
+  color: var(--fg-faint);
+}
+

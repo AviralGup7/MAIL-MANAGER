@@ -1,0 +1,50 @@
+/* ------------------------------------------------------------- responsive -- */
+
+/*
+ * ONE LADDER LIVES AT THE END OF THIS FILE (the V3 ladder, ~6350+).
+ *
+ * There used to be a second, older ladder here (round 45 H1: 1080/720/600/
+ * 480). The responsive audit measured it dead-by-duplication: every track
+ * rule in it lost to the V3 ladder's later, equal-specificity forms, and
+ * both 480px rules (`--sidebar-w: 52px`; the 1fr/1fr split) never fired at
+ * all — computed evidence in audits/RESPONSIVE-ADAPTIVE-ARCHITECTURE-AUDIT.md
+ * (R-A2/R-A3). Two ladders encoding the same transitions is a maintenance
+ * hazard — an edit here silently changed nothing — so the duplicate tracks
+ * are retired. The pieces that were NOT duplicates (reader/listpane borders
+ * and the full-bleed compose at ≤600px) moved into the V3 600px block.
+ * The round-45 five-invariant contract (list reachable, compose usable,
+ * bulk bar usable, reader opens, navigation reachable) is unchanged and
+ * still pinned by test/layout-contract.test.mjs.
+ *
+ * The <=860px icon-rail contract likewise lives once, in the ladder: an
+ * earlier block here hid #views and #radar — both stopped being sidebar
+ * tenants in V3 (views is a topbar popover, the radar moved to the right
+ * rail), so the rule was half dead selector and was actively erasing the
+ * rail's Due-soon card.
+ */
+
+/* ------------------------------------------------------------------------- *
+ * TOUCH (round 46 #11). Coarse pointers get taller rows and full-size tick
+ * targets -- the 44px-ish minimum touch size -- without touching the mouse
+ * layout. Swipes are wired in app.js; this is the half CSS owns.
+ * ------------------------------------------------------------------------- */
+@media (pointer: coarse) {
+  :root {
+    --row-h: 64px;
+  }
+  /* MIN targets, not fixed sizes: enlarge what the finger catches without
+     changing what the eye sees, same distinction the pointer-target guard
+     pins for the base rules. */
+  .r-check {
+    min-width: 32px;
+    min-height: 32px;
+  }
+  .r-star {
+    min-width: 32px;
+    min-height: 32px;
+  }
+  .row {
+    touch-action: pan-y; /* horizontal swipes belong to the app */
+  }
+}
+

@@ -1,0 +1,169 @@
+/* ---- class-change notices ------------------------------------------------ */
+
+#notices {
+  list-style: none;
+  margin: 0;
+  padding: var(--s-2) var(--s-4) 0;
+}
+
+/*
+ * A pinned card, not a row. It sits above the list and has to read as a
+ * different KIND of thing, or it is just a message that jumped the queue.
+ * Warning-toned because that is what the colour is for -- and it is one of
+ * only three places --warning now appears.
+ */
+.notice {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--s-2) var(--s-3);
+  margin-bottom: var(--s-2);
+  border-left: 3px solid var(--warning);
+  border-radius: var(--r-sm);
+  background: var(--bg-raised);
+  cursor: pointer;
+  transition: background-color var(--dur-instant) linear;
+}
+
+.notice:hover {
+  background: var(--bg-sunken);
+}
+
+.notice:active {
+  transform: scale(0.995);
+}
+
+.notice-what {
+  font-size: var(--t-sm);
+  font-weight: var(--w-semi);
+  color: var(--fg);
+}
+
+/*
+ * The sentence the detector matched. Quiet, but present: a card the user can
+ * check at a glance is one they can trust, and this parser reads prose written
+ * in a hurry.
+ */
+.notice-why {
+  font-size: var(--t-xs);
+  color: var(--fg-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- snoozed ------------------------------------------------------------ */
+
+#snoozed {
+  padding: var(--s-3) var(--s-2) var(--s-1);
+  border-top: 1px solid var(--line);
+}
+
+#snoozed-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.snoozed-item {
+  /* Folded in here rather than a second `.snoozed-item` block: the
+     duplicate-selector guard correctly rejected defining it twice. */
+  transition:
+    background-color var(--dur-instant) linear,
+    transform var(--dur-fast) var(--ease-spring);
+  display: flex;
+  gap: var(--s-2);
+  align-items: baseline;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-md);
+}
+
+.snoozed-what {
+  font-size: var(--t-sm);
+  color: var(--fg-dim);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.snoozed-when {
+  font-size: var(--t-xs);
+  color: var(--fg-faint);
+  white-space: nowrap;
+}
+
+/* ---- outbox ------------------------------------------------------------- */
+
+#outbox {
+  padding: var(--s-3) var(--s-2) var(--s-1);
+  border-top: 1px solid var(--line);
+}
+
+#outbox-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.outbox-item {
+  /* Press/hover feedback folded in here -- a second `.outbox-item` block is
+     what the duplicate-selector guard exists to reject. */
+  transition:
+    background-color var(--dur-instant) linear,
+    transform var(--dur-fast) var(--ease-spring);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-2);
+  align-items: baseline;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-md);
+}
+
+.outbox-to {
+  font-size: var(--t-sm);
+  color: var(--fg);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.outbox-status {
+  font-size: var(--t-xs);
+  color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * A message that has given up retrying is the one state here that needs the
+ * user. It gets the danger colour and keeps its buttons, rather than sitting
+ * quietly in the same grey as a message that is merely waiting -- which is the
+ * distinction the completeness audit found missing on #c-status.
+ */
+.outbox-stuck .outbox-status {
+  color: var(--danger);
+}
+
+.rail-empty {
+  margin: 0 0 var(--s-2);
+  padding: 0 var(--s-3);
+  font-size: var(--t-xs);
+  color: var(--fg-faint);
+  line-height: var(--lh-body);
+}
+
+#reader-empty .hint {
+  font-size: var(--t-sm);
+  margin-top: var(--s-5);
+}
+
+#reader {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+

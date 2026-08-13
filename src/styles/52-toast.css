@@ -1,0 +1,22 @@
+/* ----------------------------------------------------------------- toast -- */
+
+#toast {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  transform: translate3d(-50%, 0, 0);
+  background: var(--fg);
+  color: var(--bg-raised);
+  padding: var(--s-2) var(--s-4);
+  border-radius: var(--r-full);
+  font-size: var(--t-sm);
+  box-shadow: var(--shadow);
+  z-index: var(--z-toast);
+  /*
+   * The spring lives on the later #toast rule, which wins. This block used to
+   * declare `toast-in` with --ease-out as well, so the same animation had two
+   * curves in two places and the intent was unrecoverable from the file --
+   * the same defect class as the two .rail-heading specs in audit 21.
+   */
+}
+

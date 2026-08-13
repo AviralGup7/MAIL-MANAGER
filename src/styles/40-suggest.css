@@ -1,0 +1,148 @@
+/* ---- search suggestions ------------------------------------------------- */
+
+#search-suggest {
+  position: absolute;
+  top: calc(100% + var(--s-1));
+  left: 0;
+  right: 0;
+  z-index: var(--z-menu);
+  margin: 0;
+  padding: var(--s-1);
+  list-style: none;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+  max-height: 320px;
+  overflow-y: auto;
+  /* Or scrolling past the end of the list scrolls the message list behind it. */
+  overscroll-behavior: contain;
+}
+
+.suggest-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background-color var(--dur-instant) linear;
+}
+
+.suggest-item:hover,
+.suggest-item.active {
+  background: var(--accent-soft);
+}
+
+.suggest-label {
+  font-size: var(--t-sm);
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * The gloss is what teaches the operator. Quiet, because it is explanation
+ * rather than content -- the label is the thing being chosen.
+ */
+.suggest-hint {
+  font-size: var(--t-xs);
+  color: var(--fg-faint);
+  white-space: nowrap;
+  flex: none;
+}
+
+/*
+ * The course chip.
+ *
+ * Sits with the date on the row's right edge, sized like the other metadata so
+ * it reads as a property of the message rather than an annotation on top of
+ * it. Accent-soft rather than accent: it identifies, it does not alert.
+ */
+.r-course {
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 1px var(--s-1);
+  border-radius: var(--r-sm);
+  white-space: nowrap;
+  flex: none;
+}
+
+#rule-list {
+  list-style: none;
+  margin: 0 0 var(--s-3);
+  padding: 0;
+}
+
+.rule-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.rule-text {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--t-sm);
+  /*
+   * The same stack kbd uses.
+   *
+   * My first attempt referenced a mono-font custom property that does not
+   * exist. The theme-token guard rejected it rather than letting an undefined
+   * property ship as an empty value -- and it caught the name even inside this
+   * comment, since it scans the file as text. Reusing the literal keeps one
+   * mono stack in the file rather than inventing a token for two uses.
+   */
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--fg-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * The dry-run readout. Neutral by default and danger-toned only when the rule
+ * is invalid, so "this matches 312 messages" reads as information and "that
+ * condition matches everything" reads as a stop.
+ */
+#rule-preview,
+#backup-status {
+  font-size: var(--t-sm);
+  color: var(--fg-dim);
+  min-height: 1.4em;
+}
+
+#rule-preview[data-bad='true'],
+#backup-status[data-bad='true'] {
+  color: var(--danger);
+}
+
+/*
+ * A lane header.
+ *
+ * Deliberately quieter than a message row: it is a divider that happens to
+ * carry a word, not a thing to read. Same register as the rail's section
+ * labels, so the two kinds of grouping in the app look related.
+ */
+.lane-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-2);
+  padding: var(--s-4) var(--s-4) var(--s-1);
+  font-size: var(--t-xs);
+  font-weight: var(--w-bold);
+  text-transform: uppercase;
+  letter-spacing: var(--track-wide);
+  color: var(--fg-faint);
+}
+
+.lane-count {
+  font-variant-numeric: tabular-nums;
+}
+

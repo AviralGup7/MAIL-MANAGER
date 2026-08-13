@@ -1,0 +1,57 @@
+/*
+ * SKELETON
+ * ========
+ * Rows are drawn with the SAME geometry as real rows, so when content arrives
+ * nothing shifts. A skeleton whose shapes do not match the thing they stand in
+ * for produces a visible jolt at the exact moment the user starts reading —
+ * worse than no skeleton at all.
+ *
+ * The shimmer animates `transform` on a pseudo-element, never
+ * `background-position`, which would repaint the whole strip every frame.
+ */
+#skeleton {
+  padding: 0;
+}
+.sk-row {
+  display: grid;
+  grid-template-columns: var(--s-1) 1fr auto;
+  gap: var(--s-3);
+  align-items: center;
+  height: var(--row-h);
+  padding: var(--s-3) var(--s-4) var(--s-3) var(--s-2);
+  border-bottom: 1px solid var(--line);
+}
+.sk-mid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-width: 0;
+}
+.sk-bar {
+  position: relative;
+  height: 9px;
+  border-radius: var(--r-full);
+  background: var(--bg-sunken);
+  overflow: hidden;
+}
+.sk-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, var(--line), transparent);
+  transform: translateX(-100%);
+  animation: sk-shimmer 1.35s var(--ease-out) infinite;
+}
+/* Stagger, so the rows read as a group loading rather than as one pulse. */
+.sk-row:nth-child(2) .sk-bar::after { animation-delay: 90ms; }
+.sk-row:nth-child(3) .sk-bar::after { animation-delay: 180ms; }
+.sk-row:nth-child(4) .sk-bar::after { animation-delay: 270ms; }
+.sk-row:nth-child(5) .sk-bar::after { animation-delay: 360ms; }
+.sk-row:nth-child(6) .sk-bar::after { animation-delay: 450ms; }
+@keyframes sk-shimmer {
+  /* translate3d: this one runs INFINITELY on every skeleton row, so it is the
+     animation where compositor promotion matters most. Found by the guard
+     added for tt-in -- I had only looked at the entrance keyframes. */
+  to { transform: translate3d(100%, 0, 0); }
+}
+

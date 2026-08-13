@@ -1,0 +1,436 @@
+/*
+ * BITS Mail Manager — app styles.
+ *
+ * RULES THIS FILE FOLLOWS (learned from the old version's motion audit, which
+ * found 11 transition durations, 12 easings and 7 near-identical keyframes):
+ *
+ *   1. THREE durations. Fast 120ms, base 180ms, slow 260ms. Nothing else.
+ *   2. ONE easing for entrances, one for exits. Nothing else.
+ *   3. Animate ONLY transform and opacity. Never height, top, width, filter,
+ *      box-shadow or background-position — those hit layout or paint on every
+ *      frame and are exactly why the old build stuttered while scrolling.
+ *   4. NOTHING ANIMATES WHILE IDLE. An infinite animation is permitted only
+ *      while it is reporting live work, and must be gated on a state that
+ *      ends: the skeleton (`.sk-bar`, removed on first paint) and the topbar
+ *      progress sweep (`#shell[aria-busy='true']`). A looping animation with
+ *      no such gate burns a compositor frame forever and is what made v1 warm
+ *      the laptop while sitting untouched. Enforced by a test.
+ *   5. prefers-reduced-motion kills all of it.
+ */
+
+/*
+ * ============================================================================
+ * DESIGN TOKENS
+ * ============================================================================
+ *
+ * Before this existed the stylesheet had ELEVEN font sizes (10, 10.5, 11,
+ * 11.5, 12, 12.5, 13, 13.5, 15, 17, 18), TWELVE corner radii and twenty-odd
+ * ad-hoc padding pairs. Every one was individually defensible and collectively
+ * they are why an interface reads as assembled rather than designed: nothing
+ * lines up with anything, and the eye notices even when the viewer cannot say
+ * why.
+ *
+ * Everything below is a closed set. If a value is not here, it does not go in
+ * the file.
+ */
+/*
+ * NO WRONG-THEME FRAME (round 46 #10). applyTheme stamps data-theme before
+ * anything paints, but a very slow boot could still show one frame of the
+ * default palette. Hiding the body until the stamp exists costs nothing --
+ * a boot without JS renders nothing useful today either -- and kills the
+ * flash the comment promises to avoid.
+ */
+html:not([data-theme]) body {
+  visibility: hidden;
+}
+
+:root {
+  /* --- TYPE ---------------------------------------------------------------
+   * A 1.2 minor-third scale off a 13px base. Six steps is enough for a mail
+   * client and few enough that hierarchy stays legible. No half-pixels: they
+   * render inconsistently across DPI and were pure noise.
+   */
+  --t-xs: 11px;    /* metadata, counts, timestamps */
+  --t-sm: 12px;    /* secondary text, snippets */
+  --t-md: 13px;    /* body — the workhorse */
+  --t-lg: 15px;    /* emphasis, section headers */
+  --t-xl: 19px;    /* reader subject */
+  --t-2xl: 23px;   /* empty states, gate heading */
+
+  /* Weights: four, not "whatever looked right". 650 was a real value in here. */
+  /*
+   * The scale starts at 400, not 500.
+   *
+   * It previously began at --w-medium, on the reasoning that unstyled text is
+   * already 400 so a token for it is redundant. That held until a rule needed
+   * to push an element BACK DOWN to regular -- `.r-from` on a read row, which
+   * had to lose its medium weight to stop tying with the subject. Expressing
+   * that as a literal `400` bypasses the scale, and the design-system guard in
+   * package.test.mjs correctly rejected it.
+   *
+   * A token for the base step is the honest fix: the scale now covers every
+   * weight the app uses.
+   */
+  --w-regular: 400;
+  --w-medium: 500;
+  --w-semi: 600;
+  --w-bold: 700;
+
+  /* Line heights, unitless so they inherit correctly. */
+  --lh-tight: 1.25;
+  --lh-snug: 1.4;
+  --lh-body: 1.55;
+  /*
+   * Looser than --lh-body, for text the user is COMPOSING rather than
+   * reading. A writing surface wants more room between lines than a reading
+   * one; it was previously a bare 1.6 on the compose textarea.
+   */
+  --lh-compose: 1.6;
+
+  /* Tracking. Small text needs air; large text needs tightening. */
+  --track-wide: 0.4px;
+  --track-normal: 0;
+  --track-tight: -0.01em;
+  /*
+   * Completes the scale rather than extending it.
+   *
+   * Seven rules carried hardcoded letter-spacing while font-size and
+   * line-height were 100% tokenised -- this was the one typographic axis whose
+   * migration never finished. One of them set `0.4px`, which IS --track-wide
+   * written literally, by someone who did not know the token existed.
+   *
+   * The rest sat between --track-normal (0) and --track-wide (0.4px), so
+   * forcing them onto an existing step would have changed how they look. A
+   * scale missing its middle step is an incomplete scale.
+   */
+  --track-tiny: 0.02em;
+
+  /* --- SPACE --------------------------------------------------------------
+   * A 4px grid. Every margin, padding and gap in the file resolves to one of
+   * these, which is what makes rhythm feel deliberate instead of accidental.
+   */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-8: 32px;
+  --s-10: 40px;
+
+  /* --- RADIUS -------------------------------------------------------------
+   * Four steps. Nested corners must differ or the nesting reads as a mistake:
+   * an 8px control inside a 12px card looks right, 10px inside 11px looks
+   * broken.
+   */
+  --r-sm: 6px;    /* tags, chips, small controls */
+  --r-md: 10px;   /* buttons, inputs, rows */
+  --r-lg: 14px;   /* cards, panels, menus */
+  --r-xl: 18px;   /* the gate card, compose */
+  --r-full: 999px;
+
+  /* --- MOTION -------------------------------------------------------------
+   * Durations unchanged in spirit but named by INTENT rather than by speed,
+   * so a new rule picks the right one without having to guess.
+   */
+  --dur-instant: 90ms;   /* colour/opacity feedback under the cursor */
+  --dur-fast: 140ms;     /* small state changes */
+  --dur-base: 200ms;     /* panels, menus, the reader swap */
+  --dur-slow: 300ms;     /* full-surface transitions */
+  /*
+   * Longer than --dur-slow on purpose: the reorient pulse must outlast the
+   * scroll that triggered it or the eye loses the beacon mid-flight. It is
+   * the only above-slow duration, and it is tokenized so nothing else grows
+   * a bespoke long value.
+   */
+  --dur-pulse: 700ms;
+  /* The conflict-marker hold: long because the user must FIND the row. */
+  --dur-flash: 1600ms;
+  /* The conflict ring's resting opacity: 0 normally; raised under
+     prefers-reduced-motion so the marker holds steady instead of fading. */
+  --flash-rest: 0;
+
+  /* Two curves, plus one spring for things that should feel physical.
+   * `--ease-spring` overshoots very slightly (1.02) — enough to read as
+   * momentum, not enough to look bouncy. */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  /*
+   * THE EXIT CURVE. It is 32% complete at the halfway point -- it loiters,
+   * then rushes. That is right for something LEAVING, which should accelerate
+   * away, and wrong for something arriving, which should settle. Six entrance
+   * animations were using it and read as a hang followed by a lurch.
+   */
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-spring: cubic-bezier(0.34, 1.42, 0.64, 1);
+
+  /* --- LAYOUT ------------------------------------------------------------- */
+  --row-h: 68px;
+  --sidebar-w: 244px;
+  /* topbar height, measured 61 (60 + 1px border; the 1px is a hairline).
+     Tokenised so the spatial-compression collapse animates between two real
+     numbers instead of from `auto`. */
+  --topbar-h: 61px;
+  /*
+   * The one fixed-height slot that holds #listhead and #bulkbar (audit 33).
+   * Measured in Chrome, not computed: 41/37/33px, identical in all six themes.
+   * Lives here with the other density tokens so it cannot drift from them.
+   */
+  --listbar-h: 41px;
+}
+
+/*
+ * DENSITY.  (Feature 28.)
+ *
+ * `density` was declared in the settings schema before anything read it, and
+ * was DELETED with a note saying it returns on the commit that implements it.
+ * This is that commit.
+ *
+ * WHY THIS IS A TOKEN REMAP AND NOT A SET OF COMPONENT OVERRIDES
+ *
+ * Every surface in this stylesheet spaces itself from `--s-*` and sizes rows
+ * from `--row-h`. Redefining those four values under an attribute selector
+ * changes the whole app coherently, in about twenty lines, and -- critically --
+ * it cannot drift: a component added next year inherits the density it was
+ * never told about.
+ *
+ * The alternative, a `.compact .row { height: … }` rule per component, is how
+ * a density setting ends up applying to eleven of the fourteen surfaces and
+ * looking broken on the other three.
+ *
+ * THE 4px GRID IS PRESERVED. There is already a test asserting that spacing
+ * values are multiples of 4 (with 1-3px allowed as hairlines), and these
+ * values were chosen to keep it passing rather than to look right in
+ * isolation.
+ *
+ * COMFORTABLE IS THE DEFAULT and is identical to the values above, so a
+ * profile that has never touched the setting renders byte-identically to
+ * before this feature existed.
+ */
+:root[data-density='cosy'] {
+  --s-2: 6px;
+  --s-3: 10px;
+  --s-4: 12px;
+  --s-5: 16px;
+  --s-6: 20px;
+  --row-h: 56px;
+  --listbar-h: 37px;
+}
+
+:root[data-density='compact'] {
+  --s-2: 4px;
+  --s-3: 8px;
+  --s-4: 10px;
+  --s-5: 12px;
+  --s-6: 16px;
+  --row-h: 44px;
+  --listbar-h: 33px;
+}
+
+/*
+ * At compact density the snippet line is what gives way, not the type size.
+ *
+ * Shrinking the font is the obvious move and the wrong one: it makes the list
+ * harder to read at exactly the moment the user has asked to fit more on
+ * screen, which is self-defeating. Dropping the second line keeps every
+ * remaining character at full size.
+ */
+:root[data-density='compact'] .r-snip {
+  display: none;
+}
+
+/*
+ * POLISH 13/14/16/20: search hits show their hit; deadline views wear the
+ * urgency colour; a minimised compose with words in it carries a dot; the
+ * freshness line is a sync button. Tokens only, colour only.
+ */
+mark {
+  background: var(--accent-soft);
+  color: inherit;
+  border-radius: var(--r-sm);
+  padding: 0 1px;
+}
+.cat.hot-danger .c-unread { color: var(--danger); }
+.cat.hot-warm .c-unread { color: var(--warning); }
+body.draft-dirty #compose.minimised::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-full);
+  background: var(--warning);
+}
+.fresh-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--fg-faint);
+  font-size: var(--t-xs);
+  cursor: pointer;
+}
+.fresh-btn:hover {
+  color: var(--fg);
+  text-decoration: underline;
+}
+
+/*
+ * POLISH 6: recency is a decision input on unread mail; the date earns the
+ * same weight the sender already gets. Colour/weight only -- no motion.
+ */
+.row.unread .r-date {
+  color: var(--fg);
+  font-weight: var(--w-semi);
+}
+
+/*
+ * THEME VALUES LIVE IN src/app/themes.js, NOT HERE.
+ *
+ * They are applied as custom properties on <html> at boot. Keeping them as
+ * data is what lets tools/check-contrast.mjs walk every text/surface pair in
+ * every theme and fail CI on a WCAG violation -- the first run of that checker
+ * found --fg-faint failing AA on every surface in BOTH original themes, and it
+ * is the colour used for dates and snippets.
+ *
+ * The fallbacks below are the light theme, used only for the instant before
+ * applyTheme() runs and if storage is unavailable.
+ */
+:root {
+  --bg: #f4f6f9;
+  --bg-raised: #ffffff;
+  --bg-sunken: #e9edf3;
+  --fg: #12151b;
+  --fg-dim: #4a5260;
+  --fg-faint: #616978;
+  --line: #dbe1ea;
+  --line-strong: #c3ccd9;
+  --accent: #1a4fd6;
+  --accent-fg: #ffffff;
+  --accent-soft: #e4ebfb;
+  --danger: #b3261e;
+  --warning: #8a5a00;
+  --success: #0f6b45;
+  /*
+   * `--star` was written by applyTheme() and had NO fallback here, unlike
+   * every other token. For the instant before the theme lands -- and
+   * permanently if storage is unavailable, which is the documented degraded
+   * path -- a starred message rendered its star with no colour at all.
+   * Measured in jsdom: computed colour was the literal string "var(--star)".
+   */
+  --star: #8a6100;
+  --glow: rgba(26, 79, 214, 0.16);
+
+  /* Elevation. One ramp, used everywhere, so surfaces read consistently. */
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-md: 0 2px 4px rgba(16, 24, 40, 0.06), 0 6px 16px rgba(16, 24, 40, 0.08);
+  --shadow-lg: 0 4px 8px rgba(16, 24, 40, 0.07), 0 16px 40px rgba(16, 24, 40, 0.12);
+  --shadow: var(--shadow-md);
+
+  /*
+   * DIRECTIONAL EDGE SHADOWS.
+   *
+   * The three shadows above are omnidirectional, which is right for something
+   * floating. Structural chrome is different: a topbar casts DOWNWARD onto the
+   * list and a list pane casts RIGHTWARD onto the reader, and that direction is
+   * doing real work -- it is what makes the panes read as stacked rather than
+   * merely adjacent.
+   *
+   * #topbar and #listpane each carried a bespoke two-part shadow AND a second
+   * hardcoded override under [data-scheme='dark'] -- four rgba values
+   * maintained by hand, and the only place in the stylesheet where a theme was
+   * forked manually. The gap was in the token set, not in the components: the
+   * system had no way to say "an edge, in a direction".
+   *
+   * The hairline is part of the token. An edge shadow without its line reads
+   * as a smudge.
+   */
+  --shadow-edge-down: 0 1px 0 var(--line), 0 1px 3px rgba(0, 0, 0, 0.04);
+  --shadow-edge-right: 1px 0 0 var(--line), 2px 0 8px rgba(0, 0, 0, 0.03);
+
+  /*
+   * A hairline of light along a raised surface's top edge. On dark themes this
+   * is what stops a floating panel reading as a hole punched in the page; on
+   * light themes it is invisible and correctly absent, so the token is empty
+   * rather than the rule being duplicated per scheme.
+   *
+   * Found by the hand-forked-theme guard written for #topbar and #listpane --
+   * .snooze-menu had the same shape of override and I had not spotted it.
+   */
+  --shadow-rim: 0 0 0 0 transparent;
+
+  /*
+   * ELEVATION SCALE.
+   *
+   * Z-index was eight magic numbers assigned per component, with nothing
+   * saying what sits above what -- and three unrelated overlays all landed on
+   * 60, so palette-vs-help-vs-timetable stacking was decided by DOM order.
+   *
+   * Read this as a story of what can cover what:
+   *   raised/sticky  in-pane furniture (the topbar, a sticky header)
+   *   gate           the signed-out wall: covers the app, not the chrome
+   *   menu           menus anchored to something beneath them
+   *   overlay        full dialogs: help, the timetable panel
+   *   compose        above dialogs -- you can open help while writing
+   *   palette        the command surface, reachable from anywhere
+   *   toast          ALWAYS last. It is the only channel for "that failed",
+   *                  so nothing may occlude it. It used to be 30, under every
+   *                  overlay, and nine toasts raised from inside the
+   *                  timetable panel were invisible.
+   *
+   * Gaps of 10 leave room to insert a surface without renumbering.
+   */
+  --z-base: 1;
+  --z-raised: 2;
+  --z-sticky: 3;
+  --z-gate: 20;
+  --z-menu: 40;
+  --z-overlay: 50;
+  --z-compose: 60;
+  --z-palette: 70;
+  --z-toast: 80;
+  /* The particle canvas floats over the whole scene, its own spectator. */
+  --z-fx: 90;
+
+}
+
+/* Dark themes need deeper, softer shadows: the light ramp is invisible. */
+html[data-scheme='dark'] {
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.45), 0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 8px 20px rgba(0, 0, 0, 0.5), 0 24px 56px rgba(0, 0, 0, 0.55);
+  /* Deeper on dark, exactly as the other three are. */
+  --shadow-edge-down: 0 1px 0 var(--line), 0 2px 8px rgba(0, 0, 0, 0.28);
+  --shadow-edge-right: 1px 0 0 var(--line), 3px 0 14px rgba(0, 0, 0, 0.24);
+  --shadow-rim: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font: 14px/1.45 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden; /* the scroller scrolls, never the page */
+}
+
+kbd {
+  font: inherit;
+  font-size: var(--t-xs);
+  padding: 1px var(--s-1);
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: var(--r-sm);
+  color: var(--fg-dim);
+  background: var(--bg-raised);
+}
+

@@ -1,0 +1,36 @@
+/* =========================================================================
+   SPATIAL MEMORY (audit 38, concept #6) — the UI remembers your place.
+
+   One pulse primitive, one scroll-memory map, one arrival pill. The pulse
+   is a background-colour keyframe: paint, not layout, so the layout-keyframe
+   ban keeps its single exemption. Reduced motion gets the scroll-into-view
+   but not the pulse -- information first, decoration second.
+   ========================================================================= */
+#newpill {
+  position: absolute;
+  top: calc(var(--listbar-h) + var(--s-2));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--z-raised);
+  padding: var(--s-1) var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  background: var(--bg-raised);
+  color: var(--accent);
+  font-size: var(--t-xs);
+  font-weight: var(--w-semi);
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+}
+#newpill[hidden] {
+  display: none;
+}
+@keyframes reorient-pulse {
+  from { background-color: var(--accent-soft); }
+  to   { background-color: transparent; }
+}
+.row.reorient {
+  animation: reorient-pulse var(--dur-pulse) var(--ease-out) 1;
+}
+
+

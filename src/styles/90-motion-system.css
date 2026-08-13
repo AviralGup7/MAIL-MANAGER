@@ -1,0 +1,103 @@
+/* ========================================================================= *
+ * MOTION SYSTEM (animation overhaul P2+)
+ *
+ * The token discipline here is enforced by package.test.mjs ("every design
+ * token is actually used"): NO SPECULATIVE TOKENS. Depth planes, lift
+ * shadows and the --lx/--ly key light enter WITH their first consumer
+ * (P5/P6), theme-mirrored day/night like the --shadow-* family — a token
+ * without a consumer is debt the stylesheet refuses to carry.
+ *
+ * What lives here today: the single camera (perspective for the depth work
+ * P5 plugs into; inert until a child takes a Z) and the one-writer rule
+ * for the press era.
+ * ========================================================================= */
+#shell { perspective: 1200px; }
+
+/*
+ * KEY LIGHT (animation overhaul P6; module motion/light.js drives --lx/--ly).
+ *
+ * One virtual light, published as viewport coordinates on :root. Every .lit
+ * surface carries the same whisper-alpha radial aimed at that point via
+ * background-attachment: fixed — the attachment is what makes seven separate
+ * boxes read as lit by ONE source instead of seven private glows (§19's
+ * "consistent lighting model" enforced by construction: there is no per-
+ * element gradient to drift).
+ *
+ * The fallback pose (62vw/18vh, upper-right key) is what reduced motion and
+ * coarse pointers see forever: a static ambient sheen, the reduced truth of
+ * "there is a light" without the tracking. --lit-alpha is deliberately
+ * translucent-white and theme-free: on light themes it is a near-invisible
+ * warmth on raised surfaces, on darks it reads — luminance theatre is the
+ * dark surfaces' gain, and no theme token had to grow.
+ *
+ * .lit hosts keep their own positioning (id selectors out-specificity this
+ * one class, so #compose stays fixed); position:relative only lands where a
+ * host was static, which changes no geometry — it anchors the sheen.
+ */
+:root {
+  --lx: 62vw;
+  --ly: 18vh;
+  --lit-alpha: 0.055;
+}
+
+.lit { position: relative; }
+
+.lit::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background-attachment: fixed;
+  background-image: radial-gradient(
+    340px circle at var(--lx) var(--ly),
+    rgba(255, 255, 255, var(--lit-alpha)),
+    transparent 60%
+  );
+}
+
+/*
+ * THE PARTICLE CANVAS (animation P6; motion/particles.js owns its birth and
+ * death — this rule is just its posture). Fixed to the VIEWPORT so #shell's
+ * camera pushes never recruit it; pointer-events none so it can sit over
+ * the toast's action button without ever eating a click.
+ */
+.fx-canvas {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: var(--z-fx);
+}
+
+/*
+ * ONE WRITER (animation P3): press.js drives inline transform through a
+ * spring. The v3 batch above puts `transform 140ms` on .ghost/.primary — a
+ * CSS tween layered over spring frames reads as motion blur. While an
+ * element carries [data-pressing], transform hands itself to the spring;
+ * every other channel keeps its transition. On release the attribute leaves
+ * with the rest state, so resting/hover behaviour is exactly as before.
+ */
+.ghost[data-pressing],
+.primary[data-pressing],
+.cat[data-pressing] {
+  transition-property: box-shadow, background-color, color, border-color, opacity;
+}
+
+/* Ripple spans are fully inline-styled by motion/ripple.js; declared here
+   only as the census of what the class means. No rules — see the module. */
+
+/*
+ * IDENTITY MORPH (animation P5): while a row's sender/subject fly into the
+ * reader header, the two real targets lend their visibility to the ghosts.
+ * `visibility`, never `hidden` — layout is touched by NOTHING; and the
+ * borrowing is bounded by the spring's rest frame plus a hard 1.2s fuse.
+ * The guard below squashes this to nothing under reduced motion, where the
+ * morph never starts anyway (reader-morph.js declines before classing).
+ */
+.rmorph-hide {
+  visibility: hidden !important;
+}
+

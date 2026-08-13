@@ -26,6 +26,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { readBundle } from './helpers/css.mjs';
 
 const { JSDOM } = await import('jsdom');
 const tokens = await import('../src/app/motion/tokens.js');
@@ -245,7 +246,7 @@ test('seam: compose seeds from the Compose button only on hidden→open', () => 
 });
 
 test('seam: the pill owns the fill under .has-pill — never double-rendered', () => {
-  const css = readFileSync(new URL('../src/app/app.css', import.meta.url), 'utf8')
+  const css = readBundle()
     .replace(/\/\*[\s\S]*?\*\//g, '');
   assert.match(css, /#cat-group\.has-pill \.cat\[aria-current='true'\]\s*\{[^}]*background:\s*transparent/, 'button fill is handed over');
   assert.match(css, /#cat-group\.has-pill \.cat\[aria-current='true'\]::before\s*\{\s*content:\s*none/, 'button rail is handed over');

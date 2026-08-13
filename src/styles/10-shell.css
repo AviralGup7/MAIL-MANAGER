@@ -1,0 +1,383 @@
+/* ------------------------------------------------------------------ shell -- */
+
+#shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) 1fr;
+  height: 100%;
+}
+
+/* ---------------------------------------------------------------- sidebar -- */
+
+#sidebar {
+  background: var(--bg-sunken);
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+#brand {
+  display: flex;
+  gap: var(--s-3);
+  align-items: center;
+  padding: var(--s-4) var(--s-4) var(--s-3);
+}
+
+#brand-mark {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-md);
+  flex: none;
+  /*
+   * Derived from the accent rather than blended into a fixed violet.
+   *
+   * The hardcoded `#8b5cf6` looked right on Daylight's blue and fought every
+   * other palette -- a warm sand accent (Pilani) or Nord's cyan running into
+   * purple reads as a rendering fault rather than a brand. `color-mix` keeps
+   * the same two-tone depth while staying inside whatever palette is active.
+   */
+  background: linear-gradient(
+    135deg,
+    var(--accent),
+    color-mix(in oklab, var(--accent) 62%, var(--fg))
+  );
+}
+
+#brand-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+#brand-text strong {
+  font-size: var(--t-md);
+  letter-spacing: var(--track-tiny);
+}
+#account {
+  color: var(--fg-faint);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * Freshness sits one step quieter than the account address: same size, but
+ * it collapses entirely when empty so the brand block does not reserve a
+ * blank line before the first sync.
+ */
+#freshness {
+  color: var(--fg-faint);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.8;
+}
+#freshness:empty {
+  display: none;
+}
+
+#cats {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s-1) var(--s-2) var(--s-2);
+  overscroll-behavior: contain;
+}
+
+.cat[data-muted='true'] .cat-name,
+.cat[data-muted='true'] .cat-count {
+  opacity: 0.6;
+}
+.cat[data-muted='true'] .cat-name::after {
+  /* The mute state must be visible WHERE it is managed: the rail. A muted
+     category that renders like an unmuted one hides its own rule. */
+  content: '· muted';
+  font-size: var(--t-xs);
+  color: var(--fg-faint);
+  margin-inline-start: var(--s-2);
+}
+.cat {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: var(--t-md);
+  font-weight: var(--w-medium);
+  cursor: pointer;
+  text-align: left;
+  /* Colour only. A transform here would move the dot and the count out of
+     alignment with the rows above and below. */
+  transition: background-color var(--dur-instant) linear, color var(--dur-instant) linear;
+}
+.cat:hover {
+  background: var(--bg-raised);
+  color: var(--fg);
+}
+.cat[aria-current='true'] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: var(--w-semi);
+}
+/*
+ * The current category gets a rail matching the message row's, so "selected"
+ * means the same thing in both panes. Consistency of meaning across surfaces
+ * is most of what makes an interface feel like one product.
+ */
+.cat[aria-current='true']::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 20%;
+  bottom: 20%;
+  width: 3px;
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  background: var(--accent);
+}
+
+/*
+ * CATEGORY PILL GLIDE (animation P5): with JS live, the accent-soft fill is
+ * ONE shared object (motion/pill.js) that slides between category buttons on
+ * a PANEL spring — the rail rides along so the whole signal stays glued.
+ * .has-pill hands the fill to the pill: the active button's own background
+ * and rail switch off, so the surface can never double-render. Without JS
+ * (or a hard failure) .has-pill never appears and the declarative fill above
+ * renders exactly as before. Both surfaces use the same tokens, so theme
+ * swaps re-light the pill for free.
+ */
+#cat-group {
+  position: relative;
+}
+#cat-group.has-pill .cat[aria-current='true'] {
+  background: transparent;
+}
+#cat-group.has-pill .cat[aria-current='true']::before {
+  content: none;
+}
+.cat-pill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  pointer-events: none;
+  /* transform/width/height: owned by motion/pill.js, never transitioned. */
+}
+.cat-pill::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 20%;
+  bottom: 20%;
+  width: 3px;
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  background: var(--accent);
+}
+.cat.muted {
+  opacity: 0.62;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--c, var(--fg-faint));
+}
+
+.cat-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * Two numbers, separated by weight and colour instead of a slash. See
+ * setCount() in app.js for why. The gap is the only delimiter, and it is
+ * deliberately small -- these read as one glyph cluster, not two words.
+ */
+.cat-count {
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-faint);
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35em;
+}
+.cat-count .c-unread:empty {
+  display: none;
+}
+.cat-count.unread .c-unread {
+  color: var(--accent);
+  font-weight: var(--w-medium);
+  font-size: var(--t-sm);
+}
+.cat-count .c-total {
+  color: var(--fg-faint);
+  font-size: var(--t-xs);
+}
+
+/*
+ * The digits are aria-hidden; this carries the sentence a screen reader
+ * actually needs. Clip rather than display:none, or it is not announced.
+ */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+#side-foot {
+  padding: var(--s-2);
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+/* --------------------------------------------------------------- controls -- */
+
+button,
+a.ghost {
+  font: inherit;
+  cursor: pointer;
+  border-radius: var(--r-md);
+  transition: background-color var(--dur-fast) linear, color var(--dur-fast) linear,
+    border-color var(--dur-fast) linear;
+}
+
+.ghost {
+  /*
+   * THE SAME TRANSITION `a.ghost` ALREADY HAD.
+   *
+   * `.ghost:hover` changes THREE properties -- colour, border-colour and
+   * background -- and had no transition, so every one of them snapped. This is
+   * the dominant control in the product: measured from the markup, 45 `.ghost`
+   * buttons against 3 `.primary`. Every toolbar action, every reader action,
+   * Cc, Bcc, Attach, Save draft, Template, Sign out.
+   *
+   * The drift is what makes it a defect rather than a preference: `a.ghost`
+   * and `button.ghost` are the same visual control -- one happens to be a link
+   * -- and one faded while the other flicked. Nobody chose that.
+   *
+   * Colour only. No transform: these sit in dense toolbars where a scale on
+   * hover would make the row feel unstable.
+   */
+  transition:
+    background-color var(--dur-instant) linear,
+    color var(--dur-instant) linear,
+    border-color var(--dur-instant) linear;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  color: var(--fg-dim);
+  padding: var(--s-2) var(--s-3);
+  font-size: var(--t-sm);
+  font-weight: var(--w-medium);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+.ghost:hover {
+  color: var(--fg);
+  border-color: var(--line-strong);
+  background: var(--bg-sunken);
+}
+/*
+ * Press feedback.
+ *
+ * A button that does not move under the finger feels dead. 1px is enough to
+ * register and small enough that nobody consciously notices it — which is
+ * exactly the point of a micro-interaction.
+ */
+.ghost:active,
+.primary:active {
+  transform: translateY(1px);
+}
+
+/*
+ * PRESS FEEDBACK ON EVERYTHING CLICKABLE.
+ *
+ * `.ghost` and `.primary` had this; the six other interactive surfaces did
+ * not — the star, menu rows, rail entries, saved views, autocomplete options
+ * and theme items. Hover says "this is clickable"; the press is what says
+ * "I got that". Without it a click feels like it went into a form rather than
+ * onto a control, which is much of the difference between a web page and an
+ * application.
+ *
+ * Scale rather than translate for list rows: a row that shifts down nudges its
+ * neighbours in the eye, whereas a slight compression reads as the row itself
+ * yielding.
+ */
+.snooze-opt:active,
+.view-item:active,
+.ac-opt:active,
+.theme-item:active,
+.cat:active {
+  transform: scale(0.985);
+}
+.ghost.small {
+  padding: var(--s-1) var(--s-2);
+  font-size: var(--t-sm);
+}
+.ghost.icon {
+  padding: var(--s-2) var(--s-2);
+}
+.ghost.danger:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.primary {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: var(--accent-fg);
+  padding: var(--s-2) var(--s-5);
+  font-size: var(--t-md);
+  font-weight: var(--w-semi);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  box-shadow: 0 1px 2px var(--glow);
+  transition:
+    background-color var(--dur-instant) linear,
+    box-shadow var(--dur-fast) linear,
+    transform var(--dur-instant) var(--ease-out);
+}
+.primary:hover {
+  box-shadow: 0 2px 10px var(--glow);
+}
+
+/*
+ * THE FOCUS RING MUST NOT RESHAPE WHAT IT LANDS ON.
+ *
+ * This rule used to end with `border-radius: var(--r-sm)`, which applies to
+ * the ELEMENT rather than to the outline. Keyboard-focusing a pill
+ * (--r-full) or a panel (--r-lg) therefore snapped its corners to 6px: the
+ * component visibly changed shape at the exact moment the user needed it to
+ * look stable. Mouse users never saw it, which is how it survived four audits.
+ *
+ * Browsers already trace the element's own radius when drawing an outline, so
+ * the right answer is to say nothing about shape here.
+ */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+

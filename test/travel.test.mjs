@@ -14,9 +14,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readBundle } from './helpers/css.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const css = readFileSync(join(ROOT, 'src/app/app.css'), 'utf8');
+const css = readBundle();
 // The list cluster moved out of app.js in the round-52 workspace extraction:
 // the ghost lives in list.js, optimistic() stayed in the shell, and bulkAct
 // moved to bulk.js (step 6).

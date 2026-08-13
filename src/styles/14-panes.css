@@ -1,0 +1,218 @@
+/* ----------------------------------------------------------------- panes -- */
+
+#panes {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(300px, 400px) 1fr;
+}
+
+#listpane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+}
+
+/*
+ * LIST BAR — the morphing slot (audit 33, concept #1).
+ *
+ * Both header states are absolutely positioned inside one fixed-height box,
+ * so the scroller top is the same number in both states and the mode change
+ * never reflows the list. The container height is a token per density,
+ * measured in Chrome: 41 / 37 / 33px.
+ */
+#listbar {
+  position: relative;
+  height: var(--listbar-h);
+  flex: none;
+}
+
+#listhead {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-4);
+  font-size: var(--t-sm);
+  color: var(--fg-faint);
+  border-bottom: 1px solid var(--line);
+}
+/*
+ * The header is the INCOMING surface when a selection clears; the outgoing
+ * bar hides synchronously (jsdom never fires animationend, and the existing
+ * integration assertions require `hidden` to be set at once), so only the
+ * arriving side ever animates. Opacity only — the box never moves.
+ */
+#listhead:not([hidden]) {
+  animation: head-in var(--dur-fast) var(--ease-out) both;
+}
+@keyframes head-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+#listtitle {
+  font-weight: var(--w-bold);
+  color: var(--fg);
+  font-size: var(--t-md);
+}
+
+/* Mode readout (round 62 P-3): the active query, stated where the title
+   lives. Quieter than the title — context, not content — and baseline-aligned
+   so the fixed-height listhead slot (audit 33) keeps its height. */
+/* In-flight (roadmap H1): the row is mid-request. Deliberately quiet --
+   the optimistic change already happened; this only says "still landing".
+   Opacity alone, so no layout shifts and nothing is misread as selected. */
+/* The row's own opacity dims the star with it; no per-child rule needed
+   (a nested `.r-star` rule would also shadow the size gate's first-match). */
+.row.in-flight {
+  opacity: 0.55;
+}
+
+/*
+ * Search chips (round 65/e, F6). The round-62 P-3 readout became an editor:
+ * one chip per query token, rendered INSIDE the same fixed-height listhead
+ * slot (audit 33). The strip clips sideways, never downward — the scroller
+ * top still cannot move, so the overflow is horizontal and scrollbarless,
+ * and `hidden` is restated because the UA rule loses specificity to
+ * `display: inline-flex` and the strip would never hide.
+ */
+#listquery {
+  /* Flex child of #listhead: min-width 0 or the overflow rule is dead code. */
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  font-size: var(--t-xs);
+  white-space: nowrap;
+}
+#listquery::-webkit-scrollbar { display: none; }
+#listquery[hidden] { display: none; }
+#listquery .q-label { flex: none; color: var(--fg-dim); }
+.q-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  height: 20px;
+  padding: 0 var(--s-1) 0 var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  background: var(--bg-raised);
+  color: var(--fg);
+  min-width: 0;
+}
+.q-chip .q-k { flex: none; color: var(--fg-dim); }
+.q-chip .q-v {
+  min-width: 0;
+  max-width: 18ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.q-chip.not { border-style: dashed; }
+.q-chip .q-x {
+  flex: none;
+  border: 0;
+  background: none;
+  color: var(--fg-dim);
+  font-size: var(--t-xs);
+  padding: 2px;
+  cursor: pointer;
+  border-radius: 50%;
+}
+.q-chip .q-x:hover { color: var(--fg); background: var(--accent-soft); }
+#listquery .q-act {
+  flex: none;
+  border: 0;
+  background: none;
+  color: var(--fg-dim);
+  font-size: var(--t-xs);
+  padding: 1px var(--s-1);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+#listquery .q-act:hover { color: var(--fg); }
+
+#scroller {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /*
+   * MAGNETIC ALIGNMENT (audit 34, concept #2).
+   *
+   * `scrollIntoView({ block: 'nearest' })` does the least work possible: a
+   * row arriving from below lands FLUSH against the bottom edge, zero pixels
+   * of the next message visible — measured 83% of keyboard steps in
+   * comfortable. The selection hugged the boundary instead of settling into
+   * the list.
+   *
+   * One row of scroll padding tells the scroll machinery to treat the
+   * viewport as inset by a row, so the row lands one row inside the edge and
+   * there is always lookahead in the direction of travel. `var(--row-h)`
+   * makes it 68/56/44 per density for free, the same token-remap discipline
+   * the density system already uses. Measured: 0/60 blind steps in all
+   * densities, 0.019ms per forced read, no effect on free scrolling.
+   *
+   * Both ends are padded, deliberately: `k` upward deserves the same
+   * lookahead as `j`. Deliberately NOT here: scroll-behavior smooth (the
+   * held-`j` failure mode is documented; it gets its own decision) and
+   * scroll-snap (rejected in the audit; a test records the rejection).
+   */
+  scroll-padding-block: var(--row-h);
+  /* Tell the compositor this layer scrolls on its own. */
+  contain: strict;
+  /*
+   * SCROLL ANCHORING, stated rather than assumed.
+   *
+   * A delta sync inserts new mail at the TOP of the list, above whatever the
+   * user is currently reading. Without anchoring the viewport keeps its
+   * scrollTop and the content slides down under the pointer -- the row you
+   * were about to click moves as you click it.
+   *
+   * `auto` is the browser default, so this is documentation rather than a
+   * behaviour change. It is written out because `contain: strict` above sits
+   * one line away and it is genuinely unclear, reading this rule, whether
+   * containment suppresses anchoring. It does not, and now nobody has to
+   * re-derive that.
+   */
+  overflow-anchor: auto;
+  overscroll-behavior: contain;
+}
+/*
+ * The listbox is the tab stop, because it is the element carrying
+ * aria-activedescendant and that attribute is only meaningful on the focused
+ * element. The visible focus ring is drawn on the SELECTED ROW rather than
+ * around the whole list, which is what a listbox should look like -- a box
+ * outlining 600 rows tells the user nothing.
+ */
+#list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  position: relative;
+}
+#list:focus {
+  outline: none;
+}
+#list:focus-visible .row[aria-selected='true'] {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/*
+ * A row.
+ *
+ * `contain: layout paint style` means a change inside one row can never
+ * invalidate layout for the other 1999 rows. `content-visibility: auto` with
+ * a matching `contain-intrinsic-size` lets the browser skip rendering rows
+ * that are off screen entirely — this is what makes a 2000-row list scroll at
+ * 60fps without a hand-written virtualiser, and it is the single biggest
+ * reason this list is faster than the old one.
+ */

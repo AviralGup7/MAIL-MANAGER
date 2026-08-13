@@ -1,0 +1,118 @@
+/* ========================================================================== *
+ * SELECTION DISCIPLINE
+ * ========================================================================== *
+ *
+ * `user-select` appeared ZERO times in this stylesheet, which meant a
+ * click-and-drag starting on a message row -- a very common imprecise gesture
+ * -- text-selected every row it crossed, smearing highlight across the list.
+ * Double-clicking a button selected its label.
+ *
+ * That is the clearest tell that an interface is a web page wearing an app's
+ * clothes. Native mail clients do not do it.
+ *
+ * THE SECOND HALF OF THIS RULE MATTERS MORE THAN THE FIRST. A blanket
+ * `user-select: none` would be a worse bug than the one being fixed: the
+ * message body, the subject, an address and a deadline are all things people
+ * legitimately copy. Chrome is unselectable; CONTENT is explicitly restored.
+ */
+button,
+.row,
+.cat,
+.snooze-opt,
+.palette-item,
+.suggest-item,
+.radar-item,
+.view-item,
+.lane-head,
+.rail-heading,
+#views-title,
+#radar-title,
+#outbox-title,
+#snoozed-title,
+kbd,
+.tag,
+.r-course,
+.tt-chip {
+  user-select: none;
+}
+
+/*
+ * Restored wherever the user has a real reason to copy. The reader is the
+ * obvious one; the compose fields and the search box are inputs and are
+ * selectable by default, but they are listed so the intent is explicit and a
+ * future blanket rule cannot silently take them away.
+ */
+/*
+ * #reader covers its own descendants, so the subject, sender, date and body
+ * are NOT listed individually -- they inherit `text`. Listing them as well
+ * produced a duplicate selector, which the layer guard correctly rejected.
+ */
+#reader,
+.r-msg,
+#c-text,
+#c-to,
+#c-subject,
+#search,
+.notice-why,
+.tt-panel {
+  user-select: text;
+}
+
+/*
+ * The caret is the one element the eye tracks continuously while typing.
+ * Unthemed, it renders as the browser default -- black on light, a plain white
+ * bar on dark -- against a field that is themed in every other respect.
+ */
+input,
+textarea {
+  caret-color: var(--accent);
+}
+
+/* ========================================================================== *
+ * TRUNCATION
+ * ========================================================================== *
+ *
+ * `text-overflow: ellipsis` ON A FLEX CHILD DOES NOTHING WITHOUT min-width: 0.
+ *
+ * A flex item defaults to `min-width: auto`, which means it refuses to shrink
+ * below its content -- so instead of truncating, it grows and pushes its
+ * siblings out of the container. Seven rules in this file declared an ellipsis
+ * that could never fire.
+ *
+ * The pattern was already understood: .r-mid, .outbox-to, .snoozed-what,
+ * .view-name and .rule-text all carry it. Five right, seven wrong -- drift,
+ * not ignorance, which is why it is collected here as one rule rather than
+ * patched in seven places.
+ *
+ * The user-visible symptom is a deadline title shoving the date off the edge
+ * of the rail: the layout losing control of its own content, which is the
+ * loudest "unfinished" signal a UI can emit.
+ */
+.radar-what,
+.suggest-label,
+.notice-why,
+.att-name,
+.c-file-name,
+.r-msg-snip,
+.ac-name {
+  min-width: 0;
+  flex: 1;
+}
+
+/*
+ * THE READER'S SUBJECT AND SENDER ARE RAW HEADERS.
+ *
+ * Both render sender-controlled strings, and institutional mail routinely
+ * carries base64 fragments, tracking IDs and 200-character URLs in exactly
+ * these fields. Neither had any overflow defence: a 300-character token ran
+ * the subject under the toolbar.
+ *
+ * They WRAP rather than truncate -- in the reader the full text matters, and
+ * this is the screen the eye rests on.
+ *
+ * `anywhere`, not `break-word`: break-word only breaks a word that cannot fit
+ * on a line of its own, which still lets a long token overflow a narrow
+ * column. `anywhere` also counts the break opportunity when the browser
+ * computes min-content width, which is the behaviour actually wanted inside a
+ * flex layout.
+ */

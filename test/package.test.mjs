@@ -15,6 +15,7 @@ import { readFileSync, writeFileSync, rmSync, existsSync, readdirSync } from 'no
 import { readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
+import { readBundle, styleFiles } from './helpers/css.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 // TEST-SPEED: 99 tests read the same multi-KB sources; cache them.
@@ -332,7 +333,9 @@ test('every stylesheet parses', async () => {
   } catch {
     return; // graceful skip, as elsewhere
   }
-  for (const file of ['src/app/app.css', 'src/takeover/takeover.css']) {
+  // The monolith became src/styles/* volumes (see docs/STRUCTURE.md): each
+  // one must parse alone AND, via the bundle reads elsewhere, in sequence.
+  for (const file of styleFiles().concat(['src/takeover/takeover.css'])) {
     const css = read(file);
     // Cheap structural check first: it localises the fault far better than a
     // parser error does.
@@ -348,11 +351,11 @@ test('every stylesheet parses', async () => {
   }
 });
 
-test('prefers-reduced-motion is the LAST rule in app.css', () => {
+test('prefers-reduced-motion is the LAST rule in the style bundle', () => {
   // Same specificity means source order decides. An override that is not last
   // does not override -- an infinite animation appended after it escapes
   // entirely, which is exactly what happened.
-  const css = read('src/app/app.css');
+  const css = readBundle();
   const i = css.lastIndexOf('@media (prefers-reduced-motion');
   assert.ok(i !== -1, 'the reduced-motion block must exist');
   const after = css.slice(i).split('}').slice(4).join('}');
@@ -432,7 +435,7 @@ test('every element the app hides with [hidden] actually disappears', async () =
     return; // graceful skip, as elsewhere
   }
 
-  const css = read('src/app/app.css');
+  const css = readBundle();
   const html = read('app.html')
     .replace(/<link rel="stylesheet"[^>]*>/, `<style>${css}</style>`)
     .replace(/<script[\s\S]*?<\/script>/g, '');
@@ -498,7 +501,7 @@ test('the stylesheet uses design tokens, not ad-hoc values', () => {
   // 12.5, 13, 13.5, 15, 17, 18) and TWELVE corner radii. Each was individually
   // defensible; collectively they are why an interface reads as assembled
   // rather than designed. This keeps the set closed.
-  const css = read('src/app/app.css');
+  const css = readBundle();
   const body = css.slice(css.indexOf('/*\n * THEME VALUES LIVE IN'));
 
   const sizes = [...body.matchAll(/font-size:\s*([0-9.]+px)/g)].map((m) => m[1]);
@@ -536,7 +539,7 @@ test('every theme token used in CSS has a :root fallback', () => {
    * `--c` is excluded deliberately: it is set per-row as an inline style for
    * the category dot, never globally, so a root default would be meaningless.
    */
-  const css = read('src/app/app.css');
+  const css = readBundle();
   const used = new Set([...css.matchAll(/var\((--[a-z0-9-]+)/g)].map((m) => m[1]));
   const defined = new Set([...css.matchAll(/^ {2}(--[a-z0-9-]+)\s*:/gm)].map((m) => m[1]));
 
@@ -576,7 +579,7 @@ test('spacing comes from the 4px grid, not from arbitrary pixels', () => {
    * grid would round a 1px border up to 4. The threshold is >= 4px, where a
    * value starts participating in layout rhythm.
    */
-  const css = read('src/app/app.css');
+  const css = readBundle();
   const offenders = [];
 
   css.split('\n').forEach((line, i) => {
@@ -597,7 +600,7 @@ test('spacing comes from the 4px grid, not from arbitrary pixels', () => {
 });
 
 test('no hardcoded colour bypasses the theme tokens', () => {
-  const css = read('src/app/app.css');
+  const css = readBundle();
   const body = css.slice(css.indexOf('/*\n * THEME VALUES LIVE IN'));
 
   /*
@@ -634,7 +637,7 @@ test('every theme defines every colour role the CSS consumes', () => {
   // which inherits or falls back to black -- invisible in a dark theme and
   // impossible to spot in review.
   const themes = read('src/app/themes.js');
-  const css = read('src/app/app.css');
+  const css = readBundle();
 
   // Roles the stylesheet actually reads.
   const used = new Set(
@@ -662,7 +665,7 @@ test('no component is defined in two places', () => {
   // `.row` was previously declared in two blocks 470 lines apart: one set the
   // background, another added the selection rail, and neither could be
   // understood without the other. That is how a component drifts.
-  const css = read('src/app/app.css');
+  const css = readBundle();
   for (const sel of ['.row', '.tag', '.r-bar', '#reader-head', '#empty']) {
     const escaped = sel.replace(/[.#]/g, '\\$&');
     const hits = [...css.matchAll(new RegExp(`^${escaped}\\s*\\{`, 'gm'))].length;
@@ -696,7 +699,7 @@ test('no component is defined in two places', () => {
  * switched off by a state that genuinely ends.
  */
 test('every infinite animation is gated on a state that ends', () => {
-  const css = read('src/app/app.css');
+  const css = readBundle();
   const lines = css.split('\n');
 
   // Selectors permitted to loop, each with the reason it terminates.
@@ -737,7 +740,7 @@ test('the gated loading animations still exist', () => {
   // The negative test above passes trivially if the animations are deleted.
   // These are real features -- perceived-performance work -- so assert they
   // are present, or the guarantee above is vacuous.
-  const css = read('src/app/app.css');
+  const css = readBundle();
   assert.match(css, /animation:\s*sk-shimmer[^;]*infinite/, 'skeleton shimmer missing');
   assert.match(css, /animation:\s*sweep[^;]*infinite/, 'topbar progress sweep missing');
   // The reader skeleton reuses sk-shimmer rather than defining a second
@@ -756,7 +759,7 @@ test('the gated loading animations still exist', () => {
  * described a different animation from the one that actually ran.
  */
 test('every keyframe is defined exactly once and is actually used', () => {
-  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, ' ');
+  const css = readBundle().replace(/\/\*[\s\S]*?\*\//g, ' ');
 
   const counts = new Map();
   for (const m of css.matchAll(/@keyframes\s+([\w-]+)/g)) {
@@ -783,7 +786,7 @@ test('every keyframe is defined exactly once and is actually used', () => {
 });
 
 test('no selector is defined twice within one layer', () => {
-  const css = read('src/app/app.css');
+  const css = readBundle();
 
   // Blank out comments while preserving line numbers, so a selector mentioned
   // in prose is not mistaken for a rule.
@@ -900,7 +903,7 @@ test('decorative overlays cannot swallow clicks', () => {
   //
   // Checked statically because jsdom does not compute pseudo-element styles,
   // so an integration test cannot see it.
-  const css = read('src/app/app.css');
+  const css = readBundle();
   const overlays = ['#listpane::before', '#topbar::after'];
   for (const sel of overlays) {
     const i = css.indexOf(sel + ' {');
@@ -935,7 +938,7 @@ test('interactive targets meet WCAG 2.2 minimum size', () => {
   // trackpad on a list that scrolls. The ICON stays 15px -- a bigger star
   // would shout -- and the pressable area is expanded instead, which is the
   // difference between designing what a control looks like and what it is.
-  const css = read('src/app/app.css');
+  const css = readBundle();
   const i = css.indexOf('.r-star {');
   assert.ok(i !== -1, '.r-star must be defined');
   const block = css.slice(i, css.indexOf('}', i));
@@ -957,7 +960,7 @@ test('interactive targets meet WCAG 2.2 minimum size', () => {
  * padding x2 plus the line box, which is what the browser will lay out.
  */
 test('every menu row and chip clears the 24px hit floor', () => {
-  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, ' ');
+  const css = readBundle().replace(/\/\*[\s\S]*?\*\//g, ' ');
 
   const SPACE = { '--s-1': 4, '--s-2': 8, '--s-3': 12, '--s-4': 16, '--s-5': 20, '--s-6': 24 };
   const TYPE = { '--t-xs': 11, '--t-sm': 12, '--t-md': 13, '--t-lg': 15 };
@@ -1001,7 +1004,7 @@ test('every design token is actually used', () => {
   // A token defined and never referenced is not a design system, it is
   // aspiration. Six were dead: --dur-slow, --lh-body, --radius, --success,
   // --t-2xl, --w-normal. Each was either applied where it belonged or removed.
-  const css = read('src/app/app.css');
+  const css = readBundle();
   const defined = [...css.matchAll(/^ {2}(--[a-z0-9-]+):/gm)].map((m) => m[1]);
   assert.ok(defined.length > 20, 'expected a real token set');
 
@@ -1056,7 +1059,7 @@ test('spacing resolves to the 4px grid', () => {
   // Twenty-odd raw padding values survived the first tokenisation pass because
   // I only converted font-size and radius. Rhythm is what makes a layout feel
   // deliberate, and it is invisible until it is wrong everywhere at once.
-  const css = read('src/app/app.css');
+  const css = readBundle();
   const body = css.slice(css.indexOf('/*\n * THEME VALUES LIVE IN'));
   const offenders = [];
   for (const m of body.matchAll(/\b(padding|gap):\s*([^;]+);/g)) {
@@ -1076,7 +1079,7 @@ test('reduced motion zeroes DELAY as well as duration', () => {
   // not, which reads as the app being slow rather than as an effect — and for
   // someone who enabled the setting because motion makes them ill, a delayed
   // pop-in is exactly what they asked to avoid.
-  const css = read('src/app/app.css');
+  const css = readBundle();
   const block = css.slice(css.lastIndexOf('@media (prefers-reduced-motion'));
   for (const prop of [
     'animation-duration',
@@ -1792,7 +1795,7 @@ test('ARCH: the Escape handler has no per-overlay branches', () => {
  * clicking a star, a menu row or a rail entry felt like typing into a form.
  */
 test('every interactive surface has a press state', () => {
-  const css = read('src/app/app.css');
+  const css = readBundle();
   const surfaces = ['.ghost', '.primary', '.r-star', '.snooze-opt', '.cat',
     '.view-item', '.ac-opt', '.theme-item', '.att-chip'];
   const missing = surfaces.filter((sel) => {
@@ -1805,7 +1808,7 @@ test('every interactive surface has a press state', () => {
 test('the star pop fires on starring, not unstarring', () => {
   // Asymmetric feedback is what makes an interaction feel authored. Removing
   // a star should be quiet; only the affirmative gesture gets a flourish.
-  const css = read('src/app/app.css');
+  const css = readBundle();
   assert.match(css, /\.r-star\[aria-pressed='true'\] svg \{\s*animation: star-pop/,
     'the pop must be scoped to the pressed state');
   assert.ok(!/\.r-star svg \{\s*animation: star-pop/.test(css),
@@ -1827,7 +1830,7 @@ test('every stacking level comes from the elevation scale', () => {
    * forces a decision about where it belongs instead of picking a number that
    * looks big enough.
    */
-  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = readBundle().replace(/\/\*[\s\S]*?\*\//g, '');
   const defs = new Set(
     [...css.matchAll(/--z-[\w-]+:\s*(\d+)/g)].map((m) => m[1])
   );
@@ -1851,7 +1854,7 @@ test('the toast sits above every overlay that can raise one', () => {
    * A toast is the app's only channel for "that failed". It cannot be
    * occludable by anything.
    */
-  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = readBundle().replace(/\/\*[\s\S]*?\*\//g, '');
   const tok = (name) => {
     const m = css.match(new RegExp(`--z-${name}:\\s*(\\d+)`));
     assert.ok(m, `--z-${name} must be defined`);
@@ -1884,7 +1887,7 @@ test('the focus ring does not reshape the element it lands on', () => {
    * Browsers already follow the element's own radius when drawing an outline,
    * so the correct fix is to state nothing and let it inherit.
    */
-  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = readBundle().replace(/\/\*[\s\S]*?\*\//g, '');
   const block = css.match(/(^|\})\s*:focus-visible\s*\{([^}]*)\}/);
   assert.ok(block, 'a global :focus-visible rule must exist');
   assert.doesNotMatch(
@@ -1912,7 +1915,7 @@ test('every pointer target is large enough to hit reliably', () => {
    * enlarged instead, which is the distinction between what a control looks
    * like and what it catches.
    */
-  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = readBundle().replace(/\/\*[\s\S]*?\*\//g, '');
   // EVERY rule for the selector, base and media-query overrides alike: an
   // override that shrank the target below the base would defeat the guard,
   // so each block is checked to hold at least the 24px minimum.
@@ -1954,7 +1957,7 @@ test('the saved-view row does not twitch when the remove button appears', () => 
    * fix, and "it is only a few pixels" is exactly the reasoning this audit
    * exists to reject.
    */
-  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = readBundle().replace(/\/\*[\s\S]*?\*\//g, '');
   const grab = (sel) => {
     const m = css.match(new RegExp(`(^|\\})\\s*\\${sel}\\s*\\{([^}]*)\\}`, 'm'));
     assert.ok(m, `${sel} must have a rule`);
@@ -1982,7 +1985,7 @@ test('typography, spacing and motion all come from tokens', () => {
    * looser measure than text you read) so it became --lh-compose rather than
    * being flattened into the nearest existing step.
    */
-  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = readBundle().replace(/\/\*[\s\S]*?\*\//g, '');
 
   const stray = (prop, prefix) =>
     [...css.matchAll(new RegExp(`${prop}:\\s*([^;]+);`, 'g'))]
@@ -2015,7 +2018,7 @@ test('a disabled control looks and behaves disabled', () => {
    * `pointer` on something that cannot be pressed is the specific lie: the
    * cursor is the fastest affordance signal there is.
    */
-  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = readBundle().replace(/\/\*[\s\S]*?\*\//g, '');
   /*
    * Find the rule that covers BOTH button classes. Matching the first
    * :disabled rule found the .att-chip one, which is a legitimately separate
@@ -2065,7 +2068,7 @@ test('scrollable overlays do not scroll the page behind them', () => {
    * .err is deliberately excluded: it is a small inline error box inside the
    * gate, not an overlay, and containing it there would be cargo-culting.
    */
-  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = readBundle().replace(/\/\*[\s\S]*?\*\//g, '');
   const scrollers = [...css.matchAll(/([^{}]+)\{([^}]*overflow(?:-y)?:\s*(?:auto|scroll)[^}]*)\}/g)]
     .map(([, sel, body]) => [sel.trim().split('\n').pop().trim(), body]);
 
@@ -2134,7 +2137,7 @@ test('entrance animations decelerate; only exits accelerate', () => {
    * SAME menu-in keyframe was played with opposite easing depending on which
    * menu opened it. That inconsistency is what led me to sample the curves.
    */
-  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = readBundle().replace(/\/\*[\s\S]*?\*\//g, '');
 
   const entrances = [...css.matchAll(/animation:\s*([\w-]+)\s+([^;]+);/g)]
     .map(([, name, rest]) => ({ name, rest }))
@@ -2166,7 +2169,7 @@ test('only one animation is allowed to force layout, and it is documented', () =
    * row, 140ms, with overflow:hidden. This test pins the exception so a
    * SECOND layout-animating keyframe cannot be added without a decision.
    */
-  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = readBundle().replace(/\/\*[\s\S]*?\*\//g, '');
   const LAYOUT = ['width', 'height', 'max-height', 'top', 'left', 'right', 'bottom',
     'margin', 'padding', 'font-size'];
 
@@ -2283,7 +2286,7 @@ test('the collapsed rail hides everything that needs width', () => {
    * another breakpoint whose source order no longer held. Round 64.5
    * re-pinned it to the elements that actually remain in the rail.
    */
-  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = readBundle().replace(/\/\*[\s\S]*?\*\//g, '');
   // Several components own a 860px block (the icon rail, the timetable
   // grid): read them all, not just the first.
   const blocks = [...css.matchAll(/@media \(max-width: 860px\)\s*\{([\s\S]*?)\n\}/g)];
@@ -2350,7 +2353,7 @@ test('every interactive surface that hovers also transitions', () => {
    * `a.ghost` and `.primary` both had one. The same visual control, faded in
    * one form and snapping in the other.
    */
-  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = readBundle().replace(/\/\*[\s\S]*?\*\//g, '');
   const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({
     sel: m[1].trim().split('\n').pop().trim(),
     body: m[2],
@@ -2377,7 +2380,7 @@ test('read and unread text transitions colour but never weight', () => {
    * The fix must stay colour-only: font-weight cannot be interpolated, so
    * transitioning it produces reflow jitter rather than a fade.
    */
-  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = readBundle().replace(/\/\*[\s\S]*?\*\//g, '');
   for (const sel of ['.r-subj', '.r-from']) {
     const m = css.match(new RegExp(`\\n\\${sel} \\{([^}]*)\\}`));
     assert.ok(m, `${sel} must have a base rule`);
@@ -2396,7 +2399,7 @@ test('every rail list shares one entrance animation', () => {
    * and reported a false failure because it could not see a selector that had
    * been reformatted across lines.
    */
-  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = readBundle().replace(/\/\*[\s\S]*?\*\//g, '');
   const animated = new Set();
   for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     if (!/animation:\s*row-in/.test(m[2])) continue;
@@ -2415,7 +2418,7 @@ test('every overlay animates in', () => {
    * the selector string and could not match `.snooze-menu`, which is a class
    * rather than an id -- it reported a surface that WAS animated as missing.
    */
-  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = readBundle().replace(/\/\*[\s\S]*?\*\//g, '');
   const animated = new Set();
   for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     if (!/animation:/.test(m[2])) continue;
@@ -2452,7 +2455,7 @@ test('overlays that animate in also animate out', () => {
    * the entrance and gets nothing to track on the way out, so the close reads
    * as a glitch rather than a dismissal.
    */
-  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = readBundle().replace(/\/\*[\s\S]*?\*\//g, '');
   const exits = [...css.matchAll(/@keyframes\s+([a-z-]+)/g)]
     .map((m) => m[1])
     .filter((k) => /out$/.test(k));
@@ -2471,7 +2474,7 @@ test('exits are faster than entrances and use the exit curve', () => {
    * Reversing the entrance curve makes a surface hesitate before leaving,
    * which feels sticky.
    */
-  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = readBundle().replace(/\/\*[\s\S]*?\*\//g, '');
   for (const m of css.matchAll(/([^{}]*\.closing[^{}]*)\{([^{}]*)\}/g)) {
     const body = m[2];
     if (!body.includes('animation:')) continue;
@@ -2482,7 +2485,7 @@ test('exits are faster than entrances and use the exit curve', () => {
 
 test('a closing surface is not interactive', () => {
   // Otherwise an outside-click dismissal can land on the thing it dismissed.
-  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = readBundle().replace(/\/\*[\s\S]*?\*\//g, '');
   assert.match(css, /\.closing\s*\{[^}]*pointer-events:\s*none/);
 });
 
@@ -2544,7 +2547,7 @@ test('every keyframe uses translate3d, not translateY', () => {
    * was the only one of seventeen using `translateY`, on the LARGEST animated
    * surface in the app -- the one where a dropped frame is most visible.
    */
-  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = readBundle().replace(/\/\*[\s\S]*?\*\//g, '');
   const bad = [];
   for (const m of css.matchAll(/@keyframes\s+([a-z-]+)\s*\{([\s\S]*?)\n\}/g)) {
     if (/transform:[^;]*translate[XY]\(/.test(m[2])) bad.push(m[1]);
@@ -2559,7 +2562,7 @@ test('no animation is declared twice with different easings', () => {
    * either has no way to tell which is current, and both are defensible. Same
    * defect class as the two .rail-heading specs in audit 21.
    */
-  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = readBundle().replace(/\/\*[\s\S]*?\*\//g, '');
   const seen = new Map();
   for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     const a = m[2].match(/animation:\s*([a-z-]+)\s+(\S+)\s+(var\(--ease-[a-z]+\))/);
@@ -2590,7 +2593,7 @@ test('every overlay uses the same elevation token', () => {
    * the four light themes. The largest academic surface was the one place the
    * elevation language visibly broke.
    */
-  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = readBundle().replace(/\/\*[\s\S]*?\*\//g, '');
   const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
   const shadowOf = (want) => {
     let got = null;
@@ -2611,7 +2614,7 @@ test('every overlay uses the same elevation token', () => {
 });
 
 test('no shadow is hardcoded outside the token definitions', () => {
-  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = readBundle().replace(/\/\*[\s\S]*?\*\//g, '');
   const bad = [];
   for (const m of css.matchAll(/box-shadow:\s*([^;]+);/g)) {
     const v = m[1].trim();
@@ -2632,7 +2635,7 @@ test('no theme is forked by hand in the stylesheet', () => {
    * omnidirectional shadows and no directional ones, and structural chrome
    * needs direction to read as stacked rather than adjacent.
    */
-  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = readBundle().replace(/\/\*[\s\S]*?\*\//g, '');
   const forks = [];
   for (const m of css.matchAll(/html\[data-scheme='dark'\]\s+([^{,]+)\{([^{}]*)\}/g)) {
     if (/rgba\(/.test(m[2])) forks.push(m[1].trim());
@@ -2644,7 +2647,7 @@ test('letter-spacing comes from the tracking scale', () => {
   // The one typographic axis whose migration never finished: font-size and
   // line-height were 100% tokenised while seven letter-spacing values were
   // literals -- one of them `0.4px`, which IS --track-wide written out.
-  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = readBundle().replace(/\/\*[\s\S]*?\*\//g, '');
   const bad = [...css.matchAll(/letter-spacing:\s*([^;]+);/g)]
     .map((m) => m[1].trim())
     .filter((v) => !v.startsWith('var(--track'));
@@ -2702,7 +2705,7 @@ test('every ellipsis can actually fire', () => {
    * So this asserts the property in a REAL LAYOUT rather than by reading
    * declarations: render each surface and check the computed chain.
    */
-  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = readBundle().replace(/\/\*[\s\S]*?\*\//g, '');
   const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
     .map((m) => ({ sels: m[1].split(',').map((x) => x.trim().split('\n').pop().trim()), body: m[2] }));
 
@@ -2742,7 +2745,7 @@ test('sender-controlled strings in the reader cannot overflow', () => {
    * URLs in exactly those fields, and neither had any overflow defence -- a
    * 300-character token ran the subject under the toolbar.
    */
-  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = readBundle().replace(/\/\*[\s\S]*?\*\//g, '');
   for (const sel of ['#r-subject', '#r-from']) {
     const m = css.match(new RegExp(`(^|[,\\s])\\${sel}[^{]*\\{([^}]*)\\}`, 'm'));
     const all = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
@@ -2769,7 +2772,7 @@ test('chrome is unselectable and content is not', async () => {
    * value that lands on the element.
    */
   const { JSDOM } = await import('jsdom');
-  const css = read('src/app/app.css');
+  const css = readBundle();
   const dom = new JSDOM(`<!doctype html><html><head><style>${css}</style></head><body>
     <button class="ghost">b</button>
     <div class="row">r</div>
@@ -2788,7 +2791,7 @@ test('chrome is unselectable and content is not', async () => {
 });
 
 test('the caret is themed', () => {
-  const css = read('src/app/app.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = readBundle().replace(/\/\*[\s\S]*?\*\//g, '');
   assert.match(css, /caret-color:\s*var\(--accent\)/, 'the caret must belong to the theme');
 });
 

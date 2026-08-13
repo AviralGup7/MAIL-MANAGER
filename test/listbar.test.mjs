@@ -19,12 +19,13 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
+import { readBundle } from './helpers/css.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 
 const html = read('app.html');
-const css = read('src/app/app.css');
+const css = readBundle();
 
 /** Extract one CSS rule block by selector (first match). */
 function block(sel) {

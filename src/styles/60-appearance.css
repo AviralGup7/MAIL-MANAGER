@@ -1,0 +1,328 @@
+/* ========================================================================= */
+/* APPEARANCE                                                                */
+/*                                                                           */
+/* Everything below still obeys the five rules at the top of this file:      */
+/* three durations, two easings, transform/opacity only, nothing infinite,   */
+/* and all of it disabled under prefers-reduced-motion. A prettier UI is not */
+/* worth reintroducing the jank that made v1 unusable.                       */
+/* ========================================================================= */
+
+/* --------------------------------------------------------- theme picker -- */
+
+#themewrap {
+  position: relative;
+}
+
+/*
+ * The theme menu is now built by the shared primitive, so it arrives with
+ * `.snooze-menu` on it and only needs the handful of things that differ:
+ * it hangs from the RIGHT edge of the header button rather than the left,
+ * and it is narrower because a theme name is short.
+ */
+/* The appearance menu's divider (round 58): the only thing separating the
+   theme group from the density group. Border rides the first density item;
+   no empty separator node exists. */
+.theme-menu .menu-sep {
+  border-top: 1px solid var(--line);
+  margin-top: var(--s-1);
+}
+
+.snooze-menu.theme-menu {
+  top: calc(100% + 6px);
+  right: 0;
+  left: auto;
+  min-width: 190px;
+  padding: var(--s-1);
+}
+
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, -4px, 0) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/*
+ * `.theme-item` also carries `.snooze-opt` now that the primitive builds this
+ * menu, and the two disagree about alignment: `.snooze-opt` uses `baseline`,
+ * which is right for a label beside a timestamp but wrong for a label beside
+ * a 14px round swatch -- on a shared baseline the dot sits low and the row
+ * looks broken.
+ *
+ * The compound selector is deliberate. `.theme-item` alone has the same
+ * specificity as `.snooze-opt` and is declared ~1500 lines EARLIER, so the
+ * primitive's rule would win on source order and silently undo this. Written
+ * as `.snooze-opt.theme-item` it wins on specificity instead, which does not
+ * depend on where in the file either block happens to live.
+ */
+.snooze-opt.theme-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+  padding: var(--s-2) var(--s-2);
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: var(--t-md);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) linear, color var(--dur-fast) linear;
+}
+.snooze-opt.theme-item:hover {
+  background: var(--bg-sunken);
+  color: var(--fg);
+}
+.theme-item[aria-checked='true'] {
+  color: var(--fg);
+  font-weight: var(--w-semi);
+}
+
+/*
+ * The label side of a theme row: swatch, then name, laid out as a row.
+ *
+ * FOUND BY RENDERING IT, not by a test. The primitive wraps the label in a
+ * plain inline <span>, and `width`/`height` do not apply to an inline
+ * non-replaced element -- so the 14px swatch collapsed to nothing and every
+ * theme row lost its colour dot. jsdom reports the computed width happily and
+ * the 873 tests all passed; only looking at the thing showed it.
+ */
+.theme-item .menu-label {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-width: 0;
+}
+
+.theme-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex: none;
+  /* A ring, so a swatch that matches the menu background is still visible. */
+  box-shadow: inset 0 0 0 1px rgba(128, 128, 128, 0.35);
+}
+
+/*
+ * The primitive names the label span `.menu-name`; `.theme-name` is kept as
+ * an alias so nothing that already targets it breaks. Both mean "take the
+ * space between the swatch and the tick".
+ */
+.theme-item .menu-name,
+.theme-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.theme-tick {
+  opacity: 0;
+  color: var(--accent);
+  font-size: var(--t-sm);
+}
+.theme-item[aria-checked='true'] .theme-tick {
+  opacity: 1;
+}
+
+/* ------------------------------------------------------------- surfaces -- */
+
+/*
+ * The sidebar gets a subtle vertical wash rather than a flat fill. It is two
+ * stops of the same hue, so it costs one paint and never repaints -- the
+ * gradient is on a static element that neither moves nor resizes.
+ */
+#sidebar {
+  background: linear-gradient(180deg, var(--bg-sunken) 0%, var(--bg) 100%);
+}
+
+#brand-mark {
+  /*
+   * THE LOGO DOES NOT GET THE APP'S SCARCEST SIGNALS.
+   *
+   * This was the only element combining a multi-hue gradient with a coloured
+   * glow, permanently, at the top-left -- the strongest position on the page.
+   * Two problems, measured in audit 21:
+   *
+   *   1. It set a high baseline of visual energy that the genuinely important
+   *      accent signals below it (the selected-category bar, Compose) then had
+   *      to compete against. Emphasis has to be earned, and a logo earns it
+   *      once on first launch and never again.
+   *
+   *   2. It put --warning on screen at ALL TIMES. A semantic colour's power is
+   *      entirely a function of its scarcity, so the amber fallback banner and
+   *      the overdue-deadline state were both being pre-habituated by the
+   *      logo. --warning now appears only where it means something.
+   *
+   * The gradient stays -- at 26px it is what makes the mark read as a mark --
+   * but it now runs accent -> accent-soft, inside one hue family, and the glow
+   * is gone. Identification without shouting.
+   *
+   * (`--accent-dim` was the first choice and does not exist; themes.js defines
+   * accentSoft, not accentDim. Caught by grepping the token list rather than
+   * by trusting the name -- an undefined custom property fails silently to
+   * `transparent`, which would have shipped an invisible logo.)
+   */
+  background: linear-gradient(135deg, var(--accent), var(--accent-soft) 140%);
+}
+
+#topbar {
+  /* A hairline of elevation so the list reads as beneath the toolbar. */
+  box-shadow: var(--shadow-sm);
+  position: relative;
+  z-index: var(--z-raised);
+}
+
+/* --------------------------------------------------------------- search -- */
+
+#search {
+  transition: border-color var(--dur-fast) linear, box-shadow var(--dur-fast) linear,
+    background-color var(--dur-fast) linear;
+}
+#search:hover {
+  border-color: var(--line-strong);
+}
+#search:focus {
+  border-color: var(--accent);
+  background: var(--bg-raised);
+  box-shadow: 0 0 0 3px var(--glow);
+}
+
+/* ----------------------------------------------------------------- rows -- */
+
+/* --------------------------------------------------------------- reader -- */
+
+/* #r-body's background lives with its geometry above: ONE themed rule, not
+   a transparent override here that would re-expose the page behind the
+   srcdoc (round 45 H3). */
+
+/* --------------------------------------------------------------- states -- */
+
+/*
+ * Loading is a pulse on the toolbar, not a spinner over the list.
+ *
+ * A spinner would hide content the user can already read; a 2px line at the
+ * top of the pane says "working" without taking anything away. It animates
+ * transform only, and it stops the moment aria-busy clears -- there is no
+ * infinite animation in this file when idle.
+ */
+#topbar::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  transform: scaleX(0);
+  transform-origin: left;
+  opacity: 0;
+  pointer-events: none;
+}
+#shell[aria-busy='true'] #topbar::after {
+  animation: sweep 1.1s var(--ease-in) infinite;
+  opacity: 1;
+}
+@keyframes sweep {
+  0% {
+    transform: translate3d(-100%, 0, 0) scaleX(0.4);
+  }
+  100% {
+    transform: translate3d(100%, 0, 0) scaleX(0.4);
+  }
+}
+
+/* --------------------------------------------------------------- polish -- */
+
+/* Scrollbars, so a dark theme does not get a bright system scrollbar. */
+#scroller,
+#cats {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+#scroller::-webkit-scrollbar,
+#cats::-webkit-scrollbar {
+  width: 10px;
+}
+#scroller::-webkit-scrollbar-thumb,
+#cats::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: var(--r-full);
+}
+#scroller::-webkit-scrollbar-thumb:hover,
+#cats::-webkit-scrollbar-thumb:hover {
+  background: var(--fg-faint);
+  background-clip: content-box;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--fg);
+}
+
+.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+  box-shadow: 0 1px 2px var(--glow);
+}
+
+@keyframes gate-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+#gate-card {
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-lg);
+}
+#gate-card::before {
+  /*
+   * A thin accent edge along the top of the card.
+   *
+   * The bleed must equal the card's own padding exactly, or the strip
+   * overhangs the rounded corners. It was hardcoded at -26px while the
+   * padding is --s-6 (24px) -- a 2px overhang on both sides, sitting outside
+   * the card's radius on the first screen a new user sees. Deriving it from
+   * the same token means the two cannot drift apart again.
+   */
+  content: '';
+  display: block;
+  height: 3px;
+  margin: calc(var(--s-6) * -1) calc(var(--s-6) * -1) var(--s-5);
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  background: linear-gradient(90deg, var(--accent), var(--warning));
+}
+
+#toast {
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-lg);
+  /* Positioning context for the drain line. */
+  position: fixed;
+}
+
+/*
+ * High Contrast wants heavier separation than the other themes.
+ * Attribute-scoped so it costs nothing anywhere else.
+ */
+html[data-theme='contrast'] .row {
+  border-bottom-width: 2px;
+}
+html[data-theme='contrast'] .ghost,
+html[data-theme='contrast'] #search {
+  border-width: 2px;
+}
+html[data-theme='contrast'] .row[aria-selected='true'] {
+  outline: 2px solid var(--fg);
+  outline-offset: -2px;
+}
+

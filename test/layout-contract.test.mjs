@@ -10,8 +10,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { readBundle } from './helpers/css.mjs';
 
-const css = readFileSync(new URL('../src/app/app.css', import.meta.url), 'utf8');
+const css = readBundle();
 const app = readFileSync(new URL('../src/app/app.js', import.meta.url), 'utf8');
 // The reader cluster moved out of app.js in the round-51 workspace extraction.
 const reader = readFileSync(new URL('../src/app/reader.js', import.meta.url), 'utf8');

@@ -12,6 +12,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { readBundle } from './helpers/css.mjs';
 
 /*
  * The server-search fallback moved out of app.js into its own module -- it was
@@ -21,7 +22,7 @@ import { readFileSync } from 'node:fs';
 const app = readFileSync(new URL('../src/app/server-search.js', import.meta.url), 'utf8')
   + readFileSync(new URL('../src/app/app.js', import.meta.url), 'utf8');
 const html = readFileSync(new URL('../app.html', import.meta.url), 'utf8');
-const css = readFileSync(new URL('../src/app/app.css', import.meta.url), 'utf8');
+const css = readBundle();
 
 function serverSearchFn() {
   const at = app.indexOf('async function runServerSearch');

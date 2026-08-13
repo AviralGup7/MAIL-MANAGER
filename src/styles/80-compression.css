@@ -1,0 +1,75 @@
+/* =========================================================================
+   SPATIAL COMPRESSION (audit 37, concept #5) — one system, four moves.
+
+   "The UI makes room for what matters right now." The system keys on TASK
+   changes -- scanning, reading, writing -- never on selection changes:
+
+     O1  scanning with no message open: the idle reader's dead column is
+         handed to the list (400 -> 640 cap; full subjects, most snippets).
+     O3  moving down the list: the topbar yields its 61px; scrolling up,
+         focusing search, or entering bulk mode brings it back.
+     O7  writing: the inbox goes quieter (opacity only) instead of louder.
+     O16 reading: quoted history folds, the new words stay above the fold.
+
+   AMENDED DOCTRINE, price stated (audit 37 sec 0): per-frame layout
+   animation remains forbidden. Discrete, state-bound layout transitions of
+   <=140ms are permitted where a measured reflow cost is cited: topbar
+   collapse 0.2ms, grid track change 1.7-2.2ms -- each paid once per user
+   action, <14% of one frame. test/package.test.mjs carries the matching
+   exemption, named and justified, so the relaxation cannot spread silently.
+   ========================================================================= */
+
+/* O1 -- RETIRED BY NAME in the V3 overhaul (round 64.5, docs/OVERHAUL-V3.md
+   R8): the idle reader used to hand its column to the list (minmax(300px,
+   640px) 0), which is what produced the 0px readpane with content spilling
+   past its box (baseline D1). The empty reader now keeps its real column as
+   a designed resting surface -- "Select a message", centered, with the
+   keyboard legend. The transition stays: the rail opening still animates
+   the columns. */
+#panes {
+  transition: grid-template-columns var(--dur-fast) var(--ease-out);
+}
+
+/* O3 -- the topbar yields while the list is in motion. The guards are the
+   design: never while searching (the bar owns the search field), never
+   while a selection is live (bulk mode is aiming, not travelling). */
+/* `body #topbar`, not `#topbar`: the collapse lives in this layer and the
+   element already has a rule in it; same-layer duplicates are the drift
+   this guard exists to catch. */
+body #topbar {
+  height: var(--topbar-h);
+  overflow: hidden;
+  transition:
+    height var(--dur-fast) var(--ease-out),
+    padding var(--dur-fast) var(--ease-out),
+    opacity var(--dur-fast) linear;
+}
+/*
+ * SHORT SCREENS GET A SHORTER BAR (round 54, the R50-deferred target).
+ * On a low viewport the 61px bar is a tenth of the room; the list is the
+ * surface, so the chrome yields. The token drives the same height the O3
+ * collapse animates from, so the two systems agree by construction.
+ * 48 + 1px hairline = 49, measured the same way as the 61 below.
+ */
+@media (max-height: 700px) {
+  :root { --topbar-h: 49px; }
+  body #topbar { padding: var(--s-2) var(--s-4); }
+}
+
+body.list-scrolled:not(.searching):not(.selecting) #topbar {
+  height: 0;
+  padding-block: 0;
+  opacity: 0;
+}
+
+/* O7 -- composing quiets the surroundings. Opacity only: the sanctioned
+   half of the doctrine. Pointer events stay live -- quieting, not locking. */
+#sidebar,
+#main {
+  transition: opacity var(--dur-fast) linear;
+}
+body.composing #sidebar,
+body.composing #main {
+  opacity: 0.5;
+}
+

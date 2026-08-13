@@ -4,7 +4,36 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>BITS Mail Manager</title>
-    <link rel="stylesheet" href="src/app/app.css" />
+    <!-- THE STYLESHEET, AS VOLUMES. src/app/app.css became src/styles/ (see
+         docs/STRUCTURE.md): the NN- prefix IS the load order, this <link> run
+         must equal the sorted directory (pinned by test/structure.test.mjs),
+         and 99-reduced-motion.css must stay last. -->
+    <link rel="stylesheet" href="src/styles/00-tokens.css" />
+    <link rel="stylesheet" href="src/styles/10-shell.css" />
+    <link rel="stylesheet" href="src/styles/12-topbar.css" />
+    <link rel="stylesheet" href="src/styles/14-panes.css" />
+    <link rel="stylesheet" href="src/styles/20-list.css" />
+    <link rel="stylesheet" href="src/styles/22-skeleton.css" />
+    <link rel="stylesheet" href="src/styles/30-reader.css" />
+    <link rel="stylesheet" href="src/styles/32-text-discipline.css" />
+    <link rel="stylesheet" href="src/styles/40-suggest.css" />
+    <link rel="stylesheet" href="src/styles/42-rails.css" />
+    <link rel="stylesheet" href="src/styles/44-reader-head.css" />
+    <link rel="stylesheet" href="src/styles/50-gate.css" />
+    <link rel="stylesheet" href="src/styles/52-toast.css" />
+    <link rel="stylesheet" href="src/styles/54-responsive.css" />
+    <link rel="stylesheet" href="src/styles/60-appearance.css" />
+    <link rel="stylesheet" href="src/styles/62-features.css" />
+    <link rel="stylesheet" href="src/styles/64-motion.css" />
+    <link rel="stylesheet" href="src/styles/66-iconography.css" />
+    <link rel="stylesheet" href="src/styles/68-depth.css" />
+    <link rel="stylesheet" href="src/styles/72-timetable.css" />
+    <link rel="stylesheet" href="src/styles/80-compression.css" />
+    <link rel="stylesheet" href="src/styles/82-spatial-memory.css" />
+    <link rel="stylesheet" href="src/styles/84-dialogs.css" />
+    <link rel="stylesheet" href="src/styles/86-v3-skin.css" />
+    <link rel="stylesheet" href="src/styles/90-motion-system.css" />
+    <link rel="stylesheet" href="src/styles/99-reduced-motion.css" />
   </head>
   <body>
     <!--

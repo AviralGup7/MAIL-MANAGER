@@ -13,9 +13,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readBundle } from './helpers/css.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const css = readFileSync(join(ROOT, 'src/app/app.css'), 'utf8');
+const css = readBundle();
 const js = readFileSync(join(ROOT, 'src/app/app.js'), 'utf8');
 // move() left app.js with the bulk cluster (round 52 step 6).
 const bulk = readFileSync(join(ROOT, 'src/app/bulk.js'), 'utf8');

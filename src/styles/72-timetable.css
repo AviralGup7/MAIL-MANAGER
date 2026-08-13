@@ -1,0 +1,850 @@
+/* ========================================================================== *
+ * TIMETABLE
+ *
+ * A layer panel, not a page: the timetable is consulted alongside mail, and
+ * making it a separate view would mean losing your place in the inbox to
+ * check when a class is. Uses only theme tokens, so all six themes work.
+ * ========================================================================== */
+
+#btn-timetable {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+/* The timetable rail button while its workspace is the active surface:
+   the sidebar is the app's navigation, so the mark uses the same current
+   language the category rail does. */
+#btn-timetable.workspace-active {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+
+.tt-badge {
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-faint);
+}
+.tt-badge:empty {
+  display: none;
+}
+/* Attention is a different STATE, not a bigger number. */
+.tt-badge[data-kind='attention'] {
+  color: var(--warning);
+  font-weight: var(--w-semi);
+}
+
+/*
+ * THE TIMETABLE WORKSPACE (round 54).
+ *
+ * Promoted from a fixed 1040px dialog to the main surface: the mail chrome
+ * hides while it is open, so this fills #main instead of floating over mail
+ * it is not using. The entrance animation survives — `display: none` under
+ * [hidden] restarts it every time the workspace opens, which is exactly the
+ * one transition worth animating.
+ */
+#tt-workspace {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.tt-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  animation: tt-in var(--dur-base) var(--ease-out) both;
+}
+
+/*
+ * Internal navigation. A tab bar, not a second sidebar: the workspace has
+ * four rooms at most, and tabs say all of them at once — no hidden drawers.
+ * Rooms without content never render their tab, so a bare schedule shows
+ * exactly one word.
+ */
+.tt-tabs {
+  display: flex;
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-4) 0;
+  border-bottom: 1px solid var(--line);
+}
+.tt-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: var(--t-sm);
+  font-weight: var(--w-medium);
+  cursor: pointer;
+  margin-bottom: -1px;
+}
+.tt-tab:hover { color: var(--fg); }
+.tt-tab.active {
+  color: var(--fg);
+  border-bottom-color: var(--accent);
+}
+.tt-tab-count {
+  min-width: 1.4em;
+  padding: 0 0.45em;
+  border-radius: var(--r-full, 999px);
+  background: var(--accent-soft);
+  color: var(--fg);
+  font-size: var(--t-xs);
+  font-weight: var(--w-semi);
+  text-align: center;
+}
+.tt-tabpane { min-height: 0; }
+
+@keyframes tt-in {
+  /* translate3d, not translateY: the 3d form promotes to its own compositor
+     layer, and this is the largest animated surface in the app -- the one
+     where a dropped frame is most visible. It was the only keyframe of
+     seventeen not using it. */
+  from { opacity: 0; transform: translate3d(0, 8px, 0) scale(0.995); }
+  to   { opacity: 1; transform: none; }
+}
+
+.tt-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  border-bottom: 1px solid var(--line);
+}
+.tt-head h2 {
+  font-size: var(--t-lg);
+  margin: 0;
+}
+.tt-sub {
+  color: var(--fg-faint);
+  font-size: var(--t-xs);
+  flex: 1;
+}
+
+.tt-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--s-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+  overscroll-behavior: contain;
+}
+.tt-intro,
+.tt-note {
+  color: var(--fg-dim);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  max-width: 68ch;
+  margin: 0;
+}
+.tt-notice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding: var(--s-3);
+  border-left: 2px solid var(--danger);
+  background: var(--bg);
+  font-size: var(--t-sm);
+}
+
+.tt-block-title {
+  font-size: var(--t-sm);
+  font-weight: var(--w-semi);
+  color: var(--fg-dim);
+  margin: 0 0 var(--s-2);
+  text-transform: uppercase;
+  letter-spacing: var(--track-tiny);
+}
+
+/* --- search ------------------------------------------------------------- */
+
+.tt-search {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.tt-label {
+  font-size: var(--t-sm);
+  font-weight: var(--w-medium);
+}
+#tt-q {
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+.tt-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  max-height: 320px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.tt-results[hidden] {
+  display: none;
+}
+.tt-result {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border-bottom: 1px solid var(--line);
+}
+.tt-result:last-child {
+  border-bottom: 0;
+}
+.tt-result-main {
+  font-size: var(--t-sm);
+}
+.tt-result-meta {
+  font-size: var(--t-xs);
+  color: var(--fg-faint);
+}
+
+/* --- chooser ------------------------------------------------------------ */
+
+.tt-chooser {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: var(--s-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  background: var(--bg);
+}
+.tt-chooser-title {
+  font-size: var(--t-md);
+  margin: 0;
+}
+.tt-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.tt-legend {
+  font-size: var(--t-sm);
+  font-weight: var(--w-medium);
+}
+.tt-hint {
+  font-size: var(--t-xs);
+  color: var(--fg-faint);
+}
+.tt-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+.tt-chip {
+  padding: var(--s-1) var(--s-3);
+  border: 1px solid var(--line);
+  /* --r-sm is the scale's value for chips; there is no pill token and one
+     control is not a reason to invent one. */
+  border-radius: var(--r-sm);
+  background: var(--bg-raised);
+  color: var(--fg);
+  font-size: var(--t-sm);
+  cursor: pointer;
+  /*
+   * Timetable controls were the last interactive surfaces with no transition.
+   * The panel is a dense grid of choices, so a chip that changes state
+   * instantly gives no confirmation the click landed where you meant.
+   */
+  transition:
+    background-color var(--dur-instant) linear,
+    border-color var(--dur-instant) linear,
+    color var(--dur-instant) linear;
+}
+.tt-chip:hover {
+  border-color: var(--line-strong);
+  background: var(--bg-sunken);
+}
+.tt-chip[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.tt-chip:active {
+  transform: translateY(1px);
+}
+
+.tt-section {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px var(--s-3);
+  text-align: left;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-raised);
+  color: var(--fg);
+  cursor: pointer;
+  min-width: 260px;
+  transition:
+    border-color var(--dur-instant) linear,
+    background-color var(--dur-instant) linear;
+}
+.tt-section:hover {
+  border-color: var(--accent);
+  background: var(--bg-sunken);
+}
+.tt-section:active {
+  transform: translateY(1px);
+}
+.tt-section-name {
+  grid-row: 1 / span 3;
+  align-self: center;
+  font-weight: var(--w-semi);
+  font-size: var(--t-md);
+  color: var(--accent);
+}
+.tt-section-when {
+  font-size: var(--t-sm);
+}
+.tt-section-who,
+.tt-section-where {
+  font-size: var(--t-xs);
+  color: var(--fg-faint);
+}
+.tt-flag {
+  grid-column: 2;
+  font-size: var(--t-xs);
+  color: var(--warning);
+}
+
+/* --- proposals and conflicts -------------------------------------------- */
+
+.tt-block {
+  display: flex;
+  flex-direction: column;
+}
+.tt-proposal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--r-sm);
+  margin-bottom: var(--s-2);
+}
+.tt-proposal-what {
+  font-size: var(--t-sm);
+  font-weight: var(--w-medium);
+}
+/* The verbatim sentence. Quoted, so it is clearly THEIR words not ours. */
+.tt-evidence {
+  margin: 0;
+  padding-left: var(--s-3);
+  border-left: 2px solid var(--line);
+  color: var(--fg-dim);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+.tt-proposal-actions {
+  display: flex;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+
+.tt-conflict {
+  padding: var(--s-2) var(--s-3);
+  font-size: var(--t-sm);
+  border-left: 2px solid var(--warning);
+  margin-bottom: var(--s-1);
+}
+.tt-conflict.tt-blocking {
+  border-left-color: var(--danger);
+}
+
+/* --- week grid ---------------------------------------------------------- */
+
+.tt-grid {
+  display: grid;
+  /* Columns follow the pruned day set (round 54): as many tracks as there
+     are classed days, never narrower than a readable column, never wider
+     than one — a lone Monday must not become a banner. */
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: var(--s-2);
+}
+.tt-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  min-width: 0;
+  max-width: 340px;
+}
+.tt-col-head {
+  font-size: var(--t-xs);
+  font-weight: var(--w-semi);
+  color: var(--fg-faint);
+  text-transform: uppercase;
+  letter-spacing: var(--track-tiny);
+  padding-bottom: var(--s-1);
+  border-bottom: 1px solid var(--line);
+}
+.tt-none {
+  color: var(--fg-faint);
+  font-size: var(--t-xs);
+  padding: var(--s-1) 0;
+}
+.tt-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: var(--s-2);
+  border-radius: var(--r-sm);
+  border-left: 2px solid var(--accent);
+  background: var(--bg);
+  min-width: 0;
+}
+.tt-cell.tt-tutorial {
+  border-left-color: var(--warning);
+}
+.tt-cell.tt-practical {
+  border-left-style: dashed;
+}
+.tt-cell[data-confirm='true'] {
+  border-left-color: var(--warning);
+}
+.tt-cell[data-locked='true'] {
+  outline: 1px dotted var(--fg-faint);
+}
+.tt-cell-time {
+  font-size: var(--t-xs);
+  color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
+}
+.tt-cell-course {
+  font-size: var(--t-sm);
+  font-weight: var(--w-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tt-cell-room {
+  font-size: var(--t-xs);
+  color: var(--fg-faint);
+}
+
+/* --- class list --------------------------------------------------------- */
+
+.tt-course {
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  margin-bottom: var(--s-2);
+}
+.tt-course-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border-bottom: 1px solid var(--line);
+}
+.tt-course-name {
+  font-size: var(--t-sm);
+  font-weight: var(--w-medium);
+}
+.tt-entry {
+  display: grid;
+  grid-template-columns: 48px 1fr 100px 1fr auto;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--t-sm);
+}
+.tt-entry:last-child {
+  border-bottom: 0;
+}
+.tt-entry[data-locked='true'] {
+  background: var(--bg);
+}
+/*
+ * The conflict "Show" jump lands here (bug-hunt 44 #53). A ring says "this
+ * is the row the warning meant", fading by OPACITY on a pseudo-element —
+ * transform/opacity-only, per this file's compositor rule. Reduced-motion
+ * users get the ring HELD STEADY via --flash-rest instead of a fade, so the
+ * marker never disappears on them (and no animation is removed, only its
+ * movement).
+ */
+.tt-entry.tt-flash {
+  position: relative;
+}
+.tt-entry.tt-flash::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-sm);
+  box-shadow: 0 0 0 2px var(--accent);
+  background: var(--accent-soft);
+  opacity: var(--flash-rest);
+  pointer-events: none;
+  animation: tt-flash var(--dur-flash) var(--ease-out) 1;
+}
+@keyframes tt-flash {
+  from { opacity: 1; }
+  to { opacity: var(--flash-rest); }
+}
+
+.tt-kind {
+  font-weight: var(--w-semi);
+  color: var(--accent);
+  font-size: var(--t-xs);
+}
+.tt-kind.tt-tutorial,
+.tt-kind.tt-practical {
+  color: var(--fg-dim);
+}
+/* Wide layout: the condensed recovery line stays out of the five-column row. */
+.tt-meta { display: none; }
+
+.tt-where,
+.tt-who {
+  font-size: var(--t-xs);
+  color: var(--fg-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/*
+ * The instructor-in-charge, marked with a leading dot. The document says it in
+ * BLOCK CAPITALS; shouting it here would be louder than the class itself, so
+ * it gets weight and a full-strength colour instead.
+ */
+.tt-lead {
+  color: var(--fg);
+  font-weight: var(--w-medium);
+}
+.tt-lead::before {
+  content: '\2022';
+  color: var(--accent);
+  margin-right: 3px;
+}
+/* Exams: a dated list, not a grid -- they are one-off events, not a week. */
+.tt-exams {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tt-exam {
+  display: grid;
+  grid-template-columns: 68px 1fr auto;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-1) var(--s-2);
+  border-radius: var(--r-sm);
+}
+.tt-exam:nth-child(odd) {
+  background: var(--bg-sunken);
+}
+.tt-exam-course {
+  font-size: var(--t-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tt-exam-when {
+  font-size: var(--t-xs);
+  color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* A compre is three hours and decides the grade; a midsem is ninety minutes. */
+.tt-kind.tt-exam-compre {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+.tt-kind.tt-exam-midsem {
+  background: var(--bg-sunken);
+  color: var(--fg-faint);
+}
+.tt-unresolved {
+  font-style: italic;
+}
+
+/* The section-switch chooser, opened inline under an entry. */
+.tt-switch {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: var(--s-1);
+  padding-left: var(--s-3);
+  border-left: 2px solid var(--line);
+}
+
+/*
+ * The unsaved-changes banner. Louder than a conflict, because a conflict is
+ * something to think about and this is data about to be lost.
+ */
+.tt-unsaved {
+  border-left: 2px solid var(--danger);
+  background: var(--bg-sunken);
+  padding: var(--s-2) var(--s-3);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  align-items: flex-start;
+}
+.tt-unsaved-msg {
+  font-size: var(--t-sm);
+  color: var(--fg);
+  margin: 0;
+}
+
+/* Chosen attachments, above the body. Same chip language as the reader's. */
+#c-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  padding: var(--s-2) 0;
+}
+/* Size-budget meter (round 45 M3): a slim track whose fill states the share
+   of Gmail's 25MB ceiling already spent. Colour carries the urgency; the
+   title attribute carries the exact numbers for anyone who wants them. */
+.c-budget {
+  flex-basis: 100%;
+  height: 4px;
+  border-radius: var(--r-full);
+  background: var(--bg-sunken);
+  overflow: hidden;
+  display: block;
+}
+.c-budget-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--r-full);
+  background: var(--accent);
+  /* scaleX, not width: the fill is decoration, and animating layout in a
+     compose panel would trip the no-layout-animation doctrine the design
+     guards enforce (round 46). */
+  transform-origin: left center;
+  transition: transform var(--dur-base) var(--ease-out);
+}
+.c-budget[data-kind='warn'] .c-budget-fill { background: var(--warning); }
+.c-budget[data-kind='over'] .c-budget-fill { background: var(--danger); }
+/* Drag-over affordance: the whole panel says "drop here" (round 46 #36). */
+#compose.dropping {
+  outline: 2px dashed var(--accent);
+  outline-offset: -4px;
+}
+.c-file {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-1) var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  background: var(--bg-sunken);
+  font-size: var(--t-sm);
+  max-width: 100%;
+}
+.c-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 22ch;
+}
+.c-file-size {
+  color: var(--fg-faint);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------------------------- conversation strip -- */
+
+/*
+ * One entry per message in the open conversation, oldest first. A quiet strip
+ * above the body rather than a stack of expanded messages: the body frame is
+ * sandboxed and origin-less, and five of them would be five sanitiser passes
+ * and five layouts for four bodies nobody is reading.
+ */
+#r-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: var(--s-3) 0 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.r-msg {
+  display: grid;
+  grid-template-columns: minmax(0, 12ch) auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--s-2);
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  border: 0;
+  background: var(--bg-raised);
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: var(--t-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur-instant) linear;
+}
+.r-msg + .r-msg {
+  border-top: 1px solid var(--line);
+}
+.r-msg:hover {
+  background: var(--bg-sunken);
+}
+.r-msg:active {
+  transform: translateY(1px);
+}
+/* The message you are reading. A left bar, not a fill: the strip sits next to
+   the body and a filled row would compete with it. */
+.r-msg.current {
+  background: var(--bg-sunken);
+  box-shadow: inset 2px 0 0 var(--accent);
+  color: var(--fg);
+}
+.r-msg.unread .r-msg-from {
+  font-weight: var(--w-semi);
+  color: var(--fg);
+}
+.r-msg-from {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.r-msg-date {
+  color: var(--fg-faint);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.r-msg-snip {
+  color: var(--fg-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * The conversation count on a list row. Sits beside the sender, because it is
+ * a property of WHO is in the conversation, not of the subject.
+ */
+.r-count {
+  flex: none;
+  margin-left: var(--s-1);
+  /* On the 4px grid like everything else; the pill shape comes from the
+     radius, not from odd padding. */
+  padding: 0 var(--s-1);
+  min-width: 18px;
+  text-align: center;
+  border-radius: var(--r-full);
+  background: var(--bg-sunken);
+  color: var(--fg-faint);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--lh-snug);
+}
+.row.unread .r-count {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.tt-entry-acts {
+  display: flex;
+  gap: var(--s-1);
+}
+
+/* --- provenance --------------------------------------------------------- */
+
+.tt-prov {
+  grid-column: 1 / -1;
+  padding: var(--s-3);
+  background: var(--bg);
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.tt-prov-row {
+  display: grid;
+  grid-template-columns: 90px 1fr auto auto;
+  align-items: center;
+  gap: var(--s-3);
+  font-size: var(--t-xs);
+}
+.tt-prov-field {
+  color: var(--fg-faint);
+  text-transform: uppercase;
+  letter-spacing: var(--track-tiny);
+}
+.tt-prov-value {
+  font-size: var(--t-sm);
+}
+.tt-prov-source {
+  color: var(--fg-faint);
+}
+.tt-history {
+  font-size: var(--t-xs);
+  color: var(--fg-dim);
+}
+.tt-history summary {
+  cursor: pointer;
+  color: var(--fg-faint);
+}
+.tt-history-row {
+  padding: 2px 0 2px var(--s-3);
+}
+
+@media (max-width: 860px) {
+  .tt-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .tt-entry {
+    grid-template-columns: 40px 1fr auto;
+  }
+  .tt-where,
+  .tt-who {
+    display: none;
+  }
+  /*
+   * …but their facts are NOT lost (round 63 / responsive-audit §6): the
+   * condensed meta line takes the second row of the middle column. Room
+   * and instructor stay one glance away at narrow widths instead of
+   * vanishing behind a hover tooltip a touch user can never trigger.
+   */
+  .tt-meta {
+    display: block;
+    grid-column: 2;
+    grid-row: 2;
+    /* The 1fr cell still needs the min-width floor or the ellipsis is dead. */
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--t-xs);
+    color: var(--fg-faint);
+  }
+}
+
+/*
+ * Rule 5, and it MUST be last.
+ *
+ * This block was previously in the middle of the file, so the appearance
+ * rules appended after it -- including an infinite `sweep` animation --
+ * escaped it entirely. Same specificity means source order decides, and a
+ * reduced-motion override that does not come last is not an override.
+ */

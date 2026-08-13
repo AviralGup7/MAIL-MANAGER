@@ -16,6 +16,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
+import { bundleStyles } from './css-bundle.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
@@ -136,7 +137,9 @@ const IS_MAIN = Boolean(process.argv[1]) &&
   resolve(process.argv[1]) === join(ROOT, 'tools', 'make-preview.mjs');
 if (IS_MAIN) {
 const appJs = bundle('src/app/app.js');
-const css = read('src/app/app.css');
+// src/app/app.css is now src/styles/ — 26 numbered volumes whose sorted order
+// IS the cascade order. The preview inlines the same bundle the tests read.
+const css = bundleStyles(ROOT);
 
 let html = read('app.html');
 /*
@@ -146,7 +149,10 @@ let html = read('app.html');
  * the builder used to splice the very tag it was replacing into the middle
  * of a string literal — a SyntaxError before the first statement. Audit 33.
  */
-html = html.replace(/<link rel="stylesheet"[^>]*>/, () => `<style>\n${css}\n</style>`);
+// Replace the whole run of volume <link> tags with one inlined block: the
+// first tag becomes the <style>, the rest go away.
+html = html.replace(/<link rel="stylesheet"[^>]*\/>/, () => `<style>\n${css}\n</style>`);
+html = html.replace(/\s*<link rel="stylesheet"[^>]*\/>/g, '');
 html = html.replace(
   /<script type="module" src="src\/app\/app\.js"><\/script>/,
   () => `<script type="module">\n${MOCK()}\n${appJs}\n</script>`

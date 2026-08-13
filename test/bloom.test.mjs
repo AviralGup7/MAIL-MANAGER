@@ -15,9 +15,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readBundle } from './helpers/css.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const css = readFileSync(join(ROOT, 'src/app/app.css'), 'utf8');
+const css = readBundle();
 const js = readFileSync(join(ROOT, 'src/app/app.js'), 'utf8');
 // The list cluster moved out of app.js in the round-52 workspace extraction.
 const list = readFileSync(join(ROOT, 'src/app/list.js'), 'utf8');

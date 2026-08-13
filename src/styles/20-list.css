@@ -1,0 +1,503 @@
+/*
+ * THE MESSAGE ROW
+ * ===============
+ * This is 90% of what a user looks at, so it gets the most attention.
+ *
+ * The previous version defined `.row` in TWO places 470 lines apart, which is
+ * how a component drifts: one block set the background, another added the
+ * selection spine, and neither could be read without the other. One block now.
+ *
+ * LAYOUT: a 3px accent rail, the content, then metadata. The rail is a
+ * scaleX-ed pseudo-element rather than a width change, because transform is
+ * composited and width is layout — at 600 rows that is the difference between
+ * a smooth selection move and a visible stutter.
+ *
+ * `content-visibility: auto` lets the browser skip off-screen rows entirely.
+ * It is the reason this list has no hand-written virtualiser.
+ */
+.row {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--s-1) 1fr auto;
+  gap: var(--s-3);
+  align-items: center;
+  height: var(--row-h);
+  padding: var(--s-3) var(--s-4) var(--s-3) var(--s-2);
+  cursor: pointer;
+  contain: layout paint style;
+  content-visibility: auto;
+  contain-intrinsic-size: var(--row-h);
+  background: var(--bg);
+  /* Only colour transitions here. A transform on the row itself would fight
+     content-visibility and force the compositor to keep off-screen layers.
+     V3: box-shadow joins -- the hover wash animates, never snaps. */
+  transition: background-color var(--dur-instant) linear,
+              box-shadow var(--dur-fast) ease-out;
+}
+
+/*
+ * Hairline separators drawn as an inset pseudo-element, not `border-bottom`.
+ *
+ * A real border sits at the very edge and collides with the accent rail; an
+ * inset line starts after the rail and stops before the right padding, which
+ * is what makes a list read as grouped rather than ruled. It also means the
+ * selected and hovered rows can suppress it cleanly.
+ */
+.row::after {
+  content: '';
+  position: absolute;
+  left: var(--s-4);
+  right: var(--s-4);
+  bottom: 0;
+  height: 1px;
+  background: var(--line);
+  transition: opacity var(--dur-instant) linear;
+}
+.row:hover::after,
+.row[aria-selected='true']::after,
+.row:hover + .row::after,
+.row[aria-selected='true'] + .row::after {
+  opacity: 0;
+}
+
+.row:hover {
+  background: var(--bg-raised);
+}
+
+.row[aria-selected='true'] {
+  background: var(--accent-soft);
+}
+
+/* The selection rail. */
+.row::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: var(--s-2);
+  bottom: var(--s-2);
+  width: 3px;
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--dur-fast) var(--ease-spring);
+}
+.row[aria-selected='true']::before {
+  transform: scaleX(1);
+}
+
+/*
+ * UNREAD is carried by three signals, not one: a filled dot, heavier type, and
+ * a brighter surface. Weight alone is too subtle at a glance, and colour alone
+ * fails for anyone who cannot distinguish it.
+ */
+.row.unread {
+  background: var(--bg-raised);
+}
+.row.unread:hover {
+  background: var(--bg-sunken);
+}
+.row.unread .r-subj {
+  font-weight: var(--w-semi);
+  color: var(--fg);
+}
+.row.unread .r-from {
+  font-weight: var(--w-semi);
+  color: var(--fg);
+}
+
+/*
+ * ANYTHING THE ACCESSIBILITY LAYER CALLS AN ALERT MUST LOOK LIKE ONE.
+ *
+ * `#c-status` -- the element that reports "Could not send" in the compose
+ * panel -- was styled with exactly one declaration, `font-size: var(--t-sm)`.
+ * No colour, no weight. A failed send rendered identically to a "Saved" hint,
+ * so the user closes the panel believing the message went. That is the one
+ * hierarchy defect in this app that can cost someone their work, and it
+ * directly undermines the outbox, which exists to prevent exactly that loss.
+ *
+ * `#gate-error` was already correct via `.err` -- checked rather than assumed,
+ * which is why this rule is narrow.
+ *
+ * Keyed off `role="alert"` rather than off a class, so the visual treatment
+ * cannot drift from the semantics: an element the screen reader interrupts for
+ * is an element the eye is interrupted by. `:not(:empty)` keeps it inert until
+ * there is something to say.
+ */
+[role='alert']:not(:empty) {
+  color: var(--danger);
+  font-weight: var(--w-medium);
+}
+
+/* The category dot. Small, and paired with the text tag — never colour alone. */
+.r-bar {
+  width: var(--s-1);
+  height: var(--s-1);
+  border-radius: var(--r-full);
+  background: var(--c, transparent);
+  justify-self: center;
+  transition:
+    transform var(--dur-fast) var(--ease-spring),
+    opacity var(--dur-fast) linear;
+}
+.row.unread .r-bar {
+  transform: scale(1.6);
+}
+
+.r-mid {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.r-line1 {
+  display: flex;
+  gap: var(--s-2);
+  align-items: baseline;
+}
+
+.r-from {
+  font-size: var(--t-sm);
+  /*
+   * COLOUR EASES, WEIGHT DOES NOT.  (See the matching rule on .r-subj.)
+   *
+   * Read/unread is the most frequent visual change in the product, and it
+   * changes five things at once -- row background, subject colour AND weight,
+   * sender colour AND weight, plus the category dot's scale. All of it landed
+   * in a single frame, so the row "blinked" into its read state rather than
+   * settling into it.
+   *
+   * Only `color` is transitioned. font-weight cannot be interpolated
+   * smoothly -- browsers snap between the two faces and reflow the text on the
+   * way -- so animating it produces jitter, not a fade. Colour carries the
+   * motion and the weight simply arrives underneath it, which reads as one
+   * settling change.
+   */
+  transition: color var(--dur-fast) linear;
+  /*
+   * REGULAR, NOT MEDIUM, ON A READ ROW.
+   *
+   * Measured: read sender scored 6.93 and read subject 6.95 on Daylight --
+   * a 0.3% difference, which is a tie. The subject's 1px size advantage was
+   * exactly cancelled by the sender carrying 100 extra weight units, so the
+   * eye had no consistent entry point and re-decided where to start on every
+   * row of a 44-row list.
+   *
+   * The subject has to win. In a campus inbox the sender repeats across whole
+   * runs of rows -- AUGSD, the placement unit, one mailing list -- so it
+   * carries almost no discriminating information, while the subject carries
+   * nearly all of it.
+   *
+   * The UNREAD state is untouched: `.row.unread .r-from` (specificity 0,3,1)
+   * re-applies --w-semi and outranks this rule (0,1,1) regardless of source
+   * order -- it is declared ABOVE, at the unread block. Unread already
+   * separated cleanly at 19.05 vs 17.59 and must not change.
+   *
+   * NOTE FOR ANYONE VERIFYING THIS IN jsdom: jsdom does not implement
+   * specificity and reports last-declaration-wins, so it will claim the unread
+   * sender is 400. Checked against a minimal two-rule case; it is a tooling
+   * artefact, not a cascade bug. Verify in a real browser or by reading the
+   * specificity.
+   *
+   * Uses --w-regular, added to the scale for this: the design-system guard
+   * rejects a bare 400, and it is right to. A weight scale that cannot express
+   * its own base step is incomplete.
+   */
+  font-weight: var(--w-regular);
+  color: var(--fg-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  letter-spacing: var(--track-normal);
+}
+
+.r-subj {
+  font-size: var(--t-md);
+  /* Colour only -- see the note on .r-from. */
+  transition: color var(--dur-fast) linear;
+  color: var(--fg-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: var(--lh-snug);
+}
+
+.r-snip {
+  font-size: var(--t-sm);
+  color: var(--fg-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: var(--lh-snug);
+  /* the bloom swaps this line's allegiance; only its opacity may move */
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+/*
+ * ATTENTION BLOOM, v2 (audit 35 concept #3, reshaped in round 64.5).
+ *
+ * v1 spent the row's second line on a two-line subject (webkit-box clamp 2)
+ * and merely faded the snippet beside it. That arithmetic only ever hid
+ * inside a 68px row with paint containment clipping the spill; at the V3
+ * 62px row the second subject line crossed the separator hairline.
+ *
+ * v2 re-prioritises WIDTH instead of height, so fixed row geometry is not
+ * something the bloom survives, it is something the bloom keeps: the snippet
+ * leaves the flex line entirely (display: none), the subject's 58% cap
+ * lifts, and a clipped subject runs all the way to the category tag. Same
+ * idea as v1 -- the attended row shows more of what you were reading -- with
+ * the overflow class of bug designed out instead of clipped away.
+ *
+ * Gates unchanged, each deliberate:
+ *   - `[aria-selected]` drives it, so j/k gets the bloom for free and a
+ *     keyboard user is not second-class. No :hover bloom: two attended rows
+ *     at once read as a broken list, and selection must win outright.
+ *   - `.subj-clip` is MEASURED (scrollWidth > clientWidth in fillRow), so a
+ *     subject that fits never costs its row the snippet.
+ *   - comfortable only: compact already hides the snippet line and cosy is
+ *     left intentionally unchanged — both densities traded detail for
+ *     density, and the row contract is why the list is fast.
+ */
+:root[data-density='comfortable'] .row[aria-selected='true'].subj-clip .r-subj {
+  max-width: none;
+}
+:root[data-density='comfortable'] .row[aria-selected='true'].subj-clip .r-snip {
+  display: none;
+}
+
+.r-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--s-1);
+  /* A fixed column stops the timestamp jittering as text length changes,
+     which is the sort of thing nobody names but everybody feels. */
+  min-width: 62px;
+}
+
+.r-date {
+  font-size: var(--t-xs);
+  /*
+   * --fg-dim, not --fg-faint.
+   *
+   * The date and the snippet were both assigned "least important" and given
+   * the same token, so a SORTING KEY and a PREVIEW ended up on one visual
+   * layer -- 4.39 and 4.79 on the weight model, effectively indistinguishable.
+   *
+   * They do different jobs. The date is a precise datum people navigate by
+   * ("the one from Tuesday"), it is right-aligned, and it already has
+   * tabular-nums -- everything about it wants to form a scannable column. The
+   * snippet is skimmable prose that is frequently empty after cleaning.
+   *
+   * The size stays at --t-xs: small-and-clear is what makes a column scannable,
+   * and keeping the size difference preserves the hierarchy against the
+   * subject. Only the contrast moves.
+   */
+  color: var(--fg-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  letter-spacing: var(--track-normal);
+}
+
+/*
+ * The star.
+ *
+ * Hidden until hover or until it is on — an always-visible outline star on
+ * every row is 600 pieces of chrome competing with the content. Revealed with
+ * opacity, not display, so it cannot cause a reflow mid-scroll.
+ */
+.r-star {
+  /*
+   * HIT TARGET, not visual size.
+   *
+   * Measured at 18px before this: below the 24px minimum in WCAG 2.2 SC 2.5.8
+   * (Target Size, Minimum), and genuinely hard to hit with a trackpad on a
+   * moving list. The ICON stays 15px -- a bigger star would shout -- but the
+   * pressable area is expanded to 28px with padding, so the target grows
+   * without the graphic changing at all.
+   *
+   * This is the difference between designing what a control looks like and
+   * designing what it is.
+   */
+  border: 0;
+  background: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  /*
+   * NEGATIVE, so the enlarged target does not push the row's other content
+   * around. This pulls the 28px box back to the ~16px the icon occupies. It
+   * is a hit-area correction, not layout rhythm, which is why it is expressed
+   * against the grid rather than as a round number pulled from nowhere.
+   */
+  margin: calc(var(--s-2) * -0.75);
+  padding: 0;
+  border-radius: var(--r-full);
+  color: var(--fg-faint);
+  opacity: 0;
+  transform: scale(0.86);
+  transition:
+    opacity var(--dur-fast) linear,
+    transform var(--dur-fast) var(--ease-spring),
+    background-color var(--dur-instant) linear,
+    color var(--dur-instant) linear;
+}
+.row:hover .r-star,
+.row:focus-within .r-star,
+.r-star[aria-pressed='true'] {
+  opacity: 1;
+  transform: scale(1);
+}
+/*
+ * STARRING IS THE ONE ACTION WITH NO CONSEQUENCE.
+ *
+ * Nothing moves, nothing is lost — it is purely an expression of intent, and
+ * it should be the small pleasure of the interface. The pop fires only on the
+ * FILLED transition: removing a star should be quiet, because asymmetric
+ * feedback is what makes an interaction feel authored rather than mechanical.
+ */
+.r-star[aria-pressed='true'] svg {
+  animation: star-pop var(--dur-base) var(--ease-spring) both;
+}
+
+@keyframes star-pop {
+  0%   { transform: scale(1); }
+  45%  { transform: scale(1.28); }
+  100% { transform: scale(1); }
+}
+
+.r-star:active {
+  transform: scale(0.92);
+}
+
+.r-star:hover {
+  transform: scale(1.12);
+  background: var(--bg-sunken);
+  color: var(--fg-dim);
+}
+/*
+ * A starred row keeps the star colour on hover too -- hover must not read as
+ * "unstarred". Stated once: this was previously two blocks setting the same
+ * property to the same value, which is how a component starts to drift.
+ */
+.r-star[aria-pressed='true'],
+.r-star[aria-pressed='true']:hover {
+  color: var(--star);
+}
+
+/*
+ * Category tag.
+ *
+ * Quiet by default. It is orientation, not the message — a saturated pill on
+ * every row would out-shout the subject line it is meant to support.
+ */
+.tag {
+  font-size: var(--t-xs);
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  padding: 1px var(--s-2);
+  border-radius: var(--r-full);
+  background: transparent;
+  color: var(--fg-faint);
+  border: 1px solid var(--line);
+  white-space: nowrap;
+  font-weight: var(--w-semi);
+  transition:
+    background-color var(--dur-instant) linear,
+    border-color var(--dur-instant) linear,
+    color var(--dur-instant) linear;
+}
+.row:hover .tag {
+  border-color: var(--line-strong);
+  color: var(--fg-dim);
+}
+/* A guessed category should look provisional rather than authoritative. */
+.tag.low {
+  border-style: dashed;
+  opacity: 0.75;
+}
+
+#empty {
+  padding: var(--s-10) var(--s-5);
+  text-align: center;
+  color: var(--fg-faint);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-1);
+  animation: empty-in var(--dur-base) var(--ease-out) both;
+}
+@keyframes empty-in {
+  from { opacity: 0; transform: translate3d(0, 6px, 0); }
+  to   { opacity: 1; transform: none; }
+}
+/*
+ * The empty state's mark sits IN something rather than floating.
+ *
+ * It was a 1.4px outline at 50% opacity on a flat background -- technically
+ * present, visually nothing, and the most-seen screen in a well-triaged inbox.
+ * A soft disc gives the glyph a home and a reason to be centred, which is the
+ * difference between "this view is empty" and "this view failed to render".
+ *
+ * The disc uses accent-soft rather than a grey so the moment carries a little
+ * of the product's colour. Reaching inbox zero is the one genuinely good
+ * outcome in a mail client and it should not look like an error.
+ */
+#empty svg {
+  color: var(--accent);
+  opacity: 0.85;
+  margin-bottom: var(--s-4);
+  padding: var(--s-4);
+  box-sizing: content-box;
+  border-radius: var(--r-full);
+  background: var(--accent-soft);
+  /*
+   * The one ambient life an empty inbox gets (directive §27; animation P6):
+   * the disc breathes. TEXT never breathes — motion on readable content is
+   * the distraction §27 itself bans, which is why the rail-empty lines and
+   * the interactive reader-idle radar rows stay still. The file-end
+   * reduced-motion guard collapses this to one 1ms iteration on its own.
+   * FOUR breaths, then the room settles: an endless loop would keep a
+   * compositor layer awake over an IDLE screen forever — the two
+   * infinite-animation pins (layout-contract, package) exist to refuse
+   * exactly that. The count is even so the loop exits at its base pose,
+   * pixel-identical to never animating.
+   *
+   * (Fix-cycle scar: this comment once closed early and left an orphaned
+   * prose tail; Blink ate the declaration below in error recovery while
+   * jsdom parsed on. The live P7 walk was the backstop that caught it.)
+   */
+  animation: empty-breathe 3.4s var(--ease-out) 0.9s 4 alternate;
+}
+/* Paired with #empty svg — see its comment before retuning either half.
+   The from-pose MUST equal the element's rest styles (opacity .85, no
+   transform): it is where the last breath comes home to. */
+@keyframes empty-breathe {
+  from { opacity: 0.85; transform: none; }
+  to   { opacity: 1;    transform: scale(1.045); }
+}
+#empty-title {
+  margin: 0;
+  /*
+   * Was --t-md, the same size as a subject line, in --fg-dim -- so the
+   * headline of the screen was quieter than the rows it replaced. It leads
+   * now, at full strength, with the explanation staying secondary beneath it.
+   */
+  font-size: var(--t-lg);
+  font-weight: var(--w-semi);
+  color: var(--fg);
+  letter-spacing: var(--track-tight);
+}
+#empty-sub {
+  margin: 0;
+  font-size: var(--t-sm);
+  max-width: 32ch;
+  line-height: var(--lh-body);
+}
+#empty-action {
+  margin-top: var(--s-3);
+}
+

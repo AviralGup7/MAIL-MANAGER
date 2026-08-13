@@ -13,10 +13,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readBundle } from './helpers/css.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
-const css = read('src/app/app.css');
+const css = readBundle();
 const js = read('src/app/app.js') + read('src/app/compose.js')
   // The scroller-fade toggle moved with the list cluster (round 52).
   + read('src/app/list.js')

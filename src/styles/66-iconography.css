@@ -1,0 +1,58 @@
+/* ========================================================================= */
+/* ICONOGRAPHY                                                               */
+/*                                                                           */
+/* One set, one geometry: 20x20 viewBox, 1.6 stroke, currentColor. The       */
+/* interface previously mixed three hand-drawn SVGs with text glyphs -- `x`  */
+/* for close, a hyphen for minimise, an emoji paperclip. A glyph renders in  */
+/* whatever font the platform picks, so it never optically matches a stroked */
+/* icon beside it and is never quite centred in its button.                  */
+/* ========================================================================= */
+
+svg {
+  /* Stops the 4px descender gap that makes every icon sit a touch high. */
+  display: block;
+  flex: none;
+}
+
+/*
+ * Optical, not mathematical. A stroked glyph reads slightly heavy at the same
+ * nominal size as text, so it is nudged down a hair to sit on the same visual
+ * baseline as the label.
+ *
+ * `.primary svg` used to appear in BOTH of these blocks: the first set
+ * `opacity: 0.85`, the second immediately overrode it to `1`. The softening
+ * was dead code, and the duplicate hid the fact. That is deliberate here --
+ * an icon on a filled accent button is already high-contrast and does not
+ * want dimming, whereas a ghost button's icon does.
+ */
+.ghost svg,
+.primary svg {
+  margin-top: -1px;
+}
+.ghost svg {
+  opacity: 0.85;
+}
+.ghost:hover svg {
+  opacity: 1;
+}
+
+.ghost.icon {
+  padding: var(--s-2);
+  aspect-ratio: 1;
+  justify-content: center;
+}
+
+.palette-icon {
+  display: flex;
+  color: var(--fg-faint);
+  flex: none;
+}
+.palette-item.active .palette-icon {
+  color: var(--accent);
+}
+
+.theme-tick {
+  display: flex;
+  align-items: center;
+}
+
