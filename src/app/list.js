@@ -1002,6 +1002,21 @@ function fillRow(li, m) {
     setIcon(star, 'star', { size: 15, filled: starred });
     star.setAttribute('aria-label', starred ? 'Unstar' : 'Star');
   }
+  /*
+   * The checkbox's name must carry the ROW's identity (accessibility audit
+   * A-A3). Twenty identical "Select message" checkboxes are technically
+   * named and practically anonymous: a screen reader walking the roster
+   * heard the same label with no idea which message it armed. The star
+   * button two lines up already names its state; the checkbox names its
+   * OBJECT. Brevity beats completeness -- the option's own name (its
+   * content) already carries the full subject, so 60 chars is ample to
+   * disambiguate. tabindex stays -1: naming fixed, navigation unchanged.
+   */
+  const check = q('.r-check');
+  const who = displayName(isConv ? conv.participants.join(', ') : m.from) || 'unknown sender';
+  const what = (m.subject || '(no subject)').slice(0, 60);
+  const label = `Select: ${who} — ${what}`;
+  if (check.getAttribute('aria-label') !== label) check.setAttribute('aria-label', label);
   li.setAttribute('aria-selected', String(state.selected === m.id));
 }
 
