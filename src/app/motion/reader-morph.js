@@ -93,6 +93,11 @@ export function abortRowIdentity() {
 export function flyRowIdentity(rowDomId, els, doc = globalThis.document) {
   abortRowIdentity(); // a new flight supersedes any airborne one — total reset
   if (reducedMotion()) return false;
+  // No frame clock, no flight: an unschedulable spring's ghost would hang
+  // for the fuse's whole 1.2s — a lying "true". Decline the same way
+  // spring.js's animateValue does, so the swap plays instead (pin: the
+  // rAF-absent decline in motion-reader-morph).
+  if (typeof requestAnimationFrame !== 'function') return false;
   if (!doc) return false;
 
   const row = doc.getElementById(String(rowDomId));
