@@ -36,7 +36,8 @@ src/
                               selectors, shortcuts, contacts, reset-registry
     motion/                   every animation primitive (springs, camera, light,
                               particles, morphs); imports nothing app-side
-    system/                   settings, themes, cache, identity (direct),
+    system/                   settings, themes, cache, body-cache (reader's
+                              offline floor), identity (direct),
                               snooze/outbox persistence, backup, fallback,
                               deep-links, storage/view stores,
                               root-attrs (settings -> :root stamps)

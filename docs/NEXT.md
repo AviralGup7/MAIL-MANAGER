@@ -15,6 +15,19 @@ work the same as any other.
 
 ## M1 — The local-first data layer
 
+**Status 2026-08-13.** Milestone 1 landed: `system/body-cache.js` keeps the
+last 50 opened bodies (bounded twice — count and total chars; giants
+refused) beside the header cache under its own storage key. The reader
+remembers each painted body, falls back to the saved copy through the SAME
+renderBodyInto pipeline (one sanitiser, two sources), and says so in an
+app-chrome strip dated from the copy — "a copy must never masquerade as the
+message." A certainly-offline browser (`navigator.onLine === false`, the
+direction that never lies) short-circuits to the floor instead of spending
+the 20s timeout. Sign-out drops the floor; resync keeps it (a body is
+immutable and unreachable without its store record; clearing on resync
+would discard exactly the copies that make a cursor-expiry week
+survivable). Pins: `test/body-cache.test.mjs`.
+
 **The claim.** This app graduates from "fast Gmail viewer" to "mail client"
 the day reading and triage survive a dead network.
 

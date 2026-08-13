@@ -31,6 +31,7 @@ import { CATEGORY_LABELS } from '../../classify/categories.js';
 import { actionsFor } from './mailboxes.js';
 import { READER_TYPOGRAPHY, readerCsp } from './reader-frame.js';
 import { overlayGet } from '../search/server-search.js';
+import { rememberBody, cachedBody } from '../system/body-cache.js';
 import { toast } from '../overlays/toast.js';
 import { openSnoozeMenu } from '../overlays/snooze-menu.js';
 import { openMenu } from '../overlays/menu.js';
@@ -394,7 +395,29 @@ async function loadBody(id) {
   const token = ++bodyToken;
   el.rLoading.hidden = false;
   writeBodyDoc('');
+  /* A new open never inherits the previous message's provenance strip. */
+  el.rOffline.hidden = true;
   try {
+    /*
+     * KNOWN-OFFLINE FAST PATH (M1, 2026-08-13).
+     *
+     * navigator.onLine lies in only one direction: `false` is certain (the
+     * browser sees no interface), `true` merely hopes. So false may
+     * short-circuit to the saved copy — skipping a GET_BODY that would
+     * otherwise spin up to its 20s timeout before failing — while true must
+     * still walk the live path, whose catch owns the fallback.
+     *
+     * A cache MISS falls through to the live attempt on purpose: offline is
+     * a statement about NOW, not about the next second.
+     */
+    if (navigator.onLine === false) {
+      const cached = await cachedBody(id);
+      if (token !== bodyToken) return;
+      if (cached) {
+        showOfflineCopy(cached);
+        return;
+      }
+    }
     const body = await send('GET_BODY', { id });
     if (token !== bodyToken) return; // user moved on; drop the stale response
 
@@ -419,12 +442,44 @@ async function loadBody(id) {
     lastBody = body;
     renderAttachments(body);
     renderBodyInto(body);
+    /* Paint first, persist second, and synchronously enough that the next
+       open can rely on it — but never awaited: a storage round trip belongs
+       to the floor, not to the render it follows (M1). */
+    void rememberBody(id, body);
   } catch (err) {
     if (token !== bodyToken) return;
+    /* The live fetch failed; the floor gets its say before the error does.
+       A saved copy WITH its provenance strip beats a red sentence about a
+       message the user may have read yesterday (M1). */
+    const cached = await cachedBody(id);
+    if (token !== bodyToken) return; // the prime await can outlive the open
+    if (cached) {
+      showOfflineCopy(cached);
+      return;
+    }
     writeBodyDoc(escapeDoc(`Could not load this message.\n\n${err.message}`));
   } finally {
     if (token === bodyToken) el.rLoading.hidden = true;
   }
+}
+
+/**
+ * Render a body from the local floor and say so, in the app chrome where
+ * the body document cannot lie about it (the frame is hostile territory —
+ * a marker INSIDE it could be painted by the mail).
+ *
+ * The body flows through renderAttachments + renderBodyInto exactly like a
+ * fresh one, so sanitiser, CSP, sandbox, image policy and thread behaviour
+ * are the live ones. The only visible difference is the strip — and that
+ * is the feature: "a copy" must never masquerade as "the message".
+ */
+function showOfflineCopy(cached) {
+  lastBody = cached;
+  renderAttachments(cached);
+  renderBodyInto(cached);
+  el.rOfflineText.textContent =
+    `Offline copy — saved ${fullDate(cached.offlineAt)}. Images and attachments may be unavailable.`;
+  el.rOffline.hidden = false;
 }
 
 

@@ -26,6 +26,7 @@
 
 import { Store } from './mail/store.js';
 import { loadCache, saveCache, clearCache, createSaver, CACHE_MAX } from './system/cache.js';
+import { clearBodyCache } from './system/body-cache.js';
 import { THEMES, applyTheme, getTheme, DEFAULT_THEME } from './system/themes.js';
 import { icon, setIcon } from './core/icons.js';
 import { setAttr } from './core/dom.js';
@@ -303,6 +304,10 @@ const el = {
   rImagesText: $('r-images-text'),
   rImagesShow: $('r-images-show'),
   rImagesAlways: $('r-images-always'),
+  // The offline-copy strip the reader shows when a body came from the
+  // local body cache rather than the live worker (M1).
+  rOffline: $('r-offline'),
+  rOfflineText: $('r-offline-text'),
   rLoading: $('r-loading'),
   rOpen: $('r-open'),
   toast: $('toast'),
@@ -2107,6 +2112,10 @@ $('btn-signout').addEventListener('click', async () => {
   // clearing the stores schedules one last save that must never land.
   saver.invalidate();
   await clearCache();
+  /* The body floor goes too (M1): unlike a resync — where bodies survive
+     because a body is immutable and unreachable without its store record —
+     sign-out changes the ACCOUNT, and nothing of it may stay behind. */
+  await clearBodyCache();
   resetView({ allMailboxes: true });
   saver.invalidate();
   state.signedIn = false;

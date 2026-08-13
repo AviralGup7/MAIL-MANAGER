@@ -582,6 +582,20 @@
               -->
               <div id="r-thread" role="list" aria-label="Messages in this conversation" hidden></div>
 
+              <!--
+                OFFLINE COPY STRIP (M1, 2026-08-13).
+
+                Shown only when the body below rendered from the local body
+                cache rather than the live worker. It hugs the frame it
+                describes, and it lives in the APP — never inside the srcdoc
+                — because the body document is sender-controlled: a marker
+                painted there could be imitated by the mail itself. This
+                strip is what keeps "a saved copy" from ever masquerading as
+                "the live message".
+              -->
+              <div id="r-offline" hidden>
+                <span id="r-offline-text"></span>
+              </div>
 
               <div id="r-bodywrap">
                 <!--
