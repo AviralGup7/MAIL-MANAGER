@@ -60,6 +60,7 @@ const DOMAIN_KEYS = [
   { key: 'composeDraft', owner: 'src/app/compose/draft-store.js', purpose: 'compose crash-recovery draft', backup: false, reason: 'transient by design; a stale draft restored on another machine is a surprise, not a recovery' },
   { key: 'queryHistory', owner: 'src/app/search/suggest.js', purpose: 'recent search suggestions', backup: false, reason: 'reconstructible convenience, not investment' },
   { key: 'msgCache', owner: 'src/app/system/cache.js', purpose: 'warm-start message cache', backup: false, reason: 'reconstructed by sync' },
+  { key: 'bodyCache', owner: 'src/app/system/body-cache.js', purpose: 'offline body floor for the reader (M1)', backup: false, reason: 're-remembered on next open; the worker is the source of truth, a backup copy would only grow stale' },
   { key: 'activityLog', owner: 'src/app/academic/activity.js', purpose: 'what the app did to your mail', backup: false, reason: 'a log about THIS installation' },
   { key: 'outbox', owner: 'src/app/compose/outbox.js', purpose: 'pending-send queue', backup: false, reason: 'importing pending sends on a second machine would send them twice' },
   { key: 'outboxClaims', owner: 'src/app/compose/outbox.js', purpose: 'dispatch coordination claims', backup: false, reason: 'transient coordination state' },

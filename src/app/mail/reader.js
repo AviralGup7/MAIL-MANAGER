@@ -409,8 +409,15 @@ async function loadBody(id) {
      *
      * A cache MISS falls through to the live attempt on purpose: offline is
      * a statement about NOW, not about the next second.
+     *
+     * The typeof guard is not paranoia: the integration harness runs these
+     * modules with a hand-picked global set that includes document but NOT
+     * navigator, and the unbound reference threw straight INTO the catch —
+     * four reader tests went red on 2026-08-13 ("Could not load… navigator
+     * is not defined") for mail that was perfectly fetchable. Absent signal
+     * must mean "walk the live path", never "render an error".
      */
-    if (navigator.onLine === false) {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       const cached = await cachedBody(id);
       if (token !== bodyToken) return;
       if (cached) {

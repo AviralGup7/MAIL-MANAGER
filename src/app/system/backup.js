@@ -68,7 +68,7 @@ export const EXPORTED_KEYS = BACKUP_KEYS;
 // (cache.js), not 'messageCache' as this list once claimed -- a guarantee
 // that names a fictional key is not a guarantee (bug-hunt #15). 'outboxClaims'
 // joins 'outbox': pending-send coordination state must not travel either.
-export const NEVER_EXPORT = ['token', 'accessToken', 'refreshToken', 'auth', 'msgCache', 'activityLog', 'outbox', 'outboxClaims'];
+export const NEVER_EXPORT = ['token', 'accessToken', 'refreshToken', 'auth', 'msgCache', 'bodyCache', 'activityLog', 'outbox', 'outboxClaims'];
 
 /**
  * Build a backup object.
