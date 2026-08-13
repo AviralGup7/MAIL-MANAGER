@@ -212,7 +212,25 @@ const MESSAGES = SEED.map(([from, subject, snippet, hoursAgo, unread], i) => ({
   labels: ['INBOX'],
 }));
 
-const store_ = {};
+/* G5 (2026-08-14): the stub's store survives a reload. The cold-cache
+   smoke gate proves the app paints cached rows when sync is dead, which is
+   unprovable if the stub forgets the cache the app wrote between loads.
+   localStorage on a file: origin is per-browser-profile, so a fresh launch
+   (CI, every local run) still starts cold — persistence cannot leak across
+   runs, only across the reloads a single run makes on purpose. Preview-only:
+   nothing here ships. */
+const PERSIST_KEY = '__bmmPreviewStore';
+let store_ = {};
+try { store_ = JSON.parse(localStorage.getItem(PERSIST_KEY) || '{}'); } catch { store_ = {}; }
+const persist_ = () => {
+  try { localStorage.setItem(PERSIST_KEY, JSON.stringify(store_)); } catch { /* quota: never fatal in a preview */ }
+};
+/* `?nosync=1` makes the two SYNC verbs answer like a dead network. Routed
+   through the URL because the cold-cache gate needs the failure from the
+   VERY FIRST message — before any in-page script could install an override.
+   The error text mimics Chrome's so reportError takes its network branch
+   (the offline banner), exactly as on a dead connection. */
+const NOSYNC = /[?&]nosync=1\\b/.test(location.search);
 globalThis.chrome = {
   runtime: {
     id: 'preview',
@@ -229,8 +247,8 @@ globalThis.chrome = {
         if (typeof k === 'string') return k in store_ ? { [k]: store_[k] } : {};
         return { ...store_ };
       },
-      async set(o) { Object.assign(store_, o); },
-      async remove(k) { for (const key of [].concat(k)) delete store_[key]; },
+      async set(o) { Object.assign(store_, o); persist_(); },
+      async remove(k) { for (const key of [].concat(k)) delete store_[key]; persist_(); },
     },
   },
   identity: { getRedirectURL: () => 'https://preview.chromiumapp.org/' },
@@ -241,8 +259,10 @@ function respond(msg) {
     case 'AUTH_STATUS': return { ok: true, data: { signedIn: true } };
     case 'PROFILE': return { ok: true, data: { emailAddress: 'f20240294@pilani.bits-pilani.ac.in' } };
     case 'SYNC_PAGE':
+      if (NOSYNC) return { ok: false, error: 'Failed to fetch (preview nosync)' };
       return { ok: true, data: { messages: msg.opts?.pageToken ? [] : MESSAGES, nextPageToken: '' } };
     case 'SYNC_DELTA': {
+      if (NOSYNC) return { ok: false, error: 'Failed to fetch (preview nosync)' };
       // Review seam: queued messages arrive as a delta, so the new-mail pill
       // (concept #6 R3) is exercisable in the preview.
       const q = globalThis.__bmmDeltaQueue || [];
@@ -288,6 +308,7 @@ function respond(msg) {
       if (!due.length) return { ok: true, data: { sent: 0, failed: 0, skipped: false, more: false, sentIds: [] } };
       const gone = new Set(due.map((it) => it.id));
       store_.outbox = q.filter((it) => !gone.has(it.id));
+      persist_(); // the direct mutation above bypasses storage.set
       // g:-namespaced: this verb plays the WORKER path, whose sentIds are
       // Gmail ids, not queue ids (the typedef pins the two id spaces apart).
       return { ok: true, data: { sent: due.length, failed: 0, skipped: false, more: false,

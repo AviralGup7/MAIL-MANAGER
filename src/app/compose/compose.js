@@ -690,6 +690,13 @@ async function doSend(ctx) {
             // Put the message back exactly as it was, rather than claiming
             // success on a send that is not going to happen.
             openCompose(ctx, cancelled.draft);
+            /* Re-render the rail through the existing seam: cancel() only
+               edits the queue, and without a pump the row kept counting the
+               RECALLED message down ("Sending in 4s") until the hold's own
+               timer fired — the rail lying for up to 8s about a send the
+               user already took back. The pump on an empty queue just hides
+               the section (G5, found by the undo-send smoke gate). */
+            ctx.flushOutbox?.();
             ctx.toast('Send cancelled');
           } else {
             ctx.toast('Too late to cancel — it has gone', { kind: 'error' });

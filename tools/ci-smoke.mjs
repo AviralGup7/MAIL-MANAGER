@@ -33,6 +33,9 @@
  *   reader/open-remembers-the-body — the floor's write path, real browser
  *   reader/dead-worker-renders-the-floor — kill the worker, the copy renders, dated
  *   reader/floor-miss-is-honest   — a never-opened body still errors, honestly
+ *   compose/send-holds-with-undo  — the hold window is real and Undo rides the toast
+ *   compose/undo-recalls-the-draft — the Undo really recalls: draft back, queue empty
+ *   boot/cold-cache-paints        — sync dead from the first message: the cache paints
  *
  * DETERMINISM
  * -----------
@@ -130,6 +133,65 @@ const overlap = wideCol && comp ? Math.max(0, Math.min(comp.x + comp.w, wideCol.
 check('compose/off-the-rail', overlap === 0 && Math.abs(comp.x - (1440 - comp.w) / 2) <= 2,
   `overlap ${overlap}px, x ${comp.x}, w ${comp.w}`);
 await page.evaluate(() => { document.getElementById('compose').hidden = true; });
+
+/* ---- compose send keeps an undo window, and the Undo really recalls ----
+   G5 (2026-08-14): send must go through the outbox's hold — the toast
+   offers Undo and the rail counts the window down — and Undo must be a
+   REAL recall: the draft returns to compose and the queue empties. The
+   seam this pins is the one a regression would quietly cut: enqueuing is
+   easy to keep, the recall path is the part that rots. */
+await page.click('#btn-compose');
+await page.waitForTimeout(400);
+await page.fill('#c-to', 'f20240001@pilani.bits-pilani.ac.in');
+await page.fill('#c-subject', 'smoke: undo-send gate');
+await page.click('#c-send');
+try {
+  await page.waitForFunction(
+    () => !document.getElementById('toast').hidden &&
+          document.getElementById('toast-text').textContent.startsWith('Sending to '),
+    { timeout: 6000 },
+  );
+} catch { /* the check below reports the miss with the UI's actual state */ }
+const sendUi = await page.evaluate(() => ({
+  toastText: document.getElementById('toast-text').textContent,
+  toastHidden: document.getElementById('toast').hidden,
+  undoVisible: !document.getElementById('toast-action').hidden,
+  undoLabel: document.getElementById('toast-action').textContent,
+  outboxShown: !document.getElementById('outbox').hidden,
+  status: document.querySelector('.outbox-status')?.textContent || '',
+}));
+check('compose/send-holds-with-undo',
+  !sendUi.toastHidden && sendUi.toastText.startsWith('Sending to ') &&
+  sendUi.undoVisible && /^undo$/i.test(sendUi.undoLabel.trim()) &&
+  sendUi.outboxShown && /^Sending in \d+s$/.test(sendUi.status),
+  JSON.stringify(sendUi));
+if (sendUi.undoVisible) {
+  await page.click('#toast-action');
+  try {
+    await page.waitForFunction(
+      () => !document.getElementById('compose').hidden,
+      { timeout: 6000 },
+    );
+  } catch { /* reported below */ }
+  const recalled = await page.evaluate(() =>
+    globalThis.chrome.storage.local.get('outbox').then((o) => ({
+      composeOpen: !document.getElementById('compose').hidden,
+      to: document.getElementById('c-to').value,
+      subject: document.getElementById('c-subject').value,
+      queueDepth: (o.outbox || []).length,
+      outboxShown: !document.getElementById('outbox').hidden,
+    })));
+  /* queueDepth is the TRUTH assertion; outboxShown is the rail's honesty
+     (a recalled message must stop counting down immediately, not at the
+     hold timer's leisure — that fix landed with this gate). */
+  check('compose/undo-recalls-the-draft',
+    recalled.composeOpen &&
+    recalled.to.includes('f20240001@pilani.bits-pilani.ac.in') &&
+    recalled.subject.includes('smoke: undo-send gate') &&
+    recalled.queueDepth === 0 && !recalled.outboxShown,
+    JSON.stringify(recalled));
+  await page.evaluate(() => { document.getElementById('compose').hidden = true; });
+}
 
 /* ---- settings: one tab painted, one panel, Escape to layers ---- */
 await page.click('#btn-settings');
@@ -235,6 +297,24 @@ const miss = await page.evaluate(() => document.getElementById('r-body').srcdoc)
 check('reader/floor-miss-is-honest',
   miss.includes('Could not load this message.'), miss.slice(0, 80));
 await page.keyboard.press('Escape');
+
+/* ---- cold-cache boot: sync dead from the very first message (G5) ----
+   The scenario the whole local-first architecture exists for: a laptop
+   opened on dead wifi. The first load already ran the app's real save
+   path (the cache below is ITS write, not a planted fixture), the stub
+   persists it across the reload, and ?nosync=1 makes both SYNC verbs
+   answer like a dead network. The cached rows must paint anyway — if
+   boot ever re-orders to network-first, this gate goes red before a
+   user on a hostel staircase finds out. */
+const warmCached = await page.evaluate(() =>
+  globalThis.chrome.storage.local.get('msgCache')
+    .then((o) => (o.msgCache?.m || []).length));
+await page.goto('file://' + PREVIEW.pathname + '?nosync=1');
+await page.waitForSelector('#list .row', { timeout: 15000 });
+await page.waitForTimeout(600); // let the doomed sync answer; the rows must survive it
+const warmRows = await page.locator('#list .row').count();
+check('boot/cold-cache-paints', warmCached >= 15 && warmRows >= 15,
+  `${warmRows} cached rows with sync dead (cache held ${warmCached})`);
 } catch (e) {
   /* A thrown gate (selector timeout, dead renderer) is infrastructure, and
      the exit code will say so — with the partial results still printed. */
