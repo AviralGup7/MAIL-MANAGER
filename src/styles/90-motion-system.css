@@ -55,6 +55,17 @@
 }
 
 /*
+ * AMBIENCE OFF (settings key `ambience`; the settings panel, 2026-08-13).
+ * One attribute kills the sheen on every lit surface at once. The pointer
+ * tracker keeps writing --lx/--ly into a gradient nothing paints -- a few
+ * custom-property writes per pointermove buy nothing if un-wired, and the
+ * tracker would then also need the state to restore on the way back.
+ */
+:root[data-ambience='off'] .lit::before {
+  display: none;
+}
+
+/*
  * THE PARTICLE CANVAS (animation P6; motion/particles.js owns its birth and
  * death — this rule is just its posture). Fixed to the VIEWPORT so #shell's
  * camera pushes never recruit it; pointer-events none so it can sit over

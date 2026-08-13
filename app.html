@@ -909,7 +909,13 @@
             <h2 id="settings-title">Settings</h2>
             <button id="settings-close" class="ghost icon" type="button" aria-label="Close settings"></button>
           </header>
-          <div id="settings-body"><!-- built by overlays/settings-panel.js --></div>
+          <!-- Rail and panels are both built per open from the SECTIONS
+                 descriptor, so a category can never point at a section that
+                 does not exist. -->
+          <div id="settings-main">
+            <nav id="settings-nav" role="tablist" aria-orientation="vertical" aria-label="Settings sections"></nav>
+            <div id="settings-body"></div>
+          </div>
           <footer id="settings-foot">
             <span id="settings-note">Changes save instantly, on this device.</span>
             <button id="settings-options" class="ghost small" type="button">Rules, backups &amp; sign-in…</button>

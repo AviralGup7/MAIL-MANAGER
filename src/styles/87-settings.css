@@ -57,6 +57,16 @@
   font-weight: var(--w-semi);
 }
 
+/* The split: category rail left, one visible panel right. The rail got its
+   own mini-sidebar the moment the panel outgrew one screenful of sections —
+   the same reading rule the app sidebar teaches: navigation you can hit,
+   content you read. */
+#settings-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
 #settings-body {
   flex: 1;
   min-height: 0;
@@ -66,6 +76,58 @@
   display: flex;
   flex-direction: column;
   gap: var(--s-6);
+}
+
+/* 180px fits the longest title ('Sync & notifications') at --t-sm without
+   the rail ever competing with the control column. */
+#settings-nav {
+  flex: none;
+  width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--s-3) var(--s-2);
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+}
+
+.set-nav {
+  display: block;
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: var(--t-sm);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: inset 2px 0 0 transparent;
+  transition: background-color var(--dur-fast) ease-out,
+              color var(--dur-fast) ease-out,
+              box-shadow var(--dur-fast) ease-out;
+}
+.set-nav:hover {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+}
+/* Selected = the accent bar the app's own category list teaches, on a soft
+   wash; the text keeps --fg so it stays readable in every theme. */
+.set-nav[aria-selected='true'] {
+  color: var(--fg);
+  font-weight: var(--w-semi);
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.set-nav:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* [hidden] keeps winning even if a section later gains a display. */
+.set-section[hidden] {
+  display: none;
 }
 
 /* A section is a header over rows — the help overlay's .sc-group idiom, so
@@ -253,5 +315,21 @@
   }
   .set-control {
     justify-content: flex-start;
+  }
+  /* The category rail folds to a scrollable strip of chips above the panel. */
+  #settings-main {
+    flex-direction: column;
+  }
+  #settings-nav {
+    width: auto;
+    flex-direction: row;
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    padding: var(--s-2);
+  }
+  .set-nav {
+    width: auto;
+    flex: none;
   }
 }

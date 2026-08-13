@@ -267,6 +267,17 @@
   display: none;
 }
 
+/*
+ * SNIPPETS OFF (settings key `snippets`; the settings panel, 2026-08-13).
+ * One root attribute answers the toggle for every row, current and future --
+ * the same trick data-density uses, so no render hook re-runs when it flips.
+ * Compact density hides the line through its own rule above and is
+ * unaffected; the bloom's clip-hide governs only while snippets are ON.
+ */
+:root[data-snippets='off'] .r-snip {
+  display: none;
+}
+
 .r-right {
   display: flex;
   flex-direction: column;

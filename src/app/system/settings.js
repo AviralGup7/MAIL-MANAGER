@@ -72,6 +72,16 @@ export const SCHEMA = {
    * existing profile sees no change until it asks for one.
    */
   density: { type: 'enum', def: 'comfortable', values: ['comfortable', 'cosy', 'compact'] },
+  /*
+   * Ambient light. The key-light sheen (.lit::before) that tracks the
+   * pointer over raised surfaces. ON by default -- it is the V3 skin's one
+   * piece of atmosphere -- but it is paint on every elevated panel, and its
+   * kill switch belongs one click from the mail, not in devtools. The
+   * control lives in the settings panel; the consequence is a single root
+   * attribute CSS guards on, so there is nothing here to un-wire. The
+   * entry lands WITH its consumer, as the note above demands.
+   */
+  ambience: { type: 'bool', def: true },
 
   // ---- sending ----
   /*
@@ -127,6 +137,14 @@ export const SCHEMA = {
    */
   markReadDelayMs: { type: 'int', def: 1200, min: 0, max: 10000 },
   /*
+   * Snippets. The words of the message shown beside its subject in the
+   * list. ON by default -- that context is why scanning the inbox works.
+   * OFF is the quieter, single-purpose line. Compact density hides the
+   * line either way; the two knobs never fight because density simply
+   * outranks it.
+   */
+  snippets: { type: 'bool', def: true },
+  /*
    * AUTO-REFRESH. How often to ask Gmail what changed, in ms.
    *
    * This product used to say "Delta refresh. Never on a timer", which made it
@@ -146,6 +164,14 @@ export const SCHEMA = {
 
   // ---- composing ----
   signature: { type: 'string', def: '' },
+  /*
+   * Ctrl+Enter sends. The convention in every mail client -- and the only
+   * chord in the composer whose slip writes history. ON by default; OFF
+   * means the only way out of a draft is a deliberate click on Send. The
+   * chord's handler reads this at the moment it lands, so a change applies
+   * to the very next keystroke.
+   */
+  ctrlEnterSend: { type: 'bool', def: true },
 
   // ---- palette (65/f) ----
   /*

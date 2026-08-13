@@ -333,7 +333,11 @@ test('every setting in the schema has a control on this page', async (t) => {
     const declared = [...schema.matchAll(/^ {2}([a-zA-Z][a-zA-Z0-9]*): \{ type:/gm)]
       .map((m) => m[1]);
 
-    const ELSEWHERE = new Set(['clientId', 'theme', 'coachDone', 'railOpen', 'paletteRecents']);
+    /* `ambience`, `snippets` and `ctrlEnterSend` belong to this set from
+       the day the in-app settings panel shipped (2026-08-13): the panel
+       keeps every user-facing key one click from the mail, so the options
+       page keeps only workflows (rules dry-run, backup, sign-in). */
+    const ELSEWHERE = new Set(['clientId', 'theme', 'coachDone', 'railOpen', 'paletteRecents', 'ambience', 'snippets', 'ctrlEnterSend']);
     const missing = declared
       .filter((k) => !ELSEWHERE.has(k))
       .filter((k) => !doc.getElementById(k));

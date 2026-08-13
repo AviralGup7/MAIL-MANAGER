@@ -144,7 +144,10 @@ function bootDocument() {
           <h2 id="settings-title">Settings</h2>
           <button id="settings-close" aria-label="Close settings"></button>
         </header>
-        <div id="settings-body"></div>
+        <div id="settings-main">
+          <nav id="settings-nav" role="tablist" aria-orientation="vertical"></nav>
+          <div id="settings-body"></div>
+        </div>
         <footer id="settings-foot">
           <button id="settings-options"></button>
         </footer>
@@ -195,10 +198,12 @@ test('open renders one control per descriptor item and closes through the layer'
     assert.equal(node.hidden, false, 'panel is visible');
     assert.equal(sp.settingsOpen(), true);
 
-    /* The descriptor, by shape: 5 checks, 2 selects, 3 sliders, 1 signature,
-       and one radio per theme. If SECTIONS gains a control these numbers
-       should move with it — the schema-coverage test is the hard guard. */
-    assert.equal(node.querySelectorAll('input[type="checkbox"]').length, 5, 'checkboxes');
+    /* The descriptor, by shape: 8 checks, 2 selects, 3 sliders, 1 signature,
+       2 action buttons, and one radio per theme. If SECTIONS gains a
+       control these numbers should move with it — the schema-coverage test
+       is the hard guard. */
+    assert.equal(node.querySelectorAll('input[type="checkbox"]').length, 8, 'checkboxes');
+    assert.equal(node.querySelectorAll('#settings-body .set-row button').length, 2, 'actions');
     assert.equal(node.querySelectorAll('select').length, 2, 'selects');
     assert.equal(node.querySelectorAll('input[type="range"]').length, 3, 'sliders');
     assert.equal(node.querySelectorAll('textarea').length, 1, 'signature');

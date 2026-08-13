@@ -58,6 +58,7 @@ const fmtEvery = (ms) => {
 
 const SECTIONS = [
   {
+    id: 'appearance',
     title: 'Appearance',
     items: [
       /* Themes are painted by ctx.setTheme — the one path the topbar swatch
@@ -73,12 +74,17 @@ const SECTIONS = [
         hint: 'Compact also hides the preview line, so every remaining character stays at full size.',
       },
       {
+        kind: 'check', key: 'ambience', label: 'Ambient light',
+        hint: 'The soft light that follows the pointer across panels and dialogs. Pure atmosphere — nothing readable changes when it is off.',
+      },
+      {
         kind: 'check', key: 'railOpen', label: 'Show the For-you rail',
-        hint: 'Due soon, needs you, snoozed and the outbox, parked on the right. Below 1240px it becomes a slide-in drawer instead of a column.',
+        hint: 'Due soon, needs you, snoozed and the outbox, parked on the right. Below 1240px it is a slide-in drawer that only opens when you ask for it.',
       },
     ],
   },
   {
+    id: 'reading',
     title: 'Reading',
     items: [
       {
@@ -104,15 +110,24 @@ const SECTIONS = [
         ],
         hint: 'Remote images tell the sender when and where you read their mail.',
       },
+      {
+        kind: 'check', key: 'snippets', label: 'Show message previews',
+        hint: 'The first words of the message beside its subject in the list. Compact density hides the preview either way — the two knobs never fight.',
+      },
     ],
   },
   {
-    title: 'Sending',
+    id: 'composing',
+    title: 'Composing',
     items: [
       {
         kind: 'range', key: 'undoSendSeconds', label: 'Undo window',
         min: 0, max: 30, step: 1, format: fmtUndo,
         hint: 'How long a sent message waits before it actually goes. A message that fails waits in the Outbox either way — nothing is lost.',
+      },
+      {
+        kind: 'check', key: 'ctrlEnterSend', label: 'Ctrl+Enter sends',
+        hint: 'The fast chord every mail client has — and the only one whose slip sends something. Off, the Send button is the only way out of a draft.',
       },
       {
         kind: 'textarea', key: 'signature', label: 'Signature', wide: true,
@@ -121,7 +136,8 @@ const SECTIONS = [
     ],
   },
   {
-    title: 'Sync and notifications',
+    id: 'sync',
+    title: 'Sync & notifications',
     items: [
       {
         kind: 'range', key: 'autoRefreshMs', label: 'Check for new mail every',
@@ -131,6 +147,24 @@ const SECTIONS = [
       {
         kind: 'check', key: 'bgNotify', label: 'Notify me about AUGSD and academics mail when it arrives',
         hint: 'While the app is closed, every ~15 minutes. No other category ever notifies.',
+      },
+    ],
+  },
+  {
+    id: 'general',
+    title: 'General',
+    items: [
+      /* Actions, not knobs — the one kind that skips the settings key.
+         They share the row layout so the surface stays one language. */
+      {
+        kind: 'action', label: 'Keyboard shortcuts', button: 'Show every key',
+        hint: 'The same sheet the ? key opens — j/k to move, e to archive, every key annotated.',
+        run: (ctx) => ctx.toggleHelp?.(),
+      },
+      {
+        kind: 'action', label: 'Start fresh', button: 'Restore all defaults',
+        hint: 'Every setting in every section back to its factory value. Mail, drafts, rules and sign-in are not settings — nothing here touches them.',
+        run: restoreDefaults,
       },
     ],
   },
@@ -245,6 +279,32 @@ function buildTextarea(doc, item) {
   return area;
 }
 
+/* Actions are buttons, not knobs: no key, no live binding, no commit. */
+function buildAction(doc, item, ctx) {
+  const btn = doc.createElement('button');
+  btn.type = 'button';
+  btn.className = 'ghost small';
+  btn.textContent = item.button;
+  btn.addEventListener('click', () => item.run(ctx));
+  return btn;
+}
+
+/**
+ * Restore-defaults rides the ONE write path: settings.reset IS set(key,
+ * def), so each key coerces, persists and notifies exactly as a hand-set
+ * value would — and the live bindings above repaint every mounted control
+ * without the dialog moving. Held together with per-key failures counted,
+ * because "restored" is only worth saying when the storage said so.
+ */
+async function restoreDefaults() {
+  let failed = 0;
+  for (const key of Object.keys(settings.SCHEMA)) {
+    try { await settings.reset(key); } catch { failed++; }
+  }
+  if (failed) toast('Some settings could not be saved — storage is unavailable.', { kind: 'error' });
+  else toast('Every setting is back to its default.');
+}
+
 /**
  * Real radio inputs, not divs with aspirations: arrow keys, screen-reader
  * grouping and the checked state are the browser's problem, which is the
@@ -288,6 +348,63 @@ function buildThemes(doc, item, ctx) {
 }
 
 /* ------------------------------------------------------------------ *
+ * THE CATEGORY RAIL. One click between sections; a real vertical      *
+ * tablist — role=tablist/tab/tabpanel, aria-selected/aria-controls    *
+ * wiring, a roving tabindex, and arrow keys that move selection WITH  *
+ * focus (auto-activation), the pattern the ARIA authoring guide gives *
+ * tabs. Escape is left alone on purpose: it belongs to layers.js,     *
+ * like everywhere else in this app.                                   *
+ * ------------------------------------------------------------------ */
+
+let activeId = SECTIONS[0].id;
+
+function activate(id, { focusTab = false } = {}) {
+  activeId = id;
+  const nav = $('settings-nav');
+  const body = $('settings-body');
+  if (!nav || !body) return;
+  for (const tab of nav.querySelectorAll('[role="tab"]')) {
+    const on = tab.dataset.section === id;
+    tab.setAttribute('aria-selected', String(on));
+    tab.tabIndex = on ? 0 : -1;
+    if (on && focusTab) tab.focus();
+  }
+  for (const sec of body.querySelectorAll('.set-section')) {
+    sec.hidden = sec.id !== `set-p-${id}`;
+  }
+}
+
+function onNavKey(e) {
+  const tabs = [...$('settings-nav').querySelectorAll('[role="tab"]')];
+  const i = tabs.indexOf(e.currentTarget);
+  let j = null;
+  if (e.key === 'ArrowDown' || e.key === 'ArrowRight') j = (i + 1) % tabs.length;
+  else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') j = (i - 1 + tabs.length) % tabs.length;
+  else if (e.key === 'Home') j = 0;
+  else if (e.key === 'End') j = tabs.length - 1;
+  if (j === null) return; /* Escape above all — it belongs to layers.js. */
+  e.preventDefault();
+  activate(tabs[j].dataset.section, { focusTab: true });
+}
+
+function buildNav(nav, doc) {
+  nav.replaceChildren();
+  for (const s of SECTIONS) {
+    const tab = doc.createElement('button');
+    tab.type = 'button';
+    tab.className = 'set-nav';
+    tab.id = `set-t-${s.id}`;
+    tab.dataset.section = s.id;
+    tab.setAttribute('role', 'tab');
+    tab.setAttribute('aria-controls', `set-p-${s.id}`);
+    tab.textContent = s.title;
+    tab.addEventListener('click', () => activate(s.id));
+    tab.addEventListener('keydown', onNavKey);
+    nav.appendChild(tab);
+  }
+}
+
+/* ------------------------------------------------------------------ *
  * THE PANEL ITSELF                                                    *
  * ------------------------------------------------------------------ */
 
@@ -318,6 +435,9 @@ function renderBody(body, ctx, doc) {
   for (const section of SECTIONS) {
     const sec = doc.createElement('section');
     sec.className = 'set-section';
+    sec.id = `set-p-${section.id}`;
+    sec.setAttribute('role', 'tabpanel');
+    sec.setAttribute('aria-labelledby', `set-t-${section.id}`);
 
     const h = doc.createElement('h3');
     h.textContent = section.title;
@@ -344,6 +464,7 @@ function renderBody(body, ctx, doc) {
         item.kind === 'check' ? buildCheck(doc, item) :
         item.kind === 'select' ? buildSelect(doc, item) :
         item.kind === 'range' ? buildRange(doc, item) :
+        item.kind === 'action' ? buildAction(doc, item, ctx) :
         buildTextarea(doc, item);
 
       const cell = doc.createElement('div');
@@ -361,7 +482,12 @@ export function openSettings(ctx = {}) {
   if (!node || panelLayer) return;
 
   wireOnce();
-  renderBody($('settings-body'), ctx, node.ownerDocument || document);
+  const doc = node.ownerDocument || document;
+  buildNav($('settings-nav'), doc);
+  renderBody($('settings-body'), ctx, doc);
+  /* The rail remembers where you were within a session; the reset seam
+     puts it back on the first section for tests. One visible panel always. */
+  activate(activeId);
   setIcon($('settings-close'), 'close', { size: 15 });
   startLive();
 
@@ -407,6 +533,7 @@ export function openFullOptions() {
 /** Test seam: close without ceremony and forget the handle. */
 export function _resetSettingsPanel() {
   panelLayer = null;
+  activeId = SECTIONS[0].id;
   stopLive?.();
   stopLive = null;
   live = new Map();

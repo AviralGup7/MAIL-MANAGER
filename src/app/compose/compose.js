@@ -566,9 +566,12 @@ export function wireCompose(ctx) {
   $('c-draft').addEventListener('click', () => doDraft(ctx));
   $('c-template')?.addEventListener('click', (e) => openTemplateMenu(ctx, e.currentTarget));
 
-  // Ctrl+Enter sends, which is the convention in every mail client.
+  /* Ctrl+Enter sends -- the convention in every mail client -- gated on the
+     schema's `ctrlEnterSend` promise: it is the only chord in the composer
+     whose slip writes history, so its kill switch lives one click from the
+     mail and is read at the moment the chord lands, not at open. */
   panel.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && settings.get('ctrlEnterSend') !== false) {
       e.preventDefault();
       doSend(ctx);
     } else if (e.key === 'Escape') {

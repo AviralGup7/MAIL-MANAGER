@@ -2350,6 +2350,21 @@ function applyDensity() {
   document.documentElement.setAttribute('data-density', d);
 }
 
+/*
+ * Push the ambience + snippet settings onto the root element -- the same
+ * one-attribute promise applyDensity makes: the consequence is pure CSS
+ * (one guard in 90-motion-system, one in 20-list), so no render path reads
+ * these keys and no re-render is owed when one moves. The attribute is
+ * written even for the default state, so a screenshot always says what the
+ * surface believed -- a missing attribute and a default would be
+ * indistinguishable when debugging.
+ */
+function applyVisualPrefs() {
+  const root = document.documentElement;
+  root.setAttribute('data-ambience', settings.get('ambience') !== false ? 'on' : 'off');
+  root.setAttribute('data-snippets', settings.get('snippets') !== false ? 'on' : 'off');
+}
+
 function setTheme(id) {
   const theme = applyTheme(id);
   state.theme = theme.id;
@@ -3479,6 +3494,9 @@ async function boot() {
      * this one line is the whole surface of the change.
      */
     if (key === 'autoRefreshMs') scheduleAutoRefresh();
+    /* Ambience + snippets are attr-driven like density: re-stamp the root,
+       no re-render owed. */
+    if (key === 'ambience' || key === 'snippets') applyVisualPrefs();
   });
 
   /*
@@ -3503,6 +3521,9 @@ async function boot() {
   const osDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
   state.theme = applyTheme(theme || (osDark ? 'midnight' : DEFAULT_THEME)).id;
   applyDensity();
+  /* Ambience + snippets: same one-attribute promise as density — boot
+     stamps the root and moves on. */
+  applyVisualPrefs();
 
   initToast({
     toast: el.toast, toastText: el.toastText, toastAction: el.toastAction,
