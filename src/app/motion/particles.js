@@ -120,9 +120,12 @@ function step(dt) {
     const p = pool[i];
     p.life -= dt;
     if (p.mode === 1) {
-      // assemble: spring toward the contour point, drag settles it there
-      p.vx += (p.tx - p.x) * 6.4 * dt;
-      p.vy += (p.ty - p.y) * 6.4 * dt;
+      // assemble: spring toward the contour point, drag settles it there.
+      // Stiffness 10 / drag 4.4 (ζ≈0.7, ω₀≈3.2): arrival ~0.4s against a
+      // 0.75-1.15s life, so the contour FORMS before it dissolves — the
+      // P6b convergence pin caught the softer 6.4 dying mid-flight.
+      p.vx += (p.tx - p.x) * 10 * dt;
+      p.vy += (p.ty - p.y) * 10 * dt;
       p.vx *= (1 - 4.4 * dt);
       p.vy *= (1 - 4.4 * dt);
     } else {
