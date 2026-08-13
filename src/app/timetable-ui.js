@@ -32,6 +32,7 @@ import {
 } from './timetable-store.js';
 import { scanMessages, matchNotice, isAcademicSender, courseNumbersIn } from './timetable-mail.js';
 import { registerReset } from './reset-registry.js';
+import { cameraPush, cameraPop } from './motion/camera.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -353,6 +354,11 @@ export function openTimetable(ctx) {
   host.hidden = false;
   $('topbar').hidden = true;
   $('panes').hidden = true;
+  /* P6: the takeover is a camera move (audit §2 timetable row): the scene
+   * breathes back one depth level while the workspace owns the stage. The
+   * early-return above keeps this a true hidden→shown edge, so push and
+   * closeTimetable's pop pair one-for-one — the level can never drift. */
+  cameraPush();
   markRailButton(true);
   render();
   host.querySelector('input, button')?.focus();
@@ -360,11 +366,14 @@ export function openTimetable(ctx) {
 
 export function closeTimetable(opts = {}) {
   const host = $('tt-workspace');
+  // The early return doubles as the pairing guard: pop fires only on the
+  // close EDGE, exactly once per openTimetable's push.
   if (!host || host.hidden) return;
 
   host.hidden = true;
   $('topbar').hidden = false;
   $('panes').hidden = false;
+  cameraPop();
   markRailButton(false);
   // The test reset passes silent: there is no boot to hand focus back to.
   if (!opts.silent) $('btn-timetable')?.focus();
