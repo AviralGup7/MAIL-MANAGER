@@ -191,6 +191,7 @@ test('era handoff: pressing a LEANING magnetic element leaves zero magnetic ink 
     const el = doc.getElementById('b');
     giveBox(el, { left: 200, top: 200, width: 120, height: 40 });
     magnetic.attachMagnetic(el, { radius: 60, strength: 0.3 });
+    press.makePressable(el); // the era handoff needs BOTH claimants present
     el.dispatchEvent(Object.assign(new win.Event('pointermove', { bubbles: true }), { clientX: 160, clientY: 220 })); // left-of-centre: lean
     for (let i = 0; i < 30; i++) clock.frame(); // mid-lean, springs still flying
     assert.match(el.style.transform, /translate3d\(-/, 'precondition: leaning');
