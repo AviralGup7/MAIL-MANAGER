@@ -266,6 +266,46 @@ compose (send → undo window visible) and one cold-cache boot gate, so the
 browser-truth set watches the last two surfaces it doesn't.
 **Guardrails are the M4 ones, unchanged.**
 
+### Generation 2 · landed ledger (2026-08-14)
+
+- **G1 m1 landed** — `docs/SOAK.md`: the pre-flight, the live boot, the
+  quiet week (historyId cliff + sweep + snooze), the quota arithmetic, the
+  NVDA pass checklist, the `38b6a3a` verdict path, the harvest discipline
+  with SOAK-LOG. Open: m2–m4 need the live mailbox — *the one thing code
+  cannot supply*.
+- **G2 m1 landed** — `src/platform/idb.js`: the chrome-area-shaped
+  IndexedDB adapter, parity-proven against the trusted fake (one contract
+  suite, both backends), failure-named and self-healing on a transient
+  wedge. A bright pin keeps every consumer out until m2's deliberate
+  commit (the body floor is the planned first migrant, with
+  chrome.storage reachable behind it).
+- **G3 m1+m2 landed** — `src/app/mail/intents.js`: offline archive queues
+  instead of rolling back (the queue toast carries the Undo; drain rides
+  `online` + one boot pass; give-ups are toasts and activity lines, never
+  silent; actor `intent` answers "who did this while I was offline";
+  sign-out disarms). QUEUEABLE stays exactly `{'ARCHIVE'}` — widening is
+  a deliberate commit each time, per the outbox's own history.
+- **G4 m1+m2+m3 landed** — the in-app rules editor in settings General
+  (grammar pin-verified against options.html; dry run over the LIVE
+  store, not the header cache; saves refresh the shell's rule list the
+  same instant; smoke gate drives test→add→remove), `tools/eval-classifier.mjs`
+  (the accuracy number, INFRA-soft, ready for the soak corpus), and
+  `docs/SEMESTER.md` (dates, owners, the department gate, the before/after
+  accuracy bar).
+- **G5 both gates landed** — `compose/send-holds-with-undo` +
+  `compose/undo-recalls-the-draft` (22 smoke gates now, all riding the
+  network-free preview) caught one real wart and fixed it: a recalled
+  send used to keep counting down in the rail until the hold timer fired,
+  so Undo now flushes through the existing seam. `boot/cold-cache-paints`
+  reloads onto a dead-sync boot (stub `?nosync=1`, persistence via
+  localStorage, preview-only) and demands the cached rows. **Plus the
+  round's one M4 extraction:** the classifier's write side
+  (`openRecategoriseMenu` + `reclassifyAll` + `countFromSenderIn`) joined
+  the category-menu tenant, main.js at 3,729 lines with the doctrine pins
+  moved into `test/recategorise.test.mjs` — and the extraction found the
+  M3 auto-archive dry run counting an empty corpus (`ctx.store` was never
+  wired); it counts for real now.
+
 **Standing user-side blockers (no code can close these):** the PAT and
 v1 OAuth secret rotations — audit 64 ranks them above *all code*, and the
 PAT has now been pasted into this channel repeatedly — and a LICENSE

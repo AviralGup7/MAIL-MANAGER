@@ -14,6 +14,7 @@ Newcomer order: this file → ARCHITECTURE.md → THREADING.md → the audits.
 | OVERHAUL-V3.md | The v3 overhaul plan and record — the redesign the current shell grew out of |
 | NEXT.md | The long-term directions — M1–M5 with statuses, then the second-generation analysis (what to work on next) |
 | SOAK.md | The live-mailbox ritual (direction G1): the one audit cap no gate can lift from the inside |
+| SEMESTER.md | The semester refresh (direction G4 m3): timetable + data-pack regeneration, with dates, owners and the accuracy gate |
 | STRUCTURE.md | The growth playbook: CSS volumes and folder law, pinned not remembered |
 | STATE-BOUNDARY.md | Worker≠app runtime state — the law against "helpfully" unifying them |
 
