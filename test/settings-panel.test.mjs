@@ -27,6 +27,7 @@ const read = (rel) => readFileSync(new URL('../' + rel, import.meta.url), 'utf8'
 const panel = read('src/app/overlays/settings-panel.js');
 const html = read('app.html');
 const shell = read('src/app/main.js');
+const railVis = read('src/app/workspace/rail-visibility.js');
 const schemaSrc = read('src/app/system/settings.js');
 const palette = read('src/app/overlays/palette.js');
 const icons = read('src/app/core/icons.js');
@@ -95,7 +96,7 @@ test('the shell wires a topbar button and a palette command', () => {
 test('the rail and the poll timer follow their settings live', () => {
   // A toggle in the panel that needed a reload would read as broken. These
   // two subscriptions are what make those two rows take effect on the spot.
-  assert.match(shell, /key === 'railOpen'\) apply\(settings\.get\('railOpen'\) !== false\)/);
+  assert.match(railVis, /key === 'railOpen'\) apply\(settings\.get\('railOpen'\) !== false\)/);
   assert.match(shell, /key === 'autoRefreshMs'\) scheduleAutoRefresh\(\)/);
 });
 

@@ -30,7 +30,13 @@ import { readFileSync } from 'node:fs';
 
 const read = (rel) => readFileSync(new URL('../' + rel, import.meta.url), 'utf8');
 const shell = read('src/app/main.js');
+const rail = read('src/app/workspace/rail-visibility.js');
 const skin = read('src/styles/86-v3-skin.css');
+
+test('the shell pays one wiring line for rail visibility', () => {
+  assert.match(shell, /import \{ wireRailVisibility \} from '\.\/workspace\/rail-visibility\.js'/);
+  assert.match(shell, /wireRailVisibility\(\);/);
+});
 
 test('boot applies the saved preference only at column widths', () => {
   assert.match(shell,
@@ -42,14 +48,14 @@ test('crossing the 1240 seam re-derives visibility from regime + preference', ()
   assert.match(shell,
     /const onSeam = \(mq\) => apply\(mq\.matches \? false : settings\.get\('railOpen'\) !== false\)/,
     'folding into drawer widths puts the overlay away; unfolding restores the preference');
-  assert.match(shell, /addEventListener\('change', onSeam\)/, 'seam changes are heard');
-  assert.match(shell, /addListener\?\.\(onSeam\)/, 'legacy/test-double fallback kept');
+  assert.match(rail, /addEventListener\('change', onSeam\)/, 'seam changes are heard');
+  assert.match(rail, /addListener\?\.\(onSeam\)/, 'legacy/test-double fallback kept');
 });
 
 test('explicit summons still work in the drawer regime', () => {
   /* The button writes the setting AND applies locally — no path was removed,
      only the unprompted one. */
-  assert.match(shell, /btn\.addEventListener\('click', \(\) => \{[\s\S]{0,200}?settings\.set\('railOpen', on\)/);
+  assert.match(rail, /btn\.addEventListener\('click', \(\) => \{[\s\S]{0,200}?settings\.set\('railOpen', on\)/);
 });
 
 test('the drawer stays a deliberate overlay', () => {

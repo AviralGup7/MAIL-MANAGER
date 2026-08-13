@@ -38,7 +38,8 @@ src/
                               particles, morphs); imports nothing app-side
     system/                   settings, themes, cache, identity (direct),
                               snooze/outbox persistence, backup, fallback,
-                              deep-links, storage/view stores
+                              deep-links, storage/view stores,
+                              root-attrs (settings -> :root stamps)
     overlays/                 the overlay stack: layers, menu, dialog, toast,
                               help, settings-panel, snooze-menu, category-menu,
                               palette
@@ -50,7 +51,8 @@ src/
     compose/                  compose, autocomplete, templates, drafts, outbox
     academic/                 timetable suite, deadlines, radar, notices,
                               activity log, lanes, rule-engine
-    workspace/                sidebar chrome and the context rails
+    workspace/                sidebar chrome, rail visibility postures, the
+                              live context rails
 test/                         the contracts (node:test); helpers/ for test seams
 tools/                        build/check/CI executables (never shipped)
 audits/                       dated records — history; paths in them are frozen

@@ -28,6 +28,7 @@ const read = (rel) => readFileSync(new URL('../' + rel, import.meta.url), 'utf8'
 const panel = read('src/app/overlays/settings-panel.js');
 const html = read('app.html');
 const shell = read('src/app/main.js');
+const rootAttrs = read('src/app/system/root-attrs.js');
 const schemaSrc = read('src/app/system/settings.js');
 const compose = read('src/app/compose/compose.js');
 const css = read('src/styles/87-settings.css');
@@ -55,7 +56,7 @@ test('five named sections, in order, each holding its own keys', () => {
 /* ---- every new key has exactly one consumer ------------------------------ */
 
 test('consumers: one attr-stamp, one CSS guard per effect; compose gates the chord', () => {
-  assert.match(shell, /function applyVisualPrefs\(\) \{[\s\S]*?data-ambience[\s\S]*?data-snippets/,
+  assert.match(rootAttrs, /function applyVisualPrefs\(\) \{[\s\S]*?data-ambience[\s\S]*?data-snippets/,
     'one stamper owns both attributes, the way applyDensity owns density');
   assert.match(shell, /applyVisualPrefs\(\);\n\s*\n?\s*initToast\(/,
     'boot stamps the root before first paint');
