@@ -78,6 +78,20 @@ function proveCompleteCoverage(n) {
 const shard = parseShard(process.argv.slice(2));
 if (shard) proveCompleteCoverage(shard.n);
 const files = shardFiles(shard);
+
+/*
+ * --dry-run: print the shard's manifest as JSON and exit. The self-integrity
+ * gate (tools/ci-selfcheck.mjs) drives this for every shard to prove the
+ * matrix's slices are non-empty, disjoint and complete WITHOUT trusting the
+ * workflow's own reading of them — the gate recomputes from the directory.
+ * Exit 3 on an empty shard: an empty slice is a silent skip of nothing,
+ * which is exactly the failure shape this runner was built to outlaw.
+ */
+if (process.argv.includes('--dry-run') && shard) {
+  console.log(JSON.stringify({ shard: `${shard.i}/${shard.n}`, count: files.length, files: files.map((f) => f.replace(/^test\//, '')) }));
+  process.exit(files.length ? 0 : 3);
+}
+
 const args = ['--max-old-space-size=3072', '--test'].concat(files ?? ['test/']);
 
 if (files) {

@@ -40,7 +40,7 @@
  * registry chromium lacks system libs); CI installs the default one.
  */
 import { chromium } from 'playwright-core';
-import { existsSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 
 const PREVIEW = new URL('../preview.html', import.meta.url);
 if (!existsSync(PREVIEW)) {
@@ -48,10 +48,21 @@ if (!existsSync(PREVIEW)) {
   process.exit(2);
 }
 
-const browser = await chromium.launch({
-  executablePath: process.env.SMOKE_CHROME || undefined,
-  args: ['--no-sandbox', '--disable-gpu'],
-});
+/* Infra vs test: a launch failure is CI plumbing, not a broken truth, and
+   the exit code says which (2 = infrastructure, 1 = an assertion fell). */
+let browser;
+try {
+  browser = await chromium.launch({
+    executablePath: process.env.SMOKE_CHROME || undefined,
+    args: ['--no-sandbox', '--disable-gpu'],
+  });
+} catch (e) {
+  console.error('✗ INFRA (exit 2): chromium failed to launch:', e.message?.split('\n')[0]);
+  process.exit(2);
+}
+/* The version goes in the log: when a rendering truth falls, "which
+   Chromium?" is the first question, and the answer must not be a guess. */
+console.log('smoke browser:', browser.version());
 
 const results = [];
 const check = (name, ok, detail = '') =>
@@ -62,6 +73,8 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
 
+let fatal = null;
+try {
 await page.goto('file://' + PREVIEW.pathname);
 await page.waitForSelector('#list .row', { timeout: 15000 });
 await page.waitForTimeout(800); // settle past boot reflows
@@ -146,8 +159,29 @@ await page.setViewportSize({ width: 1440, height: 900 });
 await page.waitForTimeout(700);
 const restored = await railState(page);
 check('rail/seam-unfold-restores', restored && restored.pos !== 'fixed', JSON.stringify(restored));
+} catch (e) {
+  /* A thrown gate (selector timeout, dead renderer) is infrastructure, and
+     the exit code will say so — with the partial results still printed. */
+  fatal = e;
+  results.push({ name: 'flow/completes', ok: false, detail: String(e).split('\n')[0] });
+}
 
 check('boot/console-clean', errors.length === 0, errors.slice(0, 3).join(' | '));
+
+/* On failure, leave the scene behind: screenshot, live DOM, captured
+   console — everything a manual .probe used to collect by hand. Best
+   effort on purpose: artifact capture may never mask the failure. */
+if (fatal || results.some((r) => !r.ok)) {
+  try {
+    await page.screenshot({ path: '.smoke-failure.png' });
+    writeFileSync('.smoke-failure.html', await page.content());
+    writeFileSync('.smoke-failure.txt',
+      (fatal ? 'FATAL: ' + String(fatal) + '\n\n' : '') + (errors.join('\n') || '(no console errors)'));
+    console.log('failure artifacts: .smoke-failure.{png,html,txt}');
+  } catch (e) {
+    console.log('artifact capture failed:', String(e));
+  }
+}
 
 await browser.close();
 
@@ -157,4 +191,4 @@ for (const r of results) {
   if (!r.ok) failed++;
 }
 console.log(`\n${results.length - failed}/${results.length} smoke gates green`);
-process.exit(failed ? 1 : 0);
+process.exit(fatal ? 2 : failed ? 1 : 0);

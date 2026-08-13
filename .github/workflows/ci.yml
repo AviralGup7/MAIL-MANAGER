@@ -5,20 +5,29 @@ on:
     branches: [main]
   pull_request:
 
+# LEAST PRIVILEGE (2026-08-13). Nothing here writes the repo, issues, or
+# packages — so nothing is allowed to. A future step that needs more must
+# say so in this file, which makes the elevation a reviewable diff.
+permissions:
+  contents: read
+
 jobs:
   # THE SUITE, IN EIGHT PORTIONS (round 53, widened round 62).
   #
   # One job used to run every test file serially: every jsdom document,
   # every crash risk and every minute of wall time concentrated in one
   # place. The runner (tools/ci-test.mjs --shard i/n) deals the sorted test
-  # files round-robin into n slices, so each job runs a disjoint quarter and
+  # files round-robin into n slices, so each job runs a disjoint portion and
   # prints its own TEST SUMMARY block (verdict, counts, duration, per-failure
-  # name/location/time/reason). fail-fast is OFF on purpose: all four
+  # name/location/time/reason). fail-fast is OFF on purpose: all eight
   # summaries must land, because the point of portions is seeing the whole
   # picture, not stopping at the first cut. Eight slices keep each job small
   # and fast, and a failure isolates to a narrower band of files.
   test:
     runs-on: ubuntu-latest
+    # A hung jsdom document or a stuck import must not eat a runner for six
+    # hours; a healthy shard is done in a small fraction of this.
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -39,10 +48,11 @@ jobs:
       - name: Test shard ${{ matrix.shard }} (fails on skips)
         run: node tools/ci-test.mjs --shard ${{ matrix.shard }}
 
-  # The non-test gates. Split out so the four shards do not pay for them
-  # four times, and so a test failure does not hide their results.
+  # The non-test gates. Split out so the eight shards do not pay for them
+  # eight times, and so a test failure does not hide their results.
   checks:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -52,6 +62,13 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      # The pipeline's own health, before any suite pays for the day:
+      # shard completeness recomputed through the runner itself, required
+      # scripts, the workflow's own teeth (permissions, timeouts, install
+      # count, hard gates, the verdict job).
+      - name: CI self-integrity
+        run: node tools/ci-selfcheck.mjs
 
       - name: Theme contrast (WCAG AA)
         run: npm run contrast
@@ -65,10 +82,16 @@ jobs:
       - name: Benchmark (data layer)
         run: npm run bench
 
-      - name: Rendering benchmark (headless Chromium)
+      # Exactly ONE browser install; the bench and the smoke gate both
+      # reuse it through the job's shared cache (the workflow previously
+      # installed Chromium once per step). The fallback keeps the useful
+      # signal: a --with-deps failure prints a warning instead of hiding.
+      - name: Install Chromium (once)
         run: |
-          npx playwright-core install chromium --with-deps 2>/dev/null || npx playwright-core install chromium
-          npm run render:bench || echo "render:bench unavailable in this environment (see tools/render-bench.mjs)" 
+          npx playwright-core install chromium --with-deps || { echo "::warning::install --with-deps failed; retrying without system deps"; npx playwright-core install chromium; }
+
+      - name: Rendering benchmark (numbers, advisory)
+        run: timeout 600 npm run render:bench || echo "render:bench unavailable in this environment (see tools/render-bench.mjs)"
 
       # The hard browser gate (direction M2, 2026-08-13). The bench REPORTS
       # numbers and soft-fails on exotic environments; the smoke suite
@@ -78,9 +101,23 @@ jobs:
       # ever depends on network luck.
       - name: Browser smoke gates (headless Chromium)
         run: |
-          npx playwright-core install chromium --with-deps 2>/dev/null || npx playwright-core install chromium
           node tools/make-preview.mjs
-          node tools/ci-smoke.mjs
+          timeout 600 node tools/ci-smoke.mjs
+
+      # Failure has a SCENE: screenshot, DOM, captured console, uploaded
+      # only when something above fell (if-no-files-found says a green run
+      # leaves nothing, which is exactly right).
+      - name: Failure evidence (smoke)
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: smoke-failure
+          path: |
+            .smoke-failure.png
+            .smoke-failure.html
+            .smoke-failure.txt
+          if-no-files-found: ignore
+          retention-days: 7
 
       # The rule files are generated from docs/CLASSIFICATION_DATA_PACK.md.
       # Regenerating must be a no-op; a diff means someone hand-edited the
@@ -90,3 +127,26 @@ jobs:
           node tools/gen-pattern-rules.mjs docs/CLASSIFICATION_DATA_PACK.md
           node tools/gen-address-map.mjs docs/CLASSIFICATION_DATA_PACK.md
           git diff --exit-code -- src/classify/pattern-rules.js src/classify/address-map.js
+
+  # THE VERDICT (2026-08-13). A REAL aggregate: if: always() so a cancelled
+  # or failed need is still read, and the gate fails on any result that is
+  # not verbatim "success" — including "cancelled", which a naive check
+  # turns into a pass. Nothing echoes "all checks passed"; the results are
+  # read. Branch protection should name this ONE job.
+  ci-verdict:
+    name: Verdict
+    if: always()
+    needs: [test, checks]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Aggregate gate
+        env:
+          TEST: ${{ needs.test.result }}
+          CHECKS: ${{ needs.checks.result }}
+        run: |
+          echo "test=$TEST checks=$CHECKS"
+          if [ "$TEST" != "success" ] || [ "$CHECKS" != "success" ]; then
+            echo "::error::a required job did not succeed (test=$TEST checks=$CHECKS)"
+            exit 1
+          fi
