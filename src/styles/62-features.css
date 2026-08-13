@@ -201,20 +201,45 @@
  * A PANEL, not a modal. Mail is often written while referring to another
  * message, and a modal makes that impossible -- which is why Gmail's compose
  * is also a panel.
+ *
+ * BOTTOM-CENTRE, OFF THE RAIL (2026-08-13, probe-measured)
+ * -------------------------------------------------------
+ * The Gmail-style corner dock (`right: 22px; bottom: 0`) anchored the 580px
+ * card at x 838–1418 on a 1440px window -- but the pinned context rail owns
+ * x 1140–1440 there, so 278px of the card floated ON the rail. No rail text
+ * was covered (its cards sit higher), which is exactly why it read as a bug
+ * rather than a collision: a panel adrift over furniture it does not belong
+ * to. The drawer regime (<=1240px) made the same dock cover the drawer's
+ * slide-in path.
+ *
+ * Centring on the window's midpoint keeps a mathematical guarantee the
+ * corner never had: while the rail is a pinned column (>1240px) it takes
+ * 300px off the right edge, so the midpoint of what remains free is
+ * (vw-300)/2 from centre -- and the half-width of this card is at most
+ * 340px, leaving >=130px of clearance at every such width. The card also
+ * grew (580->680 wide, 620->700 tall): the corner was cramped for a full
+ * reply with quoting, and centred windowing is where other clients put a
+ * serious composer (Hey, Superhuman, Apple Mail's detached window).
+ *
+ * The toast owns bottom-centre at 22px and out-ranks this panel
+ * (--z-toast 80 over --z-compose 60): a transient pill may paint over the
+ * composer's foot, never the other way round. That is the right priority --
+ * an undo window is time-critical; the composer stays put.
  */
 #compose {
   position: fixed;
-  right: 22px;
-  bottom: 0;
+  left: 0;
+  right: 0;
+  margin-inline: auto;
+  bottom: 22px;
   z-index: var(--z-compose);
-  width: min(580px, calc(100vw - 44px));
+  width: min(680px, calc(100vw - 48px));
   display: flex;
   flex-direction: column;
-  max-height: min(620px, 82vh);
+  max-height: min(700px, 84vh);
   background: var(--bg-raised);
   border: 1px solid var(--line);
-  border-bottom: 0;
-  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  border-radius: var(--r-xl);
   box-shadow: var(--shadow-lg);
   animation: compose-in var(--dur-base) var(--ease-out) both;
 }
@@ -222,6 +247,12 @@
 @keyframes compose-in {
   from { opacity: 0; transform: translate3d(0, 16px, 0); }
   to   { opacity: 1; transform: none; }
+}
+
+/* A minimised draft is a heading, not a window: it slims to a centred strip
+   instead of holding the full composer's width over the list. */
+#compose.minimised {
+  width: min(440px, calc(100vw - 48px));
 }
 
 #compose.minimised #compose-body,
@@ -235,7 +266,7 @@
   gap: var(--s-2);
   padding: var(--s-3) var(--s-4);
   background: var(--bg-sunken);
-  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
   border-bottom: 1px solid var(--line);
 }
 #compose-title {

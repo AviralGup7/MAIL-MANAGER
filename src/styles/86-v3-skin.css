@@ -667,10 +667,23 @@ body.rail-open #rail:has(#rail-scroll > :not([hidden])) {
   #listpane {
     border-right: 0;
   }
-  /* Compose spans the window; a fixed 580px card overflows a narrow one. */
+  /* Compose spans the window; a fixed 680px card overflows a narrow one. The
+     centred float's margins come off and it docks to the glass edge, corners
+     rounded on the way up only -- including a draft minimised to its strip,
+     which would otherwise keep the desktop's 440px width. */
   #compose {
+    left: 0;
     right: 0;
+    bottom: 0;
+    margin-inline: 0;
     width: 100%;
+    max-height: 90vh;
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+  }
+  #compose.minimised {
+    width: 100%;
+  }
+  #compose-head {
     border-radius: var(--r-lg) var(--r-lg) 0 0;
   }
 }
