@@ -69,6 +69,16 @@ export function toast(text, opts = {}) {
   el.toastAction.hidden = !action;
   if (action) {
     setText(el.toastAction, action.label);
+    /*
+     * THE NAME MUST FOLLOW THE TEXT (accessibility audit A-A1, AX-proven).
+     * app.html ships aria-label="Undo" as the pre-JS name placeholder; an
+     * explicit aria-label WINS over the visible text in name computation,
+     * and this code only refreshed the text -- so the coach's "Got it" and
+     * the outbox's "Show" both announced as "Undo" until this readonly
+     * desync was measured in the live AX tree. Stamp the label on the name
+     * channel too: what is spoken is what is shown.
+     */
+    el.toastAction.setAttribute('aria-label', action.label);
     el.toastAction.onclick = () => {
       hideToast();
       action.run();
