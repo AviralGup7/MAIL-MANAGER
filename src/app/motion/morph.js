@@ -115,8 +115,14 @@ export function popFrom(el, anchor, opts = {}) {
   if (reducedMotion()) return { cancel() {}, running: () => false };
 
   const b = el.getBoundingClientRect();
-  const ox = ((anchor.x - b.left) / Math.max(1, b.width)) * 100;
-  const oy = ((anchor.y - b.top) / Math.max(1, b.height)) * 100;
+  // The anchor can legitimately map OUTSIDE the popup (a right-clicked row
+  // is full-width; the menu opens at the pointer, far from its centre) —
+  // an unclamped percentage measured 45119% in the live probe, and the pop
+  // swung in from another postal code. Clamp to the box with a 4% margin:
+  // the pop still grows from the anchor's DIRECTION, never from deep space.
+  const clampPct = (v) => Math.min(96, Math.max(4, v));
+  const ox = clampPct(((anchor.x - b.left) / Math.max(1, b.width)) * 100);
+  const oy = clampPct(((anchor.y - b.top) / Math.max(1, b.height)) * 100);
   el.style.transformOrigin = `${ox.toFixed(1)}% ${oy.toFixed(1)}%`;
 
   /*

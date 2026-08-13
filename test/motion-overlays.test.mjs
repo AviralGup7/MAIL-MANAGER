@@ -150,6 +150,19 @@ test('popFrom: synchronous first pose, CSS animation suspended for the flight, r
   } finally { tokens._setReducedForTest(null); clock.restore(); restore(); }
 });
 
+test('popFrom: an anchor outside the box CLAMPS to the edge (live-probe finding)', () => {
+  const { doc, restore } = dom('<div id="m">menu</div>');
+  tokens._setReducedForTest(false);
+  try {
+    const m = doc.getElementById('m');
+    m.getBoundingClientRect = () => ({ left: 100, top: 100, width: 200, height: 160, right: 300, bottom: 260 });
+    morph.popFrom(m, { x: 90226, y: 28740 }); // the full-width-row case, measured
+    const [ox, oy] = m.style.transformOrigin.split(' ').map((v) => parseFloat(v));
+    assert.ok(ox >= 4 && ox <= 96, `x-origin clamped into the box (got ${ox}%)`);
+    assert.ok(oy >= 4 && oy <= 96, `y-origin clamped into the box (got ${oy}%)`);
+  } finally { tokens._setReducedForTest(null); restore(); }
+});
+
 test('standing doctrines re-asserted: reduced motion = no pop, no ghost flight', () => {
   const { doc, restore } = dom('<div id="m">m</div><div id="g">g</div>');
   tokens._setReducedForTest(true);
