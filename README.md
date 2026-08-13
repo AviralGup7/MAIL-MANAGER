@@ -384,7 +384,8 @@ src/
     motion/                 the animation kit: springs, camera, light, particles
     system/                 settings, themes, cache, identity, snooze/outbox
                             persistence, backup, fallback, deep-links
-    overlays/               layers, menu, dialog, toast, help, palette, the menus
+    overlays/               layers, menu, dialog, toast, help, settings-panel,
+                            palette, the menus
     mail/                   store, list, reader, bulk, rows, undo, rules…
     search/                 query language, suggestions, saved views, chips
     compose/                compose, autocomplete, templates, drafts, outbox
