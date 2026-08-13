@@ -193,13 +193,12 @@ test('the layer primitive restores focus, and checks the node still exists', () 
   // The guarantee the deleted assertions were reaching for, asserted against
   // the module that now actually provides it.
   const layers = readFileSync(new URL('../src/app/overlays/layers.js', import.meta.url), 'utf8');
-    /*
-   * STALE PIN, FOUND RED DURING S2 (pre-existing: it asked for the literal
-   * `returnFocus.isConnected`, but since the A-A2 gate the restore path asks
-   * the candidate: `let target = returnFocus; if (!target?.isConnected ||
-   * !target.matches?.(FOCUSABLE)) { fallback }` — and the regex had ALSO kept
-   * a double-escaped dot, so it could never have matched any code at all).
-   * Pin the gate as the gate actually exists.
+  /*
+   * STALE PIN, FOUND RED DURING S2 (pre-existing on main): it matched the
+   * literal `returnFocus.isConnected`, but the A-A2 gate asks the *candidate*
+   * since then — `let target = returnFocus; if (!target?.isConnected ||
+   * !target.matches?.(FOCUSABLE)) { fallback }` — so nobody could tell what
+   * this pin was still promising. Re-pinned to the gate as it exists.
    */
   assert.match(layers, /!target\?\.isConnected \|\| !target\.matches\?\.\(FOCUSABLE\)/,
     'a detached (or unfocusable) restore target must reroute, not focus <body>');
