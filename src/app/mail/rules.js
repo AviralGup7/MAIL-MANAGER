@@ -249,3 +249,28 @@ export function mutedCount(rules, messages) {
   for (const m of messages) if (muted.has(m.category)) n++;
   return n;
 }
+
+/**
+ * What an auto-archive rule WOULD say yes to, today.
+ *
+ * The dry-run mirror of main.js's ingest filter — the SAME three terms
+ * (category, unread, not search-stamped), in one exported place, so the
+ * preview the menu shows before the flip can never drift from what the
+ * pipeline will actually do at ingest. If the filter grows a fourth term,
+ * it grows it here too, or the preview lies.
+ *
+ * Pure and exported for tests; returns a count and up to `cap` sample
+ * subjects so the dialog can name examples without rendering a list.
+ */
+export function autoArchiveMatchSet(messages, category, cap = 3) {
+  let count = 0;
+  const samples = [];
+  for (const m of messages) {
+    if (!m || m.category !== category || !m.unread || m.fromSearch) continue;
+    count++;
+    if (samples.length < cap) {
+      samples.push(String(m.subject || '(no subject)').slice(0, 60));
+    }
+  }
+  return { count, samples };
+}

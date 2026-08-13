@@ -21,3 +21,6 @@ tools/bisect/
 /.shot2.mjs
 /.probe*.mjs
 .shot*.png
+
+# Smoke-run failure evidence (tools/ci-smoke.mjs writes these on a fall).
+.smoke-failure.*

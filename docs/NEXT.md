@@ -59,6 +59,16 @@ boot against the stub corpus (the render-bench fixture pattern).
 
 ## M3 — Classification that acts
 
+**Status 2026-08-13.** Milestone 1 turned out to pre-exist: per-category
+auto-archive already acts at ingest (opt-in, unread arrivals only, logged
+with actor 'rule', undoable). Milestone 2 landed against it —
+`autoArchiveMatchSet` in `mail/rules.js` mirrors the ingest filter's three
+terms in one exported place, and the category menu's ON flip is gated
+through a confirmDialog that names the current match set and restates the
+arrivals-only contract (pins: `test/rule-dryrun.test.mjs`). The OFF flip
+stays one click. The "read AND older than N days" action below remains
+the next safe action to add.
+
 **The claim.** The campus classifier is the product's moat; today it only
 *labels*. Rules should let it *move* — with dry-run trust first.
 
