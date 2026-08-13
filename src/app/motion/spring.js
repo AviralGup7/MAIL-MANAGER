@@ -103,7 +103,10 @@ function tick(t) {
  * @returns {AnimHandle}
  */
 export function animateValue({ from, to, preset = SPRINGS.SNAP, velocity = 0, onUpdate, onRest }) {
-  if (reducedMotion()) {
+  // No frame clock, no animation: an unschedulable spring IS its end state.
+  // node consumers (menu tests through popFrom) hit exactly this path —
+  // mirror of closeWithMotion's typeof-rAF guard in layers.js.
+  if (reducedMotion() || typeof requestAnimationFrame !== 'function') {
     onUpdate?.(to, 0);
     onRest?.();
     return {

@@ -91,7 +91,7 @@ CSS mirror: `--spring-pop: cubic-bezier(0.34, 1.56, 0.64, 1)` family stays for p
 
 ### 3.2 Depth model (§7)
 
-Perspective container on `#shell` (`perspective: 1200px`); five planes: **backdrop −60px** (dim+blur) · **content 0** · **float +30px** (cards/popovers) · **overlay +90px** (palette/dialogs) · **toast +140px**. Elevation tokens `--z-lift-*` drive BOTH translateZ and shadow spread/alpha — one source of truth, dynamic shadows (§20) read the same tokens. Shadow color stays theme-token-derived (contrast gate untouched).
+Perspective container on `#shell` (`perspective: 1200px`, shipped P2/P4); five planes: **backdrop −60px** (dim+blur) · **content 0** · **float +30px** (cards/popovers) · **overlay +90px** (palette/dialogs) · **toast +140px**. Elevation reads as BOTH translateZ and shadow from one token pair — a shadow may never claim a height the geometry denies. Shadow color stays theme-token-derived (contrast gate untouched). **Enforcement (P4):** package.test.mjs's token census forbids speculative CSS tokens, so plane/lift/light custom properties enter the stylesheet only together with their first consumer (P5/P6), mirrored day/night like the `--shadow-*` family. The camera itself ships its physics now (motion/camera.js) and needs no CSS tokens.
 
 ### 3.3 Lighting model (§19)
 
