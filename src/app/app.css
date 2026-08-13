@@ -388,6 +388,8 @@ body.draft-dirty #compose.minimised::after {
   --z-compose: 60;
   --z-palette: 70;
   --z-toast: 80;
+  /* The particle canvas floats over the whole scene, its own spectator. */
+  --z-fx: 90;
 
 }
 
@@ -6564,6 +6566,22 @@ body.rail-open #rail:has(#rail-scroll > :not([hidden])) {
     rgba(255, 255, 255, var(--lit-alpha)),
     transparent 60%
   );
+}
+
+/*
+ * THE PARTICLE CANVAS (animation P6; motion/particles.js owns its birth and
+ * death — this rule is just its posture). Fixed to the VIEWPORT so #shell's
+ * camera pushes never recruit it; pointer-events none so it can sit over
+ * the toast's action button without ever eating a click.
+ */
+.fx-canvas {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: var(--z-fx);
 }
 
 /*
