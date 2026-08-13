@@ -140,6 +140,11 @@ export function flyRowIdentity(rowDomId, els, doc = globalThis.document) {
   function land() {
     if (flight !== f) return; // a newer flight or an abort already owns this
     clearTimeout(f.fuse);
+    // If the FUSE landed (backgrounded tab), the spring is still live —
+    // kill it here or it keeps stepping, writing to detached ghosts (wasted
+    // rAF; never a leak — but the loop should die with its flight). From
+    // onRest this same call is a no-op: the tick already dropped the anim.
+    f.handle.cancel();
     for (const g of f.ghosts) g.ghost.remove();
     for (const t of f.targets) t.classList.remove('rmorph-hide');
     flight = null;
