@@ -233,6 +233,7 @@ test('core and motion import nothing app-side', () => {
     for (const [file, folder] of appModules()) {
       if (folder !== leaf) continue;
       for (const target of importTargets(file)) {
+        if (target.startsWith(`src/app/${leaf}/`)) continue; // intra-leaf is the leaf
         if (target.startsWith('src/app/')) {
           assert.fail(`${file} reaches into the app (${target}); ${leaf} stays a leaf`);
         }
