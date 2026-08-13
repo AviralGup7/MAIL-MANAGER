@@ -64,6 +64,15 @@
  *   `backend` exists for tests (fake-indexeddb); production callers leave
  *   it to `globalThis.indexedDB`, exactly the way STORAGE leaves its area
  *   to `globalThis.chrome`.
+ *
+ * ONE AREA = ONE DATABASE WITH ONE STORE. Namespacing happens by KEY
+ * inside the store, mirroring chrome.storage.local's flat space — this is
+ * what lets a migrant keep its existing key names (the body floor's
+ * 'bodyCache' lands as-is, so m2's chrome→idb fallback read needs no key
+ * mapping). IDB creates object stores only during a version change, so two
+ * areas sharing a `db` but differing in `store` cannot both lazily create
+ * their store: that is an API misuse, not a runtime condition, and the
+ * transaction's own NotFoundError says so.
  * @returns {{get: Function, set: Function, remove: Function}}
  */
 export function idbArea({ db = 'bmm', store = 'kv', backend } = {}) {

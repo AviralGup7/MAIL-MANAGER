@@ -112,10 +112,13 @@ areaContract('idb area', () => idbArea({ db: 'contract-' + (++dbSeq), backend: i
 
 // ------------------------------------------------- indexeddb-specific ----
 
-test('two store names on one database are separate universes', async () => {
-  const db = 'namespaces-' + (++dbSeq);
-  const a = idbArea({ db, store: 'a', backend: indexedDB });
-  const b = idbArea({ db, store: 'b', backend: indexedDB });
+test('two database names are separate universes (the isolation unit)', async () => {
+  /* Namespacing is by DATABASE, never by store: IDB creates object stores
+     only in onupgradeneeded, so one db carries one 'kv' store and keys do
+     the partitioning. Caught by this test's first draft, which asked two
+     store names to share one database and got the honest NotFoundError. */
+  const a = idbArea({ db: 'universe-a-' + (++dbSeq), backend: indexedDB });
+  const b = idbArea({ db: 'universe-b-' + (++dbSeq), backend: indexedDB });
   await a.set({ only: 'A' });
   assert.deepEqual(await b.get('only'), {}, 'an area never reads its neighbour');
   assert.deepEqual(await a.get('only'), { only: 'A' });
