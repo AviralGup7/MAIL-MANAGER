@@ -206,14 +206,19 @@ test('action rows run their function; restore-defaults returns the schema', asyn
     sp.openSettings({ toggleHelp: () => helpCalls++ });
     [...doc.querySelectorAll('#settings-nav [role="tab"]')].pop().click(); // General
     const buttons = [...doc.querySelectorAll('#settings-body .set-row button')];
-    assert.deepEqual(buttons.map((b) => b.textContent), ['Show every key', 'Restore all defaults']);
+    /* 2026-08-14: Test/Add rule belong to the G4-m1 rules editor, the first
+       row of General now. Selection by LABEL, not index — a descriptor row
+       added to General must never silently re-point these two clicks. */
+    assert.deepEqual(buttons.map((b) => b.textContent),
+      ['Test', 'Add rule', 'Show every key', 'Restore all defaults']);
 
-    buttons[0].click();
+    const byLabel = (name) => buttons.find((b) => b.textContent === name);
+    byLabel('Show every key').click();
     assert.equal(helpCalls, 1, 'the shortcuts sheet rides ctx.toggleHelp');
 
     await settings.set('density', 'compact');
     assert.equal(settings.get('density'), 'compact');
-    buttons[1].click();
+    byLabel('Restore all defaults').click();
     await new Promise((r) => setTimeout(r, 30)); // the reset loop is async
     assert.equal(settings.get('density'), 'comfortable', 'restore put the schema default back');
     assert.equal(settings.get('ctrlEnterSend'), true, 'new keys restore too');
