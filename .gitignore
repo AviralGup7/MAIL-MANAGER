@@ -22,5 +22,8 @@ tools/bisect/
 /.probe*.mjs
 .shot*.png
 
-# Smoke-run failure evidence (tools/ci-smoke.mjs writes these on a fall).
+# Failure evidence: the smoke tool's scene (screenshot, DOM, console,
+# trace) and the self-integrity gate's shard manifest.
 .smoke-failure.*
+.smoke-trace.zip
+.ci-manifest.json

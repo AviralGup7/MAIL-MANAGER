@@ -39,6 +39,9 @@ jobs:
         with:
           node-version: '20'
           cache: npm
+          # One lockfile today; pinned anyway so a second lockfile never
+          # silently becomes the cache basis (2026-08-14 audit #12).
+          cache-dependency-path: package-lock.json
 
       # jsdom is required. test:ci fails if any test skips, so a missing
       # install cannot quietly reduce the suite to the headless subset --
@@ -60,6 +63,7 @@ jobs:
         with:
           node-version: '20'
           cache: npm
+          cache-dependency-path: package-lock.json
 
       - run: npm ci
 
@@ -86,9 +90,13 @@ jobs:
       # reuse it through the job's shared cache (the workflow previously
       # installed Chromium once per step). The fallback keeps the useful
       # signal: a --with-deps failure prints a warning instead of hiding.
+      # The executable is the PROJECT's playwright-core (2026-08-14 audit
+      # #43/#44), not npx: npx resolution can fetch when the local bin is
+      # absent, which is exactly the supply-chain shape a pinned dependency
+      # exists to prevent. npm ci above guarantees the bin is there.
       - name: Install Chromium (once)
         run: |
-          npx playwright-core install chromium --with-deps || { echo "::warning::install --with-deps failed; retrying without system deps"; npx playwright-core install chromium; }
+          node_modules/.bin/playwright-core install chromium --with-deps || { echo "::warning::install --with-deps failed; retrying without system deps"; node_modules/.bin/playwright-core install chromium; }
 
       - name: Rendering benchmark (numbers, advisory)
         run: timeout 600 npm run render:bench || echo "render:bench unavailable in this environment (see tools/render-bench.mjs)"
@@ -104,9 +112,11 @@ jobs:
           node tools/make-preview.mjs
           timeout 600 node tools/ci-smoke.mjs
 
-      # Failure has a SCENE: screenshot, DOM, captured console, uploaded
-      # only when something above fell (if-no-files-found says a green run
-      # leaves nothing, which is exactly right).
+      # Failure has a SCENE: screenshot, DOM, captured console, and a
+      # Playwright trace (2026-08-14 audit #38 — the piece that makes an
+      # intermittent browser failure replayable), uploaded only when
+      # something above fell (if-no-files-found says a green run leaves
+      # nothing, which is exactly right).
       - name: Failure evidence (smoke)
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -116,8 +126,24 @@ jobs:
             .smoke-failure.png
             .smoke-failure.html
             .smoke-failure.txt
+            .smoke-trace.zip
           if-no-files-found: ignore
           retention-days: 7
+
+      # The shard manifest survives EVERY run (2026-08-14 audit #8/#23):
+      # which file went to which slice, how many, disjoint/complete — the
+      # evidence the completeness claim rests on, kept for green runs too
+      # because "what did CI actually execute?" is a question you ask after
+      # a PASS as often as after a failure. Written by ci-selfcheck.mjs
+      # above; small enough that retention is free.
+      - name: Shard manifest (always)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: shard-manifest
+          path: .ci-manifest.json
+          if-no-files-found: ignore
+          retention-days: 30
 
       # The rule files are generated from docs/CLASSIFICATION_DATA_PACK.md.
       # Regenerating must be a no-op; a diff means someone hand-edited the

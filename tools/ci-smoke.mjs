@@ -78,6 +78,10 @@ const errors = [];
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
+/* The trace starts BEFORE the first assertion so a failure anywhere —
+   including boot — is replayable (audit #38). Kept only on failure: the
+   green discipline ("a pass leaves nothing") applies to traces too. */
+await page.context().tracing.start({ screenshots: true, snapshots: true });
 
 let fatal = null;
 try {
@@ -228,18 +232,24 @@ await page.keyboard.press('Escape');
 check('boot/console-clean', errors.length === 0, errors.slice(0, 3).join(' | '));
 
 /* On failure, leave the scene behind: screenshot, live DOM, captured
-   console — everything a manual .probe used to collect by hand. Best
+   console, and the trace — everything a manual .probe used to collect by
+   hand, plus the one thing it could not (a replayable recording). Best
    effort on purpose: artifact capture may never mask the failure. */
 if (fatal || results.some((r) => !r.ok)) {
   try {
+    await page.context().tracing.stop({ path: '.smoke-trace.zip' });
     await page.screenshot({ path: '.smoke-failure.png' });
     writeFileSync('.smoke-failure.html', await page.content());
     writeFileSync('.smoke-failure.txt',
       (fatal ? 'FATAL: ' + String(fatal) + '\n\n' : '') + (errors.join('\n') || '(no console errors)'));
-    console.log('failure artifacts: .smoke-failure.{png,html,txt}');
+    console.log('failure artifacts: .smoke-failure.{png,html,txt} + .smoke-trace.zip');
   } catch (e) {
     console.log('artifact capture failed:', String(e));
   }
+} else {
+  try {
+    await page.context().tracing.stop(); // green: discard, keep nothing
+  } catch { /* a stopped trace is not a finding */ }
 }
 
 await browser.close();

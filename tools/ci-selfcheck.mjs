@@ -26,7 +26,7 @@
  * A failure here is a CI defect, not an app defect — it fails the checks
  * job before any of the suites pay their cost for the day.
  */
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 
 const wf = readFileSync('.github/workflows/ci.yml', 'utf8');
@@ -45,11 +45,13 @@ const all = readdirSync('test').filter((f) => f.endsWith('.test.mjs')).sort();
 const seen = new Set();
 let overlap = 0;
 let runnerFault = '';
+const shardManifests = [];
 for (const spec of ['1/8', '2/8', '3/8', '4/8', '5/8', '6/8', '7/8', '8/8']) {
   const r = spawnSync('node', ['tools/ci-test.mjs', '--shard', spec, '--dry-run'], { encoding: 'utf8' });
   if (r.status !== 0) { runnerFault = `${spec} exited ${r.status}`; break; }
   const manifest = JSON.parse(r.stdout.trim().split('\n').pop());
   if (!manifest.files.length) { runnerFault = `${spec} empty`; break; }
+  shardManifests.push(manifest);
   for (const f of manifest.files) {
     if (seen.has(f)) overlap++;
     seen.add(f);
@@ -57,6 +59,27 @@ for (const spec of ['1/8', '2/8', '3/8', '4/8', '5/8', '6/8', '7/8', '8/8']) {
 }
 check('shards/non-empty+disjoint', !runnerFault && overlap === 0, runnerFault || `${overlap} duplicated`);
 check('shards/union-is-the-suite', seen.size === all.length, `${seen.size} of ${all.length} files dealt`);
+
+/* A FLOOR, not a count-pin (2026-08-14 audit #27): a count-pin must be
+   edited every time a test file is added, which trains people to edit it
+   blindly; a floor guards the catastrophe — half the suite disappearing
+   looks exactly like a green build to every other gate. 98 files exist
+   the day this lands; 90 is the tripwire, far below growth, far above
+   loss. */
+check('suite/floor', all.length >= 90, `${all.length} test files`);
+
+/* The manifest as EVIDENCE (audit #8/#23): which file went to which
+   slice, counts, and the disjoint/complete verdicts the gate reached.
+   The checks job uploads this on every run (`if: always()`), so "what did
+   CI actually execute?" is answerable after a PASS as often as after a
+   failure. */
+writeFileSync('.ci-manifest.json', JSON.stringify({
+  generatedAt: new Date().toISOString(),
+  totalFiles: all.length,
+  disjoint: overlap === 0 && !runnerFault,
+  complete: seen.size === all.length,
+  shards: shardManifests,
+}, null, 2) + '\n');
 
 /* ---- 2 · the scripts the workflow names must exist ---------------------- */
 
@@ -79,6 +102,17 @@ check('workflow/typecheck-gate', wf.includes('npm run types'), 'checkJs runs in 
 check('workflow/verdict', wf.includes('needs: [test, checks]'), 'the aggregate verdict job exists');
 check('workflow/real-verdict', !/echo "?all checks passed/i.test(wf),
   'no fake verdict job (success/failure/cancelled must be read, not printed)');
+/* 2026-08-14 audit #43/#44: nothing EXECUTED in the workflow may route
+   through npx. npx fetches when the local bin is missing — the exact
+   supply-chain shape the pinned playwright-core dependency exists to
+   prevent — so the browser install addresses node_modules/.bin directly.
+   Comments are stripped first: explaining the rule requires naming it. */
+const wfCode = wf.split('\n').map((l) => l.replace(/#.*$/, '')).join('\n');
+check('workflow/no-npx', !/\bnpx\s/.test(wfCode), 'executables come from the lockfile, via npm ci');
+check('workflow/manifest-uploaded', /if: always\(\)[\S\s]*?\.ci-manifest\.json/.test(wf),
+  'the shard manifest survives green runs too');
+check('workflow/traces-on-failure', wf.includes('.smoke-trace.zip'),
+  'the trace has an upload path when smoke falls');
 
 let failed = 0;
 for (const r of results) {

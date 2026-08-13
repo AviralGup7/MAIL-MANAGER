@@ -1,0 +1,28 @@
+# Dependency update discovery (2026-08-14 audit #49).
+#
+# Every action in the workflows is pinned to a SHA. That is the safe half
+# of supply-chain hygiene; the neglected half is that pinning also means
+# updates never arrive on their own, and "secure because pinned" quietly
+# becomes "stale because pinned". Dependabot is the noticing mechanism: it
+# proposes SHA bumps (updating the # vX.Y.Z comment with them) and npm
+# bumps, weekly, as reviewable PRs — the same discipline as the rest of
+# the repo, where a change is a diff, not a memory.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Asia/Kolkata
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Asia/Kolkata
+    open-pull-requests-limit: 5

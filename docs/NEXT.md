@@ -68,7 +68,39 @@ caught by this gate; before it, they were caught by a human running a
 
 **Remaining ladder.** Extend to the reader (open a message, remote-image
 banner states), compose (send → undo window visible), and one cold-cache
-boot against the stub corpus (the render-bench fixture pattern).
+boot against the stub corpus (the render-bench fixture pattern). — The
+reader half landed 2026-08-13 with M1: `reader/*` smoke gates open a
+message, prove the live path wears no provenance strip, kill the worker
+mid-flight, and assert the dated offline copy renders from the floor while
+a never-opened message still errors honestly. Compose and cold-cache boot
+remain. 18/18.
+
+**The 50-point CI audit (2026-08-13/14): dispositions.** Most points
+landed with the hardening commit and the reader-floor round; the second
+pass (2026-08-14) closed the rest of the real gaps: no `npx` anywhere
+(project-local `node_modules/.bin/playwright-core`), explicit
+`cache-dependency-path`, the shard manifest written by the self-check and
+uploaded `if: always()` (`.ci-manifest.json`), Playwright traces on smoke
+failure (`.smoke-trace.zip`), a suite floor (≥90 files — guards
+disappearance without pinning growth), Dependabot for actions+npm, and a
+weekly `security.yml` audit that deliberately never gates pushes (a moving
+advisory DB must not manufacture red builds). Deferred with reasons:
+
+- **Browser-binary caching (#16).** `--with-deps` is apt-level and cannot
+  be cached by actions/cache anyway; the residual win is one CDN download
+  per run, and a mis-keyed cache ships a stale browser while claiming
+  reproducibility. Revisit if install time is ever measured as the
+  bottleneck.
+- **Runtime-based shard rebalancing (#18) / fast-shard heuristics (#26).**
+  Round-robin-by-count was chosen so the heavy integration suites sort
+  apart deterministically; runtime rebalancing needs historical data the
+  runner does not persist, and duration thresholds flap on shared runners.
+  The manifests now record per-shard counts and each shard logs its
+  duration — the evidence to revisit this exists the day it hurts.
+- **A separately-gated "regression suite" (#28).** Nearly every test file
+  here IS a regression pin citing a shipped bug; carving an identity out
+  of the suite would duplicate runtime to relabel it. The skip-fails
+  runner + floor guard the substance instead of the label.
 
 ## M3 — Classification that acts
 

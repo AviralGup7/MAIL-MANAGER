@@ -14,7 +14,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 
 const read = (rel) => readFileSync(rel, 'utf8');
 
@@ -54,4 +54,60 @@ test('the workflow keeps least-privilege, timeouts, one install, real verdict', 
   assert.match(wf, /if: failure\(\)/, 'failure evidence uploads only on failure');
   assert.match(wf, /needs: \[test, checks\][\s\S]*?if \[ "\$TEST" != "success" \]/,
     'the verdict reads results, it does not print them');
+});
+
+/* 2026-08-14 audit, the second pass: the leftovers from the 50-point review
+   that were real gaps — the npx route, manifests that vanished with the
+   logs, traces that only existed as a suggestion, the missing update
+   discovery, and the audit that must never gate a push. */
+test('no npx executed anywhere in the workflows; the browser comes from the lockfile', () => {
+  // Comments are stripped before the sweep — explaining the rule requires
+  // naming it, and a comment is not an executable route.
+  const uncommented = (s) => s.split('\n').map((l) => l.replace(/#.*$/, '')).join('\n');
+  const ci = uncommented(read('.github/workflows/ci.yml'));
+  const sec = uncommented(read('.github/workflows/security.yml'));
+  assert.ok(!/\bnpx\s/.test(ci), 'ci.yml executable routes via node_modules/.bin');
+  assert.ok(!/\bnpx\s/.test(sec), 'security.yml executable routes via node_modules/.bin');
+  assert.match(ci, /node_modules\/\.bin\/playwright-core install chromium/);
+});
+
+test('the shard manifest is written by the gate and survives green runs', () => {
+  const self = read('tools/ci-selfcheck.mjs');
+  assert.match(self, /writeFileSync\('\.ci-manifest\.json'/, 'the gate produces the evidence');
+  assert.match(self, /disjoint: overlap === 0/, 'the verdicts are IN the evidence');
+  const wf = read('.github/workflows/ci.yml');
+  assert.match(wf, /if: always\(\)[\s\S]*?\.ci-manifest\.json/, 'uploaded even when nothing failed');
+});
+
+test('the suite floor guards disappearance without pinning growth', () => {
+  const self = read('tools/ci-selfcheck.mjs');
+  assert.match(self, /all\.length >= 90/, 'the tripwire exists');
+  /* And it is truthful at authoring time: the real suite is well above
+     it — a floor that already trips on the current suite would be a lie,
+     not a guard. */
+  const files = readdirSync('test').filter((f) => f.endsWith('.test.mjs'));
+  assert.ok(files.length >= 98, `expected the real suite, found ${files.length}`);
+});
+
+test('a failed smoke keeps a replayable trace; a green one keeps nothing', () => {
+  const src = read('tools/ci-smoke.mjs');
+  assert.match(src, /tracing\.start\(\{ screenshots: true, snapshots: true \}\)/,
+    'the trace records from before the first gate');
+  assert.match(src, /tracing\.stop\(\{ path: '\.smoke-trace\.zip' \}\)/, 'failure stops WITH a path');
+  assert.match(src, /tracing\.stop\(\); \/\/ green: discard/, 'success discards');
+  const wf = read('.github/workflows/ci.yml');
+  assert.match(wf, /\.smoke-trace\.zip/, 'the trace has an upload path');
+});
+
+test('updates are discovered (dependabot), vulnerabilities scheduled, never push-gated', () => {
+  const bot = read('.github/dependabot.yml');
+  assert.match(bot, /package-ecosystem: github-actions/, 'pinned SHAs get bump PRs');
+  assert.match(bot, /package-ecosystem: npm/, 'dependencies get bump PRs');
+
+  const sec = read('.github/workflows/security.yml');
+  assert.match(sec, /schedule:/, 'the audit runs weekly');
+  assert.match(sec, /workflow_dispatch:/, '…and by hand');
+  assert.match(sec, /npm audit --audit-level=high/, 'high+ only — the signal channel stays clean');
+  assert.ok(!/on:\s*\n\s*push/.test(sec),
+    'a moving advisory database must never gate a push — a red nobody believes');
 });
