@@ -10,7 +10,8 @@ Newcomer order: this file → ARCHITECTURE.md → THREADING.md → the audits.
 | TIMETABLE.md | Provenance and precedence of timetable truth |
 | CLASSIFICATION_DATA_PACK.md | The single source the category rules are generated from |
 | EXTENSION-KEY.md | What the pinned extension key protects |
-| BUILD-PLAN.md | Historical; superseded by the audit roadmap |
+| UX-AUDIT-V4.md | The active interaction-overhaul campaign (round 65) — plan, findings, per-round record |
 
-Audits live in `../audits/`; start at `39-*` for the ten individual audits and
-the consolidation for the deduplicated, priced roadmap.
+Audits live in `../audits/`. The per-wave audit series was retired after its
+fixes shipped (round 65 cleanup); the two load-bearing survivors and the
+reasoning are in `../audits/README.md`.

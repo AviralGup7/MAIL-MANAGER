@@ -12,8 +12,8 @@
 - [Security](#security) · [Status](#status) · [Known gaps](#known-gaps) · [Audited, then fixed](#audited-then-fixed)
 - [Contributing / quick start](CONTRIBUTING.md)
 - [Documentation index](docs/README.md) — architecture, threading, worker, timetable
-- [Audits](audits/) — ten audits + cross-audit consolidation; the priced roadmap
-- [Security posture](SECURITY.md) and [known work](TODO.md)
+- [Audits](audits/) — the two load-bearing audits, and where the rest went
+- [Security posture](SECURITY.md) and [things only you can do](DO-THIS-NOW.md)
 
 
 A Chrome extension that takes over the Gmail tab and replaces it with a faster,
@@ -416,10 +416,9 @@ test/                       1339 tests. `npm test` · `npm run test:ci` (fails o
   app.integration.test.mjs  Boots the real app.html in jsdom and drives it.
   resilience.test.mjs       Failure injection across every persistence module.
   package.test.mjs          Lints the manifest, tokens, motion rules, hit targets.
-audits/                     Eight audits. Start at audits/README.md.
-TODO.md                     Remaining work, prioritised by risk.
-notes/SYNC_BUGS.md          Seven sync/render bugs found before shipping.
-notes/CLASSIFIER_CORRECTION.md  Four retracted bug claims, and what was really wrong.
+audits/                     The two load-bearing audits; the retired series is
+                            summarised in audits/README.md.
+DO-THIS-NOW.md              The short list of actions only the owner can take.
 docs/CLASSIFICATION_DATA_PACK.md  Source of truth for every rule and weight.
 tools/make-icons.py         Deterministic icon generation.
 tools/check-contrast.mjs    WCAG AA audit of every theme. `npm run contrast`
@@ -493,8 +492,7 @@ would produce a real corpus.
 
 - **Gmail labels are searchable, not manageable.** Your labels appear in the
   command palette and `label:Thesis` filters by them, but you cannot apply,
-  create or remove a label from the UI. The last significant one-way feature —
-  see [`audits/13-INCOMPLETENESS.md`](audits/13-INCOMPLETENESS.md).
+  create or remove a label from the UI. The last significant one-way feature.
 - **No desktop notification for new mail.** The inbox refreshes itself every
   two minutes, but nothing tells you while the tab is in the background.
 - **No view-original or print.**
@@ -503,10 +501,13 @@ would produce a real corpus.
 
 ### Audited, then fixed
 
-Eleven audits have run over this codebase: correctness, security, performance,
-accessibility, architecture, testing, two competitive gap analyses against
-Gmail, product delight, and a UI/motion/design-system pass. See
-[`audits/README.md`](audits/README.md).
+The codebase has been through dozens of autonomous audit-and-fix waves:
+correctness, security, performance, accessibility, architecture, testing, two
+competitive gap analyses against Gmail, delight, motion, state, and several
+whole-app ratings. The point-in-time documents were retired once their fixes
+shipped and became test-pinned code; what remains — and why — is in
+[`audits/README.md`](audits/README.md). The current campaign's plan and
+running record is [`docs/UX-AUDIT-V4.md`](docs/UX-AUDIT-V4.md).
 
 Defects found and fixed by systematic hunting, each verified by sabotaging the
 fix before trusting it:
