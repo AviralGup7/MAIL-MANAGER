@@ -1047,15 +1047,17 @@ test('every declared setting is actually read by something', () => {
     .map((m) => m[1]);
   assert.ok(declared.length >= 5, 'expected a real schema');
 
-  // Consumers: anything under src/ other than the schema itself.
-  const sources = [
-    'src/app/main.js', 'src/app/search/query.js',
-    'src/app/mail/undo-actions.js', 'src/app/academic/radar.js',
-    'src/app/overlays/palette.js', 'src/app/compose/compose.js', 'src/app/compose/autocomplete.js',
-    'src/app/system/themes.js', 'src/app/mail/rules.js', 'src/app/compose/draft-store.js',
-    'src/options/options.js', 'src/background/index.js',
-    'src/background/auth.js', 'src/background/gmail.js',
-  ].map((p) => read(p)).join('\n');
+  /* Consumers: every shipped .js file, minus the schema itself. jsFiles()
+     walks src/ plus the root worker/popup — because this used to be a
+     hand-kept list of "likely reader" files, and the M4 shell extraction
+     (2026-08-13) moved the railOpen read from main.js to
+     workspace/rail-visibility.js, turning the list into a liar: it said
+     "dead setting" when it meant "moved read". A census whose sample
+     frame is curated by hand always drifts behind re-orgs; walk the tree. */
+  const sources = jsFiles()
+    .filter((p) => p !== 'src/app/system/settings.js')
+    .map((p) => read(p))
+    .join('\n');
 
   const dead = declared.filter(
     (key) => !sources.includes(`'${key}'`) && !sources.includes(`"${key}"`)
