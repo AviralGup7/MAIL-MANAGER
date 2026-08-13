@@ -140,6 +140,7 @@
 }
 
 #help.closing,
+#settings.closing,
 #gate.closing {
   animation: fade-out var(--dur-fast) var(--ease-in) both;
 }

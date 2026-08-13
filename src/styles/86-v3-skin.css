@@ -25,6 +25,10 @@
   --z-drawer: 610;
   --z-compose: 620;
   --z-pop: 640;
+  /* Settings sits above the surfaces it can be opened over (compose, pops)
+     and below the ones it must never mute: the toast that reports a failed
+     save, help summoned from the palette, and the gate. */
+  --z-settings: 650;
   --z-toast: 660;
   --z-help: 680;
   --z-palette: 690;
@@ -269,6 +273,7 @@ body.rail-open #rail:has(#rail-scroll > :not([hidden])) {
 #compose { z-index: var(--z-compose); }
 #toast { z-index: var(--z-toast); }
 #help { z-index: var(--z-help); }
+#settings { z-index: var(--z-settings); }
 #palette { z-index: var(--z-palette); }
 #gate { z-index: var(--z-gate); }
 
@@ -542,6 +547,7 @@ body.rail-open #rail:has(#rail-scroll > :not([hidden])) {
 }
 #palette:not([hidden]),
 #help:not([hidden]),
+#settings:not([hidden]),
 #compose:not([hidden]),
 #gate:not([hidden]) {
   animation: v3-rise-in var(--dur-med) var(--ease-out);

@@ -34,6 +34,7 @@ import { loadViews, saveView, removeView } from './system/view-store.js';
 import { extractDeadline } from './academic/deadlines.js';
 import { runInPage, probeWorker } from './system/fallback.js';
 import { closeHelp, toggleHelp, helpOpen } from './overlays/help.js';
+import { openSettings } from './overlays/settings-panel.js';
 import { openSnoozeMenu, wireSnoozeMenu } from './overlays/snooze-menu.js';
 import { openCategoryMenu, wireCategoryMenu } from './overlays/category-menu.js';
 import { renderNotices, wireNotices } from './academic/notices-rail.js';
@@ -2443,6 +2444,7 @@ $('btn-theme').addEventListener('click', (e) => {
 });
 
 $('btn-help').addEventListener('click', () => toggleHelp());
+$('btn-settings').addEventListener('click', () => openSettings(ctx));
 $('btn-activity').addEventListener('click', () => openActivityLog(ctx));
 
 async function doSignIn() {
@@ -3078,6 +3080,7 @@ const ctx = {
   refresh: () => refresh(),
   release: () => release(),
   toggleHelp,
+  openSettings: () => openSettings(ctx),
   openActivityLog: () => openActivityLog(ctx),
   // R-4: the compose->autocomplete sibling edge becomes a ctx dependency.
   wireAutocomplete: (inputId, listId) => wireAutocomplete(inputId, listId),
@@ -3233,6 +3236,14 @@ function wireRail() {
     }
   };
   apply(settings.get('railOpen') !== false);
+  /* The rail follows the KEY, not the button: the settings panel (and the
+     options page through followExternalChanges) writes the same `railOpen`
+     setting, and it must take effect here without a reload. `apply` is
+     idempotent, so the button's own write arriving through this subscription
+     is a harmless second no-op. */
+  settings.subscribe((key) => {
+    if (key === 'railOpen') apply(settings.get('railOpen') !== false);
+  });
   btn.addEventListener('click', () => {
     const on = !document.body.classList.contains('rail-open');
     settings.set('railOpen', on).catch(() => {});
@@ -3439,6 +3450,14 @@ async function boot() {
       refreshSubjectClip();
     }
     if (key === 'lanes') renderList();
+    /*
+     * The poll timer is armed from the setting at schedule time — a write
+     * from the settings panel (or the options page, cross-page) has to
+     * re-arm it, or the old interval runs until the next reload.
+     * scheduleAutoRefresh reads the CURRENT value and re-checks sign-in, so
+     * this one line is the whole surface of the change.
+     */
+    if (key === 'autoRefreshMs') scheduleAutoRefresh();
   });
 
   /*

@@ -32,6 +32,7 @@
     <link rel="stylesheet" href="src/styles/82-spatial-memory.css" />
     <link rel="stylesheet" href="src/styles/84-dialogs.css" />
     <link rel="stylesheet" href="src/styles/86-v3-skin.css" />
+    <link rel="stylesheet" href="src/styles/87-settings.css" />
     <link rel="stylesheet" href="src/styles/90-motion-system.css" />
     <link rel="stylesheet" href="src/styles/99-reduced-motion.css" />
   </head>
@@ -251,6 +252,24 @@
                    stroke-linecap="round" stroke-linejoin="round">
                 <rect x="3" y="4" width="14" height="12" rx="2"/>
                 <path d="M13.2 4v12"/>
+              </svg>
+            </button>
+            <!--
+              SETTINGS (2026-08-13). The schema's knobs used to live only on
+              the extension options page — a different window, discovered by
+              accident. One click from the mail now, rightmost in the chrome
+              where the most global control belongs. Icon-only by the same
+              rule as its neighbours: title + aria-label, and it is in the
+              palette besides.
+            -->
+            <button id="btn-settings" class="ghost icon" type="button"
+                    title="Settings" aria-label="Settings" aria-haspopup="dialog">
+              <svg viewBox="0 0 20 20" aria-hidden="true" width="16" height="16"
+                   fill="none" stroke="currentColor" stroke-width="1.6"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3.5 6.2h6.4M14.2 6.2h2.3M3.5 13.8h2M9.8 13.8h6.7"/>
+                <circle cx="12.2" cy="6.2" r="1.9"/>
+                <circle cx="7.8" cy="13.8" r="1.9"/>
               </svg>
             </button>
           </div>
@@ -866,6 +885,34 @@
             Every action here is also in the command palette
             <kbd>Ctrl</kbd><kbd>K</kbd> — and every action can be undone with
             <kbd>Ctrl</kbd><kbd>Z</kbd>, not just sending.
+          </footer>
+        </div>
+      </div>
+
+      <!--
+        SETTINGS.
+
+        Every preference the schema promises, rendered by
+        overlays/settings-panel.js from its SECTIONS descriptor — the body
+        starts EMPTY because the controls are built per open from live
+        values, so the panel can never show a setting its storage forgot.
+        The footer's second button hands off to the full options page for
+        the three workflows that are not toggles: rules, backups, sign-in.
+
+        Placed after #help in the DOM: a dialog opened later paints over one
+        opened earlier, and the palette can summon help above settings —
+        the reverse arrangement would bury the summoner.
+      -->
+      <div id="settings" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden>
+        <div id="settings-box" class="lit">
+          <header id="settings-head">
+            <h2 id="settings-title">Settings</h2>
+            <button id="settings-close" class="ghost icon" type="button" aria-label="Close settings"></button>
+          </header>
+          <div id="settings-body"><!-- built by overlays/settings-panel.js --></div>
+          <footer id="settings-foot">
+            <span id="settings-note">Changes save instantly, on this device.</span>
+            <button id="settings-options" class="ghost small" type="button">Rules, backups &amp; sign-in…</button>
           </footer>
         </div>
       </div>

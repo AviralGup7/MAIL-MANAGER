@@ -121,9 +121,9 @@ const ALLOWED_EDGES = {
     'compose', // fallback drives the outbox pump DYNAMICALLY, and only when the worker is dead
   ]),
   overlays: new Set([
-    'core',    // toast's icons, layers' reset seam
+    'core',    // toast's icons, layers' reset seam, settings-panel's glyph + seam
     'motion',  // menu pop morphs; palette rides the camera
-    'system',  // snooze persistence; palette reads settings
+    'system',  // snooze persistence; palette reads settings; the settings panel IS the schema's UI
     'mail',    // palette runs the undo verbs; category-menu edits rules
     'compose', // the palette's "new mail" verb opens compose
     'academic',// the snooze menu reads deadlines to propose a wake day

@@ -40,7 +40,8 @@ src/
                               snooze/outbox persistence, backup, fallback,
                               deep-links, storage/view stores
     overlays/                 the overlay stack: layers, menu, dialog, toast,
-                              help, snooze-menu, category-menu, palette
+                              help, settings-panel, snooze-menu, category-menu,
+                              palette
     mail/                     the inbox: store, list, reader, reader-frame,
                               bulk, bulkbar, row-actions, selection, undo,
                               mailboxes, rules, snippet, undo-actions

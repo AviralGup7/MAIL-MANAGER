@@ -1,0 +1,249 @@
+/* ========================================================================= */
+/* SETTINGS (2026-08-13)                                                      */
+/*                                                                            */
+/* The settings panel's surface. It sits where every preference used not to   */
+/* be: inside the app, one click from the mail. The controls' content comes   */
+/* from overlays/settings-panel.js; this file owns only how they look.        */
+/*                                                                            */
+/* SIZE. Width min(880px, 100%), height min(760px, 84vh): at the reference    */
+/* 1440x900 that is 61% of the window's width and most of its height — a      */
+/* surface you READ, not a prompt you squeeze through, and still visibly a    */
+/* dialog floating over the list beneath. Below 600px it becomes a full-      */
+/* screen sheet, because a centred card with margins on a phone is a peephole.*/
+/*                                                                            */
+/* The z-level is NOT here: it is one rung on the overlay ladder in           */
+/* 86-v3-skin (--z-settings 650 — above compose and popovers, below the       */
+/* toast that must report a failed save, and below help so Ctrl+K can summon  */
+/* it over the panel). Motion is inherited the same way: the rise-in group    */
+/* and the closing fade, both token-driven.                                   */
+/* ========================================================================= */
+
+#settings {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--s-6);
+  /* The same dim #help and #gate use — one scrim for every modal surface. */
+  background: rgba(0, 0, 0, 0.42);
+}
+
+#settings-box {
+  width: min(880px, 100%);
+  height: min(760px, 84vh);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+#settings-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  padding: var(--s-4) var(--s-6);
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+
+#settings-title {
+  margin: 0;
+  font-size: var(--t-xl);
+  font-weight: var(--w-semi);
+}
+
+#settings-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--s-3) var(--s-6) var(--s-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-6);
+}
+
+/* A section is a header over rows — the help overlay's .sc-group idiom, so
+   the two readable surfaces of the app speak one typographic language. */
+.set-section h3 {
+  margin: 0 0 var(--s-1);
+  font-size: var(--t-xs);
+  font-weight: var(--w-semi);
+  text-transform: uppercase;
+  letter-spacing: var(--track-wide);
+  color: var(--fg-dim);
+}
+
+/* Label + hint on the left, control on the right. 300px is enough for a
+   select or a slider without the two sides ever competing for the middle. */
+.set-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
+  gap: var(--s-2) var(--s-4);
+  padding: var(--s-3) 0;
+  align-items: start;
+}
+.set-row + .set-row {
+  border-top: 1px solid var(--line);
+}
+.set-row.wide {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.set-label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  font-size: var(--t-md);
+  color: var(--fg);
+}
+.set-label small {
+  font-size: var(--t-sm);
+  color: var(--fg-dim);
+}
+
+.set-control {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+/* Themes and the signature do not fit a side cell: they take the full row
+   beneath their label. */
+.set-control.wide {
+  grid-column: 1 / -1;
+  justify-content: stretch;
+}
+
+.set-control input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.set-control select,
+.set-control textarea {
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-raised);
+  color: var(--fg);
+  font: inherit;
+  font-size: var(--t-sm);
+  box-sizing: border-box;
+}
+.set-control textarea {
+  resize: vertical;
+}
+.set-control select:focus-visible,
+.set-control textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.set-range {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+}
+.set-range input[type='range'] {
+  flex: 1;
+  margin: 0;
+  accent-color: var(--accent);
+}
+/* The current value, always spoken in units ("1.2 s", "Off — …"), never a
+   bare number the user has to interpret against the slider's min/max. */
+.set-val {
+  flex: none;
+  min-width: 64px;
+  text-align: right;
+  font-size: var(--t-sm);
+  font-weight: var(--w-medium);
+  color: var(--fg-dim);
+}
+
+/* ---- theme tiles ---- */
+
+.set-themes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--s-2);
+}
+.set-theme {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) ease-out,
+              background-color var(--dur-fast) ease-out;
+}
+.set-theme:hover {
+  border-color: var(--line-strong);
+}
+.set-theme:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.set-theme input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+.set-swatch {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  border-radius: var(--r-full);
+  border: 1px solid var(--line);
+}
+.set-theme-name {
+  flex: 1;
+  font-size: var(--t-sm);
+  font-weight: var(--w-medium);
+}
+.set-theme-scheme {
+  font-size: var(--t-xs);
+  color: var(--fg-faint);
+}
+
+#settings-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-6);
+  border-top: 1px solid var(--line);
+  flex: none;
+}
+#settings-note {
+  font-size: var(--t-sm);
+  color: var(--fg-dim);
+}
+
+/* Phones: a sheet, not a peephole. Rows stack so the control never shares
+   a 140px cell with its label. */
+@media (max-width: 600px) {
+  #settings {
+    padding: 0;
+  }
+  #settings-box {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    border-radius: 0;
+  }
+  .set-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .set-control {
+    justify-content: flex-start;
+  }
+}
