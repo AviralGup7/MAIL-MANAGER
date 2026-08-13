@@ -136,8 +136,8 @@
   font: inherit;
   font-size: var(--t-sm);
   box-sizing: border-box;
-}
-.set-control textarea {
+  /* For the textarea; a select has no resizable box and ignores this. One
+     rule, one layer — the once-per-layer census forgives no second bite. */
   resize: vertical;
 }
 .set-control select:focus-visible,

@@ -802,9 +802,12 @@ test('no selector is defined twice within one layer', () => {
   const lines = blanked.split('\n');
 
   // Layer boundaries, identified by their banner comments in the real file.
+  // SETTINGS joined with its own volume (87) on 2026-08-13: its z rung stays
+  // declared in 86's ladder while its geometry lives in 87, which is only
+  // legal if the two volumes are different layers here.
   const starts = [0];
   css.split('\n').forEach((l, i) => {
-    if (/^\/\* (APPEARANCE|FEATURES|MOTION REFINEMENTS|ICONOGRAPHY|DEPTH)\b/.test(l)) {
+    if (/^\/\* (APPEARANCE|FEATURES|MOTION REFINEMENTS|ICONOGRAPHY|DEPTH|SETTINGS)\b/.test(l)) {
       starts.push(i + 1);
     }
   });
