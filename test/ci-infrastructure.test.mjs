@@ -111,3 +111,16 @@ test('updates are discovered (dependabot), vulnerabilities scheduled, never push
   assert.ok(!/on:\s*\n\s*push/.test(sec),
     'a moving advisory database must never gate a push — a red nobody believes');
 });
+
+test('runs cancel when superseded; every gate mirrors to the Summary page', () => {
+  const wf = read('.github/workflows/ci.yml');
+  assert.match(wf, /concurrency:\s*\n\s+group: \$\{\{ github\.workflow \}\}-\$\{\{ github\.ref \}\}/,
+    'the concurrency group names the ref');
+  assert.match(wf, /cancel-in-progress: true/, 'a new push stops paying for a stale answer');
+  assert.match(wf, /needs: \[test, checks\][\s\S]*?GITHUB_STEP_SUMMARY/,
+    'the verdict table lands on the Summary page');
+  assert.match(read('tools/ci-test.mjs'), /GITHUB_STEP_SUMMARY/,
+    'shard TEST SUMMARYs mirror (round 52, kept)');
+  assert.match(read('tools/ci-smoke.mjs'), /GITHUB_STEP_SUMMARY/,
+    'the browser-gate table mirrors too');
+});

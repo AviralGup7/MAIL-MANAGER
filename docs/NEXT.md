@@ -101,6 +101,17 @@ advisory DB must not manufacture red builds). Deferred with reasons:
   here IS a regression pin citing a shipped bug; carving an identity out
   of the suite would duplicate runtime to relabel it. The skip-fails
   runner + floor guard the substance instead of the label.
+- **Node × OS matrices.** The runtime users execute is Chromium, not
+  Node; a second Node leg only re-proves test tooling, an OS leg would
+  need the POSIX-pinned test paths rebuilt — real work buying zero
+  user-visible signal. Single-node-20 stays; revisit if contributors on
+  other versions actually break.
+- **A coverage threshold.** node:test's coverage in v20 is experimental,
+  and per-shard coverage would need merging machinery to mean anything;
+  meanwhile a percentage gate measures the wrong thing here — nearly
+  every pin names a shipped bug, while a line hit once and never asserted
+  would count toward it. Visibility, if ever wanted: summary-only, never
+  a threshold.
 
 ## M3 — Classification that acts
 

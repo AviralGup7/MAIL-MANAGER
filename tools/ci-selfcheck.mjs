@@ -113,6 +113,13 @@ check('workflow/manifest-uploaded', /if: always\(\)[\S\s]*?\.ci-manifest\.json/.
   'the shard manifest survives green runs too');
 check('workflow/traces-on-failure', wf.includes('.smoke-trace.zip'),
   'the trace has an upload path when smoke falls');
+/* Superseded runs must cancel themselves, and the one-glance answers must
+   land on the run's Summary page (2026-08-14): the shards and the smoke
+   gates mirror there from their own tools; the verdict table is the one
+   the workflow owes. */
+check('workflow/concurrency', /concurrency:\s*\n\s+group: \$\{\{ github\.workflow \}\}-\$\{\{ github\.ref \}\}/.test(wf)
+  && /cancel-in-progress: true/.test(wf), 'a new push stops paying for a stale answer');
+check('workflow/summaries', wfCode.includes('GITHUB_STEP_SUMMARY'), 'the verdict table is written to the Summary page');
 
 let failed = 0;
 for (const r of results) {

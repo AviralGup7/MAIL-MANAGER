@@ -46,7 +46,7 @@
  * registry chromium lacks system libs); CI installs the default one.
  */
 import { chromium } from 'playwright-core';
-import { existsSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, writeFileSync } from 'node:fs';
 
 const PREVIEW = new URL('../preview.html', import.meta.url);
 if (!existsSync(PREVIEW)) {
@@ -273,4 +273,18 @@ for (const r of results) {
   if (!r.ok) failed++;
 }
 console.log(`\n${results.length - failed}/${results.length} smoke gates green`);
+
+/* Mirror the gate table onto the run's Summary page under Actions —
+   the shard runner already does this for tests; the browser truths
+   belong on the same page (2026-08-14). Locally the env var is absent
+   and this is a no-op. */
+if (process.env.GITHUB_STEP_SUMMARY) {
+  const rows = results.map((r) =>
+    `| ${r.name} | ${r.ok ? 'pass' : 'FAIL'} | ${r.detail.replace(/\n/g, ' ').slice(0, 160)} |`);
+  appendFileSync(
+    process.env.GITHUB_STEP_SUMMARY,
+    `\n## Browser smoke gates — ${results.length - failed}/${results.length} green\n\n` +
+    `Chromium ${browser.version()}\n\n| gate | result | detail |\n| --- | --- | --- |\n` + rows.join('\n') + '\n',
+  );
+}
 process.exit(fatal ? 2 : failed ? 1 : 0);

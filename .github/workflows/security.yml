@@ -13,6 +13,12 @@ on:
     - cron: '30 1 * * 1' # Mondays 01:30 UTC = 07:00 IST
   workflow_dispatch:
 
+# One audit at a time, queued not cancelled: a hand-triggered audit should
+# wait for the scheduled one, not abort it.
+concurrency:
+  group: security-audit
+  cancel-in-progress: false
+
 permissions:
   contents: read
 

@@ -11,6 +11,14 @@ on:
 permissions:
   contents: read
 
+# SUPERSEDED RUNS CANCEL THEMSELVES (2026-08-14). A push to the same ref
+# makes any in-flight run's verdict stale before it arrives: main has
+# already moved, and the PR author is about to push again. The cancelled
+# run stays in history — nothing is hidden, just not paid for twice.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # THE SUITE, IN EIGHT PORTIONS (round 53, widened round 62).
   #
@@ -172,6 +180,17 @@ jobs:
           CHECKS: ${{ needs.checks.result }}
         run: |
           echo "test=$TEST checks=$CHECKS"
+          # The run's Summary page carries the aggregate too (2026-08-14):
+          # per-shard TEST SUMMARY blocks already land there from the
+          # runner; this table is the one-glance answer above them.
+          {
+            echo "## CI verdict"
+            echo ""
+            echo "| gate | result |"
+            echo "| --- | --- |"
+            echo "| test (8 shards) | $TEST |"
+            echo "| checks | $CHECKS |"
+          } >> "$GITHUB_STEP_SUMMARY"
           if [ "$TEST" != "success" ] || [ "$CHECKS" != "success" ]; then
             echo "::error::a required job did not succeed (test=$TEST checks=$CHECKS)"
             exit 1
