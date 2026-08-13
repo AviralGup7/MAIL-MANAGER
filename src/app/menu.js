@@ -28,6 +28,7 @@
 
 import { openLayer } from './layers.js';
 import { registerReset } from './reset-registry.js';
+import { popFrom } from './motion/morph.js';
 
 /** The single open menu, or null. Two menus at once is never intended. */
 let current = null;
@@ -231,6 +232,18 @@ export function openMenu({
     },
   });
   current = { node, layer };
+
+  /*
+   * ANCHORED POP (animation overhaul P4): the menu grows OUT of the control
+   * that created it (directive §35), spring-driven, velocity-reversible.
+   * Presentation only — state, focus, clamping and the layer stack all
+   * settled above; this flight can never add 140ms to the truth. Exits stay
+   * instant per the deliberate doctrine in onClose below.
+   */
+  if (anchor?.getBoundingClientRect) {
+    const a = anchor.getBoundingClientRect();
+    popFrom(node, { x: a.left + a.width / 2, y: a.top + a.height / 2 });
+  }
 
   /*
    * MOUNT INTO THE OVERLAY ROOT (V3, docs/OVERHAUL-V3.md R5).

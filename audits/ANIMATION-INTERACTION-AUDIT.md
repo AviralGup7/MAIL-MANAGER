@@ -137,6 +137,10 @@ Under `prefers-reduced-motion`, the directive's sections translate to: instant s
 
 **Hard exclusions:** no scroll-jacking, no always-running particle fields, no effect behind an artificial delay, no authorship of new drag-verb surfaces, no growth of app.js, no aria/value desync (motion clones zero state).
 
+**Standing decisions discovered during P4 (do NOT re-litigate):**
+1. **Menus exit instantly, deliberately** (menu.js onClose doctrine, test-encoded): the node is REMOVED, so "closed" and "gone" stay the same thing for outside-click dismissal and AT. Animated exits would force a zombie-DOM window. Entries may be upgraded (popFrom anchored springs); exits may not.
+2. **`hidden` never waits for motion** (layers.js + package.test.mjs pin: no timer ≥2 digits may gate hiding; Escape/focus/dismissal key off it). Therefore exit *grace periods* are banned; a visible exit, if ever wanted, must run on a pointer-events:none CLONE after the real node hides — presentation only, state instant. Deferred until a surface genuinely needs it.
+
 ---
 
 ## 5. Success evidence

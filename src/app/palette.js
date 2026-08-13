@@ -9,6 +9,7 @@
 
 import { icon } from './icons.js';
 import { openLayer, closeWithMotion, cancelExit } from './layers.js';
+import { cameraPush, cameraPop } from './motion/camera.js';
 import { openCompose } from './compose.js';
 import { performUndo, undoStack } from './undo-actions.js';
 import * as settings from './settings.js';
@@ -397,8 +398,10 @@ export function openPalette(ctx) {
     onClose: () => {
       closeWithMotion(box);
       paletteLayer = null;
+      cameraPop(); // scene returns to the surface plane (P4 pairing)
     },
   });
+  cameraPush(); // the backdrop recedes while the palette owns the eye (P4)
   input.focus();
 }
 
