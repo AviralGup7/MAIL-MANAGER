@@ -74,7 +74,9 @@ test('BULK answers { failed } and chunks identically on both paths (bug-hunt #21
   const limits = read('src/shared/limits.js');
   assert.match(limits, /export const BULK_CHUNK = 1000/);
   assert.match(limits, /export const MAX_INLINE_BYTES/);
-  assert.match(f, /from '\.\.\/shared\/limits\.js'/, 'fallback imports the seam');
+  // fallback.js lives one folder deeper since S2 (src/app/system/), so its
+  // seam import reads two levels up; the worker's did not move.
+  assert.match(f, /from '\.\.\/\.\.\/shared\/limits\.js'/, 'fallback imports the seam');
   assert.match(w, /from '\.\.\/shared\/limits\.js'/, 'worker imports the seam');
 });
 
