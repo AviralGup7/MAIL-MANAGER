@@ -95,11 +95,28 @@ export function openLayer(opts = {}, doc = globalThis.document) {
     try {
       opts.onClose?.();
     } finally {
-      // Restore focus only if the node still exists. After a re-render the
-      // original element may be gone, and focusing a detached node silently
-      // moves focus to <body>.
-      if (returnFocus && returnFocus.isConnected && typeof returnFocus.focus === 'function') {
-        returnFocus.focus();
+      /*
+       * Restore focus only if the target still exists AND can take it
+       * (accessibility audit A-A2, probe-measured). The menu primitive
+       * anchors row menus at the ROW -- a div with no tabindex, because the
+       * listbox single-stop doctrine is inviolable. `.focus()` on that div
+       * is a silent no-op, the menu node has just been removed, and so
+       * Escape left keyboard users on <body>: the global j/k keymap still
+       * worked and activedescendant survived (both verified), but Tab had
+       * to restart from page top and the context ring was gone.
+       *
+       * The fallback is the roster itself, which is the focusable owner of
+       * every row-anchored surface. A detached invoker (a deleted
+       * view-item) lands here too -- the old code dropped that case to
+       * <body> for the same reason.
+       */
+      const FOCUSABLE = 'button, [href], input, select, textarea, summary, [tabindex]:not([tabindex="-1"])';
+      let target = returnFocus;
+      if (!target?.isConnected || !target.matches?.(FOCUSABLE)) {
+        target = doc?.getElementById?.('list') ?? null;
+      }
+      if (target?.isConnected && typeof target.focus === 'function') {
+        target.focus();
       }
     }
   };
