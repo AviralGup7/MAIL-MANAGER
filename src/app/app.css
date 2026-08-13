@@ -1561,6 +1561,19 @@ a.ghost {
   box-sizing: content-box;
   border-radius: var(--r-full);
   background: var(--accent-soft);
+  /*
+   * The one ambient life an empty inbox gets (directive §27; animation P6):
+   * the disc breathes. TEXT never breathes — motion on readable content is
+   * the distraction §27 itself bans, which is why the rail-empty lines and
+   * the interactive reader-idle radar rows stay still. The file-end
+   * reduced-motion guard collapses this to one 1ms iteration on its own.
+   */
+  animation: empty-breathe 3.4s var(--ease-out) 0.9s infinite alternate;
+}
+/* Paired with #empty svg — see its comment before retuning either half. */
+@keyframes empty-breathe {
+  from { opacity: 0.8; transform: scale(1); }
+  to   { opacity: 1;   transform: scale(1.045); }
 }
 #empty-title {
   margin: 0;
