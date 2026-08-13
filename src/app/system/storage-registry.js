@@ -63,6 +63,7 @@ const DOMAIN_KEYS = [
   { key: 'bodyCache', owner: 'src/app/system/body-cache.js', purpose: 'offline body floor for the reader (M1)', backup: false, reason: 're-remembered on next open; the worker is the source of truth, a backup copy would only grow stale' },
   { key: 'activityLog', owner: 'src/app/academic/activity.js', purpose: 'what the app did to your mail', backup: false, reason: 'a log about THIS installation' },
   { key: 'outbox', owner: 'src/app/compose/outbox.js', purpose: 'pending-send queue', backup: false, reason: 'importing pending sends on a second machine would send them twice' },
+  { key: 'intents', owner: 'src/app/mail/intents.js', purpose: 'queued offline triage verbs (G3)', backup: false, reason: 'pending verbs must not travel — same class as outbox: an archive queued on one machine landing on another is a betrayal, not a sync' },
   { key: 'outboxClaims', owner: 'src/app/compose/outbox.js', purpose: 'dispatch coordination claims', backup: false, reason: 'transient coordination state' },
   { key: 'outboxPumpLock', owner: 'src/app/compose/outbox.js', purpose: 'one pump writer per window across tabs', backup: false, reason: 'transient coordination state; TTL is the crash backstop' },
   { key: 'historyId', owner: 'src/background/sync.js', purpose: 'Gmail delta-sync cursor', backup: false, reason: 'server-side truth; a stale cursor forces a resync at worst' },

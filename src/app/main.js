@@ -27,6 +27,10 @@
 import { Store } from './mail/store.js';
 import { loadCache, saveCache, clearCache, createSaver, CACHE_MAX } from './system/cache.js';
 import { clearBodyCache } from './system/body-cache.js';
+import {
+  enqueueIntent, cancelIntent, drainIntents, queuedIntentCount, clearIntents,
+  INTENT_MAX_ATTEMPTS,
+} from './mail/intents.js';
 import { THEMES, applyTheme, getTheme, DEFAULT_THEME } from './system/themes.js';
 import { icon, setIcon } from './core/icons.js';
 import { setAttr } from './core/dom.js';
@@ -994,8 +998,21 @@ function optimistic({
       }
       if (done) toast(done);
     },
-    (err) => {
+    async (err) => {
       clearInFlight(id);
+      /*
+       * G3 (2026-08-14): on a CERTAINLY-dead network, don't roll the row
+       * back and make the user re-say their intent — queue the verb and
+       * keep the optimistic state, with the cancellation on the toast.
+       * `navigator.onLine === false` is the direction that never lies;
+       * every other failure (server 500s, quota, revoked auth) keeps the
+       * 65/h rollback+Retry discipline, because those are Gmail talking,
+       * not the wire being dead.
+       */
+      if (await maybeQueueIntent({ verb, id, snapshot, err })) {
+        activity.record({ verb, ids: [id], actor: 'user', outcome: 'queued' });
+        return;
+      }
       activity.record({ verb, ids: [id], actor: 'user', outcome: 'failed', error: err?.message });
       return rollback(err);
     }
@@ -1003,6 +1020,76 @@ function optimistic({
 
   return sent;
 }
+
+/*
+ * Queue one offline triage intent (G3 milestone 1: ARCHIVE only).
+ *
+ * Returns true when the intent was queued — the caller then skips
+ * rollback, because the optimistic state IS the intent's projection:
+ * rolling the row back would say "nothing happened" precisely when the
+ * user most needs to hear "it will happen, when the wire is back".
+ *
+ * Scope is one verb on purpose: `bulkAct`, the flag verbs and (with
+ * threading on) thread-spanning archives keep their existing discipline.
+ * Every widening of QUEUEABLE lands with its own tests, exactly the way
+ * the outbox earned verbs one at a time.
+ */
+const QUEUEABLE = new Set(['ARCHIVE']);
+
+async function maybeQueueIntent({ verb, id, snapshot }) {
+  if (!QUEUEABLE.has(verb)) return false;
+  if (typeof navigator === 'undefined' || navigator.onLine !== false) return false;
+  const rec = await enqueueIntent({ verb, targetId: id });
+  if (!rec) return false;
+  toast('Offline — will archive when you reconnect.', {
+    action: {
+      label: 'Undo',
+      run: async () => {
+        /* Only a real cancellation restores the row: if the drain already
+           applied the intent, the archive HAPPENED and the normal undo
+           stack is the way back. */
+        if (await cancelIntent(rec.id)) {
+          store.upsert(snapshot);
+          renderList();
+        }
+      },
+    },
+  });
+  return true;
+}
+
+/**
+ * Apply the queued intents against a live network. Provenance is part of
+ * the feature: actor 'intent' is what lets the activity log answer "who
+ * changed this mail while I was offline" truthfully.
+ */
+async function drainQueuedIntents() {
+  const count = await queuedIntentCount();
+  if (!count) return;
+  const { applied } = await drainIntents({
+    send,
+    onApplied: (rec) => activity.record({
+      verb: rec.verb, ids: [rec.targetId], actor: 'intent', detail: 'queued while offline',
+    }),
+    onGiveUp: (rec, err) => {
+      activity.record({ verb: rec.verb, ids: [rec.targetId], actor: 'intent', outcome: 'failed', error: err?.message });
+      const m = store.get(rec.targetId);
+      toast(
+        `A queued archive never landed (${INTENT_MAX_ATTEMPTS} tries). ${m ? `“${m.subject}” is still in the inbox.` : 'The next sync tells the truth about it.'}`,
+        { kind: 'error' },
+      );
+    },
+  });
+  if (applied) {
+    toast(`${applied} queued action${applied === 1 ? '' : 's'} applied on reconnect.`, { kind: 'success' });
+  }
+}
+
+/* Draining triggers: the 'online' event, and one boot-time pass — alarms
+   are nudges, catch-up is the guarantee (the sweep's own law, applied to
+   the queue). */
+window.addEventListener('online', () => { void drainQueuedIntents(); });
+setTimeout(() => { void drainQueuedIntents(); }, 4000);
 
 async function act(action, id) {
   const m = store.get(id);
@@ -2116,6 +2203,10 @@ $('btn-signout').addEventListener('click', async () => {
      because a body is immutable and unreachable without its store record —
      sign-out changes the ACCOUNT, and nothing of it may stay behind. */
   await clearBodyCache();
+  /* Queued intents (G3) are armed verbs waiting for a network — an account
+     that signs out must not leave its pending archives pointed at the NEXT
+     account's mailbox (same law as the body floor, one blob up). */
+  await clearIntents();
   resetView({ allMailboxes: true });
   saver.invalidate();
   state.signedIn = false;

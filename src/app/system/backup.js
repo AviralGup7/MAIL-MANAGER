@@ -67,8 +67,10 @@ export const EXPORTED_KEYS = BACKUP_KEYS;
 // Named with the keys that ACTUALLY exist: the cache key is 'msgCache'
 // (cache.js), not 'messageCache' as this list once claimed -- a guarantee
 // that names a fictional key is not a guarantee (bug-hunt #15). 'outboxClaims'
-// joins 'outbox': pending-send coordination state must not travel either.
-export const NEVER_EXPORT = ['token', 'accessToken', 'refreshToken', 'auth', 'msgCache', 'bodyCache', 'activityLog', 'outbox', 'outboxClaims'];
+// and 'outboxPumpLock' join 'outbox': pending-send coordination state must
+// not travel either. 'intents' (G3) is queued triage — an armed verb that
+// lands on another machine fires there, which is the outbox's own law.
+export const NEVER_EXPORT = ['token', 'accessToken', 'refreshToken', 'auth', 'msgCache', 'bodyCache', 'activityLog', 'outbox', 'outboxClaims', 'outboxPumpLock', 'intents'];
 
 /**
  * Build a backup object.
