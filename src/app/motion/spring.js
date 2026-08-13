@@ -67,10 +67,10 @@ function tick(t) {
     a.v = v2;
     if (isSettled(a.x, a.v, a.target)) {
       live.delete(a);
-      a.onUpdate(a.target, 0);
+      a.onUpdate?.(a.target, 0);
       a.onRest?.();
     } else {
-      a.onUpdate(a.x, a.v);
+      a.onUpdate?.(a.x, a.v);
     }
   }
   if (live.size === 0) {
@@ -94,7 +94,7 @@ function tick(t) {
  */
 export function animateValue({ from, to, preset = SPRINGS.SNAP, velocity = 0, onUpdate, onRest }) {
   if (reducedMotion()) {
-    onUpdate(to, 0);
+    onUpdate?.(to, 0);
     onRest?.();
     return {
       retarget(_to2) { /* already at rest — nothing to redirect */ },

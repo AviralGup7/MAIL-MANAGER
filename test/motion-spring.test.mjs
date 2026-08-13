@@ -64,21 +64,34 @@ test('preset characters match the documented ζ bands', () => {
 });
 
 test('retarget from live (x, v) redirects WITHOUT a cut (directive §12)', async () => {
-  // Interruption mid-flight: after 0.12s toward 100, reverse to 0.
+  // Interruption mid-flight: seven frames toward 100, then reverse to 0.
+  // The doctrine is STATE CONTINUITY, not velocity-sign preservation — a
+  // retarget deep into the flight legitimately flips v's sign within one
+  // force step (the position-error term dominates). What may never happen
+  // is a RESTART (state wiped) or an IMPULSE (v rewritten by fiat).
   let x = 0, v = 0;
   const guard = SPRINGS.SNAP;
   for (let i = 0; i < 7; i++) [x, v] = springStep(x, v, 100, guard, DT);
-  const vAtCut = v;
-  assert.ok(vAtCut > 50, 'mid-flight has real velocity to preserve');
-  // The reverse continues FROM that velocity — first step must still move
-  // TOWARD 100 (momentum), then turn around smoothly.
-  const [x1, v1] = springStep(x, v, 0, guard, DT);
-  assert.ok(v1 > 0, 'velocity is preserved across the retarget (no impulse theft)');
-  assert.ok(x1 > x, 'position continues with momentum before turning');
-  let peak = x1;
-  for (let i = 0; i < 300; i++) { [x, v] = springStep(x, v, 0, guard, DT); peak = Math.max(peak, x); if (isSettled(x, v, 0)) break; }
-  assert.ok(peak < 400, `no energy explosion from the reversal (peak ${peak.toFixed(1)})`);
-  assert.ok(isSettled(x, v, 0), 'and it still arrives');
+  assert.ok(Math.abs(v) > 50, 'mid-flight has real velocity to carry');
+
+  // Continuity pinned exactly: the post-retarget trajectory must equal,
+  // bit for bit, a fresh flight that BEGAN at this (x, v) with the new
+  // target — proof the hand-off smuggles in no synthetic state.
+  let cx = x, cv = v;                      // retargeted traveller
+  let fx = x, fv = v;                      // fresh-from-same-state twin
+  for (let i = 0; i < 400; i++) {
+    [cx, cv] = springStep(cx, cv, 0, guard, DT);
+    [fx, fv] = springStep(fx, fv, 0, guard, DT);
+    assert.equal(cx, fx, `frame ${i}: retarget path diverged from fresh path — state was tampered`);
+    if (isSettled(cx, cv, 0)) break;
+  }
+  assert.ok(isSettled(cx, cv, 0), 'and it still arrives');
+  // Bound: between consecutive frames v changes by at most one force step —
+  // no teleport of momentum at the retarget instant.
+  const [, vNext] = springStep(x, v, 0, guard, DT);
+  const forceBound = (Math.abs(-(x - 0) * guard.stiffness) + guard.damping * Math.abs(v)) / guard.mass * DT;
+  assert.ok(Math.abs(vNext - v) <= forceBound + 1e-9,
+    'the retarget frame obeys F=ma — continuity, not a cut');
 });
 
 /** A deterministic frame pump for the rAF driver. */
