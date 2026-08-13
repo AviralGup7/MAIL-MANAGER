@@ -23,7 +23,8 @@
     "why": "node tools/why.mjs",
     "operators": "node tools/check-operators.mjs",
     "departments": "node tools/check-departments.mjs",
-    "render:bench": "node tools/render-bench.mjs"
+    "render:bench": "node tools/render-bench.mjs",
+    "ci:smoke": "node tools/ci-smoke.mjs"
   },
   "devDependencies": {
     "axe-core": "^4.13.0",

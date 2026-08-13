@@ -64,6 +64,18 @@ jobs:
           npx playwright-core install chromium --with-deps 2>/dev/null || npx playwright-core install chromium
           npm run render:bench || echo "render:bench unavailable in this environment (see tools/render-bench.mjs)" 
 
+      # The hard browser gate (direction M2, 2026-08-13). The bench REPORTS
+      # numbers and soft-fails on exotic environments; the smoke suite
+      # ASSERTS user-visible truths (the drawer never self-opens, compose
+      # never touches the rail, settings keeps one visible panel...) and a
+      # failure here fails the build. Runs on the demo preview so no gate
+      # ever depends on network luck.
+      - name: Browser smoke gates (headless Chromium)
+        run: |
+          npx playwright-core install chromium --with-deps 2>/dev/null || npx playwright-core install chromium
+          node tools/make-preview.mjs
+          node tools/ci-smoke.mjs
+
       # The rule files are generated from docs/CLASSIFICATION_DATA_PACK.md.
       # Regenerating must be a no-op; a diff means someone hand-edited the
       # output, which is how the first port silently lost 802 of 891 keys.
