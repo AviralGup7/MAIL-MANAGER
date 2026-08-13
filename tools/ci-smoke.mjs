@@ -281,17 +281,19 @@ try {
     { timeout: 5000 },
   );
 } catch { /* reported below */ }
-const rulesGone = await page.evaluate(() => ({
+const rulesGone = await page.evaluate(async () => ({
   rows: document.querySelectorAll('#rule-list .rule-row').length,
   emptyShown: !document.getElementById('rule-empty').hidden,
-  stored: globalThis.chrome.storage.local.get('automationRules').then((o) => (o.automationRules || []).length),
+  /* awaited INSIDE the evaluate: a promise nested in a returned literal
+     serialises as {} across the bridge, which the first run of this gate
+     proved with storedLen:{}. */
+  storedLen: await globalThis.chrome.storage.local.get('automationRules').then((o) => (o.automationRules || []).length),
 }));
-const storedLen = await rulesGone.stored;
 check('settings/rules-editor-lifecycle',
   dryText.startsWith('Would star 1 of 20 loaded messages') &&
   addedText === 'from:augsd → star' &&
-  rulesGone.rows === 0 && rulesGone.emptyShown && storedLen === 0,
-  JSON.stringify({ dryText, addedText, rows: rulesGone.rows, storedLen }));
+  rulesGone.rows === 0 && rulesGone.emptyShown && rulesGone.storedLen === 0,
+  JSON.stringify({ dryText, addedText, rows: rulesGone.rows, storedLen: rulesGone.storedLen }));
 await page.keyboard.press('Escape');
 await page.waitForTimeout(300);
 
