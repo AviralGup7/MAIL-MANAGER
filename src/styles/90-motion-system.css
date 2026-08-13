@@ -33,13 +33,11 @@
  * .lit hosts keep their own positioning (id selectors out-specificity this
  * one class, so #compose stays fixed); position:relative only lands where a
  * host was static, which changes no geometry — it anchors the sheen.
+ *
+ * The --lx/--ly/--lit-alpha DEFAULTS live with the token scale in
+ * 00-tokens.css: the structure census allows exactly two defining volumes,
+ * and the scale's home is not this file.
  */
-:root {
-  --lx: 62vw;
-  --ly: 18vh;
-  --lit-alpha: 0.055;
-}
-
 .lit { position: relative; }
 
 .lit::before {

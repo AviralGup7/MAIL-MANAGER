@@ -34,7 +34,7 @@ test('app.html links exactly the discipline volumes, in cascade order', () => {
   /* Runtime and tooling must never disagree about order: the browser sees
    * the <link> run, everything else reads the sorted directory. */
   const html = read('app.html');
-  const linked = [...html.matchAll(/<link rel="stylesheet" href="([^"]+)"]/g)]
+  const linked = [...html.matchAll(/<link rel="stylesheet" href="([^"]+)" *\/>/g)]
     .map((m) => m[1]);
   assert.deepEqual(
     linked, styleFiles(),
