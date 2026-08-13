@@ -16,7 +16,15 @@
       HTML parser once and only the message rows are dynamic.
     -->
     <div id="shell" aria-busy="true">
-      <aside id="sidebar">
+      <!--
+        NAME THE LANDMARK (accessibility audit A-A4, AX-census-measured).
+        The right rail's complementary already announces "For you" and the
+        inner nav announces "Categories"; this aside was the one landmark
+        with no accessible name, so its role arrived unlabelled ("complementary"
+        — of what?). The name covers the aside's two stated jobs — the one
+        primary action and the mailbox navigation beneath it.
+      -->
+      <aside id="sidebar" aria-label="Mailboxes and compose">
         <div id="brand">
           <span id="brand-mark" aria-hidden="true"></span>
           <span id="brand-text">
@@ -262,7 +270,13 @@
               unreachable at every viewport. The icons reuse the glyphs the
               context bar already uses for the same verbs (audit 33).
             -->
-            <div id="bulkbar" hidden>
+            <!--
+              role=toolbar (accessibility audit A-A7): six named controls acting
+              on one selection is exactly the toolbar contract. Without the role
+              this strip was an anonymous div; screen-reader users met buttons
+              with no grouping context. The label names the shared object.
+            -->
+            <div id="bulkbar" role="toolbar" aria-label="Bulk actions" aria-orientation="horizontal" hidden>
               <label id="bulk-all-wrap">
                 <input id="bulk-all" type="checkbox" aria-label="Select all in this view" />
               </label>
@@ -400,6 +414,16 @@
                   Hidden by default: most mail has no deadline, and a
                   permanent empty strip would push every body down for the
                   benefit of a minority.
+
+                  NO LIVE REGION, deliberately (accessibility audit A-A7):
+                  this strip is written synchronously WITH the reader reveal,
+                  one task, so a browse-order read meets "Due tomorrow" within
+                  the same sweep as the subject it belongs to. A polite
+                  announcement would stack on the reader-open transition and
+                  repeat what linear reading reaches a second later; assertive
+                  is indefensible for inferred data. Between opens the band
+                  only moves at day rollover — never worth an interruption.
+                  The decision is pinned in test/announce-semantics.test.mjs.
                 -->
                   <div id="r-due" hidden></div>
                   <div id="r-timetable" hidden></div>
@@ -826,7 +850,14 @@
         an action, which is how undo becomes visible rather than a keyboard
         hint buried in a sentence.
       -->
-      <div id="toast" role="status" aria-live="polite" hidden>
+      <!--
+        aria-atomic (accessibility audit A-A7): one toast node, re-fired. Without
+        atomicity some readers announce only the CHANGED text slice, so a
+        "Deleted 3 messages" re-fire after "Archived 1" could speak a fragment.
+        The role hot-swap (status/alert) is deliberate and documented in
+        toast.js — one node, two urgencies, always read whole.
+      -->
+      <div id="toast" role="status" aria-live="polite" aria-atomic="true" hidden>
         <span id="toast-icon" hidden></span>
         <span id="toast-text"></span>
         <kbd id="toast-kbd" hidden>Ctrl+Z</kbd>

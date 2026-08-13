@@ -48,6 +48,16 @@ export function toast(text, opts = {}) {
    * assertive: an interruption the user must hear about, where 'polite'
    * could wait behind whatever the screen reader is mid-sentence. Every
    * other kind stays a polite status.
+   *
+   * The swap is a DELIBERATE single-node policy (accessibility audit A-A7),
+   * not an accident of reuse: two permanent nodes (one status, one alert)
+   * would double the drain timing, the action slot and the show/hide logic
+   * for a case that never overlaps — an error toast and an undo toast do not
+   * coexist, because every kind is re-QUEUED through this one function. The
+   * node re-fires per message and carries aria-atomic="true" in the markup,
+   * so each re-fire reads whole instead of as a text diff. If two toasts
+   * ever CAN coexist, split the nodes; until then the swap is the truth said
+   * one message at a time.
    */
   el.toast.setAttribute('role', kind === 'error' ? 'alert' : 'status');
 
