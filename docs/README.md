@@ -13,6 +13,7 @@ Newcomer order: this file → ARCHITECTURE.md → THREADING.md → the audits.
 | UX-AUDIT-V4.md | The active interaction-overhaul campaign (round 65) — plan, findings, per-round record |
 | OVERHAUL-V3.md | The v3 overhaul plan and record — the redesign the current shell grew out of |
 | NEXT.md | The long-term directions — M1–M5 with statuses, then the second-generation analysis (what to work on next) |
+| SOAK.md | The live-mailbox ritual (direction G1): the one audit cap no gate can lift from the inside |
 | STRUCTURE.md | The growth playbook: CSS volumes and folder law, pinned not remembered |
 | STATE-BOUNDARY.md | Worker≠app runtime state — the law against "helpfully" unifying them |
 
