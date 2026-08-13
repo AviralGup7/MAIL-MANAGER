@@ -8,7 +8,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-const { cleanSnippet, addsInformation, rowSnippet } = await import('../src/app/snippet.js');
+const { cleanSnippet, addsInformation, rowSnippet } = await import('../src/app/mail/snippet.js');
 
 // ------------------------------------------------------------- salutations --
 

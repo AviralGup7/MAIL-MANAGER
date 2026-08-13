@@ -15,11 +15,11 @@ const {
   toggleMute, toggleAutoArchive, isMuted, isAutoArchived,
   addressOf, correctSender, clearCorrection, applyCorrection,
   filterMuted, mutedCount,
-} = await import('../src/app/rules.js');
+} = await import('../src/app/mail/rules.js');
 
-const app = readFileSync(new URL('../src/app/app.js', import.meta.url), 'utf8');
+const app = readFileSync(new URL('../src/app/main.js', import.meta.url), 'utf8');
 // The rail moved to sidebar.js in round 52 step 5.
-const sidebar = readFileSync(new URL('../src/app/sidebar.js', import.meta.url), 'utf8');
+const sidebar = readFileSync(new URL('../src/app/workspace/sidebar.js', import.meta.url), 'utf8');
 
 
 // ------------------------------------------------------------ normalising ---
@@ -151,7 +151,7 @@ test('with no rules, filtering is a pass-through', () => {
  */
 // applyMute moved to src/app/selectors.js (audit R-6); the guards it
 // enforces are pinned against the selector's source now.
-const selSrc = readFileSync(new URL('../src/app/selectors.js', import.meta.url), 'utf8');
+const selSrc = readFileSync(new URL('../src/app/core/selectors.js', import.meta.url), 'utf8');
 
 test('mute never applies outside the inbox', () => {
   const fn = selSrc.slice(selSrc.indexOf('export function applyMute'));
@@ -174,7 +174,7 @@ test('search overrides mute', () => {
 test('an all-muted list explains itself and offers a way out', () => {
   // "You're all caught up" over hidden mail would be a lie.
   // The empty-state copy and the counter moved to list.js (round 52).
-  const list = readFileSync(new URL('../src/app/list.js', import.meta.url), 'utf8');
+  const list = readFileSync(new URL('../src/app/mail/list.js', import.meta.url), 'utf8');
   assert.ok(list.includes('Everything here is muted'));
   assert.ok(list.includes('Show muted mail'));
   assert.ok(list.includes('function mutedHiddenCount'));
@@ -282,7 +282,7 @@ test('saveRules reports success and failure distinguishably', () => {
 
 const {
   toggleThreadMute, isThreadMuted, mutedThreadCount, pruneThreadMutes,
-} = await import('../src/app/rules.js');
+} = await import('../src/app/mail/rules.js');
 
 const tmsg = (id, threadId, category = 'admin') => ({ id, threadId, category });
 

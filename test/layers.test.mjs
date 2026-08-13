@@ -9,7 +9,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-const L = await import('../src/app/layers.js');
+const L = await import('../src/app/overlays/layers.js');
 
 /** Minimal document stand-in; the primitive only needs these three members. */
 function fakeDoc() {

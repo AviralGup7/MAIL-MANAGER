@@ -8,8 +8,8 @@
  * would be invisible in normal use because both files look fine on their own.
  */
 import { readFileSync } from 'node:fs';
-import { OPERATORS } from '../src/app/suggest.js';
-import { parseQuery } from '../src/app/query.js';
+import { OPERATORS } from '../src/app/search/suggest.js';
+import { parseQuery } from '../src/app/search/query.js';
 
 const problems = [];
 
@@ -45,7 +45,7 @@ for (const { op, example } of OPERATORS) {
 }
 
 // And the reverse: an operator the parser knows but nobody advertises.
-const source = readFileSync(new URL('../src/app/query.js', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../src/app/search/query.js', import.meta.url), 'utf8');
 const implemented = new Set();
 for (const m of source.matchAll(/^\s*case '([a-z_]+)':/gm)) implemented.add(m[1]);
 const KNOWN_STRUCTURAL = new Set(['direct', 'broadcast', 'unread', 'read', 'starred', 'unstarred',

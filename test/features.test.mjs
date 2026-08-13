@@ -12,9 +12,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { extractDeadline, relativeLabel, urgency } from '../src/app/deadlines.js';
-import { parseQuery, describeQuery, buildReply } from '../src/app/query.js';
-import { UndoStack } from '../src/app/undo.js';
+import { extractDeadline, relativeLabel, urgency } from '../src/app/academic/deadlines.js';
+import { parseQuery, describeQuery, buildReply } from '../src/app/search/query.js';
+import { UndoStack } from '../src/app/mail/undo.js';
 
 // Monday 10 November 2025, 09:00 UTC.
 const SENT = Date.UTC(2025, 10, 10, 9, 0);

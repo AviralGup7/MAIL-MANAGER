@@ -14,11 +14,11 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
-const src = read('src/app/palette.js');
-const settingsSrc = read('src/app/settings.js');
+const src = read('src/app/overlays/palette.js');
+const settingsSrc = read('src/app/system/settings.js');
 const backupTest = read('test/backup.test.mjs');
 
-const { parseRecents, orderForEmptyQuery } = await import('../src/app/palette.js');
+const { parseRecents, orderForEmptyQuery } = await import('../src/app/overlays/palette.js');
 
 const cmd = (id) => ({ id, label: `Command ${id}`, run() {} });
 

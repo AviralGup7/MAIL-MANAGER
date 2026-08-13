@@ -10,7 +10,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fakeStorage } from './helpers/storage.mjs';
 
-const { SCHEMA, loadSettings, get, set, snapshot } = await import('../src/app/settings.js');
+const { SCHEMA, loadSettings, get, set, snapshot } = await import('../src/app/system/settings.js');
 
 test('a successful set persists and is readable synchronously', async () => {
   const s = fakeStorage();
@@ -29,7 +29,7 @@ test('a failed write rolls the cache back and throws (bug-hunt 43 #17)', async (
   s.set = async () => { throw new Error('QUOTA_BYTES quota exceeded'); };
 
   const events = [];
-  const mod = await import('../src/app/settings.js');
+  const mod = await import('../src/app/system/settings.js');
   const unsub = mod.subscribe?.((k, v) => events.push([k, v]));
 
   await assert.rejects(

@@ -18,12 +18,12 @@ const FLOORS = {
   // outbox 98/75, sync 61/94, gmail 87/77, timetable-mail 100/75. Floors sit
   // a few points under the measurement: a fence against regression, never
   // an arbitrary target. Raise them whenever a module climbs.
-  'src/app/store.js': [90, 80],
-  'src/app/query.js': [80, 70],
-  'src/app/outbox.js': [80, 70],
+  'src/app/mail/store.js': [90, 80],
+  'src/app/search/query.js': [80, 70],
+  'src/app/compose/outbox.js': [80, 70],
   'src/background/sync.js': [55, 85],
   'src/background/gmail.js': [70, 60],
-  'src/app/timetable-mail.js': [80, 70],
+  'src/app/academic/timetable-mail.js': [80, 70],
 };
 
 const SUITES = [

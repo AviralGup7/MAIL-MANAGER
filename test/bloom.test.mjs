@@ -19,9 +19,9 @@ import { readBundle } from './helpers/css.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const css = readBundle();
-const js = readFileSync(join(ROOT, 'src/app/app.js'), 'utf8');
+const js = readFileSync(join(ROOT, 'src/app/main.js'), 'utf8');
 // The list cluster moved out of app.js in the round-52 workspace extraction.
-const list = readFileSync(join(ROOT, 'src/app/list.js'), 'utf8');
+const list = readFileSync(join(ROOT, 'src/app/mail/list.js'), 'utf8');
 
 const BLOOM_SUBJ = ":root[data-density='comfortable'] .row[aria-selected='true'].subj-clip .r-subj {";
 const BLOOM_SNIP = ":root[data-density='comfortable'] .row[aria-selected='true'].subj-clip .r-snip {";

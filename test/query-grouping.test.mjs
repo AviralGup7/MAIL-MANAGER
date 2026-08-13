@@ -14,7 +14,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-const { parseQuery } = await import('../src/app/query.js');
+const { parseQuery } = await import('../src/app/search/query.js');
 
 const M = (o = {}) => ({ subject: '', from: '', snippet: '', labels: [], date: 0, ...o });
 const match = (q, m, now) => {

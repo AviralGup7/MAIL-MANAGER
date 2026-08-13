@@ -16,13 +16,13 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
-const appjs = read('src/app/app.js');
-const src = read('src/app/deep-links.js');
+const appjs = read('src/app/main.js');
+const src = read('src/app/system/deep-links.js');
 
 const {
   formatHash, parseHash, wireDeepLinks, navigateHash, mirrorHash, applyHash,
   checkPendingSelection, _resetDeepLinks,
-} = await import('../src/app/deep-links.js');
+} = await import('../src/app/system/deep-links.js');
 
 const isMailbox = (v) => ['inbox', 'sent', 'drafts', 'snoozed', 'spam', 'trash'].includes(v);
 
@@ -176,9 +176,9 @@ test('the doctrine holds in source: one mirror seam, no stray history writes', (
   // Nothing outside deep-links.js touches the History API directly.
   assert.ok(!/history\.(pushState|replaceState)/.test(appjs),
     'app.js must never write history directly — that is how j/k pollution starts');
-  assert.ok(!/history\.(pushState|replaceState)/.test(read('src/app/list.js')) &&
-            !/history\.(pushState|replaceState)/.test(read('src/app/reader.js')) &&
-            !/history\.(pushState|replaceState)/.test(read('src/app/bulk.js')),
+  assert.ok(!/history\.(pushState|replaceState)/.test(read('src/app/mail/list.js')) &&
+            !/history\.(pushState|replaceState)/.test(read('src/app/mail/reader.js')) &&
+            !/history\.(pushState|replaceState)/.test(read('src/app/mail/bulk.js')),
     'neither may list, reader or selection modules');
   // Boot applies the bar; sign-out strips it. window.location, NEVER bare
   // location — the harness shims window only, and the bare form once broke

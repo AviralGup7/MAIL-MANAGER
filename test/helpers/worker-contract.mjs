@@ -17,7 +17,7 @@
  *                      tests can assert BYTES at the wire, not metadata.
  */
 
-import { attemptsAfterFailure } from '../../src/app/outbox.js';
+import { attemptsAfterFailure } from '../../src/app/compose/outbox.js';
 
 export function makeFakeWorker({
   calls,

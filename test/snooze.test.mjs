@@ -12,7 +12,7 @@ import { fakeStorage } from './helpers/storage.mjs';
 
 const {
   presets, loadSnoozed, addSnooze, removeSnooze, due, pending, wakeLabel, SNOOZE_LABEL,
-} = await import('../src/app/snooze.js');
+} = await import('../src/app/system/snooze.js');
 
 /** An in-memory stand-in for chrome.storage.local. */
 

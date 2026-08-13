@@ -228,7 +228,7 @@ test('hidden rail retracts; re-emergence snaps — never a flight from a stale p
 // --- seam pins: the wiring must not drift from the module --------------
 
 test('seam: renderSidebar syncs the pill after aria-current is final', () => {
-  const src = readFileSync(new URL('../src/app/sidebar.js', import.meta.url), 'utf8');
+  const src = readFileSync(new URL('../src/app/workspace/sidebar.js', import.meta.url), 'utf8');
   const render = src.slice(src.indexOf('export function renderSidebar'));
   const syncAt = render.indexOf('syncPill(');
   assert.ok(syncAt > 0, 'renderSidebar calls syncPill');
@@ -239,7 +239,7 @@ test('seam: renderSidebar syncs the pill after aria-current is final', () => {
 });
 
 test('seam: compose seeds from the Compose button only on hidden→open', () => {
-  const src = readFileSync(new URL('../src/app/compose.js', import.meta.url), 'utf8');
+  const src = readFileSync(new URL('../src/app/compose/compose.js', import.meta.url), 'utf8');
   const open = src.slice(src.indexOf('export function openCompose'), src.indexOf('renderFiles()'));
   assert.match(open, /const wasHidden = panel\.hidden/, 'hidden state captured before reveal');
   assert.match(open, /if \(wasHidden\)[\s\S]{0,400}\$?\('btn-compose'\)[\s\S]{0,200}popFrom\(panel/, 'a birth seeds from the invoker; a restore does not');

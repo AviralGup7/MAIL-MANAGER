@@ -17,7 +17,7 @@ import { readBundle } from './helpers/css.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
-const ui = read('src/app/timetable-ui.js');
+const ui = read('src/app/academic/timetable-ui.js');
 const css = readBundle();
 
 test('clipped timetable cells carry their full value as a title', () => {

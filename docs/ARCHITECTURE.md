@@ -25,7 +25,7 @@ by a test.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  SHELL          app.js, app.html                        │
+│  SHELL          main.js, app.html                       │
 │                 owns: layout, render loop, routing      │
 ├─────────────────────────────────────────────────────────┤
 │  SURFACES       one module per surface: list, reader,   │
@@ -49,6 +49,10 @@ by a test.
 │                 owns: network, credentials, persistence │
 └─────────────────────────────────────────────────────────┘
 ```
+
+*The physical floor plan — which folder each module lives in, and the closed
+set of cross-folder edges — is [STRUCTURE.md](STRUCTURE.md), pinned by
+`test/structure.test.mjs`. This document stays the doctrine.*
 
 **Why this order.** The app document renders content from strangers. It must
 never hold a credential, so the platform layer lives in the service worker and
@@ -105,7 +109,7 @@ value becomes a collection.** When in doubt, publish a getter.
 ### Derived state: `selectors.js`
 
 The question *"what should the list show right now"* has exactly one answer
-and exactly one home: `src/app/selectors.js` (audit 39/40 ARCH R-6). Its
+and exactly one home: `src/app/core/selectors.js` (audit 39/40 ARCH R-6). Its
 `visibleIds(store, ctx)` is the choke point every render path — list, counts,
 bulk, j/k — reads through, so mute scoping, threading collapse, query
 predicates and the server-search overlay merge are applied once, identically,
@@ -146,7 +150,7 @@ ctx = {
 }
 ```
 
-**A feature may not** reach into shell internals, import `app.js`, or hold a
+**A feature may not** reach into shell internals, import `main.js`, or hold a
 reference to anything on `ctx` across an `await`.
 
 ---
@@ -193,11 +197,11 @@ function*. Everything else is data-driven.
 
 | Rule | Rationale |
 |---|---|
-| A self-contained UI surface with its own state is a **feature module**, not a section of `app.js`. | `features.js` already holds palette, compose, radar, undo. Four more surfaces sit in the shell for no reason but history. |
+| A self-contained UI surface with its own state is a **feature module**, not a section of `main.js`. | Palette, compose, radar, undo each live in their docs/STRUCTURE.md folder; the `features.js` barrel that once fronted them is dissolved (S2). |
 | The shell keeps: render loop, list diffing, reader, sidebar, routing, keyboard dispatch. | These are genuinely coupled through `renderedIds` and `nodeById`. Splitting them would create hidden coupling. |
 | A domain concept has **one** implementation. | "The address in a From header" once had four, two of which disagreed on 6 of 9 inputs. |
 
-**Explicitly not a goal:** a line-count target for `app.js`. Splitting coupled
+**Explicitly not a goal:** a line-count target for `main.js`. Splitting coupled
 code to hit a number is how hidden coupling gets created.
 
 ---

@@ -17,7 +17,7 @@ const {
   clearCache,
   createSaver,
   CACHE_MAX,
-} = await import('../src/app/cache.js');
+} = await import('../src/app/system/cache.js');
 
 /** In-memory stand-in for chrome.storage.local. */
 

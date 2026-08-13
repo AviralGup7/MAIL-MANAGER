@@ -16,10 +16,10 @@ import { readBundle } from './helpers/css.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
-const src = read('src/app/row-actions.js');
+const src = read('src/app/mail/row-actions.js');
 const css = readBundle();
-const appjs = read('src/app/app.js');
-const listjs = read('src/app/list.js');
+const appjs = read('src/app/main.js');
+const listjs = read('src/app/mail/list.js');
 
 test('rows carry a hover-verb cluster with the four frequent verbs', () => {
   const dom = new JSDOM('<!doctype html><body></body>');
@@ -42,7 +42,7 @@ test('rows carry a hover-verb cluster with the four frequent verbs', () => {
 // Dynamic import against a foreign DOM needs a shimmed document lookup; run
 // the module in the harness realm instead.
 async function awaitImportHack(dom) {
-  const { buildRowActions } = await import('../src/app/row-actions.js');
+  const { buildRowActions } = await import('../src/app/mail/row-actions.js');
   // buildRowActions touches only its argument + document.createElement --
   // rebind its document by running under the JSDOM window globally is not
   // needed: it uses `document.createElement`. Provide that.
@@ -101,7 +101,7 @@ test('selection v2 is wired: range, additive, and taught on the help sheet', () 
   assert.match(listjs, /if \(e\.shiftKey && ctx\.selection\.anchor\)/, 'shift-click extends a range');
   assert.match(listjs, /ctx\.selection\.range\(id, renderedIds\)/, 'ranges track the RENDERED order');
   assert.match(listjs, /if \(e\.ctrlKey \|\| e\.metaKey\)/, 'ctrl/cmd toggles additively');
-  const shortcuts = read('src/app/shortcuts.js');
+  const shortcuts = read('src/app/core/shortcuts.js');
   assert.match(shortcuts, /title: 'Pointer'/, 'the pointer half is documented');
   assert.match(shortcuts, /Shift', 'Click'/, 'range selection is taught');
   assert.match(shortcuts, /Ctrl', 'Click'/, 'additive selection is taught');

@@ -23,7 +23,7 @@ try {
   test('sanitize (skipped: jsdom not installed)', { skip: true }, () => {});
 }
 
-const { sanitizeHtml, escapeHtml } = await import('../src/app/sanitize.js');
+const { sanitizeHtml, escapeHtml } = await import('../src/app/core/sanitize.js');
 
 /** Run the sanitiser inside a jsdom document. */
 function clean(html, opts) {
@@ -521,7 +521,7 @@ test('FAIL CLOSED: no parser means no HTML, and the reader is told why', async (
    * email: the sanitiser returns nothing AND raises a flag the reader turns
    * into an honest notice with an alternative. Silent blankness was the bug.
    */
-  const { sanitizeHtml } = await import('../src/app/sanitize.js');
+  const { sanitizeHtml } = await import('../src/app/core/sanitize.js');
   const stats = {};
   const out = sanitizeHtml('<p>hidden content</p>', { defaultView: {} }, { stats });
   assert.equal(out, '', 'no parser -> no HTML, never unsanitised HTML');

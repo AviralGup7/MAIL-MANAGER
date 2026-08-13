@@ -12,13 +12,13 @@ import { readBundle } from './helpers/css.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const css = readBundle();
-const js = readFileSync(join(ROOT, 'src/app/app.js'), 'utf8');
+const js = readFileSync(join(ROOT, 'src/app/main.js'), 'utf8');
 // The reader cluster moved out of app.js in the round-51 workspace extraction.
-const reader = readFileSync(join(ROOT, 'src/app/reader.js'), 'utf8');
+const reader = readFileSync(join(ROOT, 'src/app/mail/reader.js'), 'utf8');
 // The list cluster moved out in round 52 (workspace sequence step 2).
-const list = readFileSync(join(ROOT, 'src/app/list.js'), 'utf8');
+const list = readFileSync(join(ROOT, 'src/app/mail/list.js'), 'utf8');
 // The bulk cluster moved out in round 52 step 6.
-const bulk = readFileSync(join(ROOT, 'src/app/bulk.js'), 'utf8');
+const bulk = readFileSync(join(ROOT, 'src/app/mail/bulk.js'), 'utf8');
 
 test('R1: closing the reader reorients to the read row', () => {
   const close = reader.slice(reader.indexOf('function closeReader('), reader.indexOf('function closeReader(') + 1400);

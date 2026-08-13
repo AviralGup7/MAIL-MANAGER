@@ -17,11 +17,11 @@ try {
   test('shortcuts (skipped: jsdom not installed)', { skip: true }, () => {});
 }
 
-const { SHORTCUTS, allShortcuts, renderShortcuts } = await import('../src/app/shortcuts.js');
-const appSrc = readFileSync(new URL('../src/app/app.js', import.meta.url), 'utf8');
+const { SHORTCUTS, allShortcuts, renderShortcuts } = await import('../src/app/core/shortcuts.js');
+const appSrc = readFileSync(new URL('../src/app/main.js', import.meta.url), 'utf8');
 // Help moved out of the shell (architecture audit phase 9); its lifecycle
 // rules now live in the module that owns it.
-const helpSrc = readFileSync(new URL('../src/app/help.js', import.meta.url), 'utf8');
+const helpSrc = readFileSync(new URL('../src/app/overlays/help.js', import.meta.url), 'utf8');
 
 test('every group has a title and at least one shortcut', () => {
   assert.ok(SHORTCUTS.length >= 3);
@@ -192,7 +192,7 @@ test('help delegates its lifecycle to the layer stack', () => {
 test('the layer primitive restores focus, and checks the node still exists', () => {
   // The guarantee the deleted assertions were reaching for, asserted against
   // the module that now actually provides it.
-  const layers = readFileSync(new URL('../src/app/layers.js', import.meta.url), 'utf8');
+  const layers = readFileSync(new URL('../src/app/overlays/layers.js', import.meta.url), 'utf8');
   assert.match(layers, /returnFocus\.isConnected/,
     'focusing a detached node silently moves focus to <body>');
   assert.match(layers, /doc\?\.activeElement/, 'focus must be captured on open');

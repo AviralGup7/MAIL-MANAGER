@@ -64,7 +64,7 @@ function setup() {
   };
 }
 
-const load = () => import('../src/app/sidebar-more.js?t=' + Math.random());
+const load = () => import('../src/app/workspace/sidebar-more.js?t=' + Math.random());
 
 test('the kebab is a named, menu-announcing icon in the footer, LAST', () => {
   const dom = new JSDOM(html);
@@ -170,7 +170,7 @@ test('the fix stays a route: no sign-out shortcut or palette growth sneaks in he
   // R-A5's scope was the rail. A key chord for sign-out is a footgun; new
   // palette commands are a separate discoverability decision. These source
   // greps are the tripwire that keeps this small commit small.
-  const mod = read('src/app/sidebar-more.js');
+  const mod = read('src/app/workspace/sidebar-more.js');
   assert.ok(!/addEventListener\('keydown'|keydown/.test(mod), 'no keyboard chord in the overflow module');
   assert.ok(!/from '\.\/palette\.js'|openPalette/.test(mod), 'the palette is not grown from this module');
 });

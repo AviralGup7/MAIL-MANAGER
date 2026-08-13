@@ -18,11 +18,11 @@ import { readBundle } from './helpers/css.mjs';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 const css = readBundle();
-const js = read('src/app/app.js') + read('src/app/compose.js')
+const js = read('src/app/main.js') + read('src/app/compose/compose.js')
   // The scroller-fade toggle moved with the list cluster (round 52).
-  + read('src/app/list.js')
+  + read('src/app/mail/list.js')
   // The selecting-class toggle moved with the bulk cluster (step 6).
-  + read('src/app/bulk.js');
+  + read('src/app/mail/bulk.js');
 
 let JSDOM = null;
 try { ({ JSDOM } = await import('jsdom')); } catch { /* skip below */ }
@@ -71,7 +71,7 @@ test('O7: composing quiets sidebar and main with opacity alone', () => {
 test('O16 behaviour: fold wraps only long blockquotes', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');
   const dom = new JSDOM('');
-  const { sanitizeHtml } = await import('../src/app/sanitize.js');
+  const { sanitizeHtml } = await import('../src/app/core/sanitize.js');
   const long = 'quoted reply '.repeat(80); // ~1000 chars
   const shortQ = 'see below';
   const html = `<p>new words</p><blockquote>${long}</blockquote><blockquote>${shortQ}</blockquote>`;

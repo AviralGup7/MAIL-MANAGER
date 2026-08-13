@@ -259,16 +259,16 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
   globalThis.File = win.File;
 
   // Cache-bust so each boot gets a fresh module instance with its own Store.
-  const url = pathToFileURL(join(ROOT, 'src/app/app.js')).href + `?t=${Math.random()}`;
+  const url = pathToFileURL(join(ROOT, 'src/app/main.js')).href + `?t=${Math.random()}`;
   await import(url);
   // Round 59 (roadmap M-2): stateful modules SELF-REGISTER their resets
   // (reset-registry.js), so the harness runs one call instead of seven
   // hand-maintained captures. layers.js is special: close WITH teardown
   // FIRST — tenants null their cached handles inside onClose — then the
   // registered raw wipe runs with the rest.
-  ({ resetAll: resetRegistered } = await import('../src/app/reset-registry.js'));
-  ({ closeAllLayers: layersCloseAll } = await import('../src/app/layers.js'));
-  const ttStore = await import('../src/app/timetable-store.js');
+  ({ resetAll: resetRegistered } = await import('../src/app/core/reset-registry.js'));
+  ({ closeAllLayers: layersCloseAll } = await import('../src/app/overlays/layers.js'));
+  const ttStore = await import('../src/app/academic/timetable-store.js');
   ttStore._resetSourceData(); // the catalogue is memoised per module, not per boot
 
   const settle = async (frames = 4) => {
@@ -501,7 +501,7 @@ test('PERF: the subscriber forwards the change detail rather than dropping it', 
   if (!JSDOM) return t.skip('jsdom not installed');
   // Guards the exact regression: `s.subscribe(() => scheduleRender())` silently
   // re-enables the O(n) path because the parameter defaults to structural.
-  const src = readFileSync(join(ROOT, 'src/app/app.js'), 'utf8');
+  const src = readFileSync(join(ROOT, 'src/app/main.js'), 'utf8');
   assert.match(
     src, /s\.subscribe\(\(detail\) => \{[\s\S]{0,160}scheduleRender\(detail\)/,
     'the store payload must reach scheduleRender'
@@ -631,7 +631,7 @@ test('RACE: the busy indicator clears only when nothing is loading', async (t) =
 test('RACE: loading state is derived, never assigned from two places', async () => {
   // The root cause was one boolean standing for several independent
   // operations. Assert there is exactly one writer.
-  const src = readFileSync(join(ROOT, 'src/app/app.js'), 'utf8');
+  const src = readFileSync(join(ROOT, 'src/app/main.js'), 'utf8');
   const writes = [...src.matchAll(/state\.loading\s*=/g)].length;
   assert.equal(writes, 1, `state.loading is assigned in ${writes} places; it must be derived once`);
   assert.match(src, /state\.loading = \[\.\.\.mailboxState\.values\(\)\]\.some/);
@@ -1043,7 +1043,7 @@ test('ARCH: settings are loaded before anything reads one', async () => {
   // Comments blanked first, preserving offsets: the doc comment on boot()
   // explains the contract and mentions `settings.get()`, which would other-
   // wise match before the real call. Same trap as the header-parser lint.
-  const src = readFileSync(join(ROOT, 'src/app/app.js'), 'utf8')
+  const src = readFileSync(join(ROOT, 'src/app/main.js'), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
     .replace(/\/\/[^\n]*/g, (m) => ' '.repeat(m.length));
   const bootAt = src.indexOf('async function boot()');
@@ -1328,7 +1328,7 @@ test('DELIGHT: the drain line restarts on every toast', async (t) => {
   // Re-assigning the same animation does not replay it; the reflow between is
   // what does. Without that, a second toast shows a drain line already spent.
   // toast lives in toast.js after the round-46 extraction.
-  const src = readFileSync(join(ROOT, 'src/app/toast.js'), 'utf8');
+  const src = readFileSync(join(ROOT, 'src/app/overlays/toast.js'), 'utf8');
   const fn = src.slice(src.indexOf('export function toast('), src.indexOf('export function hideToast('));
   assert.ok(fn.includes("style.animation = 'none'"), 'must clear before re-applying');
   assert.ok(fn.includes('offsetWidth'), 'must force a reflow between');
@@ -1436,7 +1436,7 @@ test('TIMETABLE: building a course auto-attaches a single tutorial', async (t) =
     doc.querySelector('.tt-chooser .tt-section').click();
     await settle(8);
 
-    const { getTimetableState } = await import('../src/app/timetable-ui.js');
+    const { getTimetableState } = await import('../src/app/academic/timetable-ui.js');
     const st = getTimetableState();
     assert.equal(st.entries.length, 2, 'the lecture and its only tutorial');
     assert.deepEqual(st.entries.map((e) => e.section).sort(), ['L1', 'T1']);
@@ -1464,7 +1464,7 @@ test('TIMETABLE: an ambiguous lab is ASKED for, never chosen for you', async (t)
     lectures.find((b) => b.textContent.startsWith('L1')).click();
     await settle(8);
 
-    const { getTimetableState } = await import('../src/app/timetable-ui.js');
+    const { getTimetableState } = await import('../src/app/academic/timetable-ui.js');
     assert.equal(getTimetableState().entries.length, 1, 'only the lecture so far');
 
     const chooser = doc.querySelector('.tt-chooser');
@@ -1586,7 +1586,7 @@ test('TIMETABLE: a room-change email is proposed, quoting the sentence', async (
 
     // Re-scan now that the course is in the timetable, then reopen.
     const { scanForUpdates, closeTimetable, openTimetable } =
-      await import('../src/app/timetable-ui.js');
+      await import('../src/app/academic/timetable-ui.js');
     scanForUpdates(mail);
     closeTimetable();
     await settle(4);
@@ -1603,7 +1603,7 @@ test('TIMETABLE: a room-change email is proposed, quoting the sentence', async (
     );
 
     // Nothing has changed yet.
-    const { getTimetableState } = await import('../src/app/timetable-ui.js');
+    const { getTimetableState } = await import('../src/app/academic/timetable-ui.js');
     assert.equal(
       getTimetableState().entries.find((e) => e.section === 'L1').room, '5105',
       'a proposal must not have been applied silently'
@@ -1666,7 +1666,7 @@ test('TIMETABLE: the message that changed a class says so in the reader', async 
     await settle(8);
 
     const { scanForUpdates, closeTimetable, openTimetable } =
-      await import('../src/app/timetable-ui.js');
+      await import('../src/app/academic/timetable-ui.js');
     scanForUpdates(mail);
     closeTimetable();
     await settle(4);
@@ -1756,7 +1756,7 @@ test('TIMETABLE: the real parsed catalogue drives the real UI', async (t) => {
     lectures.find((b) => b.textContent.startsWith('L1')).click();
     await settle(10);
 
-    const { getTimetableState } = await import('../src/app/timetable-ui.js');
+    const { getTimetableState } = await import('../src/app/academic/timetable-ui.js');
     const e = getTimetableState().entries.find((x) => x.section === 'L1');
     assert.equal(e.courseNo, 'CS F111');
     assert.equal(e.room, '5105', 'the real room from the real document');
@@ -1779,7 +1779,7 @@ test('TIMETABLE: signing out clears it from the screen', async (t) => {
     doc.querySelector('.tt-chooser .tt-section').click();
     await settle(8);
 
-    const { getTimetableState } = await import('../src/app/timetable-ui.js');
+    const { getTimetableState } = await import('../src/app/academic/timetable-ui.js');
     assert.ok(getTimetableState().entries.length > 0, 'precondition');
 
     doc.getElementById('btn-signout').click();
@@ -2052,7 +2052,7 @@ test('TIMETABLE: an official room-change notice applies without asking', async (
     await settle(8);
 
     const { getTimetableState, scanForUpdates, closeTimetable, openTimetable } =
-      await import('../src/app/timetable-ui.js');
+      await import('../src/app/academic/timetable-ui.js');
     assert.equal(
       getTimetableState().entries.find((e) => e.section === 'L1').room, '5105',
       'precondition: the official room'
@@ -2116,7 +2116,7 @@ test('TIMETABLE: accepting a change is reversible — undo restores and re-offer
     await settle(8);
 
     const { getTimetableState, scanForUpdates, closeTimetable, openTimetable } =
-      await import('../src/app/timetable-ui.js');
+      await import('../src/app/academic/timetable-ui.js');
     scanForUpdates([]);
     closeTimetable();
     await settle(4);
@@ -2165,7 +2165,7 @@ test('TIMETABLE: a section can be switched without losing the course', async (t)
       .find((b) => b.textContent.startsWith('L1')).click();
     await settle(8);
 
-    const { getTimetableState } = await import('../src/app/timetable-ui.js');
+    const { getTimetableState } = await import('../src/app/academic/timetable-ui.js');
     assert.ok(
       getTimetableState().entries.some((e) => e.section === 'L1'),
       'precondition: L1 is held'
@@ -2228,7 +2228,7 @@ test('TIMETABLE: marking complete refuses while a clash remains', async (t) => {
       await settle(8);
     }
 
-    const { getTimetableState } = await import('../src/app/timetable-ui.js');
+    const { getTimetableState } = await import('../src/app/academic/timetable-ui.js');
     const blocking = getTimetableState().conflicts.filter((c) => c.severity === 'blocking');
     assert.ok(blocking.length, 'precondition: the two courses must clash');
 
@@ -2267,7 +2267,7 @@ test('TIMETABLE: reset asks first, then clears everything', async (t) => {
       .find((b) => b.textContent.startsWith('L1')).click();
     await settle(8);
 
-    const { getTimetableState } = await import('../src/app/timetable-ui.js');
+    const { getTimetableState } = await import('../src/app/academic/timetable-ui.js');
     const before = getTimetableState().entries.length;
     assert.ok(before > 0, 'precondition: something to reset');
 
@@ -2311,7 +2311,7 @@ test('TIMETABLE: the Pass 2 verification checklist, end to end', async (t) => {
    */
   const { doc, win, settle, restore, storage } = await boot({ timetableData: 'real' });
   try {
-    const M = await import('../src/app/timetable-ui.js');
+    const M = await import('../src/app/academic/timetable-ui.js');
 
     // 1. Build from official data, choosing course -> section.
     await openTT(doc, win, settle);
@@ -2362,18 +2362,18 @@ test('TIMETABLE: the Pass 2 verification checklist, end to end', async (t) => {
 
     // 6. A manual edit is respected and recorded.
     const edited = M.getTimetableState();
-    const r = (await import('../src/app/timetable.js'))
+    const r = (await import('../src/app/academic/timetable.js'))
       .manualEdit(edited, l1.id, 'room', '9999');
     assert.equal(r.applied, true, '6. the user may always edit');
     assert.equal(r.entry.provenance.room.source, 'manual');
 
     // 7. A lower source cannot overwrite that edit.
-    const mailTry = (await import('../src/app/timetable.js'))
+    const mailTry = (await import('../src/app/academic/timetable.js'))
       .applyFieldChange(r.entry, 'room', '1111', { source: 'mail', ref: 'm1' });
     assert.equal(mailTry.applied, false, '7. mail must not outrank the user');
 
     // 8. Every field can name its source.
-    const lines = (await import('../src/app/timetable.js')).explainEntry(l1);
+    const lines = (await import('../src/app/academic/timetable.js')).explainEntry(l1);
     assert.ok(lines.length, '8. every entry explains itself');
     assert.ok(lines.every((x) => x.sourceLabel), '8. with a readable source');
 
@@ -2405,7 +2405,7 @@ test('TIMETABLE: the Pass 2 verification checklist, end to end', async (t) => {
     const second = await boot({ timetableData: 'real', storageTimetable: savedBlob });
     try {
       await second.settle(10);
-      const M2 = await import('../src/app/timetable-ui.js');
+      const M2 = await import('../src/app/academic/timetable-ui.js');
       assert.ok(
         M2.getTimetableState().entries.some((e) => e.section === 'L1'),
         '10. the timetable must survive a restart'
@@ -2461,7 +2461,7 @@ test('TIMETABLE: a section the catalogue dropped is flagged after reload', async
     await settle(10);
     await openTT(doc, win, settle);
 
-    const { getTimetableState } = await import('../src/app/timetable-ui.js');
+    const { getTimetableState } = await import('../src/app/academic/timetable-ui.js');
     assert.ok(
       getTimetableState().entries.some((e) => e.section === 'L1'),
       'the class must NOT be silently deleted'

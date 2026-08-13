@@ -30,9 +30,9 @@ import { JSDOM } from 'jsdom';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 const html = read('app.html');
-const readerjs = read('src/app/reader.js');
-const iconsjs = read('src/app/icons.js');
-const appjs = read('src/app/app.js');
+const readerjs = read('src/app/mail/reader.js');
+const iconsjs = read('src/app/core/icons.js');
+const appjs = read('src/app/main.js');
 
 test('the archive button admits it advances (F1)', () => {
   assert.match(html, /data-act="archive"[^>]*>\s*Archive &amp; next</,

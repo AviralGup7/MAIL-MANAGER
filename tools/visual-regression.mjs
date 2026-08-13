@@ -88,7 +88,7 @@ const browser = await chromium.launch({
   args: ['--no-sandbox'],
 });
 
-import { THEMES as THEMES_DATA } from '../src/app/themes.js';
+import { THEMES as THEMES_DATA } from '../src/app/system/themes.js';
 
 let taken = 0;
 const tokenFailures = [];

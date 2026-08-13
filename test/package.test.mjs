@@ -437,16 +437,24 @@ test('every element the app hides with [hidden] actually disappears', async () =
 
   const css = readBundle();
   const html = read('app.html')
-    .replace(/<link rel="stylesheet"[^>]*>/, `<style>${css}</style>`)
+    // 26 volume links since S1: first becomes the bundle, the rest go away.
+    .replace(/<link rel="stylesheet"[^>]*\/>/, `<style>${css}</style>`)
+    .replace(/\s*<link rel="stylesheet"[^>]*\/>/g, '')
     .replace(/<script[\s\S]*?<\/script>/g, '');
   const dom = new JSDOM(html);
   const { window: win } = dom;
 
-  // Every element the app toggles via `.hidden`, across the app modules
-  // (the list and reader clusters left app.js in the workspace extractions).
-  const appSrc = readdirSync(join(ROOT, 'src/app'))
-    .filter((f) => f.endsWith('.js'))
-    .map((f) => read(`src/app/${f}`)).join('\n');
+  // Every element the app toggles via `.hidden`, across the app modules —
+  // src/app is foldered since S2, so walk it rather than reading one level.
+  const walkJs = (rel, out = []) => {
+    for (const e of readdirSync(join(ROOT, rel), { withFileTypes: true })) {
+      const p = `${rel}/${e.name}`;
+      if (e.isDirectory()) walkJs(p, out);
+      else if (e.name.endsWith('.js')) out.push(p);
+    }
+    return out;
+  };
+  const appSrc = walkJs('src/app').map(read).join('\n');
   const toggled = new Set(
     [...appSrc.matchAll(/el\.(\w+)\.hidden\s*=/g)].map((m) => m[1])
   );
@@ -553,7 +561,7 @@ test('every theme token used in CSS has a :root fallback', () => {
 
   // And every token themes.js writes must be one the stylesheet knows about,
   // or the theme is shipping a value nothing reads.
-  const themes = read('src/app/themes.js');
+  const themes = read('src/app/system/themes.js');
   const written = [...themes.matchAll(/'(--[a-z0-9-]+)'/g)].map((m) => m[1]);
   const unread = written.filter((v) => !used.has(v));
   assert.deepEqual(
@@ -636,7 +644,7 @@ test('every theme defines every colour role the CSS consumes', () => {
   // A theme missing a role renders that element with an EMPTY custom property,
   // which inherits or falls back to black -- invisible in a dark theme and
   // impossible to spot in review.
-  const themes = read('src/app/themes.js');
+  const themes = read('src/app/system/themes.js');
   const css = readBundle();
 
   // Roles the stylesheet actually reads.
@@ -775,7 +783,7 @@ test('every keyframe is defined exactly once and is actually used', () => {
    * `animation:` declaration here. Scanning the source for it keeps the
    * orphan check honest instead of exempting it.
    */
-  const js = read('src/app/app.js') + read('src/app/toast.js');
+  const js = read('src/app/main.js') + read('src/app/overlays/toast.js');
   const used = new Set([...css.matchAll(/animation:\s*([\w-]+)/g)].map((m) => m[1]));
   for (const m of js.matchAll(/animation = `([\w-]+)/g)) used.add(m[1]);
   const orphans = [...counts.keys()].filter((k) => !used.has(k));
@@ -855,7 +863,7 @@ test('the empty state explains WHICH kind of empty it is', () => {
   assert.ok(html.includes('id="empty-action"'), 'empty state needs a way out');
 
   // The empty-state copy moved with the list cluster (round 52).
-  const js = read('src/app/app.js') + read('src/app/list.js');
+  const js = read('src/app/main.js') + read('src/app/mail/list.js');
   assert.match(js, /No matches/, 'must handle the over-filtered case');
   assert.match(js, /Clear search/, 'must offer an escape from a bad search');
 });
@@ -867,10 +875,11 @@ test('iconography is one coherent set, not mixed glyphs', () => {
   // glyph renders in whatever font the platform picks, so it never optically
   // matches a stroked icon beside it and is never quite centred in its button.
   const html = read('app.html');
-  // features.js is a barrel now; the code lives in the five modules it
-  // re-exports, so a glyph could hide in any of them.
-  const js = ['app.js', 'features.js', 'undo-actions.js', 'radar.js',
-    'palette.js', 'compose.js', 'autocomplete.js']
+  // The feature code lives in the five modules the features.js barrel once
+  // re-exported (dissolved S2), each now in its docs/STRUCTURE.md folder —
+  // a glyph could hide in any of them.
+  const js = ['main.js', 'mail/undo-actions.js', 'academic/radar.js',
+    'overlays/palette.js', 'compose/compose.js', 'compose/autocomplete.js']
     .map((f) => read(`src/app/${f}`)).join('\n');
 
   for (const glyph of ['★', '×', '✓', '📎', '◐']) {
@@ -886,7 +895,7 @@ test('iconography is one coherent set, not mixed glyphs', () => {
 test('every icon shares one geometry', () => {
   // Mixed viewBoxes or stroke widths are why an icon set looks bought rather
   // than drawn. One 20x20 grid, one 1.6 stroke, currentColor throughout.
-  const src = read('src/app/icons.js');
+  const src = read('src/app/core/icons.js');
   assert.match(src, /viewBox', '0 0 20 20'/, 'all icons must share a 20x20 grid');
   assert.match(src, /stroke-width', filled \? '0' : '1\.6'/, 'one stroke weight');
   assert.ok(
@@ -923,7 +932,7 @@ test('scroll listeners are passive', () => {
   // source of scroll jank, and this list is the one surface where jank would
   // be most visible.
   // The list's scroller listener moved with the list cluster (round 52).
-  const js = read('src/app/app.js') + read('src/app/list.js');
+  const js = read('src/app/main.js') + read('src/app/mail/list.js');
   const scrollHandlers = [...js.matchAll(/addEventListener\(\s*\n?\s*'scroll'/g)];
   assert.ok(scrollHandlers.length > 0, 'expected at least one scroll listener');
   for (const m of scrollHandlers) {
@@ -1028,7 +1037,7 @@ test('every design token is actually used', () => {
  * Build it or delete it. This test makes that a decision rather than a drift.
  */
 test('every declared setting is actually read by something', () => {
-  const schema = read('src/app/settings.js');
+  const schema = read('src/app/system/settings.js');
 
   // Keys are declared as `  name: { type: ... }` at one indent level.
   const declared = [...schema.matchAll(/^ {2}([a-zA-Z][a-zA-Z0-9]*): \{ type:/gm)]
@@ -1037,10 +1046,10 @@ test('every declared setting is actually read by something', () => {
 
   // Consumers: anything under src/ other than the schema itself.
   const sources = [
-    'src/app/app.js', 'src/app/features.js', 'src/app/query.js',
-    'src/app/undo-actions.js', 'src/app/radar.js',
-    'src/app/palette.js', 'src/app/compose.js', 'src/app/autocomplete.js',
-    'src/app/themes.js', 'src/app/rules.js', 'src/app/draft-store.js',
+    'src/app/main.js', 'src/app/search/query.js',
+    'src/app/mail/undo-actions.js', 'src/app/academic/radar.js',
+    'src/app/overlays/palette.js', 'src/app/compose/compose.js', 'src/app/compose/autocomplete.js',
+    'src/app/system/themes.js', 'src/app/mail/rules.js', 'src/app/compose/draft-store.js',
     'src/options/options.js', 'src/background/index.js',
     'src/background/auth.js', 'src/background/gmail.js',
   ].map((p) => read(p)).join('\n');
@@ -1109,10 +1118,10 @@ test('reduced motion zeroes DELAY as well as duration', () => {
  */
 test('the From-header address regex is defined in exactly one module', () => {
   const files = [
-    'src/app/app.js', 'src/app/rules.js', 'src/app/query.js',
-    'src/app/contacts.js', 'src/app/features.js', 'src/app/store.js',
-    'src/app/undo-actions.js', 'src/app/radar.js',
-    'src/app/palette.js', 'src/app/compose.js', 'src/app/autocomplete.js',
+    'src/app/main.js', 'src/app/mail/rules.js', 'src/app/search/query.js',
+    'src/app/core/contacts.js', 'src/app/mail/store.js',
+    'src/app/mail/undo-actions.js', 'src/app/academic/radar.js',
+    'src/app/overlays/palette.js', 'src/app/compose/compose.js', 'src/app/compose/autocomplete.js',
   ];
   const owners = [];
   for (const f of files) {
@@ -1123,7 +1132,7 @@ test('the From-header address regex is defined in exactly one module', () => {
     if (/<\(\[\^>\]\+\)>/.test(src)) owners.push(f);
   }
   assert.deepEqual(
-    owners, ['src/app/contacts.js'],
+    owners, ['src/app/core/contacts.js'],
     'the address regex must live only in contacts.js'
   );
 });
@@ -1133,7 +1142,7 @@ test('contacts.js exports both the lenient and the strict parser', () => {
   // is used as a grouping key, `parseAddress` validates and is used when we
   // need a usable mailbox. Collapsing them would silently change either the
   // rule keys or the autocomplete.
-  const src = read('src/app/contacts.js');
+  const src = read('src/app/core/contacts.js');
   assert.match(src, /export function addressOf\(/);
   assert.match(src, /export function parseAddress\(/);
 });
@@ -1148,19 +1157,20 @@ test('contacts.js exports both the lenient and the strict parser', () => {
 
 /** Which layer each module belongs to. */
 const LAYER = {
-  shell: ['src/app/app.js'],
-  features: ['src/app/features.js', 'src/app/layers.js', 'src/app/icons.js',
-    'src/app/menu.js', 'src/app/server-search.js', 'src/app/saved-views.js',
-    'src/app/shortcuts.js', 'src/app/themes.js',
-    // The five modules features.js was split into. Same layer, same rules:
+  shell: ['src/app/main.js'],
+  features: ['src/app/overlays/layers.js', 'src/app/core/icons.js',
+    'src/app/overlays/menu.js', 'src/app/search/server-search.js', 'src/app/search/saved-views.js',
+    'src/app/core/shortcuts.js', 'src/app/system/themes.js',
+    // The five modules the features.js barrel once re-exported (dissolved in
+    // S2: importers now name the owner directly). Same layer, same rules:
     // they may import domain and platform, never the shell.
-    'src/app/undo-actions.js', 'src/app/radar.js',
-    'src/app/palette.js', 'src/app/compose.js', 'src/app/autocomplete.js'],
-  domain: ['src/app/store.js', 'src/app/query.js', 'src/app/deadlines.js',
-    'src/app/rules.js', 'src/app/snooze.js', 'src/app/contacts.js',
-    'src/app/selection.js', 'src/app/undo.js', 'src/app/mailboxes.js'],
-  platform: ['src/app/cache.js', 'src/app/settings.js', 'src/app/views.js',
-    'src/app/draft-store.js', 'src/app/sanitize.js'],
+    'src/app/mail/undo-actions.js', 'src/app/academic/radar.js',
+    'src/app/overlays/palette.js', 'src/app/compose/compose.js', 'src/app/compose/autocomplete.js'],
+  domain: ['src/app/mail/store.js', 'src/app/search/query.js', 'src/app/academic/deadlines.js',
+    'src/app/mail/rules.js', 'src/app/system/snooze.js', 'src/app/core/contacts.js',
+    'src/app/mail/selection.js', 'src/app/mail/undo.js', 'src/app/mail/mailboxes.js'],
+  platform: ['src/app/system/cache.js', 'src/app/system/settings.js', 'src/app/system/view-store.js',
+    'src/app/compose/draft-store.js', 'src/app/core/sanitize.js'],
 };
 const RANK = { shell: 3, features: 2, domain: 1, platform: 0 };
 
@@ -1196,8 +1206,10 @@ test('ARCH: dependencies point downward only', () => {
     for (const file of files) {
       const from = layerOf(file);
       const src = read(file);
-      for (const m of src.matchAll(/from '\.\/([a-z-]+\.js)'/g)) {
-        const target = `src/app/${m[1]}`;
+      for (const m of src.matchAll(/from '(\.[^']+)'/g)) {
+        // Imports are folder-relative since S2 (src/app/mail/bulk.js reads
+        // '../core/icons.js'); resolve to a root-relative path before ranking.
+        const target = join(dirname(file), m[1]);
         const to = layerOf(target);
         if (!to) continue; // not classified; ignored rather than guessed at
         if (RANK[to] > RANK[from]) {
@@ -1229,7 +1241,7 @@ test('ARCH: overlays use the layer primitive rather than hand-rolled teardown', 
    *
    * The primitive is the only sanctioned place for that listener.
    */
-  const shell = read('src/app/app.js')
+  const shell = read('src/app/main.js')
     .replace(/\/\*[\s\S]*?\*\//g, ' ')
     .replace(/\/\/[^\n]*/g, ' ');
   assert.ok(
@@ -1237,7 +1249,7 @@ test('ARCH: overlays use the layer primitive rather than hand-rolled teardown', 
     'the shell wires an outside-click listener; layers.js owns that'
   );
 
-  const layers = read('src/app/layers.js');
+  const layers = read('src/app/overlays/layers.js');
   assert.match(layers, /addEventListener\('mousedown'/,
     'the primitive should own outside-click dismissal');
 });
@@ -1270,7 +1282,7 @@ test('ARCH: no menu is hand-rolled beside the primitive', () => {
    */
   // The rail's roving-tabindex handler moved to sidebar.js (round 52), so
   // the shell scan covers both files.
-  const shell = (read('src/app/app.js') + read('src/app/sidebar.js'))
+  const shell = (read('src/app/main.js') + read('src/app/workspace/sidebar.js'))
     .replace(/\/\*[\s\S]*?\*\//g, ' ')
     .replace(/\/\/[^\n]*/g, ' ');
 
@@ -1312,7 +1324,7 @@ test('ARCH: no menu is hand-rolled beside the primitive', () => {
    * behavioural proof lives in test/menu.test.mjs; this only guards against
    * the capability being deleted wholesale.
    */
-  const menu = read('src/app/menu.js');
+  const menu = read('src/app/overlays/menu.js');
   assert.match(
     menu, /e\.key === 'Home' \|\| e\.key === 'End'/,
     'Home/End came from the theme menu and must survive the merge'
@@ -1342,7 +1354,7 @@ test('ARCH: a bulk label delta is stated once, not once per direction', () => {
    */
   // The bulk cluster moved to bulk.js (round 52 step 6); the doctrine
   // scan covers both files.
-  const shell = (read('src/app/app.js') + read('src/app/bulk.js'))
+  const shell = (read('src/app/main.js') + read('src/app/mail/bulk.js'))
     .replace(/\/\*[\s\S]*?\*\//g, ' ')
     .replace(/\/\/[^\n]*/g, ' ');
 
@@ -1722,7 +1734,7 @@ test('ARCH: no undo is recorded before its request has succeeded', () => {
    * Counting rather than parsing, because the alternative is a JS parser in
    * a test. If a fourth call site appears it must justify itself here.
    */
-  const src = read('src/app/app.js')
+  const src = read('src/app/main.js')
     .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
     .replace(/\/\/[^\n]*/g, '');
 
@@ -1778,7 +1790,7 @@ test('LOAD: the extension passes the load-time doctor', () => {
 test('ARCH: the Escape handler has no per-overlay branches', () => {
   // The ladder is what the stack replaced. If overlay-specific `close*()`
   // calls reappear here, the ordering fragility is back.
-  const src = read('src/app/app.js');
+  const src = read('src/app/main.js');
   const handler = src.indexOf("document.addEventListener('keydown'");
   const esc = src.indexOf("if (e.key === 'Escape')", handler);
   const block = src.slice(esc, esc + 1800);
@@ -2323,7 +2335,7 @@ test('COMPLEXITY: removal actions share one optimistic helper', () => {
    * more. Counting the fingerprint rather than reading the code means the test
    * fails if someone adds a seventh action by copying the sixth.
    */
-  const src = read('src/app/app.js').replace(/\/\*[\s\S]*?\*\//g, '');
+  const src = read('src/app/main.js').replace(/\/\*[\s\S]*?\*\//g, '');
   const copies = (src.match(/const snapshot = \{ \.\.\.m \}/g) || []).length;
   assert.ok(
     copies <= 1,
@@ -2437,7 +2449,7 @@ test('a slow bulk action raises the busy state', () => {
    * so the error path cannot strand it.
    */
   // bulkAct moved to bulk.js (round 52 step 6); reconcileBulk bounds it there.
-  const src = read('src/app/bulk.js');
+  const src = read('src/app/mail/bulk.js');
   const fn = src.slice(src.indexOf('async function bulkAct'), src.indexOf('function reconcileBulk'));
   assert.match(fn, /setBusy\(true\)/, 'a large batch must show it is working');
   assert.match(fn, /finally\s*\{[^}]*setBusy\(false\)/s, 'and must clear it on every path');
@@ -2499,7 +2511,7 @@ test('closeWithMotion sets hidden immediately, not after the animation', () => {
    * Caught by the suite the first time: `assert.equal(help.hidden, true)`
    * after Escape failed. Motion is presentation; state does not wait for it.
    */
-  const src = read('src/app/layers.js');
+  const src = read('src/app/overlays/layers.js');
   const fn = src.slice(src.indexOf('export function closeWithMotion'));
   assert.match(fn, /node\.hidden = true/, 'must hide the node');
   assert.doesNotMatch(
@@ -2516,9 +2528,9 @@ test('every overlay open path cancels a half-finished exit', () => {
    * this in normal use.
    */
   for (const [file, marker] of [
-    ['src/app/compose.js', 'panel'],
-    ['src/app/palette.js', 'box'],
-    ['src/app/toast.js', 'el.toast'],
+    ['src/app/compose/compose.js', 'panel'],
+    ['src/app/overlays/palette.js', 'box'],
+    ['src/app/overlays/toast.js', 'el.toast'],
   ]) {
     assert.match(read(file), /cancelExit\(/, `${file} must clear a stale exit before opening`);
   }
@@ -2531,7 +2543,7 @@ test('rapid reader navigation skips the swap animation', () => {
    * scanning wants to arrive, not to watch five fades.
    */
   // The reader cluster moved out of app.js in the round-51 workspace extraction.
-  const src = read('src/app/reader.js');
+  const src = read('src/app/mail/reader.js');
   const fn = src.slice(src.indexOf('async function openMessage'), src.indexOf('function renderAttachments'));
   assert.match(fn, /lastSwapAt/, 'must track when the last swap ran');
   // P5 sharpens the same rule: the deliberate open flies the identity morph
@@ -2802,7 +2814,7 @@ test('filenames truncate in the middle, keeping the extension', async () => {
    * institutional mail, where names are long and formulaic and differ near the
    * end, that strips the discriminating part from every chip on screen.
    */
-  const { middleTruncate } = await import('../src/app/icons.js');
+  const { middleTruncate } = await import('../src/app/core/icons.js');
 
   assert.equal(middleTruncate('short.pdf'), 'short.pdf', 'short names are untouched');
 
@@ -2817,6 +2829,6 @@ test('filenames truncate in the middle, keeping the extension', async () => {
   assert.ok(middleTruncate('a'.repeat(80)).length < 40);
   // And both attachment surfaces must use it. The reader's chips moved to
   // reader.js in the round-51 workspace extraction.
-  assert.match(read('src/app/reader.js'), /middleTruncate\(a\.filename\)/);
-  assert.match(read('src/app/compose.js'), /middleTruncate\(f\.filename\)/);
+  assert.match(read('src/app/mail/reader.js'), /middleTruncate\(a\.filename\)/);
+  assert.match(read('src/app/compose/compose.js'), /middleTruncate\(f\.filename\)/);
 });

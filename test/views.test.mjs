@@ -9,7 +9,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { loadViews, saveView, removeView, restoreBuiltins, BUILTIN_VIEWS } from '../src/app/views.js';
+import { loadViews, saveView, removeView, restoreBuiltins, BUILTIN_VIEWS } from '../src/app/system/view-store.js';
 import { fakeStorage } from './helpers/storage.mjs';
 
 

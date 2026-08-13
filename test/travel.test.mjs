@@ -21,9 +21,9 @@ const css = readBundle();
 // The list cluster moved out of app.js in the round-52 workspace extraction:
 // the ghost lives in list.js, optimistic() stayed in the shell, and bulkAct
 // moved to bulk.js (step 6).
-const js = readFileSync(join(ROOT, 'src/app/app.js'), 'utf8');
-const list = readFileSync(join(ROOT, 'src/app/list.js'), 'utf8');
-const bulkSrc = readFileSync(join(ROOT, 'src/app/bulk.js'), 'utf8');
+const js = readFileSync(join(ROOT, 'src/app/main.js'), 'utf8');
+const list = readFileSync(join(ROOT, 'src/app/mail/list.js'), 'utf8');
+const bulkSrc = readFileSync(join(ROOT, 'src/app/mail/bulk.js'), 'utf8');
 
 const fn = list.slice(list.indexOf('function travelGhost('), list.indexOf('function travelGhost(') + 4000);
 

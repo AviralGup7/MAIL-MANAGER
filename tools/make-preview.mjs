@@ -136,7 +136,7 @@ export { bundle };
 const IS_MAIN = Boolean(process.argv[1]) &&
   resolve(process.argv[1]) === join(ROOT, 'tools', 'make-preview.mjs');
 if (IS_MAIN) {
-const appJs = bundle('src/app/app.js');
+const appJs = bundle('src/app/main.js');
 // src/app/app.css is now src/styles/ — 26 numbered volumes whose sorted order
 // IS the cascade order. The preview inlines the same bundle the tests read.
 const css = bundleStyles(ROOT);
@@ -154,7 +154,7 @@ let html = read('app.html');
 html = html.replace(/<link rel="stylesheet"[^>]*\/>/, () => `<style>\n${css}\n</style>`);
 html = html.replace(/\s*<link rel="stylesheet"[^>]*\/>/g, '');
 html = html.replace(
-  /<script type="module" src="src\/app\/app\.js"><\/script>/,
+  /<script type="module" src="src\/app\/main\.js"><\/script>/,
   () => `<script type="module">\n${MOCK()}\n${appJs}\n</script>`
 );
 html = html.replace(

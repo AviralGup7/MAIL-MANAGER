@@ -23,8 +23,8 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const appjs = readFileSync(join(ROOT, 'src/app/app.js'), 'utf8');
-const toastjs = readFileSync(join(ROOT, 'src/app/toast.js'), 'utf8');
+const appjs = readFileSync(join(ROOT, 'src/app/main.js'), 'utf8');
+const toastjs = readFileSync(join(ROOT, 'src/app/overlays/toast.js'), 'utf8');
 
 test('verb failures announce through one toasted surface that carries Retry', () => {
   assert.match(appjs, /function toastFailure\(text, retry\) \{\s*toast\(text, retry\s*\? \{ kind: 'error', action: \{ label: 'Retry', run: retry \} \}\s*: \{ kind: 'error' \}\);/,

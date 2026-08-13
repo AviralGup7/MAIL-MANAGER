@@ -11,11 +11,11 @@ import { readFileSync } from 'node:fs';
 
 const {
   MAILBOXES, DEFAULT_MAILBOX, getMailbox, isMailbox, showsCategories, actionsFor,
-} = await import('../src/app/mailboxes.js');
+} = await import('../src/app/mail/mailboxes.js');
 
-const app = readFileSync(new URL('../src/app/app.js', import.meta.url), 'utf8');
+const app = readFileSync(new URL('../src/app/main.js', import.meta.url), 'utf8');
 // The rail moved out of app.js in the round-52 workspace extraction.
-const sidebar = readFileSync(new URL('../src/app/sidebar.js', import.meta.url), 'utf8');
+const sidebar = readFileSync(new URL('../src/app/workspace/sidebar.js', import.meta.url), 'utf8');
 const sync = readFileSync(new URL('../src/background/sync.js', import.meta.url), 'utf8');
 const bg = readFileSync(new URL('../src/background/index.js', import.meta.url), 'utf8');
 
@@ -224,7 +224,7 @@ test('leaving the inbox drops the server-search overlay (bug-hunt #26)', () => {
 });
 
 test('server search never serves Trash or Spam into the inbox (bug-hunt #6)', () => {
-  const ss = readFileSync(new URL('../src/app/server-search.js', import.meta.url), 'utf8');
+  const ss = readFileSync(new URL('../src/app/search/server-search.js', import.meta.url), 'utf8');
   assert.match(ss, /-in:trash -in:spam/,
     'the supplement query must exclude trash and spam');
 });
@@ -240,7 +240,7 @@ test('the outbox pump dispatches through the worker, never per-item from the app
   // pump; it does not dispatch items itself. A revert to flushOutbox+SEND
   // reintroduces the race, so the wiring is pinned, not implied.
   // The pump moved to rails.js in the round-52 workspace extraction.
-  const rails = readFileSync(new URL('../src/app/rails.js', import.meta.url), 'utf8');
+  const rails = readFileSync(new URL('../src/app/workspace/rails.js', import.meta.url), 'utf8');
   const at = rails.indexOf('function pumpOutbox');
   assert.notEqual(at, -1);
   const body = rails.slice(at, at + 1200);

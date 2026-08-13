@@ -116,7 +116,7 @@ test('the preview bundler output parses (audit 33, three defects)', () => {
   // leave a SyntaxError in preview.html while `npm run preview` exited 0.
   // Build the real bundle and PARSE it; a regression here is a blank preview.
   return import('../tools/make-preview.mjs').then(({ bundle }) => {
-    const code = bundle('src/app/app.js');
+    const code = bundle('src/app/main.js');
     // Parsing IS the contract: all three defects manifested as SyntaxError.
     new vm.Script(code);
   });

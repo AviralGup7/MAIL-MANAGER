@@ -11,18 +11,18 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { readBundle } from './helpers/css.mjs';
 
-const app = readFileSync(new URL('../src/app/app.js', import.meta.url), 'utf8');
+const app = readFileSync(new URL('../src/app/main.js', import.meta.url), 'utf8');
 // The reader cluster moved out of app.js in the round-51 workspace extraction.
-const reader = readFileSync(new URL('../src/app/reader.js', import.meta.url), 'utf8');
+const reader = readFileSync(new URL('../src/app/mail/reader.js', import.meta.url), 'utf8');
 // The list cluster moved out in round 52 (workspace sequence step 2).
-const list = readFileSync(new URL('../src/app/list.js', import.meta.url), 'utf8');
-const compose = readFileSync(new URL('../src/app/compose.js', import.meta.url), 'utf8');
-const sanitize = readFileSync(new URL('../src/app/sanitize.js', import.meta.url), 'utf8');
+const list = readFileSync(new URL('../src/app/mail/list.js', import.meta.url), 'utf8');
+const compose = readFileSync(new URL('../src/app/compose/compose.js', import.meta.url), 'utf8');
+const sanitize = readFileSync(new URL('../src/app/core/sanitize.js', import.meta.url), 'utf8');
 const css = readBundle();
 
 test('mute state is visible in the rail (round 46 #28)', () => {
   // The rail moved to sidebar.js (round 52); the rules read goes through ctx.
-  const sidebar = readFileSync(new URL('../src/app/sidebar.js', import.meta.url), 'utf8');
+  const sidebar = readFileSync(new URL('../src/app/workspace/sidebar.js', import.meta.url), 'utf8');
   assert.match(sidebar, /dataset\.muted = String\(ctx\.getRules\(\)\.muted\.includes/,
     'the rail marks muted categories');
   assert.match(css, /\.cat\[data-muted='true'\]/, 'and styles them as muted');

@@ -93,7 +93,7 @@ These were built during the investigation and are **deliberately kept**:
 
 | Safety net | What it does |
 |---|---|
-| `src/app/fallback.js` | If the worker does not answer, the app runs the Gmail layer **in the page**. All 11 verbs — read, search, archive, send, drafts. |
+| `src/app/system/fallback.js` | If the worker does not answer, the app runs the Gmail layer **in the page**. All 11 verbs — read, search, archive, send, drafts. |
 | Amber banner | Says so once, names what is lost, dismissable. |
 | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd> in the content script | Opens the takeover with no worker involved. |
 | `chrome.action?.` / `chrome.commands?.` | A missing manifest key costs one feature, not the whole worker. |

@@ -18,15 +18,15 @@ import { readBundle } from './helpers/css.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
-const appjs = read('src/app/app.js');
-const listjs = read('src/app/list.js');
+const appjs = read('src/app/main.js');
+const listjs = read('src/app/mail/list.js');
 const css = readBundle();
 const html = read('app.html');
 
 // query.js is pure; search-chips touches document only inside render/wire.
-const { tokenize } = await import('../src/app/query.js');
+const { tokenize } = await import('../src/app/search/query.js');
 const { chipModel, queryWithout, renderSearchChips, wireSearchChips } =
-  await import('../src/app/search-chips.js');
+  await import('../src/app/search/search-chips.js');
 
 test('the splitter is the parser\'s own — one quote-aware lexer, one truth', () => {
   assert.equal(typeof tokenize, 'function',

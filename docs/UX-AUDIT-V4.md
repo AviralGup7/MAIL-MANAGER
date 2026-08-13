@@ -109,7 +109,7 @@ reduced-motion safe, pointer-coarse exempt.*
 
 - [x] **65/a — this doc.** (plan commit `4acd15d`)
 - [x] **65/b — Row quick actions (F12) + row context menu (F3).** `61da55f`.
-  Shipped as planned in `src/app/row-actions.js`; browser-probed hover plate
+  Shipped as planned in `src/app/mail/row-actions.js`; browser-probed hover plate
   (opacity 1, 114px) and overlay-root menu float; screenshots at the time.
 - [x] **65/c — Selection v2 (F2).** `908baba`. As built: F2 was partly a
   documentation gap — `selection.js` already had anchor/range/selectAll and
@@ -125,7 +125,7 @@ reduced-motion safe, pointer-coarse exempt.*
   a clipboard-failure fallback that shows the text rather than toasting a
   lie. Verified headless: real clipboard carries the thread URL/subject;
   `test/reader-more.test.mjs` pins the set, order, fallback and visibility.
-- [x] **65/e — Search chips + clear (F6).** `src/app/search-chips.js`: the
+- [x] **65/e — Search chips + clear (F6).** `src/app/search/search-chips.js`: the
   round-62 readout slot became an editor — one removable chip per lexical
   token (the parser's own `tokenize`, now exported; free-text runs merge
   into ONE chip because five single-word chips are five deletion tariffs on
@@ -151,7 +151,7 @@ reduced-motion safe, pointer-coarse exempt.*
   Selection-gated commands still vanish whole (never state-ambiguous, just
   absent — a different doctrine, deliberately kept). Browser-verified and
   integration-driven end to end.
-- [x] **65/g — Hash deep links (F7).** `src/app/deep-links.js`:
+- [x] **65/g — Hash deep links (F7).** `src/app/system/deep-links.js`:
   `#inbox/augsd?q=…&m=…` round-trips through format/parse; deliberate views
   (category, mailbox, settled runQuery) push ONE history entry each; every
   settled frame mirrors the full state via replaceState only, so j/k and

@@ -55,7 +55,7 @@ function setup() {
   };
 }
 
-const load = () => import('../src/app/toast.js?t=' + Math.random());
+const load = () => import('../src/app/overlays/toast.js?t=' + Math.random());
 
 for (const label of ['Undo', 'Got it', 'Show']) {
   test(`the action named "${label}" is named "${label}" on BOTH channels`, async (t) => {
@@ -96,7 +96,7 @@ test('regression tripwire: no toast path may set text without restamping the nam
   // Source-level guard: the setText on toastAction and setAttribute
   // aria-label must stay within the same `if (action)` block. If someone
   // moves one and not the other, this file fails, not a screen-reader user.
-  const src = readFileSync(new URL('../src/app/toast.js', import.meta.url), 'utf8');
+  const src = readFileSync(new URL('../src/app/overlays/toast.js', import.meta.url), 'utf8');
   const block = src.match(/if \(action\) \{[\s\S]*?\n  \}/)?.[0] || '';
   assert.ok(block.includes('setText(el.toastAction, action.label)'), 'text refreshes');
   assert.ok(block.includes("setAttribute('aria-label', action.label)"), 'name refreshes with it');

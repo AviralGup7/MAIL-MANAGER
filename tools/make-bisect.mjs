@@ -78,7 +78,7 @@ const cases = [];
   mkdirSync(join(dir, 'src', 'background'), { recursive: true });
   for (const f of [
     'src/background/index.js', 'src/background/auth.js',
-    'src/background/gmail.js', 'src/background/sync.js', 'src/app/snooze.js',
+    'src/background/gmail.js', 'src/background/sync.js', 'src/app/system/snooze.js',
   ]) {
     cpSync(join(ROOT, f), join(dir, f));
   }

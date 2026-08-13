@@ -13,9 +13,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fakeStorage } from './helpers/storage.mjs';
 
-const mc = await import('../src/app/my-courses.js');
-const { detectNotice, summarise, shouldPromote, scanForNotices } = await import('../src/app/notices.js');
-const dl = await import('../src/app/deadline-store.js');
+const mc = await import('../src/app/academic/my-courses.js');
+const { detectNotice, summarise, shouldPromote, scanForNotices } = await import('../src/app/academic/notices.js');
+const dl = await import('../src/app/academic/deadline-store.js');
 
 const NOW = 1_700_000_000_000;
 

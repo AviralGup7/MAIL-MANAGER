@@ -1,4 +1,4 @@
-import { Store } from '../src/app/store.js';
+import { Store } from '../src/app/mail/store.js';
 import { classifyAll } from '../src/classify/index.js';
 
 const N = 2000;

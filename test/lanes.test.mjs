@@ -9,7 +9,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 const { laneOf, partition, laneCounts, answeredPredicate, LANES, LANE_LABELS } =
-  await import('../src/app/lanes.js');
+  await import('../src/app/academic/lanes.js');
 
 const ME = 'f20240294@pilani.bits-pilani.ac.in';
 const ctx = (over = {}) => ({ self: ME, now: 1_700_000_000_000, ...over });

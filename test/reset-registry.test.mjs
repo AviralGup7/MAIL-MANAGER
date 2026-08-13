@@ -11,19 +11,23 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 // Importing these modules is what registers them.
-await import('../src/app/features.js');
-await import('../src/app/timetable-ui.js');
-await import('../src/app/menu.js');
-await import('../src/app/undo-actions.js');
-await import('../src/app/list.js');
-await import('../src/app/bulk.js');
-await import('../src/app/layers.js');
+// (The features.js barrel used to register the composite 'features' seam; S2
+// dissolved it into the three per-module registrations below.)
+await import('../src/app/overlays/palette.js');
+await import('../src/app/compose/compose.js');
+await import('../src/app/compose/autocomplete.js');
+await import('../src/app/academic/timetable-ui.js');
+await import('../src/app/overlays/menu.js');
+await import('../src/app/mail/undo-actions.js');
+await import('../src/app/mail/list.js');
+await import('../src/app/mail/bulk.js');
+await import('../src/app/overlays/layers.js');
 
-const { resetAll, registeredResets } = await import('../src/app/reset-registry.js');
+const { resetAll, registeredResets } = await import('../src/app/core/reset-registry.js');
 
 test('every known stateful module self-registers', () => {
   const got = new Set(registeredResets());
-  for (const name of ['features', 'timetable-ui', 'menu', 'undo', 'list', 'bulk', 'layers']) {
+  for (const name of ['palette', 'compose', 'autocomplete', 'timetable-ui', 'menu', 'undo', 'list', 'bulk', 'layers']) {
     assert.ok(got.has(name), `${name} must register its reset seam`);
   }
 });

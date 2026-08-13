@@ -13,13 +13,13 @@ function fmtEvery(ms) {
  * credential whose revocation breaks everybody.
  *
  * Everything else on this page is a PREFERENCE, and preferences are read and
- * written through `src/app/settings.js` rather than touching storage here.
+ * written through `src/app/system/settings.js` rather than touching storage here.
  * One schema, one default per key, one place that coerces a bad stored value
  * -- otherwise the page that writes a setting and the app that reads it drift
  * apart, and the user is the one who finds out.
  */
 
-import * as settings from '../app/settings.js';
+import * as settings from '../app/system/settings.js';
 
 /**
  * A setting that fails to persist must not fail silently (bug-hunt 43 #17):
@@ -35,8 +35,8 @@ function persist(promise) {
     }
   });
 }
-import * as bk from '../app/backup.js';
-import * as engine from '../app/rule-engine.js';
+import * as bk from '../app/system/backup.js';
+import * as engine from '../app/academic/rule-engine.js';
 
 /**
  * The client ID version 1 shipped with. Offered as a convenience because the
@@ -418,7 +418,7 @@ function fmtHold(sec) {
   /** The locally cached messages, which is what a dry run can see from here. */
   async function cachedMessages() {
     try {
-      const { loadCache } = await import('../app/cache.js');
+      const { loadCache } = await import('../app/system/cache.js');
       const blob = await loadCache();
       return blob?.messages || [];
     } catch {

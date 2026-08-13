@@ -20,7 +20,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const src = readFileSync(join(ROOT, 'src/app/timetable-ui.js'), 'utf8');
+const src = readFileSync(join(ROOT, 'src/app/academic/timetable-ui.js'), 'utf8');
 
 test('push rides the real hidden→shown edge, never a re-render', () => {
   const open = src.slice(src.indexOf('export function openTimetable'));

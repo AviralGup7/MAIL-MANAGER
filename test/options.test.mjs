@@ -329,7 +329,7 @@ test('every setting in the schema has a control on this page', async (t) => {
    */
   const { doc, restore } = await bootOptions();
   try {
-    const schema = readFileSync(join(ROOT, 'src/app/settings.js'), 'utf8');
+    const schema = readFileSync(join(ROOT, 'src/app/system/settings.js'), 'utf8');
     const declared = [...schema.matchAll(/^ {2}([a-zA-Z][a-zA-Z0-9]*): \{ type:/gm)]
       .map((m) => m[1]);
 

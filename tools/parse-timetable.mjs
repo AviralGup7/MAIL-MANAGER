@@ -35,7 +35,7 @@ import { fileURLToPath } from 'node:url';
  */
 import {
   HOUR_START, SLOT_MINUTES, BEYOND_LEGEND, DAY_NAME, parseDaysHours,
-} from '../src/app/timetable.js';
+} from '../src/app/academic/timetable.js';
 
 /**
  * Verify the legend in the document still matches the slot table.

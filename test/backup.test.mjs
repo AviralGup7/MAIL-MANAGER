@@ -12,7 +12,7 @@ import { fakeStorage } from './helpers/storage.mjs';
 const {
   exportBackup, importBackup, previewImport, validateBackup, toJson,
   filenameFor, EXPORTED_KEYS, NEVER_EXPORT, BACKUP_VERSION,
-} = await import('../src/app/backup.js');
+} = await import('../src/app/system/backup.js');
 
 const seeded = () =>
   fakeStorage({
@@ -219,7 +219,7 @@ test('EVERY SETTING IN THE SCHEMA IS EXPORTED (or deliberately withheld)', async
    * This walks the real schema so the list cannot silently fall behind when a
    * preference is added.
    */
-  const { SCHEMA } = await import('../src/app/settings.js');
+  const { SCHEMA } = await import('../src/app/system/settings.js');
 
   // Withheld on purpose, with the reason, so this is a decision and not a gap.
   const WITHHELD = {
@@ -238,7 +238,7 @@ test('EVERY SETTING IN THE SCHEMA IS EXPORTED (or deliberately withheld)', async
 test('a real settings profile round-trips end to end', async () => {
   // Built from settings.js's ACTUAL storage contract, not from a shape the
   // exporter was hoping for.
-  const { SCHEMA } = await import('../src/app/settings.js');
+  const { SCHEMA } = await import('../src/app/system/settings.js');
   const source = fakeStorage({ theme: 'nord', density: 'compact', threaded: false, signature: 'Aviral' });
 
   const backup = await exportBackup(source);

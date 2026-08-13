@@ -31,9 +31,9 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const compose = readFileSync(join(ROOT, 'src/app/compose.js'), 'utf8');
-const bulk = readFileSync(join(ROOT, 'src/app/bulk.js'), 'utf8');
-const app = readFileSync(join(ROOT, 'src/app/app.js'), 'utf8');
+const compose = readFileSync(join(ROOT, 'src/app/compose/compose.js'), 'utf8');
+const bulk = readFileSync(join(ROOT, 'src/app/mail/bulk.js'), 'utf8');
+const app = readFileSync(join(ROOT, 'src/app/main.js'), 'utf8');
 
 test('send burst: measure BEFORE closeCompose, burst AFTER, send path only', () => {
   assert.match(compose, /import \{ burst as fxBurst \} from '\.\/motion\/particles\.js'/);

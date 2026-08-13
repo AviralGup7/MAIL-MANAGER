@@ -238,16 +238,16 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
   globalThis.File = win.File;
 
   // Cache-bust so each boot gets a fresh module instance with its own Store.
-  const url = pathToFileURL(join(ROOT, 'src/app/app.js')).href + `?t=${Math.random()}`;
+  const url = pathToFileURL(join(ROOT, 'src/app/main.js')).href + `?t=${Math.random()}`;
   await import(url);
   // Round 59 (roadmap M-2): stateful modules SELF-REGISTER their resets
   // (reset-registry.js), so the harness runs one call instead of seven
   // hand-maintained captures. layers.js is special: close WITH teardown
   // FIRST — tenants null their cached handles inside onClose — then the
   // registered raw wipe runs with the rest.
-  ({ resetAll: resetRegistered } = await import('../src/app/reset-registry.js'));
-  ({ closeAllLayers: layersCloseAll } = await import('../src/app/layers.js'));
-  const ttStore = await import('../src/app/timetable-store.js');
+  ({ resetAll: resetRegistered } = await import('../src/app/core/reset-registry.js'));
+  ({ closeAllLayers: layersCloseAll } = await import('../src/app/overlays/layers.js'));
+  const ttStore = await import('../src/app/academic/timetable-store.js');
   ttStore._resetSourceData(); // the catalogue is memoised per module, not per boot
 
   const settle = async (frames = 4) => {
@@ -1147,7 +1147,7 @@ test('the app tells the content script it has painted', async (t) => {
   // If BMM_READY never fires, the takeover animation waits out its 2s timeout
   // and the handover looks broken.
   const html = readFileSync(join(ROOT, 'app.html'), 'utf8');
-  const src = readFileSync(join(ROOT, 'src/app/app.js'), 'utf8');
+  const src = readFileSync(join(ROOT, 'src/app/main.js'), 'utf8');
   assert.ok(
     src.includes("type: 'BMM_READY'") && src.includes("'https://mail.google.com'"),
     'app.js must post BMM_READY to its parent'
@@ -1560,7 +1560,7 @@ test('THEME: the picker lists every theme and marks the current one', async (t) 
   if (!JSDOM) return t.skip('jsdom not installed');
   const { doc, settle, restore } = await boot();
   try {
-    const { THEMES } = await import('../src/app/themes.js');
+    const { THEMES } = await import('../src/app/system/themes.js');
     doc.getElementById('btn-theme').click();
     await settle();
 
@@ -2084,7 +2084,7 @@ test('CONSISTENCY: a setting changed in Options reaches the running app', async 
     storageSeed: { markReadOnOpen: true },
   });
   try {
-    const settings = await import('../src/app/settings.js');
+    const settings = await import('../src/app/system/settings.js');
     assert.equal(settings.get('markReadOnOpen'), true, 'precondition: on at boot');
 
     // The options page writes it. Chrome broadcasts the change.
@@ -3044,7 +3044,7 @@ test('HELP: renders every documented shortcut exactly once', async (t) => {
     press(doc, win, '?');       // and open again
     await settle();
 
-    const { allShortcuts } = await import('../src/app/shortcuts.js');
+    const { allShortcuts } = await import('../src/app/core/shortcuts.js');
     assert.equal(
       doc.querySelectorAll('#help-body dt').length,
       allShortcuts().length,
@@ -3111,7 +3111,7 @@ test('ESCAPE: unwinds one layer at a time, innermost first', async (t) => {
  * test of the group.
  */
 const seedLabels = async (list) => {
-  const { _setLabels } = await import('../src/app/features.js');
+  const { _setLabels } = await import('../src/app/overlays/palette.js');
   _setLabels(list);
 };
 

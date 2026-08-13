@@ -12,7 +12,7 @@
  * Run: node tools/check-contrast.mjs
  */
 
-import { THEMES } from '../src/app/themes.js';
+import { THEMES } from '../src/app/system/themes.js';
 
 const AA_NORMAL = 4.5;
 const AA_LARGE = 3.0;   // >=18.66px bold or >=24px

@@ -14,7 +14,7 @@ const {
   normaliseRuleList, loadRuleList, saveRuleList, makeRule, validateRule,
   compileCondition, idsMatching, evaluate, dryRun, batchPlan, planFor,
   ACTIONS, DESTRUCTIVE,
-} = await import('../src/app/rule-engine.js');
+} = await import('../src/app/academic/rule-engine.js');
 
 const msg = (o = {}) => ({ id: 'x', subject: '', from: '', snippet: '', date: 0, labels: [], ...o });
 const rule = (o = {}) => makeRule({ name: 'r', query: 'from:x', actions: [{ type: 'archive' }], ...o });

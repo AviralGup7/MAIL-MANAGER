@@ -14,7 +14,7 @@ import { dirname, join } from 'node:path';
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 
 test('dom guards tolerate a missing node', async () => {
-  const { setAttr, setText } = await import('../src/app/dom.js');
+  const { setAttr, setText } = await import('../src/app/core/dom.js');
   // A row that was evicted between lookup and write must not throw.
   assert.doesNotThrow(() => setAttr(null, 'aria-label', 'x'));
   assert.doesNotThrow(() => setText(null, 'x'));
@@ -22,7 +22,7 @@ test('dom guards tolerate a missing node', async () => {
 
 test('a boot-time toast is queued, not dropped', async () => {
   // Fresh module instance so initToast has not run yet.
-  const toastMod = await import(`../src/app/toast.js?fresh=${Date.now()}`);
+  const toastMod = await import(`../src/app/overlays/toast.js?fresh=${Date.now()}`);
   const fakeNode = () => ({
     textContent: '', hidden: false, dataset: {}, style: {}, offsetWidth: 0,
     classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
@@ -59,7 +59,7 @@ test('every module path a pin suite reads actually exists', () => {
 
 test('reader controls carry accessible names (round 48)', () => {
   // The reader cluster moved out of app.js in the round-51 workspace extraction.
-  const reader = readFileSync(join(ROOT, 'src/app/reader.js'), 'utf8');
+  const reader = readFileSync(join(ROOT, 'src/app/mail/reader.js'), 'utf8');
   assert.match(reader, /aria-label', `Download \$\{a\.filename\}/, 'attachment chips named');
   assert.match(reader, /aria-label', `Message body: /, 'body frame named per message');
   assert.match(reader, /aria-label', `Unfold \$\{folds\.length\}/, 'unfold names its count');

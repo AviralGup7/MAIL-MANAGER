@@ -7,8 +7,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalise } from '../src/background/gmail.js';
-import { audienceOf } from '../src/app/direct.js';
-import { Store } from '../src/app/store.js';
+import { audienceOf } from '../src/app/system/direct.js';
+import { Store } from '../src/app/mail/store.js';
 
 const gmailRecord = (over = {}) => ({
   id: 'm1', threadId: 't1', internalDate: '1700000000000',

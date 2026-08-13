@@ -34,7 +34,7 @@ import { fileURLToPath } from 'node:url';
 const { JSDOM } = await import('jsdom');
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const src = readFileSync(join(ROOT, 'src/app/suggest-ui.js'), 'utf8');
+const src = readFileSync(join(ROOT, 'src/app/search/suggest-ui.js'), 'utf8');
 
 function setup() {
   const dom = new JSDOM(
@@ -56,7 +56,7 @@ function setup() {
   };
 }
 
-const load = () => import('../src/app/suggest-ui.js?t=' + Math.random());
+const load = () => import('../src/app/search/suggest-ui.js?t=' + Math.random());
 
 /** jsdom KeyboardEvent with the browser's cancelable contract. */
 const escapeKey = (win) => new win.KeyboardEvent('keydown', {

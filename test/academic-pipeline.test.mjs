@@ -17,8 +17,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const ui = readFileSync(new URL('../src/app/timetable-ui.js', import.meta.url), 'utf8');
-const app = readFileSync(new URL('../src/app/app.js', import.meta.url), 'utf8');
+const ui = readFileSync(new URL('../src/app/academic/timetable-ui.js', import.meta.url), 'utf8');
+const app = readFileSync(new URL('../src/app/main.js', import.meta.url), 'utf8');
 
 test('the scanner imports every gate it evaluates (no silent references)', () => {
   assert.match(ui, /import \{[^}]*scanMessages[^}]*\} from '\.\/timetable-mail\.js'/s);
@@ -50,7 +50,7 @@ test('the body pass is bounded and degrades on failure (bug-hunt 44 #46)', () =>
 });
 
 test('passive-voice room changes stay extracted (bug-hunt 44 #12 regression)', async () => {
-  const { scanMessage } = await import('../src/app/timetable-mail.js');
+  const { scanMessage } = await import('../src/app/academic/timetable-mail.js');
   const state = {
     entries: [{
       id: 'CS F111:L1', courseNo: 'CS F111', section: 'L1', kind: 'lecture',
@@ -94,7 +94,7 @@ test('deepScanMessages finds what only the BODY says (bug-hunt 44 #46)', async (
   // The badge is UI; a bare document stub keeps mergeFindings DOM-safe in node.
   globalThis.document = globalThis.document || { getElementById: () => null };
 
-  const uiMod = await import(`../src/app/timetable-ui.js?fresh=${Date.now()}`);
+  const uiMod = await import(`../src/app/academic/timetable-ui.js?fresh=${Date.now()}`);
   await uiMod.initTimetable({});
 
   // Subject/snippet name the course but NOT the room; only the body states it.

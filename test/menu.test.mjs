@@ -44,7 +44,7 @@ function setup() {
 }
 
 const load = async () => {
-  const m = await import('../src/app/menu.js?t=' + Math.random());
+  const m = await import('../src/app/overlays/menu.js?t=' + Math.random());
   return m;
 };
 

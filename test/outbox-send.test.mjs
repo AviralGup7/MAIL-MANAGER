@@ -15,9 +15,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 
-const rails = await import('../src/app/rails.js');
-const outbox = await import('../src/app/outbox.js');
-const { initToast } = await import('../src/app/toast.js');
+const rails = await import('../src/app/workspace/rails.js');
+const outbox = await import('../src/app/compose/outbox.js');
+const { initToast } = await import('../src/app/overlays/toast.js');
 const { fakeStorage } = await import('./helpers/storage.mjs');
 
 /** jsdom gives the pump a document (rail DOM guards no-op without nodes). */

@@ -12,8 +12,8 @@ import { fakeStorage } from './helpers/storage.mjs';
 const {
   suggest, currentToken, isComplete, addToHistory, normaliseHistory,
   loadHistory, saveHistory, OPERATORS, MAX_HISTORY,
-} = await import('../src/app/suggest.js');
-const { parseQuery } = await import('../src/app/query.js');
+} = await import('../src/app/search/suggest.js');
+const { parseQuery } = await import('../src/app/search/query.js');
 
 const CTX = {
   history: [{ q: 'from:augsd registration', at: 5 }, { q: 'is:overdue', at: 4 }],

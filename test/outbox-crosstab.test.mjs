@@ -17,7 +17,7 @@ import { join } from 'node:path';
 
 const ROOT = new URL('..', import.meta.url);
 /** Cache-busted import = a second "tab" with its own TAB_ID + inFlight. */
-const importTab = () => import(pathToFileURL(join(ROOT.pathname, 'src/app/outbox.js')).href + `?t=${Math.random()}`);
+const importTab = () => import(pathToFileURL(join(ROOT.pathname, 'src/app/compose/outbox.js')).href + `?t=${Math.random()}`);
 
 /** One shared chrome.storage.local, async like the real one. */
 function sharedStorage() {

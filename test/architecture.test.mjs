@@ -78,7 +78,7 @@ test('background never imports app statically — except the declared store help
    * named, symbol-limited, tested — is the doctrine; anything else from app
    * is a layering violation.
    */
-  const ALLOWED = new Set(['../app/snooze.js', '../app/outbox.js']);
+  const ALLOWED = new Set(['../app/system/snooze.js', '../app/compose/outbox.js']);
   for (const f of allFiles(join(SRC, 'background'))) {
     for (const imp of staticImports(f)) {
       if (!imp.startsWith('../app/')) continue;
@@ -92,8 +92,8 @@ test('background never imports app statically — except the declared store help
   // (which lives in shared/labels.js) or any UI code.
   const idx = readFileSync(join(SRC, 'background', 'index.js'), 'utf8');
   const declared = [
-    ['snooze.js', ['loadSnoozed', 'removeSnooze', 'due']],
-    ['outbox.js', ['loadOutbox', 'saveOutbox', 'dueItems', 'markFailed', 'prioritizeDue']],
+    ['system/snooze.js', ['loadSnoozed', 'removeSnooze', 'due']],
+    ['compose/outbox.js', ['loadOutbox', 'saveOutbox', 'dueItems', 'markFailed', 'prioritizeDue']],
   ];
   for (const [file, symbols] of declared) {
     const marker = `from '../app/${file}'`;
@@ -123,9 +123,10 @@ test('app never imports background statically (fallback dynamic imports are the 
   }
   // The exception is real and must stay dynamic: fallback.js imports the
   // Gmail/auth modules ONLY when the worker is dead, so a healthy session
-  // never pays for them.
-  const fb = readFileSync(join(SRC, 'app', 'fallback.js'), 'utf8');
-  assert.ok(fb.includes("import('../background/auth.js')"), 'fallback dynamic import preserved');
+  // never pays for them. (fallback.js lives in app/system/ since S2, so the
+  // declared-path check is two levels up.)
+  const fb = readFileSync(join(SRC, 'app', 'system', 'fallback.js'), 'utf8');
+  assert.ok(fb.includes("import('../../background/auth.js')"), 'fallback dynamic import preserved');
 });
 
 test('takeover content script has no imports (runs inside Gmail)', () => {
@@ -186,10 +187,10 @@ test('the timetable workspace renders in exactly one module (round 57 boundary p
    * tt-* DOM construction migrating into the shell is the boundary eroding,
    * and it is caught here, not in review.
    */
-  const app = readFileSync(join(SRC, 'app', 'app.js'), 'utf8')
+  const app = readFileSync(join(SRC, 'app', 'main.js'), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, ' ')
     .replace(/\/\/[^\n]*/g, ' ');
-  const tt = readFileSync(join(SRC, 'app', 'timetable-ui.js'), 'utf8');
+  const tt = readFileSync(join(SRC, 'app', 'academic', 'timetable-ui.js'), 'utf8');
 
   assert.ok(!/['"`]tt-[a-z]/.test(app),
     'app.js must construct no tt-* DOM: the workspace renders itself');

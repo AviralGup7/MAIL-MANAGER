@@ -8,7 +8,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Store } from '../src/app/store.js';
+import { Store } from '../src/app/mail/store.js';
 
 function msg(i, over = {}) {
   return {

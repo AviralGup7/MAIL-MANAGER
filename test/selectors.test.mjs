@@ -10,10 +10,10 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Store } from '../src/app/store.js';
+import { Store } from '../src/app/mail/store.js';
 import {
   visibleIds, mutedHiddenCount, applyMute, collapseThreads, matchesQuery,
-} from '../src/app/selectors.js';
+} from '../src/app/core/selectors.js';
 
 function msg(i, over = {}) {
   return {

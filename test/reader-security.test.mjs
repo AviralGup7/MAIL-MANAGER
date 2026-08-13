@@ -13,9 +13,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const html = readFileSync(new URL('../app.html', import.meta.url), 'utf8');
-const app = readFileSync(new URL('../src/app/app.js', import.meta.url), 'utf8');
+const app = readFileSync(new URL('../src/app/main.js', import.meta.url), 'utf8');
 // The reader cluster moved out of app.js in the round-51 workspace extraction.
-const reader = readFileSync(new URL('../src/app/reader.js', import.meta.url), 'utf8');
+const reader = readFileSync(new URL('../src/app/mail/reader.js', import.meta.url), 'utf8');
 
 test('the body iframe sandbox allows neither scripts nor same-origin', () => {
   const m = html.match(/id="r-body"[\s\S]{0,400}?sandbox="([^"]+)"/);
@@ -44,7 +44,7 @@ test('unhandled rejections are observed and recorded (bug-hunt 44 #67)', () => {
 });
 
 test('sending warns about unfilled template placeholders (bug-hunt 44 #30)', () => {
-  const compose = readFileSync(new URL('../src/app/compose.js', import.meta.url), 'utf8');
+  const compose = readFileSync(new URL('../src/app/compose/compose.js', import.meta.url), 'utf8');
   const at = compose.indexOf('async function doSend');
   const body = compose.slice(at, at + 3500);
   assert.match(body, /Unfilled template fields/,
@@ -68,7 +68,7 @@ test('an embedded boot without a nonce refuses to run (bug-hunt 44 #70)', () => 
 });
 
 test('the reader frame contract is declared once, in reader-frame.js (arch A2)', async () => {
-  const rf = await import('../src/app/reader-frame.js');
+  const rf = await import('../src/app/mail/reader-frame.js');
   // Typography covers every density, within reading bounds.
   for (const d of ['comfortable', 'cosy', 'compact']) {
     const t = rf.READER_TYPOGRAPHY[d];

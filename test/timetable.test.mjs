@@ -19,17 +19,17 @@ import {
   weekView, summariseMeetings, explainEntry, entriesForMessage, examEvents,
   parseDaysHours, switchSection, finalize, resetTimetable,
   validateAgainstSource, PRECEDENCE,
-} from '../src/app/timetable.js';
+} from '../src/app/academic/timetable.js';
 
 import {
   scanMessage, scanMessages, matchNotice,
   isAcademicSender, courseNumbersIn, sectionsIn,
-} from '../src/app/timetable-mail.js';
+} from '../src/app/academic/timetable-mail.js';
 
 import {
   loadTimetable, saveTimetable, clearTimetable,
   searchCourses, courseByComCode, loadSourceData, _resetSourceData,
-} from '../src/app/timetable-store.js';
+} from '../src/app/academic/timetable-store.js';
 
 // parseDaysHours is DOMAIN (the app reads class times out of change notices);
 // parseNotice/parseTimetable are build-time only.
@@ -1767,7 +1767,7 @@ test('SEMESTER: a full semester of updates leaves the timetable coherent', async
  * badge is worse than no badge.
  * ========================================================================== */
 
-const { courseNumbersIn: courseNums } = await import('../src/app/timetable-mail.js');
+const { courseNumbersIn: courseNums } = await import('../src/app/academic/timetable-mail.js');
 
 test('real course numbers are found in every spelling used in mail', () => {
   const cases = {
@@ -1824,7 +1824,7 @@ test('the department list matches the shipped timetable', async () => {
   // timetable cannot silently outrun the detector.
   const { readFileSync } = await import('node:fs');
   const data = JSON.parse(readFileSync(new URL('../src/timetable/data.json', import.meta.url), 'utf8'));
-  const src = readFileSync(new URL('../src/app/timetable-mail.js', import.meta.url), 'utf8');
+  const src = readFileSync(new URL('../src/app/academic/timetable-mail.js', import.meta.url), 'utf8');
   const declared = new Set(src.match(/const DEPTS = '([^']+)'/)[1].split('|'));
   const actual = new Set(data.courses.map((c) => c.courseNo.split(/\s+/)[0]));
   assert.deepEqual([...actual].filter((d) => !declared.has(d)), [], 'departments the detector cannot see');

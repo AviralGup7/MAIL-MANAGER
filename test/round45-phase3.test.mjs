@@ -8,13 +8,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { readBundle } from './helpers/css.mjs';
 
-const app = readFileSync(new URL('../src/app/app.js', import.meta.url), 'utf8');
+const app = readFileSync(new URL('../src/app/main.js', import.meta.url), 'utf8');
 // The bulk cluster moved to bulk.js in round 52 step 6.
-const bulk = readFileSync(new URL('../src/app/bulk.js', import.meta.url), 'utf8');
-const compose = readFileSync(new URL('../src/app/compose.js', import.meta.url), 'utf8');
+const bulk = readFileSync(new URL('../src/app/mail/bulk.js', import.meta.url), 'utf8');
+const compose = readFileSync(new URL('../src/app/compose/compose.js', import.meta.url), 'utf8');
 const css = readBundle();
 // The reader cluster moved out of app.js in the round-51 workspace extraction.
-const reader = readFileSync(new URL('../src/app/reader.js', import.meta.url), 'utf8');
+const reader = readFileSync(new URL('../src/app/mail/reader.js', import.meta.url), 'utf8');
 
 test('Open-in-Gmail lands where the message lives (round 45 M1)', () => {
   assert.match(reader, /el\.rOpen\.href = ctx\.gmailUrl\(m\.threadId, urlMailbox\)/,

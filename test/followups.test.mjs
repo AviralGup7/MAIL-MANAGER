@@ -14,7 +14,7 @@ const {
   setFollowup, clearFollowup, hasFollowup, isAnswered, dueFollowups,
   openFollowups, pruneFollowups, normaliseFollowups, loadFollowups,
   saveFollowups, asRadarItem, PRESETS,
-} = await import('../src/app/followups.js');
+} = await import('../src/app/academic/followups.js');
 
 const ME = 'f20240294@pilani.bits-pilani.ac.in';
 const NOW = 1_700_000_000_000;

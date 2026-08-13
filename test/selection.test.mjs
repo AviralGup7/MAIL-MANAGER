@@ -12,7 +12,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-const { Selection, selectionLabel } = await import('../src/app/selection.js');
+const { Selection, selectionLabel } = await import('../src/app/mail/selection.js');
 
 const IDS = ['a', 'b', 'c', 'd', 'e', 'f'];
 const sel = (s) => [...s.ids].sort().join(',');

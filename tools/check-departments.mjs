@@ -10,7 +10,7 @@
 import { readFileSync } from 'node:fs';
 
 const data = JSON.parse(readFileSync(new URL('../src/timetable/data.json', import.meta.url), 'utf8'));
-const source = readFileSync(new URL('../src/app/timetable-mail.js', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../src/app/academic/timetable-mail.js', import.meta.url), 'utf8');
 
 const m = source.match(/const DEPTS = '([^']+)'/);
 if (!m) {

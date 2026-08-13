@@ -12,7 +12,7 @@ import { fakeStorage } from './helpers/storage.mjs';
 const {
   record, flush, loadLog, clearLog, markUndone, normaliseLog, prune, describe,
   pendingCount, _resetActivity, MAX_ENTRIES, MAX_AGE_MS,
-} = await import('../src/app/activity.js');
+} = await import('../src/app/academic/activity.js');
 
 test.beforeEach(() => _resetActivity());
 

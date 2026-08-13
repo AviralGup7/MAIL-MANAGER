@@ -557,7 +557,7 @@ test('unicode line separators are split, not merely rejected', () => {
 });
 
 test('THE REPLY PATH IS THE REACHABLE ATTACK, AND IT IS CLOSED', async () => {
-  const { buildReply } = await import('../src/app/query.js');
+  const { buildReply } = await import('../src/app/search/query.js');
   // A hostile inbound message. Reply-To is entirely sender-controlled.
   const hostile = {
     from: 'Prof <prof@bits.ac.in>',

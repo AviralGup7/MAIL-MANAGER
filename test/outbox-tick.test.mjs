@@ -34,7 +34,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
-const railsSrc = read('src/app/rails.js');
+const railsSrc = read('src/app/workspace/rails.js');
 
 let JSDOM;
 try {
@@ -51,7 +51,7 @@ const failedDue   = { id: 'd', state: 'failed', attempts: 1, nextAttempt: NOW - 
 const stuckItem   = { id: 'e', state: 'failed', attempts: 4, nextAttempt: NOW + 900000, error: 'boom', draft: { to: 'x@y.in' } };
 
 test('needsTick: only rows whose shown text is a live countdown', async () => {
-  const { needsTick } = await import('../src/app/rails.js?t=' + Math.random());
+  const { needsTick } = await import('../src/app/workspace/rails.js?t=' + Math.random());
   assert.ok(needsTick([heldWaiting], NOW), 'a held item inside its undo window counts down');
   assert.ok(!needsTick([heldDue], NOW),
     'held-but-due says "Sending…" until the pump lands -- ticking now would pre-empt the pump by a second');
@@ -73,7 +73,7 @@ test('renderOutbox arms the tick only while a countdown is on screen', async (t)
   globalThis.HTMLElement = dom.window.HTMLElement;
   globalThis.Node = dom.window.Node;
   try {
-    const rails = await import('../src/app/rails.js?t=' + Math.random());
+    const rails = await import('../src/app/workspace/rails.js?t=' + Math.random());
     const future = Date.now() + 5000;
     await rails.renderOutbox([{ ...heldWaiting, releaseAt: future }]);
     assert.equal(dom.window.document.getElementById('outbox').hidden, false, 'the section appears');

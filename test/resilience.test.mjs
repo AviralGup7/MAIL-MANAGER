@@ -185,7 +185,7 @@ test('every views mutator reports success when the write lands', async () => {
 
 test('the caller surfaces a failed view removal instead of assuming success', async () => {
   const { readFileSync } = await import('node:fs');
-  const app = readFileSync(new URL('../src/app/app.js', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../src/app/main.js', import.meta.url), 'utf8');
   const at = app.indexOf('data-remove-view');
   assert.ok(at > 0);
   const block = app.slice(at, at + 600);
@@ -314,8 +314,8 @@ test('normalised output never crashes the consumers downstream of it', async () 
    */
   const { normalise } = await import('../src/background/gmail.js');
   const { classify } = await import('../src/classify/index.js');
-  const { extractDeadline } = await import('../src/app/deadlines.js');
-  const { buildReply } = await import('../src/app/query.js');
+  const { extractDeadline } = await import('../src/app/academic/deadlines.js');
+  const { buildReply } = await import('../src/app/search/query.js');
 
   const hostile = [
     { id: '1', payload: { headers: [{ name: 'Subject', value: 123 }] } },
@@ -336,8 +336,8 @@ test('normalised output never crashes the consumers downstream of it', async () 
 });
 
 test('pure modules survive adversarial query and address input', async () => {
-  const { parseQuery } = await import('../src/app/query.js');
-  const contacts = await import('../src/app/contacts.js');
+  const { parseQuery } = await import('../src/app/search/query.js');
+  const contacts = await import('../src/app/core/contacts.js');
 
   const NASTY = [
     '', ' ', '\n', 'a'.repeat(10000), '"unterminated', 'from:', ':', '::',

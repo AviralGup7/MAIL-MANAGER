@@ -17,9 +17,9 @@ import { readBundle } from './helpers/css.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const css = readBundle();
-const js = readFileSync(join(ROOT, 'src/app/app.js'), 'utf8');
+const js = readFileSync(join(ROOT, 'src/app/main.js'), 'utf8');
 // move() left app.js with the bulk cluster (round 52 step 6).
-const bulk = readFileSync(join(ROOT, 'src/app/bulk.js'), 'utf8');
+const bulk = readFileSync(join(ROOT, 'src/app/mail/bulk.js'), 'utf8');
 
 function scrollerBlock() {
   const i = css.indexOf('#scroller {');

@@ -34,7 +34,7 @@ try {
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const html = readFileSync(join(ROOT, 'app.html'), 'utf8');
-const toastSrc = readFileSync(join(ROOT, 'src/app/toast.js'), 'utf8');
+const toastSrc = readFileSync(join(ROOT, 'src/app/overlays/toast.js'), 'utf8');
 
 test('A-A4: the sidebar landmark says WHICH complementary it is', () => {
   const aside = html.match(/<aside id="sidebar"[^>]*>/);
@@ -76,7 +76,7 @@ test('A-A7b: the role swap is behaviour — error interrupts, the next toast lan
   globalThis.Node = dom.window.Node;
   const q = (id) => dom.window.document.getElementById(id);
   try {
-    const { initToast, toast } = await import('../src/app/toast.js?t=' + Math.random());
+    const { initToast, toast } = await import('../src/app/overlays/toast.js?t=' + Math.random());
     initToast({
       toast: q('toast'), toastIcon: q('toast-icon'), toastText: q('toast-text'),
       toastKbd: q('toast-kbd'), toastAction: q('toast-action'), toastDrain: q('toast-drain'),

@@ -14,7 +14,7 @@ const {
   loadTemplates, saveTemplate, removeTemplate, normaliseTemplates,
   fill, placeholdersIn, unfilled, applyTemplate, autoValues,
   BUILTIN_TEMPLATES,
-} = await import('../src/app/templates.js');
+} = await import('../src/app/compose/templates.js');
 
 // ------------------------------------------------------------- substitution --
 

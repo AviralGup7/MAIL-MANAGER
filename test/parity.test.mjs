@@ -15,7 +15,7 @@ const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 
 const verbs = (src) => new Set([...src.matchAll(/case '([A-Z_]+)'/g)].map((m) => m[1]));
 const worker = verbs(read('src/background/index.js'));
-const fallback = verbs(read('src/app/fallback.js'));
+const fallback = verbs(read('src/app/system/fallback.js'));
 const WORKER_ONLY = new Set(['TOGGLE_TAKEOVER']);
 
 test('every worker verb is covered by fallback or explicitly worker-only', () => {
@@ -36,7 +36,7 @@ test('compose verbs exist in BOTH tables (V2 C-01)', () => {
 });
 
 test('shared-verb response shapes are pinned', () => {
-  const f = read('src/app/fallback.js');
+  const f = read('src/app/system/fallback.js');
   assert.match(f, /draftId: d\.draftId/, 'GET_DRAFT must match the worker shape');
   assert.match(f, /dataUrl: await gmail\.getAttachment/, 'GET_ATTACHMENT must return { dataUrl }');
   assert.match(f, /contentId: part\.contentId/, 'GET_INLINE must mirror worker parts');
@@ -57,14 +57,14 @@ test('the OAuth scope set matches shipped capability (modify + send, nothing mor
  */
 
 test('GET_INLINE answers { inline } on both paths (bug-hunt #20)', () => {
-  const f = read('src/app/fallback.js');
+  const f = read('src/app/system/fallback.js');
   const w = read('src/background/index.js');
   assert.match(f, /return \{ inline: out \}/, 'fallback must wrap its parts');
   assert.match(w, /return \{ inline: out \}/, 'worker must wrap its parts');
 });
 
 test('BULK answers { failed } and chunks identically on both paths (bug-hunt #21)', () => {
-  const f = read('src/app/fallback.js');
+  const f = read('src/app/system/fallback.js');
   const w = read('src/background/index.js');
   for (const [name, src] of [['fallback', f], ['worker', w]]) {
     assert.match(src, /i \+= BULK_CHUNK/, `${name} must chunk at the shared limit`);
@@ -79,7 +79,7 @@ test('BULK answers { failed } and chunks identically on both paths (bug-hunt #21
 });
 
 test('fallback SIGN_OUT clears the label cache like the worker (bug-hunt #22)', () => {
-  const f = read('src/app/fallback.js');
+  const f = read('src/app/system/fallback.js');
   const at = f.indexOf("case 'SIGN_OUT':");
   assert.notEqual(at, -1);
   const next = f.indexOf("case '", at + 10);
@@ -94,7 +94,7 @@ test('fallback SIGN_OUT clears the label cache like the worker (bug-hunt #22)', 
  */
 
 test('OUTBOX_PUMP exists in BOTH tables and dispatches through the hydrator', () => {
-  const f = read('src/app/fallback.js');
+  const f = read('src/app/system/fallback.js');
   const w = read('src/background/index.js');
   assert.ok(worker.has('OUTBOX_PUMP'), 'worker owns the dispatch loop');
   assert.ok(fallback.has('OUTBOX_PUMP'), 'fallback degrades to in-page dispatch');
@@ -106,7 +106,7 @@ test('OUTBOX_PUMP exists in BOTH tables and dispatches through the hydrator', ()
 });
 
 test('GET_INLINE enforces the ACTUAL fetched bytes, not the declared size (bug-hunt P2)', () => {
-  const f = read('src/app/fallback.js');
+  const f = read('src/app/system/fallback.js');
   const w = read('src/background/index.js');
   for (const [name, src] of [['fallback', f], ['worker', w]]) {
     assert.match(src, /actual > budget/,
@@ -116,7 +116,7 @@ test('GET_INLINE enforces the ACTUAL fetched bytes, not the declared size (bug-h
 });
 
 test('SEND/SAVE_DRAFT hydrate preserved attachments on both paths (bug-hunt P0)', () => {
-  const f = read('src/app/fallback.js');
+  const f = read('src/app/system/fallback.js');
   const w = read('src/background/index.js');
   for (const [name, src] of [['fallback', f], ['worker', w]]) {
     const send = src.slice(src.indexOf("case 'SEND'"), src.indexOf("case 'SEND'") + 600);
@@ -127,7 +127,7 @@ test('SEND/SAVE_DRAFT hydrate preserved attachments on both paths (bug-hunt P0)'
 });
 
 test('GET_DRAFT stamps attachments with their owning message on both paths (bug-hunt P0)', () => {
-  const f = read('src/app/fallback.js');
+  const f = read('src/app/system/fallback.js');
   const w = read('src/background/index.js');
   for (const [name, src] of [['fallback', f], ['worker', w]]) {
     const at = src.indexOf("case 'GET_DRAFT'");
@@ -139,7 +139,7 @@ test('GET_DRAFT stamps attachments with their owning message on both paths (bug-
 test('attachment preservation uses ONE hydrator on both paths (bug-hunt P0)', () => {
   // Two implementations of "refetch preserved parts" would drift; the
   // contract is that both verb tables call the SAME gmail.js function.
-  const f = read('src/app/fallback.js');
+  const f = read('src/app/system/fallback.js');
   const w = read('src/background/index.js');
   const g = read('src/background/gmail.js');
   assert.match(g, /export async function hydrateDraftAttachments/,
@@ -153,7 +153,7 @@ test('attachment preservation uses ONE hydrator on both paths (bug-hunt P0)', ()
 });
 
 test('OUTBOX_PUMP is batched and answers sentIds on both paths (bug-hunt #32/#27)', () => {
-  const f = read('src/app/fallback.js');
+  const f = read('src/app/system/fallback.js');
   const w = read('src/background/index.js');
   assert.match(w, /MAX_PUMP_BATCH/, 'the worker caps one pump run');
   assert.match(w, /allDue\.slice\(0, MAX_PUMP_BATCH\)/, 'the cap is applied to the due set');
@@ -162,11 +162,11 @@ test('OUTBOX_PUMP is batched and answers sentIds on both paths (bug-hunt #32/#27
   // The fallback delegates to the shared runner, which is where its sentIds
   // come from -- pin both halves of that chain.
   assert.match(f, /outbox\.flushOutbox/, 'fallback runs the shared runner');
-  const o = read('src/app/outbox.js');
+  const o = read('src/app/compose/outbox.js');
   assert.match(o, /sentIds/, 'the shared runner collects what left');
   // The pump records those ids, not an empty array. The pump moved to
   // rails.js in the round-52 workspace extraction.
-  const rails = read('src/app/rails.js');
+  const rails = read('src/app/workspace/rails.js');
   assert.match(rails, /ids: result\.sentIds \|\| \[\]/,
     'the activity entry names the messages that were sent');
 });
@@ -198,7 +198,7 @@ test('the pump batch cap fits inside the verb timeout with margin (bug-hunt 43 #
    * here is "a normal batch never touches the timeout".)
    */
   const w = read('src/background/index.js');
-  const a = read('src/app/app.js');
+  const a = read('src/app/main.js');
 
   const batch = Number(w.match(/MAX_PUMP_BATCH = (\d+)/)[1]);
   const timeout = Number(a.match(/OUTBOX_PUMP: (\d+)/)[1]);
@@ -217,9 +217,9 @@ test('the pump batch cap fits inside the verb timeout with margin (bug-hunt 43 #
 test('OUTBOX_PUMP answers the ONE canonical PumpResult shape (bug-hunt 43 #50)', () => {
   // Four producers speak this shape; the typedef in outbox.js is the single
   // definition. Pin the contract's existence and every producer's conformance.
-  const o = read('src/app/outbox.js');
+  const o = read('src/app/compose/outbox.js');
   const w = read('src/background/index.js');
-  const f = read('src/app/fallback.js');
+  const f = read('src/app/system/fallback.js');
   const h = read('test/helpers/worker-contract.mjs');
 
   assert.match(o, /@typedef \{Object\} PumpResult/, 'the contract is defined once');
@@ -232,7 +232,7 @@ test('OUTBOX_PUMP answers the ONE canonical PumpResult shape (bug-hunt 43 #50)',
   assert.match(o, /`g:\$\{res\.id\}` : `q:\$\{item\.id\}`/, 'runner ids are namespaced');
   assert.match(h, /g:sent-/, 'the harness emulation speaks the same namespace');
   // The pump consumes the contract, not a guess (rails.js since round 52).
-  const a = read('src/app/rails.js');
+  const a = read('src/app/workspace/rails.js');
   assert.match(a, /result\.sentIds/, 'the consumer reads sentIds');
   assert.match(a, /result\?\.more/, 'and the leftover flag');
 });

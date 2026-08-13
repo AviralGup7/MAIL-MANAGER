@@ -12,7 +12,7 @@ import { readFileSync } from 'node:fs';
 const {
   parseAddress, parseAddressList, buildContacts, matchContacts,
   currentFragment, completeValue, looksLikeAddress, invalidAddresses,
-} = await import('../src/app/contacts.js');
+} = await import('../src/app/core/contacts.js');
 
 // ---------------------------------------------------------------- parsing ---
 
@@ -207,11 +207,11 @@ test('a display-name recipient is not reported as invalid', () => {
  * (which calls it) still lives in features.js.
  */
 /*
- * features.js is now a BARREL. The five things it used to hold live in their
- * own modules, so a scan for wiring must read them all -- reading only the
- * barrel would find nothing and pass vacuously.
+ * A scan for wiring must read every module that owns a feature -- what used
+ * to be one file, then a barrel, is (since S2) simply the owners themselves,
+ * each in its folder of docs/STRUCTURE.md.
  */
-const feat = ['features.js','undo-actions.js','radar.js','palette.js','compose.js','autocomplete.js']
+const feat = ['mail/undo-actions.js','academic/radar.js','overlays/palette.js','compose/compose.js','compose/autocomplete.js']
   .map((f) => readFileSync(new URL(`../src/app/${f}`, import.meta.url), 'utf8')).join('\n');
 const html = readFileSync(new URL('../app.html', import.meta.url), 'utf8');
 

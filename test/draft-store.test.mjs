@@ -11,7 +11,7 @@ import { fakeStorage } from './helpers/storage.mjs';
 
 const {
   createDraftSaver, saveDraft, loadDraft, clearDraft, isMeaningful, AUTOSAVE_MS,
-} = await import('../src/app/draft-store.js');
+} = await import('../src/app/compose/draft-store.js');
 
 
 /** A controllable clock so nothing here sleeps. */
@@ -198,12 +198,12 @@ test('after discard, the same content saves again', async () => {
 // --------------------------------------------------------- wiring checks ---
 
 /*
- * features.js is now a barrel; compose and the rest live in their own modules.
- * Scanning only the barrel would find nothing and pass vacuously.
+ * Compose and the rest live in their own modules (S2 dissolved even the
+ * barrel); scanning anything less than the owners would pass vacuously.
  */
-const feat = ['features.js','undo-actions.js','radar.js','palette.js','compose.js','autocomplete.js']
+const feat = ['mail/undo-actions.js','academic/radar.js','overlays/palette.js','compose/compose.js','compose/autocomplete.js']
   .map((f) => readFileSync(new URL(`../src/app/${f}`, import.meta.url), 'utf8')).join('\n');
-const app = readFileSync(new URL('../src/app/app.js', import.meta.url), 'utf8');
+const app = readFileSync(new URL('../src/app/main.js', import.meta.url), 'utf8');
 
 test('the recovery copy is cleared only AFTER the message is durable', () => {
   /*
@@ -310,7 +310,7 @@ test('editDraft carries preserved attachments into the panel (bug-hunt P0)', asy
   // Source wiring pins: the app side of the preservation contract. Without
   // these, the worker hydrates nothing and the files are rebuilt away.
   const { readFileSync } = await import('node:fs');
-  const compose = readFileSync(new URL('../src/app/compose.js', import.meta.url), 'utf8');
+  const compose = readFileSync(new URL('../src/app/compose/compose.js', import.meta.url), 'utf8');
 
   const edit = compose.slice(compose.indexOf('export async function editDraft'), compose.indexOf('export async function editDraft') + 1400);
   assert.ok(edit.includes('attachments: d.attachments || []'),
@@ -361,7 +361,7 @@ test('the template menu reads the course from the store, not the wire (bug-hunt 
   // classified record via ctx.store, not expect GET_BODY to carry a field it
   // does not have (and never add a second course-detection mechanism).
   const { readFileSync } = await import('node:fs');
-  const compose = readFileSync(new URL('../src/app/compose.js', import.meta.url), 'utf8');
+  const compose = readFileSync(new URL('../src/app/compose/compose.js', import.meta.url), 'utf8');
   const menu = compose.slice(compose.indexOf('async function openTemplateMenu'), compose.indexOf('async function openTemplateMenu') + 1200);
   assert.ok(menu.includes('ctx.store?.get?.(replyTo.id)'),
     'the course comes from the canonical store record');
@@ -377,7 +377,7 @@ test('saveDraft persists the storable shape, never the raw draft (enforcement pi
    * fails here before it ever reaches a quota.
    */
   const { readFileSync } = await import('node:fs');
-  const src = readFileSync(new URL('../src/app/draft-store.js', import.meta.url), 'utf8');
+  const src = readFileSync(new URL('../src/app/compose/draft-store.js', import.meta.url), 'utf8');
   assert.match(src, /await storage\.set\(\{ \[KEY\]: storable\(draft, now\) \}\)/,
     'saveDraft must write the storable() shape');
   assert.ok(!/await storage\.set\(\{ \[KEY\]: \{ \.\.\.draft/.test(src),

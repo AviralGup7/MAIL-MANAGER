@@ -19,8 +19,8 @@ import { readBundle } from './helpers/css.mjs';
  * the least-coupled tenant in that file. Both are read: the fallback lives in
  * server-search.js, and the shell still owns the search input that triggers it.
  */
-const app = readFileSync(new URL('../src/app/server-search.js', import.meta.url), 'utf8')
-  + readFileSync(new URL('../src/app/app.js', import.meta.url), 'utf8');
+const app = readFileSync(new URL('../src/app/search/server-search.js', import.meta.url), 'utf8')
+  + readFileSync(new URL('../src/app/main.js', import.meta.url), 'utf8');
 const html = readFileSync(new URL('../app.html', import.meta.url), 'utf8');
 const css = readBundle();
 

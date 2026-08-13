@@ -15,9 +15,9 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const { STORAGE_REGISTRY, BACKUP_KEYS, keyEntry } = await import('../src/app/storage-registry.js');
-const { SCHEMA } = await import('../src/app/settings.js');
-const backup = await import('../src/app/backup.js');
+const { STORAGE_REGISTRY, BACKUP_KEYS, keyEntry } = await import('../src/app/system/storage-registry.js');
+const { SCHEMA } = await import('../src/app/system/settings.js');
+const backup = await import('../src/app/system/backup.js');
 
 test('every entry is well-formed and keys are unique', () => {
   const seen = new Set();
@@ -36,7 +36,7 @@ test('every settings preference is registered, straight from the schema', () => 
   for (const key of Object.keys(SCHEMA)) {
     const e = keyEntry(key);
     assert.ok(e, `schema key ${key} is registered`);
-    assert.equal(e.owner, 'src/app/settings.js');
+    assert.equal(e.owner, 'src/app/system/settings.js');
   }
   assert.equal(keyEntry('clientId').backup, false,
     'clientId stays out of backups by declaration, not omission');

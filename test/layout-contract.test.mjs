@@ -13,9 +13,9 @@ import { readFileSync } from 'node:fs';
 import { readBundle } from './helpers/css.mjs';
 
 const css = readBundle();
-const app = readFileSync(new URL('../src/app/app.js', import.meta.url), 'utf8');
+const app = readFileSync(new URL('../src/app/main.js', import.meta.url), 'utf8');
 // The reader cluster moved out of app.js in the round-51 workspace extraction.
-const reader = readFileSync(new URL('../src/app/reader.js', import.meta.url), 'utf8');
+const reader = readFileSync(new URL('../src/app/mail/reader.js', import.meta.url), 'utf8');
 
 test('the responsive ladder is exactly the V3 set — one ladder, no duplicates', () => {
   // R-A2/R-A3 (responsive audit): the round-45 ladder (1080/720/600/480 in
@@ -58,7 +58,7 @@ test('the reader frame wears the theme, not hardcoded white (round 45 H3)', () =
 test('reader typography follows the density setting (round 45 H2)', () => {
   // The table lives in the reader frame contract module (arch A2); the app
   // consumes it. Check both halves of that contract.
-  const rf = readFileSync(new URL('../src/app/reader-frame.js', import.meta.url), 'utf8');
+  const rf = readFileSync(new URL('../src/app/mail/reader-frame.js', import.meta.url), 'utf8');
   assert.match(rf, /READER_TYPOGRAPHY/, 'the reader has a density table');
   for (const d of ['comfortable', 'cosy', 'compact']) {
     assert.match(rf, new RegExp(`${d}:\\s*\\{ size:`), `${d} has reading metrics`);
@@ -115,8 +115,8 @@ test('the focus policy is deliberate: focus-visible everywhere, focus on inputs'
 });
 
 test('dialogs trap focus and announce destructive questions (round 45 Phase 2)', () => {
-  const layers = readFileSync(new URL('../src/app/layers.js', import.meta.url), 'utf8');
-  const dialog = readFileSync(new URL('../src/app/dialog.js', import.meta.url), 'utf8');
+  const layers = readFileSync(new URL('../src/app/overlays/layers.js', import.meta.url), 'utf8');
+  const dialog = readFileSync(new URL('../src/app/overlays/dialog.js', import.meta.url), 'utf8');
   assert.match(layers, /export function trapFocus/, 'the layer module owns the trap');
   // The trap is openLayer's DEFAULT now (round 46 arch #6): call sites inherit
   // it instead of asking, and a dialog must not carry its own Tab handler.
@@ -127,10 +127,10 @@ test('dialogs trap focus and announce destructive questions (round 45 Phase 2)',
   assert.match(dialog, /role', danger \? 'alertdialog' : 'dialog'/,
     'destructive questions announce themselves');
   assert.match(dialog, /cancelBtn\.focus\(\)/, 'and the safe button is the default');
-  const toastSrc = readFileSync(new URL('../src/app/toast.js', import.meta.url), 'utf8');
+  const toastSrc = readFileSync(new URL('../src/app/overlays/toast.js', import.meta.url), 'utf8');
   assert.match(toastSrc, /kind === 'error' \? 'alert' : 'status'/,
     'error toasts are assertive announcements');
-  const app2 = readFileSync(new URL('../src/app/app.js', import.meta.url), 'utf8');
+  const app2 = readFileSync(new URL('../src/app/main.js', import.meta.url), 'utf8');
   assert.match(app2, /el\.list\.focus\(\{ preventScroll: true \}\)/,
     'bulk actions return focus to the list');
 });

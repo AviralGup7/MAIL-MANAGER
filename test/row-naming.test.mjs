@@ -24,7 +24,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
-const listjs = read('src/app/list.js');
+const listjs = read('src/app/mail/list.js');
 const html = read('app.html'); // eslint-disable-line no-unused-vars -- markup contract lives in list.js's skeleton
 
 test('fillRow names each checkbox sender + subject (never the bare placeholder)', () => {

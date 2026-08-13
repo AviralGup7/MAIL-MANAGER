@@ -11,11 +11,11 @@ import { readBundle } from './helpers/css.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
-const js = read('src/app/app.js')
+const js = read('src/app/main.js')
   // The tab-title stamp moved with the sidebar (round 52).
-  + read('src/app/sidebar.js');
+  + read('src/app/workspace/sidebar.js');
 // The list cluster moved out of app.js in the round-52 workspace extraction.
-const list = read('src/app/list.js');
+const list = read('src/app/mail/list.js');
 const css = readBundle();
 const html = read('app.html');
 
@@ -33,7 +33,7 @@ test('deadline views carry urgency colours from tokens', () => {
 });
 
 test('the coach mark is one-time and schema-backed', () => {
-  assert.match(read('src/app/settings.js'), /coachDone: \{ type: 'bool', def: false \}/);
+  assert.match(read('src/app/system/settings.js'), /coachDone: \{ type: 'bool', def: false \}/);
   assert.match(js, /if \(!settings\.get\('coachDone'\)\)/);
 });
 
@@ -43,7 +43,7 @@ test('menus flip inside the viewport for all four menus at once', () => {
   // the viewport's lower edge it opens above the anchor instead. The old pin
   // matched raf-clamp arithmetic from when menus lived inside the anchor's
   // (clipping, stacking) context; that whole failure class is gone.
-  const menu = read('src/app/menu.js');
+  const menu = read('src/app/overlays/menu.js');
   assert.match(menu, /top \+ mh > vh - 8/, 'the flip decision must remain');
   assert.match(menu, /overlay-root/, 'menus mount in the overlay root');
   assert.match(menu, /position:\s*'fixed'|position:\s*"fixed"|\.fixed\b|style\.position = 'fixed'/, 'menus are fixed-position');

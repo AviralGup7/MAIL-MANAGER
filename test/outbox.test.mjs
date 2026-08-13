@@ -17,7 +17,7 @@ const {
   flushOutbox, cancel, retryNow, loadOutbox, saveOutbox, normaliseOutbox,
   _resetOutbox, isDispatching, DEFAULT_HOLD_MS, MAX_ATTEMPTS, BACKOFF_MS,
   prioritizeDue,
-} = await import('../src/app/outbox.js');
+} = await import('../src/app/compose/outbox.js');
 
 const NOW = 1_700_000_000_000;
 const draft = { to: 'prof@bits.ac.in', subject: 'Hi', body: 'text' };

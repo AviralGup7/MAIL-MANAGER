@@ -84,7 +84,7 @@ test('OUTBOX_PUMP: worker and fallback answer the same contract', async () => {
   const fStore = {};
   installChrome(fStore);
   installGmail();
-  const { runInPage, _resetFallback } = await import('../src/app/fallback.js');
+  const { runInPage, _resetFallback } = await import('../src/app/system/fallback.js');
   _resetFallback();
   fStore.outbox = SEED_QUEUE();
   const fRes = await runInPage('OUTBOX_PUMP');
@@ -141,7 +141,7 @@ test('GET_DRAFT: both paths stamp attachments with the owning message id', async
   const fStore = {};
   installChrome(fStore);
   globalThis.fetch = gmailStub;
-  const { runInPage, _resetFallback } = await import('../src/app/fallback.js');
+  const { runInPage, _resetFallback } = await import('../src/app/system/fallback.js');
   _resetFallback();
   const fRes = await runInPage('GET_DRAFT', { id: 'msg-1' });
 
@@ -174,7 +174,7 @@ test('SEND: both paths hydrate preserved attachments before the wire', async () 
 
   const fStore = {};
   installChrome(fStore);
-  const { runInPage, _resetFallback } = await import('../src/app/fallback.js');
+  const { runInPage, _resetFallback } = await import('../src/app/system/fallback.js');
   _resetFallback();
   await runInPage('SEND', { draft: { ...draft, attachments: [...draft.attachments] } });
 
