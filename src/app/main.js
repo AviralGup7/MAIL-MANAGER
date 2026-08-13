@@ -3235,7 +3235,28 @@ function wireRail() {
       document.addEventListener('pointerdown', onOutside, true);
     }
   };
-  apply(settings.get('railOpen') !== false);
+  /*
+   * The saved preference names the DESKTOP column. In the drawer regime an
+   * unprompted open is a FIXED panel floated over the mail — and because the
+   * rail self-hides while its sections are empty, the overlap only APPEARS
+   * once the first data lands (user report, 2026-08-13: no overlap at load,
+   * then ~1s in the whole mail page slides under the rail). A drawer that
+   * opens itself reads as the layout breaking, not as a feature arriving.
+   * So the drawer regime starts SHUT: the button still summons the rail and
+   * its manners (outside press, Escape) still put it away; only the welcome
+   * is withdrawn. At column widths nothing changes.
+   */
+  apply(settings.get('railOpen') !== false && !drawerMq.matches);
+
+  /* Crossing the seam changes what "open" MEANS — a reserved grid column on
+     one side, an overlay on the other. Folding INTO drawer widths puts the
+     overlay away without touching the saved preference; unfolding back to
+     column widths restores whatever the preference says. (addListener
+     fallback: some test doubles predate MediaQueryList.addEventListener.) */
+  const onSeam = (mq) => apply(mq.matches ? false : settings.get('railOpen') !== false);
+  if (drawerMq.addEventListener) drawerMq.addEventListener('change', onSeam);
+  else drawerMq.addListener?.(onSeam);
+
   /* The rail follows the KEY, not the button: the settings panel (and the
      options page through followExternalChanges) writes the same `railOpen`
      setting, and it must take effect here without a reload. `apply` is
