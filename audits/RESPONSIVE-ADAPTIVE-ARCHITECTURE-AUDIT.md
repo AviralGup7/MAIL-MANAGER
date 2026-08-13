@@ -96,10 +96,11 @@ The single regression is F-R1's ghost track appearing exactly in this path
 
 | # | Sev | Where | Evidence |
 |---|---|---|---|
-| **R-A1** | **CRITICAL** | app.css:5937 vs 6392 | ≤600px + `body.rail-open` + live rail content → `#panes` = 3 cols ("340px 0px 300px" @520px); **open reader = 0px wide**, rail's fixed drawer owns a 300px ghost track in-flow. INTENDED: panes stack. ACTUAL: specificity (`:has(#rail-scroll…)` = two ids) defeats the stack. |
-| R-A2 | MODERATE | legacy ladder 2679–2720 vs V3 | Two ladders encode 1080/720/600 twice; divergence is a matter of file order |
-| R-A3 | MINOR | app.css:2707 `--sidebar-w:52px` | Dead: 860 block (:6401) comes later, wins at ≤480 (measured 64px @480/400/340) |
-| R-A4 | MODERATE | row internals | Pathological content → inner h-scroll in `#listpane` (should wrap/clamp harder) |
+| **R-A1** | **CRITICAL — FIXED `7d81db4`** | app.css:5937 vs ladder | ≤600px + `body.rail-open` + live rail content → `#panes` = 3 cols; **open reader = 0px wide**. Follow-up probe showed it was worse than first measured: the reader crushed at **every** width ≤1240 whenever reader+rail were both open (15px @900, 213px @1100). Fix: each drawer-mode block gained the `:has(#rail-scroll…)` form (equal specificity, later order). Matrix re-verified: 340–600 × {rail, reader, search} single stack; resize both directions restore 3-col at 1280. |
+| R-A2 | **FIXED `c494b92`** | legacy ladder | Retired; byte-for-byte identical responsive matrix before/after proves it was dead weight. Breakpoint set is now exactly {1240,1080,860,720,600}, pinned. |
+| R-A3 | **FIXED `c494b92`** | app.css 480px block | Both 480 rules (52px sidebar, 1fr/1fr split) were dead by source order — deleted, not resurrected; 64px icon rail measured coherent to 340px. Tests now fail if a 480 step returns. |
+| R-A4 | **CLOSED — symptom of R-A1** | row internals | Re-probed post-fix at 1440/1240/860/600/340 with full pathological injection: `#listpane` scrollWidth == clientWidth everywhere. The audit's h-scroll measurement was taken *inside the corrupt 3-track grid*. No containment change needed; verified, not assumed. |
+| — | **Round-63 item — FIXED `ce48c08`** | timetable ≤860px | Clipped tt-where/tt-now recover via titles + a condensed `.tt-meta` second row at ≤860 (rule-exact replica-verified placement). |
 | R-A5 | OPPORTUNITY | icon rail (≤860) | Compose becomes a 46px circle; footer actions (activity/timetable/Gmail/sign-out) vanish whole — palette reaches some, Gmail/sign-out **none**. "Icon rail = pure navigation" erases *exit* |
 | R-A6 | OPPORTUNITY | height | only one height rule; reader header + chips + banner + iframe at 420px leaves ~2 lines of body — consider a reading-focused compact header |
 | R-A7 | OPPORTUNITY | toolbar ≤720 | labels disappear with no overflow menu — verbs stay (icons do carry), but "Views/Help" first-run teachability drops |
