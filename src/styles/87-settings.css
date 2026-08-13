@@ -89,6 +89,7 @@
   padding: var(--s-3) var(--s-2);
   border-right: 1px solid var(--line);
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .set-nav {
@@ -103,10 +104,14 @@
   font-size: var(--t-sm);
   text-align: left;
   cursor: pointer;
-  box-shadow: inset 2px 0 0 transparent;
+  /* The selection marker is a BORDER, not a shadow: every box-shadow is
+     owned by the elevation-token census (package.test), and a 2px bar is
+     not an elevation. Always-on transparent means the selected state
+     moves colour, never geometry. */
+  border-left: 2px solid transparent;
   transition: background-color var(--dur-fast) ease-out,
               color var(--dur-fast) ease-out,
-              box-shadow var(--dur-fast) ease-out;
+              border-color var(--dur-fast) ease-out;
 }
 .set-nav:hover {
   color: var(--fg);
@@ -118,7 +123,7 @@
   color: var(--fg);
   font-weight: var(--w-semi);
   background: var(--accent-soft);
-  box-shadow: inset 2px 0 0 var(--accent);
+  border-left-color: var(--accent);
 }
 .set-nav:focus-visible {
   outline: 2px solid var(--accent);
@@ -324,6 +329,7 @@
     width: auto;
     flex-direction: row;
     overflow-x: auto;
+    overscroll-behavior: contain;
     border-right: 0;
     border-bottom: 1px solid var(--line);
     padding: var(--s-2);
