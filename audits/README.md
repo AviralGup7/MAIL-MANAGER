@@ -14,7 +14,7 @@ Two audits survive, because each is still load-bearing:
 | `08-GMAIL-COMPETITIVE-V2.md` | The specification home for deliberately unbuilt features. `src/app/settings.js` refuses to carry a schema entry for `autoSyncMinutes` precisely because it is only *specified here* — deleting this file would orphan that reference and lose the spec. |
 | `64-COMPREHENSIVE-RATING-V2.md` | The most recent whole-app rating. It is the baseline the round-65 interaction campaign (`docs/UX-AUDIT-V4.md`) measures itself against — the "before" in the before/after. |
 | `RESPONSIVE-ADAPTIVE-ARCHITECTURE-AUDIT.md` | The adaptive-architecture reference: probe-measured breakpoint ladder and live-resize state evidence. All R-findings carry resolution commits (R-A1..R-A5 fixed, R-A6/R-A7 verified and closed). |
-| `ACCESSIBILITY-INPUT-ARCHITECTURE-AUDIT.md` | The input/focus/semantics reference: AX-tree-proven census, the focus/overlay/announcement maps, and the ranked A-findings (A-A1 toast-name desync is the open MAJOR; A-A9 body-iframe SR legibility is the open verification debt). |
+| `ACCESSIBILITY-INPUT-ARCHITECTURE-AUDIT.md` | The input/focus/semantics reference: AX-tree-proven census, the focus/overlay/announcement maps, and the ranked A-findings. All confirmed defects are fixed and pinned (A-A1 `bd5ee8c`, A-A2 `011c50b`, A-A3 `44cd0e2`, A-A6 `1f132a1`, A-A4/A-A7 `2304e5d`; A-A5 was withdrawn as an erratum). One debt remains: A-A9 — the body iframe's headless AX absence is control-proven a harness artifact, so a real NVDA/VoiceOver pass on real hardware is the only verdict path left. |
 
 Everything else was deleted on 2026-08-13 as history that could be
 reconstructed from git if ever needed. The docs that govern how the app

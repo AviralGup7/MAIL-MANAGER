@@ -14,15 +14,15 @@ The measured defects are concentrated and sharable:
 
 | # | Sev | Finding in one line |
 |---|---|---|
-| **A-A1** | **MAJOR** | The toast action button's accessible name is frozen at **"Undo"** — the coach's "Got it" and the outbox's "Show" both *announce as Undo* (AX-tree proven). |
-| A-A2 | MODERATE | Menus invoked from a list row restore focus to a **non-focusable row div** → focus drops to `<body>` (context menu/s snooze). No trap; j/k survive. |
-| A-A3 | MODERATE | Every row checkbox is named **"Select message"** — 20+ identical names in browse mode, no row identity. |
-| A-A4 | MINOR | The sidebar `<aside>` landmark is unnamed (the rail's is "For you"). |
-| A-A5 | MINOR | `#views-pop` is `role="dialog"` with **no accessible name**. |
-| A-A6 | MINOR | Search suggestions **reopen empty** (history list) right after Escape closes them. |
-| A-A7 | MINOR/OPP. | `#bulkbar` has no role; `#r-due` updates after open with no announcement; the single toast node hot-swaps `role=status↔alert` and lacks `aria-atomic`. |
-| A-A8 | OPPORTUNITY | OS-level text-size scaling acts only partially (px-token type system). Browser-zoom is the supported path and is solid (it funnels through the responsive ladder). |
-| A-A9 | **UNVERIFIED** | The sandboxed body iframe produced **no nodes** in the headless full AX tree. Markup is correct (`title="Message body"`); only a real screen-reader pass can settle whether bodies are legible to AT. **If genuinely absent, this is CRITICAL** — it is the app's core task. |
+| **A-A1** | **MAJOR → FIXED `bd5ee8c`** | The toast action button's accessible name is frozen at **"Undo"** — the coach's "Got it" and the outbox's "Show" both *announce as Undo* (AX-tree proven). Fix: toast.js stamps `aria-label` with the action's text; live AX re-verified ("Got it"); pinned in test/toast-naming.test.mjs. |
+| A-A2 | MODERATE → FIXED `011c50b` | Menus invoked from a list row restore focus to a **non-focusable row div** → focus drops to `<body>` (context menu/s snooze). Fix: the layers.js restore falls back to `#list` when the invoker is gone or cannot take focus; live-verified (Esc → `#list`, activedescendant kept); pinned in test/focus-restore.test.mjs. (Suite fallout repaired in `eb04c37`: three layers.test fakes predated the `matches(FOCUSABLE)` gate.) |
+| A-A3 | MODERATE → FIXED `44cd0e2` | Every row checkbox is named **"Select message"** — 20+ identical names in browse mode. Fix: `fillRow` names each box `Select: {sender} — {subject}` (tabindex −1 intact); live AX shows distinct names; pinned in test/row-naming.test.mjs. |
+| A-A4 | MINOR → FIXED `2304e5d` | The sidebar `<aside>` landmark is unnamed (the rail's is "For you"). Fix: `aria-label="Mailboxes and compose"`; live-AX-verified; pinned in test/announce-semantics.test.mjs. |
+| ~~A-A5~~ | **ERRATUM — NOT A DEFECT** | The claim below was mismeasured: the dump probe read only `aria-labelledby`, but `#views-pop` carries `aria-label="Saved views"` in app.html — the dialog was always named. No code change; register corrected. |
+| A-A6 | MINOR → FIXED `1f132a1` | Search suggestions **reopen empty** (history list) right after Escape closes them. Root cause isolated on a plain page with CDP keys and zero app code: **Blink natively clears `<input type=search>` on un-cancelled Escape** (native `input`+`search` events); the clear re-rendered suggestions against the empty query. Fix: the combobox preventDefaults Escape unconditionally (stopPropagation still conditional); the close gesture now also reports `aria-expanded=false`. Live 10/10; pinned in test/search-escape.test.mjs. |
+| A-A7 | MINOR/OPP. → FIXED `2304e5d` | `#bulkbar` has no role; `#r-due` updates after open with no announcement; the toast hot-swaps `role=status↔alert` and lacks `aria-atomic`. Resolution: bulkbar is a named horizontal toolbar; toast carries `aria-atomic="true"` and the single-node swap is affirmed as deliberate (pinned: urgency cannot get stuck on); `#r-due` stays silent **by decision** (written synchronously with the reader reveal — an announcement would stack). All three live-AX-verified. |
+| A-A8 | OPPORTUNITY (deferred per roadmap) | OS-level text-size scaling acts only partially (px-token type system). Browser-zoom is the supported path and is solid (it funnels through the responsive ladder). The roadmap rules the rem migration out for now. |
+| A-A9 | **HARNESS ARTIFACT (control-proven) → real-SR pass still owed** | The control probe settles the dump's silence: headless Chromium omits **every** iframe subtree from the AX tree — an unsandboxed same-origin srcdoc iframe dumps as a single `Iframe` node too. The app's frame behaves identically (one named node: the title even carries the message subject). So the absence is the harness's wall, not evidence of an app defect; whether a real SR crosses into the opaque-origin sandboxed frame can only be settled by NVDA+Chrome / VoiceOver+Safari on a real machine. No re-representation may be built until that run fails. |
 
 **No CRITICAL finding is proven in this audit.** The three traps one expects in apps like this are *proven absent*: no keyboard trap anywhere (26-stop tab walk + per-overlay spreads), no unnamed action (zero unnamed focusable controls in 1131 AX nodes), no hover-only verb (every hover verb has a keyboard twin — that parity is their design doctrine, verified in source and behavior).
 
@@ -65,7 +65,7 @@ Full census: `.census.mjs` over `app.html` (72 elements, region-mapped). Classes
 | List rows | `<div role=option>` own ids | option | content (from/subject/date) | roster via activedescendant | row not focusable (by design) | `aria-selected` mirrors selection | content-visibility `auto` (AX retained) |
 | Row checkbox `.r-check` | `<input type=checkbox tabindex=-1>` | checkbox | **static "Select message" (A-A3)** | not a stop (by design) | — | real `checked` synced by bulk.js:134 | tap target on touch |
 | Menu items | primitive-built buttons | menuitem/menuitemcheckbox/menuitemradio | text | full roving + Home/End + Esc (stopPropagation) | restore-to-anchor (guarded) | `aria-checked` | single shared construction |
-| Dialogs | gate/compose/palette/help/views/prompt | dialog/alertdialog | aria-labelledby **except views (A-A5)** | see §5/§7 | see §6/§7 | aria-modal honest (compose=false) | prompt traps (probe-proven) |
+| Dialogs | gate/compose/palette/help/views/prompt | dialog/alertdialog | aria-labelledby; views via `aria-label="Saved views"` (the A-A5 row was an erratum — see register) | see §5/§7 | see §6/§7 | aria-modal honest (compose=false) | prompt traps (probe-proven) |
 | Comboboxes | search, To/Cc/Bcc, palette | combobox | implicit/aria labels | arrows/Enter/Esc | focus stays in input | `aria-expanded`/`aria-controls`/activedescendant | pattern uniform (autocomplete.js) |
 | Listboxes | `#list`, suggest, contact lists, palette-list | listbox | aria-label | — | owner input keeps DOM focus | — | `#search-suggest` once in tab order (see §5 note below) |
 | Toggle states | star (r-star) | button | "Star" | s | — | `aria-pressed` | visible in forced colors |
@@ -82,9 +82,9 @@ Full census: `.census.mjs` over `app.html` (72 elements, region-mapped). Classes
 - Headings: h1 reserved for the message subject (the reading context's title); rails/dialogs use h2. In an embedded application surface this is defensible; global heading-skim gives the overlays and rails, not chrome noise.
 - Lists: rows are roster `option`s directly under the listbox (comment in `buildRow` is explicit about not letting wrappers sit between) — no invalid nested-interactive structures found anywhere (72-element census + AX roles cross-checked).
 - Tables: the timetable is a CSS **grid named `.tt-grid` with region/label semantics**, not a fake table; data is a schedule (one row = one entry), so list semantics are arguably the truer model. Not a defect.
-- The reader body iframe carries `title="Message body"` and an inert sandbox — correct *markup*; live AT inclusion is A-A9 (UNVERIFIED).
+- The reader body iframe carries `title="Message body"` (runtime: the subject joins the title) and an inert sandbox — correct *markup*; A-A9's control probe proved the headless dump shows no iframe subtree AT ALL, so live AT inclusion is a real-screen-reader question, owed on real hardware.
 
-**Misuse found:** only A-A4/A-A5 (both MINOR) — no `div`-buttons, no role/behavior contradictions, no placeholder-as-label (compose + options use real implicit/explicit labels).
+**Misuse found:** only A-A4 (MINOR, fixed `2304e5d`) — no `div`-buttons, no role/behavior contradictions, no placeholder-as-label (compose + options use real implicit/explicit labels).
 
 ---
 
@@ -139,7 +139,7 @@ The same five-step walk was run for palette (`Ctrl+K → arrows → Enter/Esc �
 
 **Measured defects & notes:**
 - **A-A2** (see §6 findings join table): menu-from-row Escape → `<body>` (restore target is a non-focusable row div; layers.js's isConnected guard passes, `.focus()` no-ops). Rescue rails: document-level keymap never dies; activedescendant survives; j/k continue immediately (probe: `stillNavigates=bmm-row-m1`). MODERATE.
-- **A-A6**: after Escape closes suggestions (`hidden=true` immediately), the suggest box **reopens with an empty query** inside 600ms (history dropdown) and the second Escape neither blurs nor proceeds down the ladder (`active` stays `#search`). Visually surprising; focus semantics consistent. MINOR, intent partially unverified.
+- **A-A6**: after Escape closes suggestions (`hidden=true` immediately), the suggest box **reopens with an empty query** inside 600ms (history dropdown) and the second Escape neither blurs nor proceeds down the ladder (`active` stays `#search`). FIXED `1f132a1` — the mechanism was NOT app code: a plain-page CDP probe with zero app JavaScript showed Blink itself clearing `<input type=search>` on un-cancelled Escape (native `input`+`search` events; the type=text control is untouched, and a prevented keydown suppresses it entirely). The combobox now preventDefaults Escape open-or-closed; live re-probe 10/10 (query survives, box stays shut, second Escape reaches the ladder's blur rung, refocus genuinely reopens). Pinned in test/search-escape.test.mjs.
 - No traps found anywhere: gate (blocks by design, modal), prompt (strict 2-button trap, probe-measured), palette/help (single-stop dialogs — Tab trivially cycles in place; that satisfies the modal Tab contract, verified).
 - Shortcut conflicts: none observed; `Ctrl+K`/`Ctrl+A` are captured before the modifier guard; Gmail-host conflict surface is the class Gmail already owns (this app is embedded there).
 
@@ -181,7 +181,8 @@ page (j/k context, activedescendant)
           aria-modal=true, STRICT TRAP — 2-button spread measured cycling    ✓,
           restoreFocusTo=invoker inside compose                              ✓)
  └─ palette / help (modal, single tabbable → trivially contained, Esc exact  ✓)
- └─ views pop (dialog, focus in, invoker restored; nameless → A-A5)          ✓
+ └─ views pop (dialog, focus in, invoker restored; aria-label="Saved views"  ✓
+     — the audit's "nameless" claim was an erratum, see register A-A5)
  └─ gate (aria-modal=true; traps by design at sign-in; keyboard path not
      reachable in signed-in preview — static markup+layer tenancy only)      UNVERIFIED-live
 ```
@@ -194,9 +195,9 @@ The Escape ladder is the spine: each layer owns its `stopPropagation`, so one ke
 
 (True SR verification requires NVDA/VoiceOver; per §28 those runs are marked UNVERIFIED where relied upon. What follows is the AX-tree order + semantics read, which is what those tools consume.)
 
-A first-time SR user, by AX order: sidebar landmark (unnamed — A-A4; its nav IS named "Categories") → Compose button (named, shortcuthint in title) → mailbox/category buttons with counts inside names ("All mail 8 20 20 messages, 8…" — the count naming is a touch chatty but complete) → search combobox (named) → toolbar buttons (all named + shortcut titles) → promoted-notice button → **listbox "Messages"** (options read from-subject-date because their name is content) → reader idle hints (buttons) → rail "For you" with h2s → toast region when live.
+A first-time SR user, by AX order: sidebar landmark (named "Mailboxes and compose" since `2304e5d`; its nav IS named "Categories") → Compose button (named, shortcuthint in title) → mailbox/category buttons with counts inside names ("All mail 8 20 20 messages, 8…" — the count naming is a touch chatty but complete) → search combobox (named) → toolbar buttons (all named + shortcut titles) → promoted-notice button → **listbox "Messages"** (options read from-subject-date because their name is content) → reader idle hints (buttons) → rail "For you" with h2s → toast region when live.
 
-**Mental-model parity:** the visual hierarchy and the AX hierarchy coincide because chrome text is real text and rows are real option content. Two parity breaks: A-A1 (wrong verb name), A-A3 (anonymous checkboxes), and the pale one: the coach's keyboard hints are visual text read in DOM order — fine. Reader body → A-A9 UNVERIFIED.
+**Mental-model parity:** the visual hierarchy and the AX hierarchy coincide because chrome text is real text and rows are real option content. Two parity breaks — A-A1 (wrong verb name) and A-A3 (anonymous checkboxes) — were both repaired (`bd5ee8c`, `44cd0e2`); the pale one remains: the coach's keyboard hints are visual text read in DOM order — fine. Reader body → A-A9 (headless absence control-proven a harness artifact; real-SR pass owed).
 
 ---
 
@@ -362,7 +363,7 @@ After every ladder transformation, measured at 1240/860/720/600 boundaries this 
 | Task | Pointer | Keyboard | Touch | Screen reader | Equivalent? |
 |---|---|---|---|---|---|
 | Triage list | hover-verbs/click | j/k + e/u/z/#/s | tap, swipes, long-press menu | roster + option content + single-key verbs | **Yes** |
-| Read & act on message | reader buttons | open w/ Enter, same verbs, r-more | same | article + named buttons; body → A-A9 UNVERIFIED | Yes (body pending A-A9) |
+| Read & act on message | reader buttons | open w/ Enter, same verbs, r-more | same | article + named buttons; body → A-A9 (headless absence = harness artifact, control-proven; real-SR pass owed) | Yes (body pending the real-SR pass) |
 | Multi-select triage | checkboxes + bar | Ctrl+A/x + bar/verbs | checkboxes | live count + per-row names anonymous (A-A3) | Mostly — A-A3 |
 | Snooze/follow-up/deadline | menus | z + menu keys | menus | menuitemradio semantics | Yes |
 | Search & filter | type/click | / + combobox keys | type | combobox + listbox + status | Yes |
@@ -419,12 +420,12 @@ topbar               header#topbar                          (banner-equivalent) 
 toolbar              #toolbar role=toolbar                  buttons named+shortcut titles      —
 message roster       #list role=listbox aria-label=Messages state via aria-activedescendant    —
 reader               article#reader aria-labelledby=r-subject(h1)                              —
-body                 iframe#r-body title="Message body" sandboxed-inert                        (A-A9 live-read UNVERIFIED)
+body                 iframe#r-body title="Message body: <subject>" sandboxed-inert             (A-A9: dump-absence control-proven a harness artifact; real-SR read owed)
 rail                 aside#rail aria-label="For you"        h2 sections                        hidden ↔ class toggle
 sidebar              aside#sidebar (UNNAMED → A-A4)         nav "Categories" inside            —
 bulk bar             #bulkbar (NO ROLE → A-A7)              live count child                   hidden ↔ selection
 toast                #toast role=status|alert (hot-swap)    text whole-swap; action (A-A1)     hidden ↔ shown
-dialog(palette/help) role=dialog aria-modal=true            palette labelled; views UNNAMED(A-A5)
+dialog(palette/help) role=dialog aria-modal=true            palette aria-labelledby; views aria-label="Saved views" (A-A5 was an erratum)
 prompt               role=dialog|alertdialog aria-modal     labelledby prompt-title; TRAPPED   —
 drawer               #rail fixed                            toggle btn aria-pressed            —
 ```
@@ -443,40 +444,40 @@ drawer               #rail fixed                            toggle btn aria-pres
 
 | ID | Severity | Class (§25) | Where | One-line |
 |---|---|---|---|---|
-| A-A1 | **MAJOR** | SEMANTIC | toast.js:69-71 + app.html:841 | Toast action name frozen "Undo"; coach/outbox actions misannounce |
-| A-A2 | MODERATE | INTERACTION | menu.js anchor + layers.js:96-105 | Row-anchored menus Escape → body, not list context |
-| A-A3 | MODERATE | SEMANTIC | list.js:826 | All row checkboxes named identically "Select message" |
-| A-A4 | MINOR | SEMANTIC | app.html `#sidebar` | Sidebar landmark unnamed |
-| A-A5 | MINOR | SEMANTIC | app.html `#views-pop` | Dialog without accessible name |
-| A-A6 | MINOR | INTERACTION | suggest-ui.js:99 vs ladder | Suggest reopens empty after Esc; ladder blur step unreached |
-| A-A7 | MINOR/OPP | SEMANTIC | `#bulkbar`, `#r-due`, toast.js:52 | Missing role/banner-announce/role-hot-swap trio |
-| A-A8 | OPPORTUNITY | LAYOUT | px token type system | Text-only scaling partially absorbed |
-| A-A9 | UNVERIFIED | SEMANTIC? | iframe#r-body | Body subtree absent from headless AX dump — needs a real SR pass; CRITICAL if confirmed absent |
+| A-A1 | **FIXED `bd5ee8c`** (was MAJOR) | SEMANTIC | toast.js:69-71 + app.html:841 | Toast action name frozen "Undo"; coach/outbox actions misannounce → `aria-label` now stamped per fire; live-AX-verified; test/toast-naming.test.mjs |
+| A-A2 | **FIXED `011c50b`** (was MODERATE) | INTERACTION | menu.js anchor + layers.js:96-105 | Row-anchored menus Escape → body → restore now falls back to `#list`; live-verified; test/focus-restore.test.mjs; stale fakes repaired `eb04c37` |
+| A-A3 | **FIXED `44cd0e2`** (was MODERATE) | SEMANTIC | list.js:826 | All row checkboxes named identically → per-row `Select: {sender} — {subject}`; live-AX-verified; test/row-naming.test.mjs |
+| A-A4 | **FIXED `2304e5d`** (was MINOR) | SEMANTIC | app.html `#sidebar` | Sidebar landmark unnamed → `aria-label="Mailboxes and compose"`; live-AX-verified; test/announce-semantics.test.mjs |
+| ~~A-A5~~ | **ERRATUM — never a defect** | — | app.html `#views-pop` | The markup always carried `aria-label="Saved views"`; the dump probe consulted only `aria-labelledby`. Register corrected; no code touched |
+| A-A6 | **FIXED `1f132a1`** (was MINOR) | INTERACTION | suggest-ui.js keydown vs Blink default | Suggest reopens empty after Esc → root cause is the NATIVE search-input clear (`type=search`, un-cancelled Escape); preventDefault is the whole fix; live 10/10; test/search-escape.test.mjs |
+| A-A7 | **FIXED `2304e5d`** (was MINOR/OPP) | SEMANTIC | `#bulkbar`, `#r-due`, toast.js:52 | Toolbar named; toast atomic + single-node swap affirmed and pinned; `#r-due` silence is a documented decision; test/announce-semantics.test.mjs |
+| A-A8 | OPPORTUNITY (deferred per roadmap) | LAYOUT | px token type system | Text-only scaling partially absorbed |
+| A-A9 | **HARNESS ARTIFACT; real-SR pass owed** | SEMANTIC? | iframe#r-body | Control probe: headless dumps NO iframe subtree — even unsandboxed same-origin srcdoc. The wall is the harness, not evidence of an app defect. NVDA+Chrome / VoiceOver+Safari run remains the only verdict path; no re-representation until it fails |
 
 ## 25. Architectural-vs-cosmetic classification
 
-- A-A1 SEMANTIC (one-attribute fix; conceptually the name pipeline, not paint).
-- A-A2 INTERACTION (restore-target selection policy in the layer/menu seam; not more ARIA).
-- A-A3 SEMANTIC (naming policy per row).
-- A-A4/A-A5 SEMANTIC-cosmetic (single attributes).
-- A-A6 INTERACTION (Escape ladder ordering nuance).
-- A-A7 SEMANTIC trio (each one-line-ish; the banner one is a policy decision about assertiveness).
+- A-A1 SEMANTIC (one-attribute fix; conceptually the name pipeline, not paint). — FIXED `bd5ee8c`
+- A-A2 INTERACTION (restore-target selection policy in the layer/menu seam; not more ARIA). — FIXED `011c50b`
+- A-A3 SEMANTIC (naming policy per row). — FIXED `44cd0e2`
+- A-A4 SEMANTIC-cosmetic (single attribute). — FIXED `2304e5d`. A-A5 withdrawn (erratum).
+- A-A6 INTERACTION (ladder-vs-browser-default ownership; the ladder itself was never reordered). — FIXED `1f132a1`
+- A-A7 SEMANTIC trio (each one-line-ish; the banner one is a policy decision about assertiveness). — RESOLVED `2304e5d` (one decision pinned as a deliberate negative)
 - A-A8 ARCHITECTURAL-if-pursued (px→rem token migration: large blast radius, defer)).
-- A-A9 VERIFICATION-DEBT (could be architectural: reading must be re-represented if bodies are AT-invisible; do not pre-solve).
+- A-A9 VERIFICATION-DEBT (could be architectural: reading must be re-represented if bodies are AT-invisible; do not pre-solve). — the headless half of the debt is now PROVEN non-evidence (control probe); only the real-machine run remains.
 - **No finding demands interaction-model redesign.** The overlay/focus/keyboard architecture is sound and earns its complexity; fixes are seam-level.
 
-## 26. Proposed improvements, in tradeoff order (NOT implemented)
+## 26. Proposed improvements, in tradeoff order — IMPLEMENTATION STATUS (2026-08-13)
 
-1. **A-A1 one-liner + pin** (task accessibility): toast.js sets `aria-label` with the label (or drop the attribute); test the computed name against visible text for each canned action. Highest value/cost ratio in this audit.
-2. **A-A2 restore policy** (context preservation): in layers/menu teardown, when `returnFocus` is non-focusable (row), fall back to `#list` (the roster's focusable owner). ~4 lines behind a guard + flow test.
-3. **A-A3 per-row checkbox names** (comprehension): derive from sender/subject at `fillRow`; confirm no SR verbosity regression (they're not tab stops; browse-mode-only).
-4. **A-A4/A-A5 attributes** (consistency): `aria-label` on `#sidebar`; `aria-labelledby="views-title"` on `#views-pop`.
-5. **A-A7 trio** (consistency): `role="toolbar" aria-label` on `#bulkbar`; decide `#r-due` assertiveness (polite or none — deliberate, and pin the decision); consider two toast nodes (status/alert) or keep + document the hot-swap with `aria-atomic="true"`.
-6. **A-A6** (consistency): suppress history-dropdown reopen until next genuine input/focus intent; confirm ladder ordering.
-7. **A-A9 verification pass** (debt): run NVDA (Chrome) + VoiceOver (Safari) against a live build reading a message; if bodies are AT-invisible, escalate to a reading re-representation decision — that *would* be architectural and this audit's only candidate for it.
-8. **A-A8** only if product priorities shift toward text-size users; the rem migration is the honest form and is not worth its blast radius today.
+1. **A-A1 one-liner + pin** — DONE `bd5ee8c`, exactly as proposed (label stamped to the name channel; computed-name tests per canned action).
+2. **A-A2 restore policy** — DONE `011c50b`, exactly as proposed (`#list` fallback behind the focusability gate + test/focus-restore.test.mjs). Suite fallout: three pre-existing layers.test fakes lacked `matches`; repaired `eb04c37`.
+3. **A-A3 per-row checkbox names** — DONE `44cd0e2` (sender/subject in the name at `fillRow`; SR browse-mode verbosity check stays in the real-AT list below).
+4. **A-A4 attribute** — DONE `2304e5d`. A-A5 withdrawn: the dialog was always named (erratum; no code).
+5. **A-A7 trio** — DONE `2304e5d` as proposed: toolbar named; `#r-due` decided NONE with the reasoning pinned at the element; toast kept single-node with `aria-atomic="true"` and the swap policy affirmed in comment + behavioural pin.
+6. **A-A6** — DONE `1f132a1`: reopen suppressed until genuine input/focus; ladder ordering confirmed (second Escape now reaches the blur rung — live 10/10).
+7. **A-A9 verification pass** — PARTIAL: the headless route is control-proven blind to ALL iframe subtrees, so the dump cannot indict or acquit. The NVDA (Chrome) + VoiceOver (Safari) run is still owed ON REAL HARDWARE; treat iframe bodies as AT-LEGIBLE unless that run fails (Chrome exposes out-of-process iframe trees to AT as a matter of course — the unverified question is the opaque-origin sandbox, not OOPIF in general).
+8. **A-A8** only if product priorities shift toward text-size users; the rem migration is the honest form and is not worth its blast radius today. (The roadmap rules it out.)
 
-Constraint note (§26 ask): no existing hierarchy/state/panel constraint needs to yield for 1–6; each lands inside the already-established seam it belongs to.
+Constraint note (§26 ask): no existing hierarchy/state/panel constraint needed to yield for 1–6; each landed inside the already-established seam it belonged to — confirmed in implementation (one listener line for A-A6; attributes elsewhere).
 
 ---
 
@@ -484,4 +485,5 @@ Constraint note (§26 ask): no existing hierarchy/state/panel constraint needs t
 
 - Static: `.census.mjs` (72 interactive elements, region-mapped, name sources); contrast gate (6/6 themes AA); greps for hover gates, roles, drag/drop (none), windowing (none), content-visibility, live regions.
 - Live (headless Chromium 151, CDP `Accessibility`): full AX tree (1131 nodes; zero unnamed focusable); per-element `queryAXTree` for the toasts (A-A1 proof); 26-stop tab walk; isolated clean-state flows for compose/palette/help/row-menu/snooze/drawer/timetable/views/bulk/suggest; forced-colors sweep + screenshot; reduced-motion sweep (0.001s squash); zoom-equivalence via effective viewport; text-only scaling at root 200%.
-- UNVERIFIED set (needs real AT): A-A9 body iframe inclusion; gate's live keyboard behavior (preview is signed in); SR browse-mode verbosity after an A-A3 fix.
+- Resolution probes (2026-08-13): A-A6 root cause isolated on a plain page via CDP keyboard (native search-clear; preventDefault suppresses) then the fix re-verified in-app 10/10; A-A9 iframe controls (unsandboxed/sandboxed srcdoc vs the real `#r-body` — all dump as one node); A-A4/A-A7 fix states read straight from the live AX tree (named complementary, named toolbar, atomic status).
+- UNVERIFIED set (needs real AT): A-A9 body iframe inclusion (headless omission control-proven a harness wall — the real-SR run may now interpret its result against a known baseline); gate's live keyboard behavior (preview is signed in); SR browse-mode verbosity after the A-A3 fix (`44cd0e2`).
