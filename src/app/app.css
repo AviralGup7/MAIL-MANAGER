@@ -1568,12 +1568,21 @@ a.ghost {
    * the interactive reader-idle radar rows stay still. The file-end
    * reduced-motion guard collapses this to one 1ms iteration on its own.
    */
-  animation: empty-breathe 3.4s var(--ease-out) 0.9s infinite alternate;
+   * reduced-motion guard collapses this to one 1ms iteration on its own.
+   * FOUR breaths, then the room settles: an endless loop would keep a
+   * compositor layer awake over an IDLE screen forever — the two
+   * infinite-animation pins (layout-contract, package) exist to refuse
+   * exactly that. The count is even so the loop exits at its base pose,
+   * pixel-identical to never animating.
+   */
+  animation: empty-breathe 3.4s var(--ease-out) 0.9s 4 alternate;
 }
-/* Paired with #empty svg — see its comment before retuning either half. */
+/* Paired with #empty svg — see its comment before retuning either half.
+   The from-pose MUST equal the element's rest styles (opacity .85, no
+   transform): it is where the last breath comes home to. */
 @keyframes empty-breathe {
-  from { opacity: 0.8; transform: scale(1); }
-  to   { opacity: 1;   transform: scale(1.045); }
+  from { opacity: 0.85; transform: none; }
+  to   { opacity: 1;    transform: scale(1.045); }
 }
 #empty-title {
   margin: 0;
