@@ -84,6 +84,18 @@ function dom() {
 
 const pump = (clock, n) => { for (let i = 0; i < n; i++) clock.frame(); };
 
+/* jsdom normalises typed lengths (220.00px -> 220px) while transform stays
+ * opaque — so pins read VALUES, never serialisations. */
+const txOf = (p) => {
+  const m = String(p.style.transform).match(/translate3d\(([-\d.]+)px,\s*([-\d.]+)px/);
+  return m ? { x: Number(m[1]), y: Number(m[2]) } : null;
+};
+const boxOf = (p) => ({ ...txOf(p), w: parseFloat(p.style.width), h: parseFloat(p.style.height) });
+const atBox = (p, x, y, w, h) => {
+  const b = boxOf(p);
+  return b && Math.abs(b.x - x) < 0.01 && Math.abs(b.y - y) < 0.01 && Math.abs(b.w - w) < 0.01 && Math.abs(b.h - h) < 0.01;
+};
+
 /** Shared-loop hygiene: test finished? Land any flight before restore. */
 function settle(clock, restore) {
   pump(clock, 2);
@@ -101,9 +113,7 @@ test('first sync places the pill exactly — no flight for a first impression', 
     assert.ok(p, 'the pill node exists');
     assert.equal(p.getAttribute('aria-hidden'), 'true', 'decorative: not an AT surface');
     assert.ok(group.classList.contains('has-pill'), 'group knows the pill owns the fill');
-    assert.equal(p.style.transform, 'translate3d(8.00px, 40.00px, 0)');
-    assert.equal(p.style.width, '220.00px');
-    assert.equal(p.style.height, '36.00px');
+    assert.ok(atBox(p, 8, 40, 220, 36), `pill at home: ${p.style.transform} ${p.style.width}`);
     assert.equal(pill._pillForTest(group).handle, null, 'no spring was ever armed');
     assert.equal(group.querySelectorAll('.cat-pill').length, 1, 'one pill, ever');
   } finally { tokens._setReducedForTest(null); settle(clock, restore); }
@@ -138,7 +148,7 @@ test('a category switch glides: intermediate poses march, rest lands EXACT', () 
     for (let i = 0; i < 60 && pill._pillForTest(group).handle; i++) { clock.frame(); seen.add(p.style.transform); }
     assert.ok(seen.size >= 3, `interpolated (${seen.size} poses), not a cut`);
     pump(clock, 400);
-    assert.equal(p.style.transform, 'translate3d(8.00px, 76.00px, 0)', 'rest writes the exact target');
+    assert.ok(atBox(p, 8, 76, 220, 36), 'rest writes the exact target');
     assert.equal(pill._pillForTest(group).key, 'sv-week');
   } finally { tokens._setReducedForTest(null); settle(clock, restore); }
 });
@@ -153,11 +163,11 @@ test('mid-flight retarget continues from the LIVE pose and still lands exact', (
     pill.syncPill(group, group.querySelector('[data-cat="sv-week"]'), 'sv-week');
     pump(clock, 5); // airborne toward sv-week
     const livePose = p.style.transform;
-    assert.notEqual(livePose, 'translate3d(8.00px, 40.00px, 0)', 'had left home');
-    assert.notEqual(livePose, 'translate3d(8.00px, 76.00px, 0)', 'had not arrived');
+    const lp = txOf(p); assert.ok(Math.abs(lp.y - 40) > 0.5, 'had left home');
+    assert.ok(Math.abs(lp.y - 76) > 0.5, 'had not arrived');
     pill.syncPill(group, group.querySelector('[data-cat="sv-overdue"]'), 'sv-overdue'); // user changed their mind mid-flight
     pump(clock, 400);
-    assert.equal(p.style.transform, 'translate3d(8.00px, 112.00px, 0)', 'redirected flight lands exactly');
+    assert.ok(atBox(p, 8, 112, 220, 36), 'redirected flight lands exactly');
     assert.equal(pill._pillForTest(group).handle, null, 'loop is done with it');
   } finally { tokens._setReducedForTest(null); settle(clock, restore); }
 });
@@ -171,10 +181,10 @@ test('reduced motion: the pill snaps — the truth never waits for a journey', (
     tokens._setReducedForTest(true);
     pill.syncPill(group, group.querySelector('[data-cat="sv-week"]'), 'sv-week');
     const p = group.querySelector('.cat-pill');
-    assert.equal(p.style.transform, 'translate3d(8.00px, 76.00px, 0)', 'already there, same task');
+    assert.ok(atBox(p, 8, 76, 220, 36), 'already there, same task');
     assert.equal(pill._pillForTest(group).handle, null, 'no rAF was ever requested');
     pump(clock, 60);
-    assert.equal(p.style.transform, 'translate3d(8.00px, 76.00px, 0)', 'and stays there');
+    assert.ok(atBox(p, 8, 76, 220, 36), 'and stays there');
   } finally { tokens._setReducedForTest(null); settle(clock, restore); }
 });
 
@@ -188,7 +198,7 @@ test('same key, NEW geometry (resize/font load): instant realign, no phantom fli
     Object.defineProperty(btn, 'offsetTop', { value: 52, configurable: true }); // the rail reflowed
     pill.syncPill(group, btn, 'all');
     const p = group.querySelector('.cat-pill');
-    assert.equal(p.style.transform, 'translate3d(8.00px, 52.00px, 0)', 'realigned the same task');
+    assert.ok(atBox(p, 8, 52, 220, 36), 'realigned the same task');
     assert.equal(pill._pillForTest(group).handle, null, 'a fill does not fly to its own home');
   } finally { tokens._setReducedForTest(null); settle(clock, restore); }
 });
@@ -207,7 +217,7 @@ test('hidden rail retracts; re-emergence snaps — never a flight from a stale p
     assert.equal(pill._pillForTest(group).key, null, 'pose knowledge dropped');
     Object.defineProperty(btn, 'offsetParent', { value: group, configurable: true });
     pill.syncPill(group, btn, 'all');
-    assert.equal(p.style.transform, 'translate3d(8.00px, 40.00px, 0)', 'snapped back exactly');
+    assert.ok(atBox(p, 8, 40, 220, 36), 'snapped back exactly');
     assert.equal(pill._pillForTest(group).handle, null, 'no flight from nowhere');
     pill.syncPill(group, null, null); // rail entirely away
     assert.equal(p.style.display, 'none', 'null target retracts too');
