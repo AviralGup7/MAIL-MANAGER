@@ -14,9 +14,11 @@
  * judge"; the render bench in CI is soft-gated by environment. Nothing was
  * a hard, falsifiable gate on USER-visible truth. This file is that gate.
  *
- * THE TEN TRUTHS
- * --------------
- * Each one names a bug that either shipped or was caught a probe-late:
+ * THE GATES
+ * ---------
+ * Each one names a bug that either shipped or was caught a probe-late
+ * (the file began as "the ten truths"; the reader floor gates of 2026-08-13
+ * made the count a lie, so the heading stopped carrying one):
  *
  *   boot/rows, boot/categories, boot/console-clean   — the app boots at all
  *   rail/column-visible-wide      — the saved preference shows the column
@@ -27,6 +29,10 @@
  *   settings/one-tab-one-panel    — the tablist contract
  *   settings/density-live         — a schema write repaints without reload
  *   settings/ambience-live        — the attr-stamp path CSS answers
+ *   reader/live-has-no-strip      — the provenance strip stays off on live mail
+ *   reader/open-remembers-the-body — the floor's write path, real browser
+ *   reader/dead-worker-renders-the-floor — kill the worker, the copy renders, dated
+ *   reader/floor-miss-is-honest   — a never-opened body still errors, honestly
  *
  * DETERMINISM
  * -----------
@@ -159,6 +165,59 @@ await page.setViewportSize({ width: 1440, height: 900 });
 await page.waitForTimeout(700);
 const restored = await railState(page);
 check('rail/seam-unfold-restores', restored && restored.pos !== 'fixed', JSON.stringify(restored));
+
+/* ---- reader: the body floor under a dead worker (M1, 2026-08-13) ---- */
+/* Open the first row against the LIVE stub: the body renders, and the
+   provenance strip must stay hidden — a live message never wears it. */
+await page.click('#list .row');
+await page.waitForFunction(
+  () => (document.getElementById('r-body')?.srcdoc || '').includes('preview content'),
+  { timeout: 8000 },
+);
+check('reader/live-has-no-strip',
+  await page.evaluate(() => document.getElementById('r-offline').hidden));
+/* The remember is coalesced (WRITE_DELAY_MS); poll the stubbed storage
+   until the blob lands — this is the write path in a real browser. */
+const floorWritten = await page.waitForFunction(
+  () => globalThis.chrome.storage.local.get('bodyCache')
+    .then((o) => Array.isArray(o?.bodyCache?.b) && o.bodyCache.b.length >= 1),
+  { timeout: 6000 },
+).then(() => true).catch(() => false);
+check('reader/open-remembers-the-body', floorWritten);
+/* Kill the worker: every send now fails, exactly as a dead connection or
+   an unresponsive service worker presents. */
+await page.evaluate(() => {
+  globalThis.chrome.runtime.sendMessage = (msg, cb) =>
+    setTimeout(() => cb({ ok: false, error: 'dead worker' }), 10);
+});
+await page.keyboard.press('Escape'); // close the reader
+await page.waitForTimeout(300);
+await page.click('#list .row'); // the SAME message, now against the floor
+await page.waitForFunction(
+  () => (document.getElementById('r-body')?.srcdoc || '').includes('preview content'),
+  { timeout: 8000 },
+);
+const strip = await page.evaluate(() => ({
+  hidden: document.getElementById('r-offline').hidden,
+  text: document.getElementById('r-offline-text').textContent,
+}));
+check('reader/dead-worker-renders-the-floor',
+  !strip.hidden && strip.text.startsWith('Offline copy — saved '), JSON.stringify(strip));
+/* And a message that was NEVER opened must still get the honest error —
+   the floor declines rather than inventing a body. */
+await page.keyboard.press('Escape');
+await page.waitForTimeout(300);
+await page.evaluate(() => {
+  [...document.querySelectorAll('#list .row')][1]?.click();
+});
+await page.waitForFunction(
+  () => (document.getElementById('r-body')?.srcdoc || '').length > 0,
+  { timeout: 8000 },
+);
+const miss = await page.evaluate(() => document.getElementById('r-body').srcdoc);
+check('reader/floor-miss-is-honest',
+  miss.includes('Could not load this message.'), miss.slice(0, 80));
+await page.keyboard.press('Escape');
 } catch (e) {
   /* A thrown gate (selector timeout, dead renderer) is infrastructure, and
      the exit code will say so — with the partial results still printed. */
