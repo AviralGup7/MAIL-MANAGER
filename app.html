@@ -72,6 +72,22 @@
             Back to Gmail
           </button>
           <button id="btn-signout" class="ghost small" type="button">Sign out</button>
+          <!--
+            RAIL OVERFLOW (responsive-audit R-A5, probe-verified 2026-08-13).
+            At <=860px the icon-rail step hides every verb above; the palette
+            still reaches Activity and Back to Gmail (Esc reaches Gmail too),
+            but Timetable and Sign out went NOWHERE -- no visible control in
+            the whole chrome, no palette row, browser-measured. This kebab
+            is the rail's single overflow entry: visible only where the rail
+            turns to icons (display:none at every wider width, where the
+            labelled buttons it summarises are right there), and its items
+            re-fire the REAL buttons, so there stays exactly one handler --
+            and one confirmation flow -- per action (sidebar-more.js).
+          -->
+          <button id="btn-side-more" class="ghost icon" type="button"
+                  title="More actions — Timetable, Gmail, sign out"
+                  aria-label="More actions: Activity log, Timetable, Back to Gmail, Sign out"
+                  aria-haspopup="menu"></button>
         </div>
       </aside>
 

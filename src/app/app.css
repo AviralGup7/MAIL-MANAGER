@@ -5887,6 +5887,14 @@ body.composing #main {
   border-radius: var(--r-md);
   color: var(--fg-dim);
 }
+/*
+ * The rail overflow kebab exists for the icon-rail step ONLY (responsive
+ * audit R-A5): at every wider width the labelled footer it summarises is
+ * visible, and a second route to the same verbs is clutter. The reveal
+ * lives in the ladder's 860px block, next to the rules that hide the
+ * verbs it restores -- the two halves of the trade stay one screen apart.
+ */
+#btn-side-more { display: none; }
 
 /* Nav rows get a hair more presence and a clear active slide. */
 #cats {
@@ -6453,6 +6461,12 @@ body.rail-open #rail:has(#rail-scroll > :not([hidden])) {
      the round-64.5 probe (`.cat` at 210px wide inside a 64px track). */
   #cats { min-width: 0; }
   .cat { justify-content: center; min-width: 0; padding-inline: 0; }
+  /* R-A5: "pure navigation" erased exit -- the probe found Timetable and
+     Sign out with NO remaining route at this width (no visible control, no
+     palette row). The overflow kebab appears exactly where the verbs it
+     restores disappear, centred in the 64px column like the nav icons. */
+  #side-foot { align-items: center; }
+  #btn-side-more { display: flex; margin: 0 auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {

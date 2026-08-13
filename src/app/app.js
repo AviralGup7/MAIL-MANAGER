@@ -73,6 +73,7 @@ import { openLayer, closeTopLayer, hasLayers, closeAllLayers, closeWithMotion, c
 import { openMenu, closeMenu, menuIsOpen } from './menu.js';
 import { wireRowActions } from './row-actions.js';
 import { wireSearchChips } from './search-chips.js';
+import { wireSidebarMore } from './sidebar-more.js';
 import {
   wireDeepLinks, navigateHash, mirrorHash, applyHash, checkPendingSelection,
   clearHash,
@@ -3495,6 +3496,10 @@ async function boot() {
   decorate('btn-refresh', 'refresh');
   decorate('btn-gmail', 'back');
   setIcon($('btn-activity'), 'clock', { size: 15 });
+  // The icon rail's overflow route to the footer verbs it hides (R-A5).
+  // Its items re-fire the real buttons at click time, so wiring order is
+  // irrelevant here -- delegation never captures a handler, it dispatches.
+  wireSidebarMore();
   decorate('compose-min', 'minimise');
   decorate('compose-close', 'close');
 
