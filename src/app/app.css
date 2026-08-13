@@ -6504,6 +6504,23 @@ body.rail-open #rail:has(#rail-scroll > :not([hidden])) {
 
 #shell { perspective: 1200px; }
 
+/*
+ * ONE WRITER (animation P3): press.js drives inline transform through a
+ * spring. The v3 batch above puts `transform 140ms` on .ghost/.primary — a
+ * CSS tween layered over spring frames reads as motion blur. While an
+ * element carries [data-pressing], transform hands itself to the spring;
+ * every other channel keeps its transition. On release the attribute leaves
+ * with the rest state, so resting/hover behaviour is exactly as before.
+ */
+.ghost[data-pressing],
+.primary[data-pressing],
+.cat[data-pressing] {
+  transition-property: box-shadow, background-color, color, border-color, opacity;
+}
+
+/* Ripple spans are fully inline-styled by motion/ripple.js; declared here
+   only as the census of what the class means. No rules — see the module. */
+
 /* ========================================================================= */
 
 @media (prefers-reduced-motion: reduce) {

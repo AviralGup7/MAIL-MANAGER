@@ -61,7 +61,17 @@ let lastT = 0;
 function tick(t) {
   const dt = Math.min((t - lastT) / 1000, DT_MAX);
   lastT = t;
+  const reduced = reducedMotion();
   for (const a of [...live]) {
+    if (reduced) {
+      // OS toggle landed MID-FLIGHT: park at the target this frame. The
+      // reduced contract is not "finish what you started", it is "motion
+      // ends now".
+      live.delete(a);
+      a.onUpdate?.(a.target, 0);
+      a.onRest?.();
+      continue;
+    }
     const [x2, v2] = springStep(a.x, a.v, a.target, a.spring, dt);
     a.x = x2;
     a.v = v2;
