@@ -2654,65 +2654,28 @@ textarea {
 
 /* ------------------------------------------------------------- responsive -- */
 
-@media (max-width: 1080px) {
-  #panes {
-    grid-template-columns: minmax(280px, 340px) 1fr;
-  }
-}
 /*
- * The <=860px icon-rail contract now lives in ONE place: the V3 responsive
- * ladder at the end of this file. It used to be split with a block here that
- * hid #views and #radar -- both stopped being sidebar tenants in V3 (views
- * is a topbar popover, the radar moved to the right rail), so the rule was
- * half dead selector and was actively erasing the rail's Due-soon card.
- */
-
-/* ------------------------------------------------------------------------- *
- * RESPONSIVE CONTRACT (round 45 H1).
+ * ONE LADDER LIVES AT THE END OF THIS FILE (the V3 ladder, ~6350+).
  *
- * Below 860px the layout steps down through three widths. The contract at
- * EVERY step is the same five invariants: the list is reachable, compose is
- * usable, the bulk bar is usable, the reader opens, and navigation stays
- * reachable. Each block below exists only to preserve those; there is no
- * redesign here on purpose. The layout-contract test pins the breakpoints.
- * ------------------------------------------------------------------------- */
-@media (max-width: 720px) {
-  #panes {
-    grid-template-columns: minmax(230px, 280px) 1fr;
-  }
-}
-@media (max-width: 600px) {
-  /*
-   * The two panes STACK instead of fighting over a row neither can win.
-   * The list keeps the top and the reader the bottom, both scrollable, so
-   * opening a message still works and the list is still reachable above it.
-   */
-  #panes {
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 3fr) minmax(0, 2fr);
-  }
-  #reader {
-    border-top: 1px solid var(--line);
-  }
-  #listpane {
-    border-right: 0;
-  }
-  /* Compose spans the window; a fixed 580px card overflows a narrow one. */
-  #compose {
-    right: 0;
-    width: 100%;
-    border-radius: var(--r-lg) var(--r-lg) 0 0;
-  }
-}
-@media (max-width: 480px) {
-  :root {
-    --sidebar-w: 52px;
-  }
-  /* An even split: at phone-ish widths neither pane is the subordinate. */
-  #panes {
-    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
-  }
-}
+ * There used to be a second, older ladder here (round 45 H1: 1080/720/600/
+ * 480). The responsive audit measured it dead-by-duplication: every track
+ * rule in it lost to the V3 ladder's later, equal-specificity forms, and
+ * both 480px rules (`--sidebar-w: 52px`; the 1fr/1fr split) never fired at
+ * all — computed evidence in audits/RESPONSIVE-ADAPTIVE-ARCHITECTURE-AUDIT.md
+ * (R-A2/R-A3). Two ladders encoding the same transitions is a maintenance
+ * hazard — an edit here silently changed nothing — so the duplicate tracks
+ * are retired. The pieces that were NOT duplicates (reader/listpane borders
+ * and the full-bleed compose at ≤600px) moved into the V3 600px block.
+ * The round-45 five-invariant contract (list reachable, compose usable,
+ * bulk bar usable, reader opens, navigation reachable) is unchanged and
+ * still pinned by test/layout-contract.test.mjs.
+ *
+ * The <=860px icon-rail contract likewise lives once, in the ladder: an
+ * earlier block here hid #views and #radar — both stopped being sidebar
+ * tenants in V3 (views is a topbar popover, the radar moved to the right
+ * rail), so the rule was half dead selector and was actively erasing the
+ * rail's Due-soon card.
+ */
 
 /* ------------------------------------------------------------------------- *
  * TOUCH (round 46 #11). Coarse pointers get taller rows and full-size tick
@@ -6416,6 +6379,24 @@ body.rail-open #rail:has(#rail-scroll > :not([hidden])) {
   body.rail-open #panes:has(#rail-scroll > :not([hidden])) {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 3fr) minmax(0, 2fr);
+  }
+  /*
+   * Moved here from the retired legacy ladder (R-A3): the stack's dressing.
+   * The two panes STACK instead of fighting over a row neither can win —
+   * the list keeps the top and the reader the bottom, both scrollable, so
+   * opening a message still works and the list is still reachable above it.
+   */
+  #reader {
+    border-top: 1px solid var(--line);
+  }
+  #listpane {
+    border-right: 0;
+  }
+  /* Compose spans the window; a fixed 580px card overflows a narrow one. */
+  #compose {
+    right: 0;
+    width: 100%;
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
   }
 }
 @media (max-width: 860px) {

@@ -16,20 +16,30 @@ const app = readFileSync(new URL('../src/app/app.js', import.meta.url), 'utf8');
 // The reader cluster moved out of app.js in the round-51 workspace extraction.
 const reader = readFileSync(new URL('../src/app/reader.js', import.meta.url), 'utf8');
 
-test('the responsive ladder is complete from 1080 down to 480', () => {
-  for (const w of [1080, 860, 720, 600, 480]) {
+test('the responsive ladder is exactly the V3 set — one ladder, no duplicates', () => {
+  // R-A2/R-A3 (responsive audit): the round-45 ladder (1080/720/600/480 in
+  // the mid-file region) was retired — every track rule in it was dead by
+  // duplication against this later, probe-measured ladder. The pin now
+  // guards the ONE ladder and its seam: 1240 rail→drawer, 1080/720 list
+  // floors, 860 icon rail, 600 stacked panes.
+  for (const w of [1240, 1080, 860, 720, 600]) {
     assert.ok(css.includes(`@media (max-width: ${w}px)`),
       `missing the ${w}px breakpoint`);
   }
+  // And the retired values stay retired: a re-added second ladder is what
+  // this line exists to catch (480 keyed --sidebar-w to a dead 52px).
+  assert.ok(!css.includes('@media (max-width: 480px)'),
+    'no 480px step: 64px icon rail was measured coherent down to 340px');
 });
 
 test('below 600px the panes stack and compose spans the window', () => {
   // THE NARROW CONTRACT: the list and the reader must both stay usable when
   // a row cannot hold them -- so they stack, neither is display:none'd, and
-  // compose stops pretending to be a 580px card.
+  // compose stops pretending to be a 580px card. Lives in the V3 ladder's
+  // 600px block since the legacy ladder's retirement (R-A3).
   const at = css.indexOf('@media (max-width: 600px)');
   const block = css.slice(at, css.indexOf('}', css.indexOf('#compose', at)) + 1);
-  assert.match(block, /grid-template-columns: 1fr/, 'panes go single-column');
+  assert.match(block, /grid-template-columns: minmax\(0, 1fr\)/, 'panes go single-column');
   assert.match(block, /grid-template-rows/, 'and split the height instead');
   assert.match(block, /#compose\s*\{[^}]*width: 100%/s, 'compose spans the window');
   assert.ok(!/display: none/.test(css.slice(at, at + 900).split('#listpane')[0] || ''),
