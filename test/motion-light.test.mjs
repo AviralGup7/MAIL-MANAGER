@@ -34,6 +34,7 @@ function fakeClock() {
   globalThis.performance = { now: () => t };
   return {
     frame() { t += 1000 / 60; const q = queue; queue = []; for (const fn of q) fn(t); },
+    pending: () => queue.length,
     restore() {
       if (prevRaf === undefined) delete globalThis.requestAnimationFrame;
       else globalThis.requestAnimationFrame = prevRaf;
