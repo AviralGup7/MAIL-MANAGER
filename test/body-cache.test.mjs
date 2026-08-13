@@ -210,8 +210,9 @@ test('the known-offline fast path skips the doomed fetch, but a miss falls throu
   const fast = src.indexOf('navigator.onLine === false');
   const live = src.indexOf("await send('GET_BODY', { id })");
   assert.ok(fast < live, 'the fast path sits BEFORE the live attempt');
-  /* And the fallback catch is still there for when onLine lies hopeful. */
-  assert.ok(src.indexOf('const cached = await cachedBody(id);') > live);
+  /* And the fallback catch is still there for when onLine lies hopeful.
+     The call appears twice (fast path AND catch); the catch is the LAST. */
+  assert.ok(src.lastIndexOf('const cached = await cachedBody(id);') > live);
 });
 
 test('the provenance strip is app chrome, dated, and styled', () => {
