@@ -44,10 +44,20 @@ test('the dry run stays the save gate; destructive verbs earn the in-app confirm
   const editor = read('src/app/overlays/rules-editor.js');
   const addAt = editor.indexOf("addBtn.addEventListener('click'");
   const addBody = editor.slice(addAt);
-  assert.ok(addBody.indexOf('dryRun()') < addBody.indexOf('engine.saveRuleList'),
+  const gate = addBody.indexOf('const result = dryRun();');
+  assert.ok(gate !== -1 && addBody.indexOf('if (!result) return;') > gate,
     'SAVING RUNS THE DRY RUN FIRST, ALWAYS — same sentence as options.js');
-  assert.ok(addBody.indexOf('result.out.destructive') < addBody.indexOf('confirmDialog({'),
+  assert.ok(addBody.indexOf('result.out.destructive') !== -1 &&
+            addBody.indexOf('result.out.destructive') < addBody.indexOf('confirmDialog({'),
     'the destructive branch asks, naming the count');
+  assert.ok(addBody.indexOf('persist(') > addBody.indexOf('confirmDialog({'),
+    'persistence comes after the confirm');
+  /* ONE persistence path in the whole module: if saveRuleList ever appears
+     outside persist(), the reload hook can be forgotten below it. */
+  const saves = editor.split('engine.saveRuleList').length - 1;
+  assert.equal(saves, 1, 'persist() is the only saveRuleList call');
+  assert.ok(editor.indexOf('engine.saveRuleList') > editor.indexOf('async function persist('),
+    'and it lives inside persist(), with the hook');
   assert.ok(!/[^.]confirm\(|[^.]prompt\(|[^.]alert\(/.test(editor),
     'no native dialogs in the app — confirmDialog is the one lifecycle');
 });
