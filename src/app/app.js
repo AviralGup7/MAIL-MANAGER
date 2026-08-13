@@ -55,6 +55,7 @@ import {
 } from './reader.js';
 import { wireSuggestUI, renderSuggestions, cancelSuggestBlur } from './suggest-ui.js';
 import { wireMicroInteractions } from './motion/wire-micro.js';
+import { wireLight } from './motion/light.js';
 import {
   wireRails, renderSnoozed, renderOutbox, pumpOutbox, cancelOutboxTimer,
 } from './rails.js';
@@ -3530,6 +3531,9 @@ async function boot() {
   // Motion overhaul P3: press/magnetic/ripple micro-tier. One call, one
   // wiring table (motion/wire-micro.js) — physics lives in motion/*.
   wireMicroInteractions(document);
+  // P6: the key light follows the same seam — one delegated listener,
+  // published as --lx/--ly for every .lit surface to share.
+  wireLight(document);
   wireReader({
     // GETTER: `store` is rebound on every mailbox switch (see ctx below).
     get store() { return store; },

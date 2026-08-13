@@ -6524,6 +6524,49 @@ body.rail-open #rail:has(#rail-scroll > :not([hidden])) {
 #shell { perspective: 1200px; }
 
 /*
+ * KEY LIGHT (animation overhaul P6; module motion/light.js drives --lx/--ly).
+ *
+ * One virtual light, published as viewport coordinates on :root. Every .lit
+ * surface carries the same whisper-alpha radial aimed at that point via
+ * background-attachment: fixed — the attachment is what makes seven separate
+ * boxes read as lit by ONE source instead of seven private glows (§19's
+ * "consistent lighting model" enforced by construction: there is no per-
+ * element gradient to drift).
+ *
+ * The fallback pose (62vw/18vh, upper-right key) is what reduced motion and
+ * coarse pointers see forever: a static ambient sheen, the reduced truth of
+ * "there is a light" without the tracking. --lit-alpha is deliberately
+ * translucent-white and theme-free: on light themes it is a near-invisible
+ * warmth on raised surfaces, on darks it reads — luminance theatre is the
+ * dark surfaces' gain, and no theme token had to grow.
+ *
+ * .lit hosts keep their own positioning (id selectors out-specificity this
+ * one class, so #compose stays fixed); position:relative only lands where a
+ * host was static, which changes no geometry — it anchors the sheen.
+ */
+:root {
+  --lx: 62vw;
+  --ly: 18vh;
+  --lit-alpha: 0.055;
+}
+
+.lit { position: relative; }
+
+.lit::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background-attachment: fixed;
+  background-image: radial-gradient(
+    340px circle at var(--lx) var(--ly),
+    rgba(255, 255, 255, var(--lit-alpha)),
+    transparent 60%
+  );
+}
+
+/*
  * ONE WRITER (animation P3): press.js drives inline transform through a
  * spring. The v3 batch above puts `transform 140ms` on .ghost/.primary — a
  * CSS tween layered over spring frames reads as motion blur. While an
