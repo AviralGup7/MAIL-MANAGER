@@ -67,7 +67,7 @@ test('enum controls offer exactly the schema values', () => {
 /* ---- 2 · the one write path ---------------------------------------------- */
 
 test('all writes go through settings.set; themes go through ctx.setTheme', () => {
-  assert.match(panel, /settings\.set\(item\.key/, 'controls commit via settings.set');
+  assert.match(panel, /settings\.set\(key, value\)/, 'controls commit via settings.set');
   assert.doesNotMatch(panel, /storage\.(set|get)/, 'the panel never touches storage directly');
   assert.match(panel, /ctx\.setTheme\(t\.id\)/, 'theme tiles ride the one theme path');
   assert.match(panel, /settings\.subscribe\(/,
@@ -176,7 +176,7 @@ function bootDocument() {
 
 test('open renders one control per descriptor item and closes through the layer', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');
-  const { doc, restore } = bootDocument();
+  const { dom, doc, restore } = bootDocument();
   try {
     const settings = await import('../src/app/system/settings.js');
     await settings.loadSettings();
