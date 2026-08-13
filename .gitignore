@@ -20,3 +20,4 @@ tools/bisect/
 /.shot.mjs
 /.shot2.mjs
 /.probe*.mjs
+.shot*.png
