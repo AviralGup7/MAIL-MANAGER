@@ -30,6 +30,12 @@ export function _setFineForTest(v) { forcedFine = v; }
 
 const pointerIsFine = () => (forcedFine !== null ? forcedFine : !!mqFine?.matches);
 
+// One listener PER WINDOW, not one globally: the product has exactly one
+// document, but tests mint a fresh jsdom window per case — a global latch
+// would send every later window's pointermoves into a dead window's void
+// (caught by the era-handoff pin failing only in full-file order).
+const listeningWins = new WeakSet();
+
 /** @type {Set<{el:Element, radius:number, strength:number, x:number, y:number, hx:Object|null, hy:Object|null}>} */
 export const __targets = new Set();
 
@@ -113,9 +119,11 @@ export function attachMagnetic(el, opts = {}) {
     strength: opts.strength ?? 0.3,
     x: 0, y: 0, hx: null, hy: null,
   });
-  if (!listening) {
+  const win = el.ownerDocument.defaultView || globalThis;
+  if (!listeningWins.has(win)) {
+    listeningWins.add(win);
     listening = true;
-    (el.ownerDocument.defaultView || globalThis).addEventListener('pointermove', onPointerMove, { passive: true });
+    win.addEventListener('pointermove', onPointerMove, { passive: true });
   }
 }
 
