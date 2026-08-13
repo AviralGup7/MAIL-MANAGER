@@ -68,12 +68,12 @@ const working = () => {
  * Adding a module here is the point: the sweep below is generic.
  */
 async function entryPoints(storage) {
-  const rules = await load('rules.js');
-  const snooze = await load('snooze.js');
-  const draft = await load('draft-store.js');
-  const settings = await load('settings.js');
-  const cache = await load('cache.js');
-  const views = await load('views.js');
+  const rules = await load('mail/rules.js');
+  const snooze = await load('system/snooze.js');
+  const draft = await load('compose/draft-store.js');
+  const settings = await load('system/settings.js');
+  const cache = await load('system/cache.js');
+  const views = await load('system/view-store.js');
 
   return [
     ['rules.loadRules', () => rules.loadRules(storage)],
@@ -126,7 +126,7 @@ test('settings.set rejects loudly and rolls the cache back (bug-hunt 43 #17)', a
    * (options.js persist(), app.js .catch), and the in-memory value must go
    * back to what it was, so a failed write never masquerades as a saved one.
    */
-  const settings = await load('settings.js');
+  const settings = await load('system/settings.js');
   const storage = readOnly({ theme: 'midnight' });
   await settings.loadSettings(storage);
   assert.equal(settings.get('theme'), 'midnight');
@@ -159,7 +159,7 @@ test('no persistence call rejects when writes fail but reads work', async () => 
  * a confirmation for something that did not happen.
  */
 test('every views mutator reports failure rather than claiming success', async () => {
-  const views = await load('views.js');
+  const views = await load('system/view-store.js');
   const s = readOnly();
 
   for (const [name, fn] of [
@@ -176,7 +176,7 @@ test('every views mutator reports failure rather than claiming success', async (
 
 test('every views mutator reports success when the write lands', async () => {
   // The negative test above passes trivially if everything always fails.
-  const views = await load('views.js');
+  const views = await load('system/view-store.js');
   const s = working();
   assert.equal((await views.saveView('N', 'is:unread', s)).ok, true);
   assert.equal((await views.removeView('unread', s)).ok, true);
@@ -202,11 +202,11 @@ test('the caller surfaces a failed view removal instead of assuming success', as
  */
 test('corrupt stored values never crash a loader', async () => {
   const junk = [null, 0, 'string', [], { nested: { deep: true } }, true, NaN];
-  const rules = await load('rules.js');
-  const snooze = await load('snooze.js');
-  const draft = await load('draft-store.js');
-  const views = await load('views.js');
-  const cache = await load('cache.js');
+  const rules = await load('mail/rules.js');
+  const snooze = await load('system/snooze.js');
+  const draft = await load('compose/draft-store.js');
+  const views = await load('system/view-store.js');
+  const cache = await load('system/cache.js');
 
   /*
    * Keys must match the real ones, or this test seeds nothing and passes

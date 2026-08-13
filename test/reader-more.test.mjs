@@ -58,7 +58,7 @@ test('the reader bar ends in a named, icon-only kebab', () => {
 });
 
 test('the menu is the shared primitive with exactly the three copies, in order', () => {
-  assert.match(readerjs, /import \{ openMenu \} from '\.\/menu\.js';/,
+  assert.match(readerjs, /import \{ openMenu \} from '\.\.\/overlays\/menu\.js';/,
     'a fourth hand-rolled menu would be the drift menu.js was extracted to kill');
   assert.match(readerjs, /b\.dataset\.act === 'more'/);
   const items = [...readerjs.matchAll(/text: '(Copy [^']+)'/g)].map((m) => m[1]);

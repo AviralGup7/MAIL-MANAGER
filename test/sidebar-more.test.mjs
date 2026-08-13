@@ -172,5 +172,5 @@ test('the fix stays a route: no sign-out shortcut or palette growth sneaks in he
   // greps are the tripwire that keeps this small commit small.
   const mod = read('src/app/workspace/sidebar-more.js');
   assert.ok(!/addEventListener\('keydown'|keydown/.test(mod), 'no keyboard chord in the overflow module');
-  assert.ok(!/from '\.\/palette\.js'|openPalette/.test(mod), 'the palette is not grown from this module');
+  assert.ok(!/from '\.\.\/overlays\/palette\.js'|openPalette/.test(mod), 'the palette is not grown from this module');
 });
