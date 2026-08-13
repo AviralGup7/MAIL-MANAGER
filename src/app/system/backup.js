@@ -206,7 +206,9 @@ function countOf(v) {
 export async function importBackup(raw, storage = STORAGE, options = {}) {
   const { mode = 'replace' } = options;
   const check = validateBackup(raw);
-  if (!check.ok) return { ok: false, reason: check.reason, applied: [], failed: [] };
+  // `in`-narrowing: property-discriminant narrowing does not survive the
+  // JSDoc union here; presence does.
+  if (!check.ok) return { ok: false, reason: 'reason' in check ? check.reason : 'invalid backup', applied: [], failed: [] };
 
   const applied = [];
   const failed = [];

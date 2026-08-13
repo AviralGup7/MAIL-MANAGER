@@ -381,7 +381,9 @@ function scheduleRenewRetry() {
   globalThis.addEventListener?.('online', fire, { once: true });
   // unref where the runtime allows (Node tests), so a pending retry never
   // pins the event loop open.
-  setTimeout(fire, 60000).unref?.();
+  /* The DOM lib types setTimeout's handle as number; unref is Node's — the
+     cast says so instead of pretending. */
+  /** @type {any} */ (setTimeout(fire, 60000)).unref?.();
 }
 
 export async function signOut() {

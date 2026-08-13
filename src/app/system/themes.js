@@ -49,6 +49,7 @@
  * @property {string} glow
  */
 
+/** @type {Theme[]} without the annotation each literal widens scheme to `string` */
 export const THEMES = [
   {
     id: 'daylight',
