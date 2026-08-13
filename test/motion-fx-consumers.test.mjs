@@ -40,9 +40,11 @@ test('send burst: measure BEFORE closeCompose, burst AFTER, send path only', () 
   const send = compose.match(/saveOutbox\(\[\.\.\.queue, item\]\);([\s\S]*?)const who = draft\.to/);
   assert.ok(send, 'the send path block exists');
   const block = send[1];
-  assert.ok(block.indexOf('getBoundingClientRect') < block.indexOf('closeCompose()'),
+  // Match CALLS (with parens), not the words — the comments discuss these
+  // very functions, and prose mentions precede code.
+  assert.ok(block.indexOf('getBoundingClientRect()') < block.indexOf('closeCompose()'),
     'the rect is read while the button still exists');
-  assert.ok(block.indexOf('fxBurst') > block.indexOf('closeCompose()'),
+  assert.ok(block.indexOf('fxBurst(') > block.indexOf('closeCompose()'),
     'the burst fires after the panel leaves — the energy stays, the chrome goes');
   // The draft-discard path (the OTHER discard();closeCompose() pair) must
   // stay burst-free.
