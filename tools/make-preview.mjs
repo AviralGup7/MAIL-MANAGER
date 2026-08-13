@@ -225,11 +225,12 @@ try { store_ = JSON.parse(localStorage.getItem(PERSIST_KEY) || '{}'); } catch { 
 const persist_ = () => {
   try { localStorage.setItem(PERSIST_KEY, JSON.stringify(store_)); } catch { /* quota: never fatal in a preview */ }
 };
-/* `?nosync=1` makes the two SYNC verbs answer like a dead network. Routed
+/* '?nosync=1' makes the two SYNC verbs answer like a dead network. Routed
    through the URL because the cold-cache gate needs the failure from the
    VERY FIRST message — before any in-page script could install an override.
    The error text mimics Chrome's so reportError takes its network branch
-   (the offline banner), exactly as on a dead connection. */
+   (the offline banner), exactly as on a dead connection. (No backticks in
+   this comment: MOCK() is a template literal — they close it early.) */
 const NOSYNC = /[?&]nosync=1\\b/.test(location.search);
 globalThis.chrome = {
   runtime: {
