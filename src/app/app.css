@@ -575,6 +575,45 @@ kbd {
   border-radius: 0 var(--r-sm) var(--r-sm) 0;
   background: var(--accent);
 }
+
+/*
+ * CATEGORY PILL GLIDE (animation P5): with JS live, the accent-soft fill is
+ * ONE shared object (motion/pill.js) that slides between category buttons on
+ * a PANEL spring — the rail rides along so the whole signal stays glued.
+ * .has-pill hands the fill to the pill: the active button's own background
+ * and rail switch off, so the surface can never double-render. Without JS
+ * (or a hard failure) .has-pill never appears and the declarative fill above
+ * renders exactly as before. Both surfaces use the same tokens, so theme
+ * swaps re-light the pill for free.
+ */
+#cat-group {
+  position: relative;
+}
+#cat-group.has-pill .cat[aria-current='true'] {
+  background: transparent;
+}
+#cat-group.has-pill .cat[aria-current='true']::before {
+  content: none;
+}
+.cat-pill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  pointer-events: none;
+  /* transform/width/height: owned by motion/pill.js, never transitioned. */
+}
+.cat-pill::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 20%;
+  bottom: 20%;
+  width: 3px;
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  background: var(--accent);
+}
 .cat.muted {
   opacity: 0.62;
 }

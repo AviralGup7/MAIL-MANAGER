@@ -27,6 +27,7 @@ import { CAT_COLOR } from './display.js';
 import { icon } from './icons.js';
 import { setText } from './dom.js';
 import { setCount, collapseThreads } from './list.js';
+import { syncPill } from './motion/pill.js';
 
 /** Set by wireSidebar at boot. */
 let ctx = null;
@@ -334,6 +335,20 @@ export function renderSidebar() {
     buttons.find((b) => b.dataset.mailbox === state.mailbox) ||
     buttons[0];
   for (const b of buttons) b.tabIndex = b === preferred ? 0 : -1;
+
+  /*
+   * PILL GLIDE (animation P5): the active-category fill is one physical
+   * object that slides to its new button on a spring, instead of blinking
+   * off here and on there. Synced AFTER every aria-current is final above —
+   * the pill must track state, never lead it. Cheap steering: syncPill's
+   * same-key hot path is one box read, so count-refresh renders cost
+   * nothing. The module owns reduced-motion snaps and retraction when the
+   * rail is away; without JS running it, .has-pill is never added and the
+   * buttons keep their declarative fill.
+   */
+  const catGroup = el.cats.querySelector('#cat-group');
+  const activeCat = buttons.find((b) => b.dataset.cat === state.category) || null;
+  syncPill(catGroup, activeCat, activeCat?.dataset.cat);
 }
 
 function sumUnread(s) {

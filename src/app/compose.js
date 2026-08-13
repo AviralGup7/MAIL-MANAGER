@@ -11,6 +11,7 @@ import { buildReply } from './query.js';
 import { openMenu } from './menu.js';
 import { middleTruncate } from './icons.js';
 import { closeWithMotion, cancelExit } from './layers.js';
+import { popFrom } from './motion/morph.js';
 import * as outbox from './outbox.js';
 import * as templates from './templates.js';
 import { createDraftSaver, loadDraft, isMeaningful } from './draft-store.js';
@@ -138,9 +139,25 @@ export function openCompose(ctx, prefill = {}) {
 
   // Clear a half-finished exit: reply-to-reply reopens compose inside the
   // 140ms close window, and a stale `.closing` would animate it right back out.
+  const wasHidden = panel.hidden;
   cancelExit(panel);
   panel.hidden = false;
   panel.classList.remove('minimised');
+  /*
+   * SEED MORPH (animation P5): a freshly-opened compose GROWS out of the
+   * Compose button — the dialog is the button, expanded, one continuous
+   * object. A restore from the minimised strip is a lift-back, not a birth,
+   * so only a hidden→open transition seeds. popFrom clamps the anchor into
+   * the box (P4 live finding), suspends any CSS entry for the flight, and
+   * hands it back whole at rest; reduced motion and an absent frame clock
+   * skip the seed entirely (P2 park doctrine).
+   */
+  if (wasHidden) {
+    const bb = $('btn-compose')?.getBoundingClientRect?.();
+    if (bb && bb.width > 0) {
+      popFrom(panel, { x: bb.left + bb.width / 2, y: bb.top + bb.height / 2 });
+    }
+  }
   renderFiles();
   document.body.classList.add('composing');
   // Focus the first EMPTY field: a reply already has a recipient and a
