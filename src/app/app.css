@@ -6353,10 +6353,27 @@ body.rail-open #rail:has(#rail-scroll > :not([hidden])) {
 }
 
 /* ---- V3 RESPONSIVE LADDER (re-measured; supersedes the earlier one) ------- */
+
+/*
+ * R-A1 (responsive audit, CRITICAL — probe-measured before this fix): the
+ * wide-screen three-column rule
+ *
+ *   body.rail-open #panes:has(#rail-scroll > :not([hidden]))
+ *
+ * carries TWO ids (#panes plus #rail-scroll inside :has), so it out-specifies
+ * every `body.rail-open #panes` form below whenever the reader is visible —
+ * the `:has(#reader[hidden])` variants can't match a visible reader. Live
+ * probe at 900px: reader 15px wide; at 700px and below: "340px 0px 300px",
+ * i.e. the reader at 0px while the rail's fixed drawer floats on top. Every
+ * rail-aware block below therefore ALSO lists the :has(#rail-scroll…) form:
+ * equal specificity means source order decides, and the ladder comes later.
+ * No track values change — this is precedence, not redesign.
+ */
 @media (max-width: 1240px) {
   /* No third column: the rail becomes a drawer when opened. */
   body.rail-open #panes,
-  body.rail-open #panes:has(#reader[hidden]) {
+  body.rail-open #panes:has(#reader[hidden]),
+  body.rail-open #panes:has(#rail-scroll > :not([hidden])) {
     grid-template-columns: minmax(320px, 42%) minmax(0, 1fr);
   }
   body.rail-open #rail {
@@ -6374,7 +6391,8 @@ body.rail-open #rail:has(#rail-scroll > :not([hidden])) {
   #panes,
   #panes:has(#reader[hidden]),
   body.rail-open #panes,
-  body.rail-open #panes:has(#reader[hidden]) {
+  body.rail-open #panes:has(#reader[hidden]),
+  body.rail-open #panes:has(#rail-scroll > :not([hidden])) {
     grid-template-columns: minmax(300px, 40%) minmax(0, 1fr);
   }
 }
@@ -6382,7 +6400,8 @@ body.rail-open #rail:has(#rail-scroll > :not([hidden])) {
   #panes,
   #panes:has(#reader[hidden]),
   body.rail-open #panes,
-  body.rail-open #panes:has(#reader[hidden]) {
+  body.rail-open #panes:has(#reader[hidden]),
+  body.rail-open #panes:has(#rail-scroll > :not([hidden])) {
     grid-template-columns: minmax(260px, 44%) minmax(0, 1fr);
   }
   /* Command labels yield before the layout does. */
@@ -6393,7 +6412,8 @@ body.rail-open #rail:has(#rail-scroll > :not([hidden])) {
   #panes,
   #panes:has(#reader[hidden]),
   body.rail-open #panes,
-  body.rail-open #panes:has(#reader[hidden]) {
+  body.rail-open #panes:has(#reader[hidden]),
+  body.rail-open #panes:has(#rail-scroll > :not([hidden])) {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 3fr) minmax(0, 2fr);
   }
