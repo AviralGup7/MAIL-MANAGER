@@ -101,11 +101,28 @@ export function wireSuggestUI(c) {
        * Escape closes the SUGGESTIONS first and the takeover second. Without
        * stopping propagation here, dismissing a dropdown would throw the user
        * back to Gmail -- the same layered-Escape hazard the palette hit.
+       *
+       * preventDefault ALWAYS, open or closed (accessibility audit A-A6):
+       * this field is type="search", and Blink NATIVELY clears a search
+       * input on un-cancelled Escape, firing native input+search events. The
+       * probe trail (plain page, CDP keys, zero app code): Escape emptied the
+       * field, the shell's input listener re-rendered suggestions against the
+       * now-EMPTY query, and the box "reopened" over the ladder's unreached
+       * blur rung -- one keystroke both closed the dropdown and destroyed the
+       * query. No JS setter or dispatch anywhere in that path. Escape here
+       * means "walk the layer stack", never "browser, delete my query"; the
+       * chips row's Clear button stays the explicit way to empty the field.
        */
+      e.preventDefault();
       if (open) {
         e.stopPropagation();
         box.hidden = true;
         suggestIndex = -1;
+        // Same honesty as the blur-close path below: the popup is gone, so
+        // the field must stop announcing it. Escape closed the box with focus
+        // still inside; only the attribute can carry the news.
+        el.search.setAttribute('aria-expanded', 'false');
+        el.search.removeAttribute('aria-activedescendant');
       }
     }
   });
