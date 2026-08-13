@@ -39,13 +39,13 @@ test('the shell pays one wiring line for rail visibility', () => {
 });
 
 test('boot applies the saved preference only at column widths', () => {
-  assert.match(shell,
+  assert.match(rail,
     /apply\(settings\.get\('railOpen'\) !== false && !drawerMq\.matches\)/,
     'the drawer regime starts shut — an overlay may not spring open unasked');
 });
 
 test('crossing the 1240 seam re-derives visibility from regime + preference', () => {
-  assert.match(shell,
+  assert.match(rail,
     /const onSeam = \(mq\) => apply\(mq\.matches \? false : settings\.get\('railOpen'\) !== false\)/,
     'folding into drawer widths puts the overlay away; unfolding restores the preference');
   assert.match(rail, /addEventListener\('change', onSeam\)/, 'seam changes are heard');
