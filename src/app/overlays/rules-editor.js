@@ -20,9 +20,9 @@
  * mail from a Dean". The count and a sample of what WOULD be touched are
  * shown before anything can be saved; the same matcher produces both, so
  * the preview and the real run cannot disagree. Destructive verbs
- * (engine.DESTRUCTIVE) additionally earn an explicit confirm naming the
- * count — through the in-app confirmDialog, never the native confirm()
- * the options page had no choice but to use.
+ * (engine.DESTRUCTIVE) additionally earn an explicit "are you sure"
+ * naming the count — through the in-app confirmDialog, never the native
+ * browser confirm the options page had no choice but to use.
  *
  * BOUNDARIES: label/category actions need a value and stay options-page
  * grammar (the select mirrors options.html's three verbs — a deliberate
