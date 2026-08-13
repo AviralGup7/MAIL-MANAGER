@@ -19,6 +19,7 @@
 
 import { Store } from './store.js';
 import { sanitizeHtml, escapeHtml } from './sanitize.js';
+import { flyRowIdentity, abortRowIdentity } from './motion/reader-morph.js';
 import { getTheme } from './themes.js';
 import { icon, middleTruncate } from './icons.js';
 import { setAttr } from './dom.js';
@@ -552,15 +553,28 @@ export async function openMessage(id) {
   const rapid = now - lastSwapAt < 200;
   lastSwapAt = now;
 
-  el.reader.classList.remove('swap');
-  if (!rapid) {
-    void el.reader.offsetWidth; // reflow to reset the animation
-    el.reader.classList.add('swap');
-  }
-
   el.rSubject.textContent = m.subject;
   el.rFrom.textContent = m.from;
   el.rDate.textContent = fullDate(m.date);
+
+  el.reader.classList.remove('swap');
+  /*
+   * SIGNATURE MORPH (animation overhaul P5): on a deliberate open the row's
+   * sender+subject FLY into the header — the same object arriving, not a
+   * new one revealed. The morph and the swap are the same sentence, so an
+   * open gets exactly one of them. Scanning (rapid) skips the morph by the
+   * same rule it skips the swap: arriving beats watching. Everything the
+   * morph needs was just written above; everything it borrows is returned
+   * by its rest frame or its abort.
+   */
+  const morphFlew = !rapid && flyRowIdentity(ctx.rowDomId(id), {
+    subject: el.rSubject,
+    from: el.rFrom,
+  });
+  if (!rapid && !morphFlew) {
+    void el.reader.offsetWidth; // reflow to reset the animation
+    el.reader.classList.add('swap');
+  }
   // The body frame must name what it shows; a titleless iframe is a blank to
   // a screen reader (round 48).
   el.rBody.setAttribute('title', m.subject);
@@ -971,6 +985,9 @@ function escapeDoc(text) {
 const readPosition = new Map();
 
 export function closeReader() {
+  // An identity flight cannot outlive its reader: kill it before the panels
+  // move (animation P5; abort is synchronous and total).
+  abortRowIdentity();
   const prev = state.selected;
   if (prev) {
     const sc = el.rBody.contentDocument?.scrollingElement;

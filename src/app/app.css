@@ -6501,6 +6501,18 @@ body.rail-open #rail:has(#rail-scroll > :not([hidden])) {
 /* Ripple spans are fully inline-styled by motion/ripple.js; declared here
    only as the census of what the class means. No rules — see the module. */
 
+/*
+ * IDENTITY MORPH (animation P5): while a row's sender/subject fly into the
+ * reader header, the two real targets lend their visibility to the ghosts.
+ * `visibility`, never `hidden` — layout is touched by NOTHING; and the
+ * borrowing is bounded by the spring's rest frame plus a hard 1.2s fuse.
+ * The guard below squashes this to nothing under reduced motion, where the
+ * morph never starts anyway (reader-morph.js declines before classing).
+ */
+.rmorph-hide {
+  visibility: hidden !important;
+}
+
 /* ========================================================================= */
 
 @media (prefers-reduced-motion: reduce) {
