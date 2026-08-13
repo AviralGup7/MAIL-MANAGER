@@ -1567,13 +1567,15 @@ a.ghost {
    * the distraction §27 itself bans, which is why the rail-empty lines and
    * the interactive reader-idle radar rows stay still. The file-end
    * reduced-motion guard collapses this to one 1ms iteration on its own.
-   */
-   * reduced-motion guard collapses this to one 1ms iteration on its own.
    * FOUR breaths, then the room settles: an endless loop would keep a
    * compositor layer awake over an IDLE screen forever — the two
    * infinite-animation pins (layout-contract, package) exist to refuse
    * exactly that. The count is even so the loop exits at its base pose,
    * pixel-identical to never animating.
+   *
+   * (Fix-cycle scar: this comment once closed early and left an orphaned
+   * prose tail; Blink ate the declaration below in error recovery while
+   * jsdom parsed on. The live P7 walk was the backstop that caught it.)
    */
   animation: empty-breathe 3.4s var(--ease-out) 0.9s 4 alternate;
 }
