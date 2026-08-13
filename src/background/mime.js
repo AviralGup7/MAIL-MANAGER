@@ -70,7 +70,7 @@ export function extractBody(full) {
   return out;
 
   /**
-   * @param {object} part
+   * @param {any} part        Gmail payload node — its shape is Gmail's
    * @param {number} depth
    *
    * DEPTH IS BOUNDED, AND THIS WAS A REAL DENIAL OF SERVICE.

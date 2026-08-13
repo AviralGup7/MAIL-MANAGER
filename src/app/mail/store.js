@@ -33,7 +33,10 @@
 
 /** @typedef {{id:string, threadId:string, from:string, subject:string,
  *   snippet:string, date:number, unread:boolean, starred:boolean,
- *   category:string, confidence:number, reason:string}} Msg */
+ *   category:string, confidence:number, reason:string,
+ *   hasAttachment?:boolean, fromSearch?:boolean}} Msg */
+/* (Optional above: hydrate-stamped and search-stamped respectively — the
+   M5 gate caught both missing; pinned present now.) */
 
 const MAX_MESSAGES = 2000;
 

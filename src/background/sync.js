@@ -32,7 +32,7 @@ export async function setHistoryId(id) {
 /**
  * One page of the inbox, fully hydrated.
  *
- * @param {{pageToken?:string, max?:number, q?:string, labelIds?:string[]}} opts
+ * @param {{pageToken?:string, max?:number, q?:string, labelIds?:string[], anchorHistory?:boolean}} opts
  * @returns {Promise<{messages:object[], nextPageToken:string}>}
  */
 export async function syncPage({ pageToken = '', max = BATCH_SIZE, q = '', labelIds, anchorHistory = true } = {}) {

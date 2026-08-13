@@ -73,7 +73,7 @@ export function looksLikeListAddress(address) {
 /**
  * Classify a message's relationship to the signed-in user.
  *
- * @param {object} msg           store record; may carry `to`, `cc`, `headers`
+ * @param {{headers?:Record<string, any>, to?:string, cc?:string}} msg  store record; headers may preserve case
  * @param {string} selfAddress   the signed-in address
  * @returns {'direct'|'cc'|'broadcast'}
  */

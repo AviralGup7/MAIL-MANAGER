@@ -35,7 +35,7 @@ export function sessionArea() {
  * `globalThis.chrome` per boot, and a captured area would leak the first
  * test's mock into every later one.
  */
-export const STORAGE = new Proxy({}, {
+export const STORAGE = new Proxy(/** @type {any} */ ({}), {
   get(_t, prop) {
     const area = localArea();
     // Methods must keep `this` = the area, or `storage.get` called through

@@ -445,7 +445,8 @@ async function claim(storage, id, now) {
   }
 }
 
-export async function flushOutbox({ send, storage = STORAGE, now = Date.now(), onChange, settleMs = CLAIM_SETTLE_MS } = {}) {
+export async function flushOutbox(/** @type {{send:(item:any)=>Promise<any>, storage?:any, now?:number, onChange?:()=>void, settleMs?:number}} */
+  { send, storage = STORAGE, now = Date.now(), onChange, settleMs = CLAIM_SETTLE_MS } = {}) {
   if (inFlight) return { sent: 0, failed: 0, skipped: true };
   let items = await loadOutbox(storage);
   let due = prioritizeDue(dueItems(items, now));

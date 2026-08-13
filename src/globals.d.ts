@@ -7,4 +7,6 @@
  * these declarations exist so the CHECKED surface can reference the hosts
  * without dragging the extension-types package into a repo that ships none.
  */
-declare const chrome: any;
+/* `var`, not `const`: only `var` globals attach to globalThis, and the
+   platform seam reads the host exactly there (globalThis.chrome?.storage). */
+declare var chrome: any;

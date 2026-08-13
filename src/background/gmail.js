@@ -506,7 +506,8 @@ function b64urlEncode(text) {
  * something this build sends.
  *
  * @param {{to:string, cc?:string, bcc?:string, subject:string, body:string,
- *   inReplyTo?:string, references?:string, from?:string}} m
+ *   inReplyTo?:string, references?:string, from?:string,
+ *   attachments?:any[]}} m
  */
 export function buildMime(m) {
   const boundary = `bmm_${Math.random().toString(36).slice(2)}`;

@@ -111,7 +111,7 @@ export function filenameFor(backup) {
 /**
  * Validate a candidate backup.
  *
- * @returns {{ok:true, backup:object} | {ok:false, reason:string}}
+ * @returns {{ok:true, backup:{version:number, data:Record<string, any>}} | {ok:false, reason:string}}
  */
 export function validateBackup(raw) {
   let parsed = raw;
@@ -199,9 +199,12 @@ function countOf(v) {
  * the worst of both, and Chrome's storage API gives no transaction to make it
  * genuinely atomic.
  *
- * @param {{mode?:'replace'|'merge'}} [opts]
+ * @param {any} raw                     the parsed backup JSON
+ * @param [storage]                     injectable area (tests pass a fake)
+ * @param {{mode?:'replace'|'merge'}} [options]
  */
-export async function importBackup(raw, storage = STORAGE, { mode = 'replace' } = {}) {
+export async function importBackup(raw, storage = STORAGE, options = {}) {
+  const { mode = 'replace' } = options;
   const check = validateBackup(raw);
   if (!check.ok) return { ok: false, reason: check.reason, applied: [], failed: [] };
 

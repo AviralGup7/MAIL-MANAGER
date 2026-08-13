@@ -31,6 +31,22 @@
  * @property {string} name     shown in the picker
  * @property {'light'|'dark'} scheme  drives `color-scheme` and the body iframe
  * @property {string} swatch   the dot in the picker
+ * @property {string} bg
+ * @property {string} bgRaised
+ * @property {string} bgSunken
+ * @property {string} fg
+ * @property {string} fgDim
+ * @property {string} fgFaint
+ * @property {string} line
+ * @property {string} lineStrong
+ * @property {string} accent
+ * @property {string} accentFg
+ * @property {string} accentSoft
+ * @property {string} danger
+ * @property {string} warning
+ * @property {string} success
+ * @property {string} star
+ * @property {string} glow
  */
 
 export const THEMES = [
