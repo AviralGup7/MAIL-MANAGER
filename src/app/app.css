@@ -5224,6 +5224,9 @@ kbd {
 .tt-kind.tt-practical {
   color: var(--fg-dim);
 }
+/* Wide layout: the condensed recovery line stays out of the five-column row. */
+.tt-meta { display: none; }
+
 .tt-where,
 .tt-who {
   font-size: var(--t-xs);
@@ -5530,6 +5533,24 @@ kbd {
   .tt-where,
   .tt-who {
     display: none;
+  }
+  /*
+   * …but their facts are NOT lost (round 63 / responsive-audit §6): the
+   * condensed meta line takes the second row of the middle column. Room
+   * and instructor stay one glance away at narrow widths instead of
+   * vanishing behind a hover tooltip a touch user can never trigger.
+   */
+  .tt-meta {
+    display: block;
+    grid-column: 2;
+    grid-row: 2;
+    /* The 1fr cell still needs the min-width floor or the ellipsis is dead. */
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--t-xs);
+    color: var(--fg-faint);
   }
 }
 

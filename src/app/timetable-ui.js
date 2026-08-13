@@ -1292,7 +1292,24 @@ function entryRow(e) {
     acts.append(why, lock);
   }
 
-  row.append(tag, when, where, who, acts);
+  /*
+   * FULL-VALUE RECOVERY (round 63 item; responsive-audit doctrine: condense,
+   * never silently erase). Below 860px the where/who columns are collapsed
+   * away, and at any width both can ellipsize — yet room and instructor are
+   * exactly what a student needs when walking to class. The facts therefore
+   * survive in two recoverable forms: `title` on the clipped spans for
+   * hover recovery, and one condensed `.tt-meta` line the narrow grid shows
+   * in place of the two columns (it is display:none at full width, so the
+   * wide layout's five columns are undisturbed).
+   */
+  where.title = where.textContent;
+  who.title = who.textContent;
+  const meta = el('span', 'tt-meta');
+  meta.textContent = [where.textContent, who.textContent]
+    .filter((t) => t && t !== 'no room' && t !== '—')
+    .join(' · ');
+
+  row.append(tag, when, where, who, meta, acts);
   if (e.locked) row.dataset.locked = 'true';
   return row;
 }
