@@ -184,6 +184,15 @@ if (sendUi.undoVisible) {
       { timeout: 6000 },
     );
   } catch { /* reported below */ }
+  /* The rail HIDE is the flushOutbox-in-Undo fix's whole point, and it too
+     lands one pump round-trip after cancel: compose reopening wins the
+     race. Wait for the hide, or the gate flaps on the stub's 140ms. */
+  try {
+    await page.waitForFunction(
+      () => document.getElementById('outbox').hidden,
+      { timeout: 6000 },
+    );
+  } catch { /* reported below */ }
   const recalled = await page.evaluate(() =>
     globalThis.chrome.storage.local.get('outbox').then((o) => ({
       composeOpen: !document.getElementById('compose').hidden,
