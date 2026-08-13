@@ -83,7 +83,7 @@ writeFileSync('.ci-manifest.json', JSON.stringify({
 
 /* ---- 2 · the scripts the workflow names must exist ---------------------- */
 
-for (const s of ['test:ci', 'ci:smoke', 'render:bench', 'types', 'contrast', 'bench', 'preview']) {
+for (const s of ['test:ci', 'ci:smoke', 'render:bench', 'types', 'contrast', 'bench', 'preview', 'docs:check']) {
   check(`script/${s}`, typeof pkg.scripts?.[s] === 'string', pkg.scripts?.[s] ?? 'missing');
 }
 
@@ -120,6 +120,15 @@ check('workflow/traces-on-failure', wf.includes('.smoke-trace.zip'),
 check('workflow/concurrency', /concurrency:\s*\n\s+group: \$\{\{ github\.workflow \}\}-\$\{\{ github\.ref \}\}/.test(wf)
   && /cancel-in-progress: true/.test(wf), 'a new push stops paying for a stale answer');
 check('workflow/summaries', wfCode.includes('GITHUB_STEP_SUMMARY'), 'the verdict table is written to the Summary page');
+/* Audit 64 residuals as teeth (2026-08-14): the render bench must keep its
+   INFRA/THRESHOLD split (exit 2 soft, exit 1 red), and the docs gate must
+   stay wired — F4's whole point is that drift becomes a build failure. */
+check('workflow/docs-gate', wf.includes('node tools/check-docs.mjs'), 'F4: doc drift is a build failure');
+check('render-bench/split-exits', /INFRA \(exit 2\)/.test(readFileSync('tools/render-bench.mjs', 'utf8')),
+  'F2: infra is soft, thresholds are red');
+check('workflow/render-bench-hard', !/render:bench unavailable \(see tools/.test(wf)
+  && /render:bench \|\| code=\$\?/.test(wf.replace(/\n/g, ' ')),
+  'F2: no soft-echo blanket remains');
 
 let failed = 0;
 for (const r of results) {

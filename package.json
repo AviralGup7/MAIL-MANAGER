@@ -15,6 +15,7 @@
     "a11y": "node --test test/a11y.test.mjs",
     "vr": "node tools/visual-regression.mjs",
     "contrast": "node tools/check-contrast.mjs",
+    "docs:check": "node tools/check-docs.mjs",
     "push": "bash tools/push.sh",
     "mutate": "node tools/mutate.mjs",
     "timetable": "node tools/parse-timetable.mjs",
@@ -31,9 +32,7 @@
     "axe-core": "^4.13.0",
     "jsdom": "^24.0.0",
     "pngjs": "^7.0.0",
-    "typescript": "^7.0.2"
-  },
-  "dependencies": {
+    "typescript": "^7.0.2",
     "playwright-core": "^1.62.1"
   }
 }

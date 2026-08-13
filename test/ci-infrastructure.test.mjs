@@ -124,3 +124,28 @@ test('runs cancel when superseded; every gate mirrors to the Summary page', () =
   assert.match(read('tools/ci-smoke.mjs'), /GITHUB_STEP_SUMMARY/,
     'the browser-gate table mirrors too');
 });
+
+/* Audit 64's own "merge next" list, the machine-checkable half: F2's
+   split exit codes and F4's docs-as-gates (2026-08-14). F5 (no LICENSE)
+   is a legal choice, not a gate — it stays a human decision. */
+test('F2: the paint gate cannot pass while red (exit-code split)', () => {
+  const src = read('tools/render-bench.mjs');
+  assert.match(src, /INFRA \(exit 2\)/, 'launch failure is infrastructure');
+  assert.match(src, /process\.exit\(ok \? 0 : 1\)/, 'a breached threshold exits 1');
+  const wf = read('.github/workflows/ci.yml');
+  assert.ok(!/\|\| echo "render:bench/.test(wf), 'the soft-echo blanket is gone');
+  assert.match(wf, /render:bench \|\| code=\$\?/, 'the workflow reads the exit class');
+});
+
+test('F4: docs are gated, and the gate is itself green, on this checkout', () => {
+  const r = spawnSync('node', ['tools/check-docs.mjs'], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stdout.split('\n').filter((l) => l.includes('NOT OK')).join('\n') || r.stderr);
+  const wf = read('.github/workflows/ci.yml');
+  assert.match(wf, /node tools\/check-docs\.mjs/, 'the Docs-are-true step runs in CI');
+});
+
+test('F3: the shipped manifest names no runtime dependencies', () => {
+  const pkg = JSON.parse(read('package.json'));
+  assert.deepEqual(pkg.dependencies ?? {}, {},
+    'an MV3 extension ships source, not node_modules — every package is a devDependency');
+});

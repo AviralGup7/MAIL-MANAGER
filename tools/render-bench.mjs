@@ -103,10 +103,25 @@ const chromeStub = `
 })();
 `;
 
-const browser = await chromium.launch({
-  executablePath: process.env.CHROMIUM_PATH || undefined,
-  args: ['--no-sandbox'],
-});
+/* INFRA vs THRESHOLD (audit 64 F2, closed 2026-08-14). A browser that will
+   not launch is the environment's fault and must be SOFT (exit 2 — the
+   workflow warns and moves on); a breached threshold is the CODE's fault
+   and must burn red (exit 1). One exit code per failure class, the same
+   discipline the smoke gate already carried. */
+let browser;
+try {
+  browser = await chromium.launch({
+    executablePath: process.env.CHROMIUM_PATH || undefined,
+    args: ['--no-sandbox'],
+  });
+} catch (e) {
+  console.error('✗ INFRA (exit 2): chromium failed to launch:', String(e?.message || e).split('\n')[0]);
+  server.close();
+  process.exit(2);
+}
+/* The version goes in the log for the same reason the smoke gate logs it:
+   when a paint number moves, "which Chromium?" is the first question. */
+console.log('render bench browser:', browser.version());
 
 const env = (k, d) => Number(process.env[`RENDER_BENCH_${k}`] || d);
 /*

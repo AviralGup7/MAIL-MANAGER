@@ -82,6 +82,13 @@ jobs:
       - name: CI self-integrity
         run: node tools/ci-selfcheck.mjs
 
+      # Audit 64's F4 as a gate (2026-08-14): the indexes, the README's
+      # stated test count (recomputed from declared test() calls), and the
+      # STRUCTURE folder law. Docs here are load-bearing, so their drift is
+      # a build failure like every other drift class.
+      - name: Docs are true
+        run: node tools/check-docs.mjs
+
       - name: Theme contrast (WCAG AA)
         run: npm run contrast
 
@@ -106,8 +113,18 @@ jobs:
         run: |
           node_modules/.bin/playwright-core install chromium --with-deps || { echo "::warning::install --with-deps failed; retrying without system deps"; node_modules/.bin/playwright-core install chromium; }
 
-      - name: Rendering benchmark (numbers, advisory)
-        run: timeout 600 npm run render:bench || echo "render:bench unavailable in this environment (see tools/render-bench.mjs)"
+      # Audit 64's F2, closed 2026-08-14: paint numbers are a HARD gate.
+      # The bench itself splits its failure classes — exit 2 means "no
+      # runnable Chromium here" (soft, warns), exit 1 means a threshold
+      # moved (red, fails the build). A soft-| everything used to let a
+      # genuinely slower render wear the same green as a healthy one.
+      - name: Rendering benchmark (thresholds hard; infra soft)
+        run: |
+          timeout 600 npm run render:bench || code=$?; case "${code:-0}" in
+            0) ;;
+            2) echo "::warning::render bench unavailable in this environment (no runnable Chromium)";;
+            *) echo "::error::render bench thresholds breached"; exit ${code};;
+          esac
 
       # The hard browser gate (direction M2, 2026-08-13). The bench REPORTS
       # numbers and soft-fails on exotic environments; the smoke suite

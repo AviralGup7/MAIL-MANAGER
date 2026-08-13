@@ -11,8 +11,10 @@ Newcomer order: this file → ARCHITECTURE.md → THREADING.md → the audits.
 | CLASSIFICATION_DATA_PACK.md | The single source the category rules are generated from |
 | EXTENSION-KEY.md | What the pinned extension key protects |
 | UX-AUDIT-V4.md | The active interaction-overhaul campaign (round 65) — plan, findings, per-round record |
-| NEXT.md | The five long-term directions (M1 local-first … M5 contracts) — evidence, milestone ladders, guardrails |
+| OVERHAUL-V3.md | The v3 overhaul plan and record — the redesign the current shell grew out of |
+| NEXT.md | The long-term directions — M1–M5 with statuses, then the second-generation analysis (what to work on next) |
 | STRUCTURE.md | The growth playbook: CSS volumes and folder law, pinned not remembered |
+| STATE-BOUNDARY.md | Worker≠app runtime state — the law against "helpfully" unifying them |
 
 Audits live in `../audits/`. The per-wave audit series was retired after its
 fixes shipped (round 65 cleanup); the two load-bearing survivors and the
