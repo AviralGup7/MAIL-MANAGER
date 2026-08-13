@@ -56,6 +56,12 @@ jobs:
       - name: Theme contrast (WCAG AA)
         run: npm run contrast
 
+      # M5 (2026-08-13): the contract surfaces typecheck — ctx, the settings
+      # schema, the store, the storage seam. Regex pins stay as the runtime
+      # census; this is the compiler's say over the same ground.
+      - name: Contract typecheck (checkJs)
+        run: npm run types
+
       - name: Benchmark (data layer)
         run: npm run bench
 
