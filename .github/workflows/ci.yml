@@ -119,6 +119,19 @@ jobs:
       # moved (red, fails the build). A soft-| everything used to let a
       # genuinely slower render wear the same green as a healthy one.
       - name: Rendering benchmark (thresholds hard; infra soft)
+        env:
+          # CI runners are shared 2-core SwiftShader boxes, and the numbers
+          # there are a different distribution from local: three measured
+          # CI runs (2026-08-13) gave page-avg 2602/2900/3435ms and search
+          # 4277/5040/6164ms — the DEFAULT limits (2500/2500) were tuned on
+          # a quieter machine, and the soft-echo era hid that entirely
+          # (F2's closing measurement). These ceilings sit ~1.5x the worst
+          # observed; the regressions this bench exists to catch (an
+          # O(n^2) render path, a reflow per keystroke, a surviving rAF
+          # loop) move medians by multiples, not by 50%, so the gate keeps
+          # its teeth. Tighten when CI hardware moves.
+          RENDER_BENCH_PAGE_MS: '5000'
+          RENDER_BENCH_SEARCH_MS: '9000'
         run: |
           timeout 600 npm run render:bench || code=$?; case "${code:-0}" in
             0) ;;
