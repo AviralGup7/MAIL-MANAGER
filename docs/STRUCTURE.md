@@ -1,9 +1,9 @@
 # Repository structure — the physical map
 
-**Status:** target of record. The stylesheet split is **landed**; the JS
-folder map is being landed underneath it, one revertible step at a time.
-`docs/ARCHITECTURE.md` remains the doctrine (layers, ctx, state ownership);
-this document is the *floor plan* that doctrine lives on.
+**Status:** landed (S1 styles, S2 folders). `docs/ARCHITECTURE.md` remains
+the doctrine (layers, ctx, state ownership); this document is the
+*floor plan* that doctrine lives on, and `test/structure.test.mjs` is the
+bouncer that keeps it true.
 
 Why this file exists: the codebase passed 37,000 source lines and 90 test
 files, and a flat `src/app/` had 73 modules in one directory. That is fine

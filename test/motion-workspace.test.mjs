@@ -47,5 +47,5 @@ test('the hidden bit has exactly TWO writers and they are the seam above', () =>
   const writers = src.match(/host\.hidden = (?:true|false);/g) || [];
   assert.equal(writers.length, 2,
     'a third writer anywhere in this file would break the push/pop pairing');
-  assert.match(src, /import \{ cameraPush, cameraPop \} from '\.\/motion\/camera\.js'/);
+  assert.match(src, /import \{ cameraPush, cameraPop \} from '\.\.\/motion\/camera\.js'/);
 });

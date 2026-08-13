@@ -36,7 +36,7 @@ const bulk = readFileSync(join(ROOT, 'src/app/mail/bulk.js'), 'utf8');
 const app = readFileSync(join(ROOT, 'src/app/main.js'), 'utf8');
 
 test('send burst: measure BEFORE closeCompose, burst AFTER, send path only', () => {
-  assert.match(compose, /import \{ burst as fxBurst \} from '\.\/motion\/particles\.js'/);
+  assert.match(compose, /import \{ burst as fxBurst \} from '\.\.\/motion\/particles\.js'/);
   const send = compose.match(/saveOutbox\(\[\.\.\.queue, item\]\);([\s\S]*?)const who = draft\.to/);
   assert.ok(send, 'the send path block exists');
   const block = send[1];
@@ -53,7 +53,7 @@ test('send burst: measure BEFORE closeCompose, burst AFTER, send path only', () 
 });
 
 test('trash dust: rects before the batch, bursts after, pool-budget by construction', () => {
-  assert.match(bulk, /import \{ burst as fxBurst \} from '\.\/motion\/particles\.js'/);
+  assert.match(bulk, /import \{ burst as fxBurst \} from '\.\.\/motion\/particles\.js'/);
   const act = bulk.slice(bulk.indexOf('export async function bulkAct'));
   assert.ok(act.indexOf('getBoundingClientRect') < act.indexOf('storeOf().batch('),
     'after storeOf().remove there is no row left to measure');
