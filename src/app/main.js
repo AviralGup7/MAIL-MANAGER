@@ -41,13 +41,12 @@ import { runInPage, probeWorker } from './system/fallback.js';
 import { closeHelp, toggleHelp, helpOpen } from './overlays/help.js';
 import { openSettings } from './overlays/settings-panel.js';
 import { openSnoozeMenu, wireSnoozeMenu } from './overlays/snooze-menu.js';
-import { openCategoryMenu, wireCategoryMenu } from './overlays/category-menu.js';
+import { openCategoryMenu, openRecategoriseMenu, wireCategoryMenu } from './overlays/category-menu.js';
 import { renderNotices, wireNotices } from './academic/notices-rail.js';
 import { wireBulkbar } from './mail/bulkbar.js';
 import { buildReply } from './search/query.js';
 import * as settings from './system/settings.js';
 import { applyDensity, applyVisualPrefs } from './system/root-attrs.js';
-import { addressOf } from './core/contacts.js';
 import { audienceOf } from './system/direct.js';
 import * as activity from './academic/activity.js';
 import * as engine from './academic/rule-engine.js';
@@ -104,7 +103,7 @@ import {
 } from './mail/mailboxes.js';
 import {
   emptyRules, loadRules, saveRules, pruneThreadMutes, toggleMute, toggleAutoArchive,
-  isAutoArchived, applyCorrection, correctSender, clearCorrection,
+  isAutoArchived, applyCorrection,
   mutedCount,
 } from './mail/rules.js';
 import { addSnooze, removeSnooze } from './system/snooze.js';
@@ -2562,118 +2561,10 @@ function closeCategoryMenu() {
   closeMenu();
 }
 
-/**
- * Per-category triage menu.
- *
- * Mute and auto-archive are presented as a pair with clearly different
- * strengths, and the copy says what each one actually does. "Mute" in most
- * clients is vague; here it means "hide from the inbox list", and saying so
- * is the difference between a feature people use and one they are scared of.
- */
-
-/**
- * "This is in the wrong category."
- *
- * THE WRITE SIDE OF THE CLASSIFIER, which did not exist. `correctSender` and
- * `clearCorrection` were both implemented, both tested, and called from
- * nowhere -- while `applyCorrection` ran on every ingest. The product
- * faithfully applied a correction store no user could write to.
- *
- * The correction is keyed by SENDER, not by message. One wrong bucket is
- * almost always a whole mailing list in the wrong bucket, and asking the user
- * to fix each message individually is asking them to do the classifier's job.
- * That is also why the rest of the product picks it up immediately: the
- * corrections map is consulted on ingest, so re-ingesting what is in memory
- * re-files everything from that sender at once.
- */
-/** How many loaded messages from this sender currently sit in a category. */
-function countFromSenderIn(sender, cat) {
-  let n = 0;
-  for (const id of store.idsFor('all')) {
-    const m = store.get(id);
-    if (m && m.category === cat && addressOf(m.from) === sender) n++;
-  }
-  return n;
-}
-
-function openRecategoriseMenu(msg, anchor) {
-  const current = msg.category;
-  const taught = Object.prototype.hasOwnProperty.call(
-    rules.corrections || {}, addressOf(msg.from)
-  );
-
-  const items = [];
-
-  /*
-   * Offered FIRST when a correction exists, because undoing a mistake is more
-   * urgent than making another one. clearCorrection was referenced nowhere in
-   * the app before this menu existed -- teaching a classifier something wrong
-   * and being unable to un-teach it is worse than not teaching it at all.
-   */
-  if (taught) {
-    items.push({
-      text: 'Use the automatic category',
-      hint: 'Forget what I taught you about this sender.',
-      run: async () => {
-        const sender = addressOf(msg.from);
-        const moved = countFromSenderIn(sender, msg.category);
-        rules = clearCorrection(rules, msg.from);
-        await saveRules(rules);
-        reclassifyAll();
-        toast(`Back to the automatic category${moved ? ` — ${moved} re-filed` : ''}`);
-      },
-    });
-  }
-
-  for (const cat of SIDEBAR_ORDER) {
-    if (cat === current) continue;
-    items.push({
-      text: CATEGORY_LABELS[cat] || cat,
-      hint: `File mail from ${displayName(msg.from)} here.`,
-      run: async () => {
-        const sender = addressOf(msg.from);
-        // Count BEFORE the re-file: the effect must be reported with its
-        // scope, not discovered by hunting the list (round 61, P-1).
-        const moved = countFromSenderIn(sender, msg.category);
-        rules = correctSender(rules, msg.from, cat);
-        await saveRules(rules);
-        reclassifyAll();
-        toast(`${displayName(msg.from)} now files under ${CATEGORY_LABELS[cat] || cat} — ${moved} re-filed`);
-      },
-    });
-  }
-
-  openMenu({
-    name: 'category-menu',
-    label: 'Move to a different category',
-    anchor,
-    className: 'cat-menu',
-    items,
-  });
-}
-
-/**
- * Re-file everything already in memory against the current corrections.
- *
- * A correction is about a SENDER, so it must apply to the mail already on
- * screen -- not only to whatever arrives next. Re-ingesting is cheap (the
- * classifier is 10.7ms for 2000 messages) and it reuses the one code path
- * that knows how corrections, categories and deadlines fit together.
- */
-function reclassifyAll() {
-  const all = store.idsFor('all').map((id) => store.get(id)).filter(Boolean);
-  if (all.length) ingest(all);
-  renderList();
-  renderSidebar();
-  const open = state.selected && store.get(state.selected);
-  if (open) {
-    syncContextActions(open);
-    // P-1: the OPEN message re-files itself visibly — its tag row shows the
-    // new category immediately, so the effect of the correction is seen in
-    // the place the user is looking, not inferred from the list behind them.
-    renderReaderTags(open);
-  }
-}
+/* The category-rule menus — per-category mute/auto-archive AND the
+   per-sender correction write side — live in overlays/category-menu.js
+   (G5's M4 extraction, 2026-08-14). The shell owns the rules state and
+   renders; the tenant owns menu shape and copy. */
 
 // ----------------------------------------------------------------- snooze --
 
@@ -3623,6 +3514,15 @@ async function boot() {
     setRules: (r) => { rules = r; },
     saveRules: () => saveRules(rules),
     renderList, renderSidebar, toast,
+    /* The per-sender correction menus (G5 M4 extraction) need the store and
+       the three shell touch-points a re-file must repaint: the list, the
+       reader's tag row, the context actions. All injected — the tenant
+       holds no edge back into the shell or the reader. */
+    get store() { return store; },
+    state,
+    ingest: (msgs) => ingest(msgs),
+    syncContextActions,
+    renderReaderTags,
   });
   wireNotices({
     visibleIds,
