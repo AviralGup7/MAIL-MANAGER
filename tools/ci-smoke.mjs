@@ -152,6 +152,17 @@ try {
     { timeout: 6000 },
   );
 } catch { /* the check below reports the miss with the UI's actual state */ }
+/* The rail row lands one pump round-trip after the toast: flushOutbox is
+   fire-and-forget and the pump awaits the worker's OUTBOX_PUMP answer
+   (140ms in the stub) before it renders. Wait for the countdown itself —
+   condition-based, per this file's determinism law. */
+try {
+  await page.waitForFunction(
+    () => !document.getElementById('outbox').hidden &&
+          /^Sending in \d+s$/.test(document.querySelector('.outbox-status')?.textContent || ''),
+    { timeout: 6000 },
+  );
+} catch { /* reported below */ }
 const sendUi = await page.evaluate(() => ({
   toastText: document.getElementById('toast-text').textContent,
   toastHidden: document.getElementById('toast').hidden,
