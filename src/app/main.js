@@ -3057,6 +3057,13 @@ const ctx = {
   openMessage,
   refresh: () => refresh(),
   release: () => release(),
+  /* The in-app rules editor (G4 m1) saves through the engine's list; the
+     shell's boot-loaded copy for planFor must follow every save, or the
+     editor is exactly one rule ahead of the mailbox. A failed reload keeps
+     the last good list — the engine normalises junk storage anyway. */
+  reloadAutomationRules: async () => {
+    try { automationRules = await engine.loadRuleList(); } catch { /* keep the last good list */ }
+  },
   toggleHelp,
   openSettings: () => openSettings(ctx),
   openActivityLog: () => openActivityLog(ctx),

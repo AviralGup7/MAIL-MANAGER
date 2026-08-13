@@ -108,18 +108,42 @@
 /*
  * The dry-run readout. Neutral by default and danger-toned only when the rule
  * is invalid, so "this matches 312 messages" reads as information and "that
- * condition matches everything" reads as a stop.
+ * condition matches everything" reads as a stop. #rule-empty (G4 m1, the
+ * in-app editor) speaks in the same register: quiet, never an alarm.
  */
 #rule-preview,
+#rule-empty,
 #backup-status {
   font-size: var(--t-sm);
   color: var(--fg-dim);
   min-height: 1.4em;
+  margin: 0;
 }
 
 #rule-preview[data-bad='true'],
 #backup-status[data-bad='true'] {
   color: var(--danger);
+}
+
+/*
+ * The editor's author row (G4 m1): condition box takes the slack, the three
+ * verbs and the two buttons keep their own width — one line of flex, no new
+ * tokens, the gap the rest of the file already uses.
+ */
+.rules-form {
+  display: flex;
+  gap: var(--s-2);
+  align-items: center;
+  margin: var(--s-2) 0;
+}
+
+.rules-form #rule-query {
+  flex: 1;
+  min-width: 0;
+}
+
+.rules-editor {
+  margin-top: var(--s-2);
 }
 
 /*

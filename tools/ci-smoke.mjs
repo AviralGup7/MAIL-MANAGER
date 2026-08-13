@@ -36,6 +36,7 @@
  *   compose/send-holds-with-undo  — the hold window is real and Undo rides the toast
  *   compose/undo-recalls-the-draft — the Undo really recalls: draft back, queue empty
  *   boot/cold-cache-paints        — sync dead from the first message: the cache paints
+ *   settings/rules-editor-lifecycle — the in-app editor: dry run, add, remove
  *
  * DETERMINISM
  * -----------
@@ -242,6 +243,55 @@ const amb = await page.evaluate(() => ({
 }));
 check('settings/ambience-live', amb.attr === 'off' && amb.sheen === 'none', JSON.stringify(amb));
 await page.evaluate(() => document.querySelector('input[aria-label="Ambient light"]').click()); // restore
+
+/* ---- the in-app rules editor: test dry-run, add, remove (G4 m1) ----
+   The whole in-app lifecycle, because a half-opened door is the failure
+   mode: an editor whose Test shows a REAL count over the live store, whose
+   Add persists a row, whose Remove returns to the empty state. (Add uses
+   the non-destructive verb — the destructive confirm has its pins; a smoke
+   gate checks one clean pass, not the full truth table.) */
+await page.click('#set-t-general');
+await page.waitForFunction(
+  () => document.getElementById('rule-empty') && !document.getElementById('rule-empty').hidden,
+  { timeout: 6000 },
+);
+await page.fill('#rule-query', 'from:augsd');
+await page.selectOption('#rule-action', 'star');
+await page.click('#rule-test');
+try {
+  await page.waitForFunction(
+    () => document.getElementById('rule-preview').textContent.startsWith('Would star 1 of 20 loaded messages'),
+    { timeout: 5000 },
+  );
+} catch { /* the check reports the actual text */ }
+const dryText = await page.evaluate(() => document.getElementById('rule-preview').textContent);
+await page.click('#rule-add');
+try {
+  await page.waitForFunction(
+    () => document.querySelectorAll('#rule-list .rule-row').length === 1,
+    { timeout: 5000 },
+  );
+} catch { /* reported below */ }
+const addedText = await page.evaluate(() => document.querySelector('.rule-row .rule-text')?.textContent || '');
+await page.click('.rule-row button');
+try {
+  await page.waitForFunction(
+    () => document.querySelectorAll('#rule-list .rule-row').length === 0 &&
+          !document.getElementById('rule-empty').hidden,
+    { timeout: 5000 },
+  );
+} catch { /* reported below */ }
+const rulesGone = await page.evaluate(() => ({
+  rows: document.querySelectorAll('#rule-list .rule-row').length,
+  emptyShown: !document.getElementById('rule-empty').hidden,
+  stored: globalThis.chrome.storage.local.get('automationRules').then((o) => (o.automationRules || []).length),
+}));
+const storedLen = await rulesGone.stored;
+check('settings/rules-editor-lifecycle',
+  dryText.startsWith('Would star 1 of 20 loaded messages') &&
+  addedText === 'from:augsd → star' &&
+  rulesGone.rows === 0 && rulesGone.emptyShown && storedLen === 0,
+  JSON.stringify({ dryText, addedText, rows: rulesGone.rows, storedLen }));
 await page.keyboard.press('Escape');
 await page.waitForTimeout(300);
 

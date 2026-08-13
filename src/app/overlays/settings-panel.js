@@ -6,10 +6,12 @@
  * Every knob this product offers used to live on TWO surfaces, both worse
  * than this one: the extension options page (chrome://-adjacent, a different
  * window, styled by nobody, invisible until discovered) and scattered menu
- * entries that each reach one setting. The options page still exists — it
- * owns the rule editor's dry run, backup export/import, and the OAuth client
- * ID, all of which are workflows, not toggles — but "what can I control?"
- * should be answerable one click from the mail, not one migration away.
+ * entries that each reach one setting. The options page still owns backup
+ * export/import and the OAuth client ID — workflows, not toggles — while
+ * the rule editor (G4 m1, 2026-08-14) now lives HERE too, dry run and all,
+ * with the live store as its corpus instead of the header cache: "what can
+ * I control?" should be answerable one click from the mail, not one
+ * migration away.
  *
  * THE LIST IS THE SCHEMA
  * ----------------------
@@ -37,6 +39,7 @@
 
 import { openLayer, closeWithMotion, cancelExit } from './layers.js';
 import { toast } from './toast.js';
+import { buildRulesEditor } from './rules-editor.js';
 import * as settings from '../system/settings.js';
 import { THEMES } from '../system/themes.js';
 import { setIcon } from '../core/icons.js';
@@ -156,6 +159,11 @@ const SECTIONS = [
     items: [
       /* Actions, not knobs — the one kind that skips the settings key.
          They share the row layout so the surface stays one language. */
+      {
+        kind: 'rules', wide: true,
+        label: 'Rules for arriving mail',
+        hint: 'A condition in the search language (anything the search box takes) and one action. Test shows exactly what would match before anything can be saved.',
+      },
       {
         kind: 'action', label: 'Keyboard shortcuts', button: 'Show every key',
         hint: 'The same sheet the ? key opens — j/k to move, e to archive, every key annotated.',
@@ -465,6 +473,7 @@ function renderBody(body, ctx, doc) {
         item.kind === 'select' ? buildSelect(doc, item) :
         item.kind === 'range' ? buildRange(doc, item) :
         item.kind === 'action' ? buildAction(doc, item, ctx) :
+        item.kind === 'rules' ? buildRulesEditor(doc, ctx) :
         buildTextarea(doc, item);
 
       const cell = doc.createElement('div');
