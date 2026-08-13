@@ -152,6 +152,7 @@ test('popFrom: synchronous first pose, CSS animation suspended for the flight, r
 
 test('popFrom: an anchor outside the box CLAMPS to the edge (live-probe finding)', () => {
   const { doc, restore } = dom('<div id="m">menu</div>');
+  const clock = fakeClock(); // keep the flight in flight: no clock = instant park = instant erase
   tokens._setReducedForTest(false);
   try {
     const m = doc.getElementById('m');
@@ -160,7 +161,9 @@ test('popFrom: an anchor outside the box CLAMPS to the edge (live-probe finding)
     const [ox, oy] = m.style.transformOrigin.split(' ').map((v) => parseFloat(v));
     assert.ok(ox >= 4 && ox <= 96, `x-origin clamped into the box (got ${ox}%)`);
     assert.ok(oy >= 4 && oy <= 96, `y-origin clamped into the box (got ${oy}%)`);
-  } finally { tokens._setReducedForTest(null); restore(); }
+    pump(clock, 200);
+    assert.equal(m.style.transformOrigin, '', 'rest erases the origin too');
+  } finally { tokens._setReducedForTest(null); clock.restore(); restore(); }
 });
 
 test('standing doctrines re-asserted: reduced motion = no pop, no ghost flight', () => {
