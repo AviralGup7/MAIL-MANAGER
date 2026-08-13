@@ -34,6 +34,17 @@ let ctx = null;
 let storeOf = null;
 
 let outboxTimer = 0;
+/*
+ * The countdown repaint, distinct from outboxTimer (the pump). The pump's
+ * wakes are scheduled by the QUEUE's needs (next due item); this one's are
+ * scheduled by the TEXT's needs (a shown "Sending in 4s" going stale).
+ * Measured gap the browser demonstrated (roadmap Phase-5 probe,
+ * 2026-08-13): per-transition repaint was already immediate (~140ms after
+ * the worker's answer), but between enqueue and due the rail showed one
+ * frozen "Sending in 5s" for the whole hold -- outbox.js's own doctrine
+ * says a number that does not move reads as a queue that is stuck.
+ */
+let outboxTick = 0;
 /** One toast per pump-failure episode; see pumpOutbox. */
 let pumpFailedNotified = false;
 /** How many sends had already given up, so only NEW failures are announced. */
@@ -59,7 +70,28 @@ export function wireRails(c) {
 export function cancelOutboxTimer() {
   clearTimeout(outboxTimer);
   outboxTimer = 0;
+  clearTimeout(outboxTick);
+  outboxTick = 0;
 }
+
+/**
+ * Does any row's status text derive from the clock? Exported for tests.
+ *
+ * Deliberately FALSE for a held item past its releaseAt and a failed item
+ * due for retry: those texts ("Sending…", "Retrying now") are static until
+ * the pump's own wake lands one render later -- a tick there would only
+ * duplicate the pump's work one second early. Stuck rows never tick: their
+ * text is an error, not a countdown.
+ */
+export function needsTick(items, now = Date.now()) {
+  return items.some((it) =>
+    (it.state === 'held' && it.releaseAt > now) ||
+    (it.state === 'failed' && !outbox.isStuck(it) &&
+      (Number.isFinite(it.nextAttempt) ? it.nextAttempt : 0) > now));
+}
+
+/** Test seam: is the countdown tick armed? (The module state is a timer id.) */
+export function _outboxTickArmed() { return outboxTick !== 0; }
 
 export async function renderSnoozed() {
   const wrap = $('snoozed');
@@ -251,6 +283,21 @@ export async function renderOutbox(known) {
   if (!wrap || !list) return;
 
   const items = known || (await outbox.loadOutbox());
+
+  /*
+   * THE 1s COUNTDOWN TICK (see outboxTick above). Rearmed per render while
+   * any shown text is time-derived; cleared otherwise, so the rail is never
+   * repainted on a timer it cannot change. The re-render reloads LOCAL
+   * storage only -- the worker is never woken to move a label one second.
+   *
+   * Focus safety: ticking rows are held/retrying rows, whose only children
+   * are two plain spans (Retry/Discard exist only on stuck rows, which by
+   * definition do not tick) -- replaceChildren here cannot steal focus.
+   */
+  clearTimeout(outboxTick);
+  outboxTick = 0;
+  if (needsTick(items)) outboxTick = setTimeout(() => renderOutbox(), 1000);
+
   wrap.hidden = items.length === 0;
   if (items.length === 0) return;
 

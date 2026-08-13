@@ -102,10 +102,16 @@ test('RE-ARM: a future hold schedules exactly the next wake, never sooner', () =
   const t = captureTimers();
   try {
     await rails.pumpOutbox();
-    assert.equal(t.captured.length, 1, 'one re-arm');
-    const delay = t.captured[0];
-    assert.ok(delay > 250 && delay <= 5000,
-      `the wake follows the hold (${delay}ms), not the short leash`);
+    // TWO timers by design since the Phase-5 countdown tick (outbox-tick
+    // .test.mjs): the pump's wake, which follows the hold, and the 1000ms
+    // text tick, which keeps the shown "Sending in Ns" honest between
+    // wakes. The pin separates them so neither can start impersonating the
+    // other: the wake must never slip to the tick's cadence.
+    const wake = t.captured.filter((d) => d !== 1000);
+    assert.equal(wake.length, 1, 'exactly one pump re-arm');
+    assert.ok(wake[0] > 250 && wake[0] <= 5000,
+      `the wake follows the hold (${wake[0]}ms), not the short leash`);
+    assert.ok(t.captured.includes(1000), 'and the countdown tick beside it');
   } finally { t.restore(); }
 }));
 
