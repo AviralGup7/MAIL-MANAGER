@@ -191,3 +191,82 @@ and a global redo (round-65 deferrals — the reasons still stand).
 *When a milestone lands, move it from the ladder into the ✅ section with
 its commit range; when a ladder empties, retire the direction the same way
 the audits retired — the code is the record.*
+
+---
+
+## Generation 2 — the next five (2026-08-14)
+
+M1–M5 have all touched ground (M2, M4, M5 landed; M1 and M3 each hold a
+landed milestone with ladders open below). This is the re-analysis for
+what comes after that foundation, weighted by the repo's own instruments:
+audit 64's scorecard and merge-next list, the M-ladder remainders, and
+what the newest gates just made visible. Ordered by leverage.
+
+**G1 · The live soak — make "observed working" a ritual, not a landing.**
+Audit 64's cap on nearly every 9 is the same sentence: *implemented +
+unit-proven, never observed working* (F8). Its #2 merge-next is the
+live-browser soak, and the M2 machinery that landed since (smoke gates,
+render bench, traces) is exactly the instrumentation a soak needs — but
+none of it has ever touched a live Gmail DOM. **Milestones:** (1)
+`docs/SOAK.md` — the checklist as a ritual: consent screen, takeover on a
+live Gmail page, a week of real deltas including the historyId cliff,
+quota utilization after a week of body-floor caching, notification
+click-through; (2) the NVDA/VoiceOver pass — A-A9's only verdict path;
+(3) the service-worker "Status code: 2" mystery reproduced or retired,
+and the `38b6a3a` probe branch given its verdict; (4) every finding
+returns as a commit or a pin. **Feeds:** G4's accuracy measurement draws
+its corpus from the same weeks.
+
+**G2 · The storage seam moves to IndexedDB (audit TODO #4).**
+`platform/storage.js` was designed for this swap ("one seam to swap"),
+and M1 just made the arithmetic real: the body floor's 2MB charter beside
+the header cache's 1MB inside a 10MB `chrome.storage.local` quota is a
+budget that only downward pressure is currently managing. Audit 64 names
+the same move as the one that unblocks windowing, deeper cache and
+fuller offline *simultaneously*. **Milestones:** (1) backend adapter
+behind the STORAGE proxy with byte-parity tests — consumers never learn;
+(2) caches migrate with their VERSION disciplines, `chrome.storage` kept
+as the fallback when IDB is absent; (3) list windowing behind the same
+honesty invariant the audit demands (one render per settled state);
+(4) M1's milestone 4 (pressure policy: eviction order, quota signals,
+the `unlimitedStorage` decision) lands here, with the docs.
+
+**G3 · Verb intents — triage survives a dead network (M1, milestone 3).**
+The floor made *reading* local-first; triage still evaporates offline.
+The queue-shaped primitive already exists and is battle-scarred:
+outbox's hold window, cross-tab settle claim, `sending`→`failed` demotion
+discipline. Archive/star/read/label become queued intents riding exactly
+that pattern — not a framework (guardrail from M1 stands) — reconciling
+on `online`. **Milestones:** (1) one verb end-to-end (archive — biggest
+surface, no ambiguity); (2) undo window per intent, activity-log actor
+`intent`; (3) conflict policy when truth moved while offline (the server
+wins; the intent log says what it tried); (4) then the verb set widens
+one at a time, each with its failure-injection test.
+
+**G4 · The classifier learns from its users (M3, milestones 3–4).**
+The moat is campus classification, and audit 13's honest sentence is that
+its accuracy on real BITS mail is *unmeasured* — with the corpus-generating
+fix already shipped: sender corrections in `rules.js`. Gaps that keep the
+flywheel from turning: rule authoring is options-page-only (M3 milestone
+3 wants it surfaced from settings General, grammar unchanged), accuracy
+has no evaluation harness, and the data pack + timetable sources are
+hand-refreshed (milestone 4's "calendar act, not a memory").
+**Milestones:** (1) in-app rule editor from settings General, dry-run
+inherited from M3; (2) an eval tool over harvested corrections +
+`check-departments`, accuracy number printed in the soak report (G1);
+(3) the semester refresh ritual documented with its owners and dates.
+
+**G5 · Finish the inward doctrine (M4, milestone 3 + the M2 tail).**
+Audit 64's one point between architecture and a 10 is "the last two or
+three extractions landing without breaking the render invariant";
+main.js is still 3,747 lines of composition. One cluster per round, each
+carrying S2-grade proofs (unchanged behavior, moved pins, edge registry)
+— slow on purpose, quota-free on purpose. Beside it, the M2 ladder tail:
+compose (send → undo window visible) and one cold-cache boot gate, so the
+browser-truth set watches the last two surfaces it doesn't.
+**Guardrails are the M4 ones, unchanged.**
+
+**Standing user-side blockers (no code can close these):** the PAT and
+v1 OAuth secret rotations — audit 64 ranks them above *all code*, and the
+PAT has now been pasted into this channel repeatedly — and a LICENSE
+choice (F5), which is a legal decision, not a gate.
