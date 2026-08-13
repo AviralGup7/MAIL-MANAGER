@@ -106,6 +106,24 @@ const tx = (t) => {
   return m ? { x: Number(m[1]), y: Number(m[2]) } : null;
 };
 
+/*
+ * SHARED-LOOP HYGIENE (why every finally calls this): spring.js's `live` set
+ * and `rafId` are module-global. A flight that never lands (declined clocks
+ * discarded mid-flight, fuse waits) leaves the loop's pending tick orphaned
+ * in the OLD fake queue — rafId stays truthy and no later flight in this
+ * process ever schedules a tick again (motion-micro/overlays avoid this by
+ * always pumping to settle before restore). So: abort whatever is airborne,
+ * then pump twice — the orphaned tick runs, sees the empty set, and zeroes
+ * rafId. Only then may the clock be restored. (Fix cycle 3: tests 3–8 died
+ * chained behind exactly one orphaned loop from the pre-fix zero-box test.)
+ */
+function settle(clock, restore) {
+  try { rm.abortRowIdentity(); } catch {}
+  pump(clock, 2);
+  clock.restore();
+  restore();
+}
+
 test('reduced motion declines BEFORE any borrowing — zero theatre, swap plays', () => {
   const { doc, restore } = dom();
   const clock = fakeClock();
@@ -116,7 +134,7 @@ test('reduced motion declines BEFORE any borrowing — zero theatre, swap plays'
     assert.equal(ghostsOf(doc).length, 0, 'no ghost is ever spawned');
     assert.equal(els.from.classList.length, 0, 'nothing was borrowed from the header');
     assert.equal(rm._flightForTest(), null);
-  } finally { tokens._setReducedForTest(null); clock.restore(); restore(); }
+  } finally { tokens._setReducedForTest(null); settle(clock, restore); }
 });
 
 test('no frame clock declines too (fix cycle 1) — an unschedulable ghost would hang for the fuse', () => {
@@ -148,19 +166,19 @@ test('unmeasurable rows decline honestly — nothing borrowed, nothing spawned',
     // Row exists but jsdom-invisible: no visible() was called on row-2, so
     // offsetParent is null — the display:none-list case.
     assert.equal(rm.flyRowIdentity('row-2', els), false, 'a hidden list does not fly');
-    // Fully measurable row but zero-size BOXES: ghosts refuse to spawn from nothing.
-    const els2 = (() => {
-      const row = doc.getElementById('row-1');
-      visible(row, doc);
-      // sources/dests intentionally left zero-boxed (jsdom default)
-      return { from: doc.getElementById('d-from'), subject: doc.getElementById('d-subj') };
-    })();
-    assert.equal(rm.flyRowIdentity('row-1', els2), false, 'zero geometry = honest decline');
+    // Fully measurable row but zero-size BOXES: ghosts refuse to spawn from
+    // nothing (row-2's sources are jsdom-zero; the header boxes forced zero).
+    const row2 = doc.getElementById('row-2');
+    visible(row2, doc);
+    const els2 = { from: doc.getElementById('d-from'), subject: doc.getElementById('d-subj') };
+    box(els2.from, 0, 0, 0, 0);
+    box(els2.subject, 0, 0, 0, 0);
+    assert.equal(rm.flyRowIdentity('row-2', els2), false, 'zero geometry = honest decline');
     assert.equal(els2.from.classList.contains('rmorph-hide'), false, 'the brief borrow was revoked');
     assert.equal(els2.subject.classList.contains('rmorph-hide'), false);
     assert.equal(ghostsOf(doc).length, 0);
     assert.equal(rm._flightForTest(), null);
-  } finally { tokens._setReducedForTest(null); clock.restore(); restore(); }
+  } finally { tokens._setReducedForTest(null); settle(clock, restore); }
 });
 
 test('a full flight borrows visibility, interpolates, and its rest frame returns everything', () => {
@@ -195,7 +213,7 @@ test('a full flight borrows visibility, interpolates, and its rest frame returns
     assert.equal(els.from.classList.length, 0, 'the header got its visibility back at rest');
     assert.equal(els.subject.classList.length, 0);
     assert.equal(rm._flightForTest(), null, 'no flight record survives its landing');
-  } finally { tokens._setReducedForTest(null); clock.restore(); rm.abortRowIdentity(); restore(); }
+  } finally { tokens._setReducedForTest(null); settle(clock, restore); }
 });
 
 test('the flight passes through intermediate geometry (PANEL spring, undershoot-free start)', () => {
@@ -215,7 +233,7 @@ test('the flight passes through intermediate geometry (PANEL spring, undershoot-
     for (const s of seen) assert.ok(!s.includes('NaN'));
     pump(clock, 400); // let it land so finally-state is clean
     assert.equal(rm._flightForTest(), null);
-  } finally { tokens._setReducedForTest(null); clock.restore(); rm.abortRowIdentity(); restore(); }
+  } finally { tokens._setReducedForTest(null); settle(clock, restore); }
 });
 
 test('abort mid-flight is total and synchronous — and nothing resurrects afterwards', async () => {
@@ -236,7 +254,7 @@ test('abort mid-flight is total and synchronous — and nothing resurrects after
     await new Promise((r) => setTimeout(r, 1300)); // outlive the REAL 1.2s fuse
     assert.equal(ghostsOf(doc).length, 0);
     assert.equal(els.from.classList.length, 0);
-  } finally { tokens._setReducedForTest(null); clock.restore(); rm.abortRowIdentity(); restore(); }
+  } finally { tokens._setReducedForTest(null); settle(clock, restore); }
 });
 
 test('the fuse backstop alone lands a frozen flight — exactly once', async () => {
@@ -256,7 +274,7 @@ test('the fuse backstop alone lands a frozen flight — exactly once', async () 
     pump(clock, 400);
     assert.equal(ghostsOf(doc).length, 0);
     assert.equal(els.from.classList.length, 0);
-  } finally { tokens._setReducedForTest(null); clock.restore(); rm.abortRowIdentity(); restore(); }
+  } finally { tokens._setReducedForTest(null); settle(clock, restore); }
 });
 
 test('a new flight supersedes the airborne one totally (hammer the list, open fast)', async () => {
@@ -280,5 +298,5 @@ test('a new flight supersedes the airborne one totally (hammer the list, open fa
     assert.equal(ghostsOf(doc).length, 0);
     await new Promise((r) => setTimeout(r, 1300));
     assert.equal(ghostsOf(doc).length, 0, 'flight-1s cleared fuse can never fire back');
-  } finally { tokens._setReducedForTest(null); clock.restore(); rm.abortRowIdentity(); restore(); }
+  } finally { tokens._setReducedForTest(null); settle(clock, restore); }
 });
