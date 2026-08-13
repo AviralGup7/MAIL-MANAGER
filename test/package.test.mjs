@@ -2531,7 +2531,11 @@ test('rapid reader navigation skips the swap animation', () => {
   const src = read('src/app/reader.js');
   const fn = src.slice(src.indexOf('async function openMessage'), src.indexOf('function renderAttachments'));
   assert.match(fn, /lastSwapAt/, 'must track when the last swap ran');
-  assert.match(fn, /if \(!rapid\)/, 'and must skip the animation when stepping fast');
+  // P5 sharpens the same rule: the deliberate open flies the identity morph
+  // INSTEAD of the swap — one transition per open — so the swap's guard
+  // reads `!rapid && !morphFlew`. Rapid scanning still skips both. The regex
+  // keeps the unknown-context braces one literal at a time.
+  assert.match(fn, /if \(!rapid && !morphFlew\)\s*\{/, 'and must skip the animation when stepping fast');
 });
 
 test('every keyframe uses translate3d, not translateY', () => {
