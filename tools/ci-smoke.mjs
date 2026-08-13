@@ -77,7 +77,20 @@ const check = (name, ok, detail = '') =>
 const errors = [];
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
-page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
+page.on('console', (m) => {
+  if (m.type() !== 'error') return;
+  const text = m.text();
+  /* The TRACER's own noise, not the app's. With snapshots on, Playwright
+     probes every frame for a DOM snapshot — including the reader's
+     sandboxed body frame, which correctly refuses script execution, which
+     Chromium correctly logs. The app cannot produce this message itself:
+     its sandboxed frames carry no scripts by construction (the sanitiser
+     strips them, and reader-security pins hold that line), so the only
+     script that ever knocks on 'about:srcdoc' here is the tracer's. The
+     filter is scoped to exactly that class; everything else still counts. */
+  if (/^Blocked script execution in 'about:/.test(text)) return;
+  errors.push('console: ' + text);
+});
 /* The trace starts BEFORE the first assertion so a failure anywhere —
    including boot — is replayable (audit #38). Kept only on failure: the
    green discipline ("a pass leaves nothing") applies to traces too. */
