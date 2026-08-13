@@ -189,8 +189,17 @@ reduced-motion safe, pointer-coarse exempt.*
   with Retry + 20 rows (rollback), healed + click → "Archived" + 19
   rows + the undo kbd; integration drives failure→retry→success through
   the real boot for both a verb and a delta sync.
-- [ ] **65/i — Final pass:** re-run interactive flows headless at 3 widths,
-  evidence table, doc close-out.
+- [x] **65/i — Final pass + doc cleanup.** Full local suites green on the
+  merged tree: both integration boots (108 + 115) and every unit/guard
+  file (1348 pass; the one failure found along the way was legitimate —
+  the new `paletteRecents` schema key needed its deliberate options-page
+  exemption recorded, which it now has beside `coachDone`/`railOpen`).
+  Browser probes re-verified the interactive surfaces (hover verbs,
+  context menu, reader kebab + copy-to-clipboard, chip strip edit/clear,
+  palette recents + disabled-undo). Same week: the point-in-time audit
+  series (55 files), fulfilled trackers (TODO, FIXING, BUILD-PLAN) and
+  pre-shipping notes were retired — survivors and reasons in
+  `audits/README.md` and the docs index.
 
 Deferred with reasons: touch swipes (F4 — no verifiable harness), compose
 nudges (F11 — false-positive risk on campus mail vocabulary), global

@@ -320,7 +320,10 @@ test('every setting in the schema has a control on this page', async (t) => {
    * coach toast) that deliberately has no user-facing control; `railOpen`
    * is the same class -- its control is the in-app rail toggle, which is
    * where a user actually looks for it (round 64.5). Both are schema-backed
-   * so backup/restore round-trips them. Everything else must be
+   * so backup/restore round-trips them. `paletteRecents` is likewise
+   * control-free by design (round 65/f): it is observed usage history the
+   * machine maintains, and a text field full of command ids would be a knob
+   * nobody should have to polish. Everything else must be
    * reachable, or it is a setting the user cannot change -- which is how
    * dead schema entries start.
    */
@@ -330,7 +333,7 @@ test('every setting in the schema has a control on this page', async (t) => {
     const declared = [...schema.matchAll(/^ {2}([a-zA-Z][a-zA-Z0-9]*): \{ type:/gm)]
       .map((m) => m[1]);
 
-    const ELSEWHERE = new Set(['clientId', 'theme', 'coachDone', 'railOpen']);
+    const ELSEWHERE = new Set(['clientId', 'theme', 'coachDone', 'railOpen', 'paletteRecents']);
     const missing = declared
       .filter((k) => !ELSEWHERE.has(k))
       .filter((k) => !doc.getElementById(k));
