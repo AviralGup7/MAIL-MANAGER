@@ -6469,6 +6469,43 @@ body.rail-open #rail:has(#rail-scroll > :not([hidden])) {
   #btn-side-more { display: flex; margin: 0 auto; }
 }
 
+/* ========================================================================= *
+ * MOTION SYSTEM — tokens (animation overhaul P2)
+ *
+ * One physical universe, three token families (spec: the ANIMATION audit
+ * §3.2/§3.3). Everything here is token-only: nothing selects an existing
+ * element, so this block cannot move a resting pixel. Consumers are wired
+ * in later milestones; the reduced-motion clusters below still close the
+ * file and still own the squash.
+ *
+ * DEPTH: five planes. Elevation reads as BOTH translateZ and shadow, from
+ * the same token — a shadow may never claim a height the geometry denies.
+ * LIGHT: --lx/--ly are the cursor's key light, written once per frame by
+ * the P6 coalescer and read ambiently at 3-8% alpha by .lit surfaces.
+ * The perspective lives on #shell so every plane shares one camera.
+ * ========================================================================= */
+:root {
+  /* depth planes (px on Z) */
+  --z-backdrop: -60px;   /* receded chrome during camera pushes */
+  --z-content: 0;
+  --z-float: 30px;       /* cards, popovers */
+  --z-overlay: 90px;     /* palette, dialogs, menus */
+  --z-toast: 140px;
+
+  /* shadow response, paired to the planes (resting → lifted) */
+  --lift-shadow-rest: 0 1px 2px rgb(0 0 0 / 0.10), 0 2px 8px rgb(0 0 0 / 0.06);
+  --lift-shadow-hover: 0 2px 4px rgb(0 0 0 / 0.12), 0 8px 20px rgb(0 0 0 / 0.10);
+  --lift-shadow-drag: 0 6px 12px rgb(0 0 0 / 0.16), 0 18px 44px rgb(0 0 0 / 0.16);
+
+  /* the cursor key light (P6 writes these; until then they idle off-screen) */
+  --lx: -9999px;
+  --ly: -9999px;
+}
+
+#shell { perspective: 1200px; }
+
+/* ========================================================================= */
+
 @media (prefers-reduced-motion: reduce) {
   .tt-entry.tt-flash::after {
     --flash-rest: 0.55;

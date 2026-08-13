@@ -78,12 +78,14 @@ A cubic-bezier cannot reverse mid-flight from current velocity; a spring can. Ne
 
 **The spring vocabulary (the only four masses this app has):**
 
-| Preset | stiffness | damping | mass | Feel | Used by |
-|---|---|---|---|---|---|
-| `WHISPER` | 420 | 34 | 1 | instant settle, no visible overshoot | T1 ambient, hovers |
-| `SNAP` | 360 | 26 | 1 | fast, ~4% overshoot | T2 micro (press, check, pill glide) |
-| `PANEL` | 240 | 27 | 1.1 | deliberate, ~8% overshoot | T3 (overlays, menus, pal) |
-| `HEFT` | 170 | 22 | 1.4 | cinematic arrive, single gentle bounce | T4/T5 (camera moves, morphs) |
+| Preset | stiffness | damping | mass | ζ | Feel | Used by |
+|---|---|---|---|---|---|---|
+| `WHISPER` | 420 | 34 | 1 | 0.83 | instant settle, ≤1% overshoot (invisible on opacity/lift) | T1 ambient, hovers |
+| `SNAP` | 360 | 26 | 1 | 0.69 | fast, ~5% overshoot | T2 micro (press, check, pill glide) |
+| `PANEL` | 240 | 20 | 1.1 | 0.62 | deliberate, ~8% overshoot | T3 (overlays, menus, palette) |
+| `HEFT` | 170 | 18 | 1.4 | 0.58 | cinematic arrive, one gentle ~10% bounce | T4/T5 (camera moves, morphs) |
+
+(ζ values are the derived damping ratios — the pin file asserts each preset's measured overshoot band so the language cannot drift silently.)
 
 CSS mirror: `--spring-pop: cubic-bezier(0.34, 1.56, 0.64, 1)` family stays for pure-CSS consumers; the JS presets are the truth for geometry.
 
