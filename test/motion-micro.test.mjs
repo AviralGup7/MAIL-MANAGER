@@ -209,6 +209,12 @@ test('wiring: the roster, menus and search are NEVER motion-wired (doctrine excl
     <button class="snooze-opt">menu</button>
     <input id="search">
     <button class="ghost" id="ok">chrome verb</button>`);
+  // A press WITHOUT a frame clock obeys the P2 park doctrine: animateValue
+  // round-trips to rest within the same task and erases its ink, so the
+  // compression tick is gone before the assertion reads it (probe: will-change
+  // residue, transform already ''). This pin needs a schedulable clock like
+  // every other press test in the file.
+  const clock = fakeClock();
   tokens._setReducedForTest(false);
   magnetic._setFineForTest(true);
   try {
@@ -223,9 +229,12 @@ test('wiring: the roster, menus and search are NEVER motion-wired (doctrine excl
     giveBox(ok, { left: 0, top: 0, width: 80, height: 30 });
     ok.dispatchEvent(downEvt(win));
     assert.match(ok.style.transform, /scale/, 'sanity: the non-excluded control presses');
+    ok.dispatchEvent(new win.Event('pointerup', { bubbles: true }));
+    for (let i = 0; i < 400 && ok.dataset.pressing; i++) clock.frame();
+    assert.equal(ok.style.transform, '', 'and releases to a clean rest');
     // one-listener discipline: re-wiring the same root neither re-presses
     // nor double-ripples
     wire.wireMicroInteractions(doc);
     assert.equal(doc.__rippleWired, true, 'the delegated ripple listener is exactly once');
-  } finally { resetSeams(); restore(); }
+  } finally { clock.restore(); resetSeams(); restore(); }
 });
