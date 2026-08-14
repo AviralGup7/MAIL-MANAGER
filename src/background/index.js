@@ -8,7 +8,7 @@
  *   - proxy Gmail API calls
  */
 
-import { signIn, signOut, isSignedIn } from './auth.js';
+import { signIn, signOut, isSignedIn, AUTH_RETRY_ALARM, runAuthRetry } from './auth.js';
 import {
   getFull, modify, batchModify, trash, profile,
   buildMime, sendMessage, saveDraft, getDraftForMessage,
@@ -712,6 +712,12 @@ if (chrome.alarms?.onAlarm) {
       // failing, say -- must not surface as an unhandled worker rejection.
       // The next 15-minute run retries; silence is the correct status.
       backgroundSync().catch(() => {});
+    } else if (alarm.name === AUTH_RETRY_ALARM) {
+      /* AUD-M4 (audit 2026-08-15): the silent-renewal retry auth.js arms on
+         AUTH_RENEW_TRANSIENT. Exactly one attempt (runAuthRetry frees the
+         flag regardless), and the alarm never re-arms itself — a dead
+         network is retried by the NEXT transient, not looped on this one. */
+      await runAuthRetry();
     }
   });
 }

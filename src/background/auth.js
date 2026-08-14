@@ -459,7 +459,25 @@ async function renew() {
   }
 }
 
-/* Retry the renewal once on the next `online`, plus one slow idle retry. */
+/**
+ * The one-shot alarm AUD-M4 (audit 2026-08-15) arms for a transient
+ * renewal. The name lives beside the arming, and the worker's onAlarm
+ * dispatches it through `runAuthRetry`.
+ */
+export const AUTH_RETRY_ALARM = 'bmm-auth-retry';
+
+/**
+ * The alarm fired: run exactly one renewal attempt, then free the arming
+ * flag so the NEXT transient can re-arm. A successful retry leaves the
+ * session whole; a still-dead network simply re-arms on its own throw.
+ */
+export async function runAuthRetry() {
+  renewRetryArmed = false;
+  try { await getToken(); } catch { /* stays transient until next event */ }
+}
+
+/* Retry the renewal once on the next `online`, plus one slow idle retry,
+   plus — the channel MV3 actually guarantees — a one-shot alarm. */
 let renewRetryArmed = false;
 function scheduleRenewRetry() {
   if (renewRetryArmed) return;
@@ -474,6 +492,19 @@ function scheduleRenewRetry() {
   /* The DOM lib types setTimeout's handle as number; unref is Node's — the
      cast says so instead of pretending. */
   /** @type {any} */ (setTimeout(fire, 60000)).unref?.();
+  /* AUD-M4: in a SERVICE WORKER neither of the above is dependable —
+     'online' events never reach a worker, and a 60s timer dies with its
+     suspension, so the "retry when the network returns" comment was a
+     promise air-gapped from the runtime that most needs it. The alarm is
+     the wake channel that survives suspension; 5 minutes sits between
+     "pointless against a blip" and "next quarter-hour sweep". Chrome
+     collapses same-named alarms, so double-arming from tab + worker
+     contexts is one wake, not two. */
+  try {
+    chrome.alarms?.create(AUTH_RETRY_ALARM, { delayInMinutes: 5 });
+  } catch {
+    /* contexts without the alarms permission still have online + timer */
+  }
 }
 
 export async function signOut() {

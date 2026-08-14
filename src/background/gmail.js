@@ -217,10 +217,21 @@ export async function batchMetadata(ids) {
     '/batch'
   );
   const text = await res.text();
-  const out = parseBatch(text).map(normalise).filter(Boolean);
+  /* AUD-Q2 (audit 2026-08-15): parseBatch answers whatever ids the WIRE
+     claims, and identity in a batch response is carried in-band — a
+     confused or hostile peer could slip a part whose id we never asked
+     for into the canonical store. The fix is a whitelist, applied BEFORE
+     normalise so a phantom never even becomes a record: only ids this
+     exact request asked for may proceed. Valid traffic is identical
+     (Google echoes the id requested, by definition of the sub-URL). */
+  const requested = new Set(ids);
+  const out = parseBatch(text)
+    .filter((raw) => raw && requested.has(raw.id))
+    .map(normalise)
+    .filter(Boolean);
   // A batch whose sub-requests ALL died must read as a FAILURE, never as
   // "zero messages" (V2 P2-20) -- an auth hiccup must not look like an
-  // empty inbox.
+  // empty inbox. The same law covers the all-phantom answer AUD-Q2 adds.
   if (ids.length > 0 && out.length === 0) {
     throw new Error('batch metadata returned nothing for ' + ids.length + ' ids');
   }
