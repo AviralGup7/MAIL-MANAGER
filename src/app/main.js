@@ -3389,7 +3389,7 @@ async function boot() {
     if (key === 'autoRefreshMs') scheduleAutoRefresh();
     /* Ambience + snippets are attr-driven like density: re-stamp the root,
        no re-render owed. */
-    if (key === 'ambience' || key === 'snippets') applyVisualPrefs();
+    if (key === 'ambience' || key === 'snippets' || key === 'textures' || key === 'sounds') applyVisualPrefs();
   });
 
   /*

@@ -80,16 +80,18 @@ html[data-theme='cyberpunk'] body::after {
   background-image:
     var(--cp-scan),
     radial-gradient(120% 90% at 50% 0%, transparent 55%, color-mix(in srgb, var(--danger) 16%, transparent) 100%);
-  opacity: 0.5;
+  /* 0.5 read as a coat over the sidebar ("the sidepanel looks covered"):
+     the sheet is atmosphere, not a layer of grime — a third is plenty. */
+  opacity: 0.32;
 }
 
 /* ---- buttons ------------------------------------------------------------- */
 
-/* The corner cut is the skin's signature: every button loses its bottom-right
-   corner to the chamfer, shouts its label in spaced capitals, and answers the
-   cursor with a cyan corona mixed from the theme's accent. */
+/* The voice and the corona. The CORNER CUT itself moved to the base controls
+   rule in 10-shell.css on 2026-08-14: button shape is theme DATA now
+   (themes.js --btn-*), cut symmetrically, so every theme's buttons differ
+   and leaving the theme leaves no geometry behind. */
 html[data-theme='cyberpunk'] button {
-  clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--cp-cut)), calc(100% - var(--cp-cut)) 100%, 0 100%);
   text-transform: uppercase;
   letter-spacing: var(--track-caps);
   transition: box-shadow var(--dur-instant) var(--ease-out), transform var(--dur-instant) var(--ease-out);
@@ -314,4 +316,24 @@ html.cp-enter[data-theme='cyberpunk'] body::before {
   pointer-events: none;
   background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 65%, transparent) 50%, transparent);
   animation: cp-scan-sweep var(--dur-slow) var(--ease-out) 1;
+}
+
+/* ---- SETTINGS OUTRANK THE THEME -------------------------------------------
+   A theme may SHIP atmosphere; it may not INSIST on it. `Theme textures`
+   off removes every carrier of scan/grain/band the skin paints, while the
+   palette, chamfers, slabs and glows — the theme's opinion about SHAPE and
+   COLOUR — stay. The `Interface sounds` twin lives in cyberpunk-fx.js and
+   reads the same root attribute; one flip per sense, both published by
+   applyVisualPrefs the way ambience and snippets are. */
+
+html[data-theme='cyberpunk'][data-textures='off'] body::after,
+html.cp-enter[data-theme='cyberpunk'][data-textures='off'] body::before {
+  display: none;
+}
+
+html[data-theme='cyberpunk'][data-textures='off'] .snooze-menu,
+html[data-theme='cyberpunk'][data-textures='off'] [role='dialog'],
+html[data-theme='cyberpunk'][data-textures='off'] #compose,
+html[data-theme='cyberpunk'][data-textures='off'] #toast {
+  background-image: none;
 }

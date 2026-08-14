@@ -134,6 +134,14 @@ html:not([data-theme]) body {
   --r-xl: 18px;   /* the gate card, compose */
   --r-full: 999px;
 
+  /* THE SHAPE AXIS. themes.js re-authors these per theme at runtime (shape
+     is theme data since 2026-08-14); the fallbacks are the pre-axis look,
+     so an un-themed render — boot flash, storage dead — keeps yesterday's
+     buttons. --cp-cut is the one chamfer knob, defined with the other
+     component tokens in 86-v3-skin.css. */
+  --btn-radius: var(--r-md);
+  --btn-cut: 0px;
+
   /* --- MOTION -------------------------------------------------------------
    * Durations unchanged in spirit but named by INTENT rather than by speed,
    * so a new rule picks the right one without having to guess.

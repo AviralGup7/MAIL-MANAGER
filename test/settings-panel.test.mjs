@@ -199,14 +199,16 @@ test('open renders one control per descriptor item and closes through the layer'
     assert.equal(node.hidden, false, 'panel is visible');
     assert.equal(sp.settingsOpen(), true);
 
-    /* The descriptor, by shape: 8 checks, 3 selects, 3 sliders, 1 signature,
+    /* The descriptor, by shape: 10 checks, 3 selects, 3 sliders, 1 signature,
        4 buttons in rows, and one radio per theme. If SECTIONS gains a
        control these numbers should move with it — the schema-coverage test
        is the hard guard. (2026-08-14: +1 select and +2 buttons are the G4-m1
        rules editor's own verb select and Test/Add pair, mounted under
        General; its per-rule checkboxes appear only once rules exist,
-       which in this boot they do not.) */
-    assert.equal(node.querySelectorAll('input[type="checkbox"]').length, 8, 'checkboxes');
+       which in this boot they do not. Later 2026-08-14: +2 checks are
+       Theme textures and Interface sounds — the axes on which settings
+       outrank a heavy theme.) */
+    assert.equal(node.querySelectorAll('input[type="checkbox"]').length, 10, 'checkboxes');
     assert.equal(node.querySelectorAll('#settings-body .set-row button').length, 4, 'actions + the rules editor pair');
     assert.equal(node.querySelectorAll('select').length, 3, 'selects');
     assert.equal(node.querySelectorAll('input[type="range"]').length, 3, 'sliders');

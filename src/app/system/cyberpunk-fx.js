@@ -30,12 +30,20 @@ let _ctx = null;
 let _master = null;
 let _lastHover = 0;
 
-/** Double duty: play-time gate. Everything asks this first. */
+/** Double duty: play-time gate. Everything asks this first.
+ *
+ * Two conditions, one attribute each:
+ *   data-theme === 'cyberpunk'  — the theme grants the voice;
+ *   data-sounds !== 'off'       — SETTINGS OUTRANK IT. The root attribute is
+ * the published truth (applyVisualPrefs stamps it at boot and on every
+ * write), so this module never imports the settings store and never caches
+ * a value that could go stale. Flip the setting and the very next click is
+ * silent, theme unchanged.
+ */
 function active() {
-  return (
-    typeof document !== 'undefined' &&
-    document.documentElement.dataset.theme === 'cyberpunk'
-  );
+  if (typeof document === 'undefined') return false;
+  const d = document.documentElement.dataset;
+  return d.theme === 'cyberpunk' && d.sounds !== 'off';
 }
 
 /** The context, created inside a gesture or not at all. Null when absent. */

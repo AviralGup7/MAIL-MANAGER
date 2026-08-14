@@ -50,6 +50,19 @@
  * @property {string} success
  * @property {string} star
  * @property {string} glow
+ * @property {string} btnRadius  button corner radius — '0px' or a --r-* var
+ * @property {string} btnCut     button corner-chamfer depth in px, '0px' = none
+ *
+ * THE SHAPE AXIS (2026-08-14)
+ * Themes were colour-only; the shape of every button is now theme data too.
+ * The geometry is written ONCE in 10-shell.css (radius + a symmetric
+ * top-left/bottom-right chamfer polygon); each theme below supplies only the
+ * two numbers. A chamfer with a 0 depth is the full rectangle, so the round
+ * themes pay nothing. Hard edges belong to cyberpunk (and to High Contrast,
+ * where an edge is information), paper-soft to Solarised, and the others sit
+ * in between — switching themes now changes the controls' silhouette, which
+ * is the point: shape rides the theme, SETTINGS (see sounds/textures) still
+ * outrank it wherever a theme's atmosphere would shout.
  */
 
 /** @type {Theme[]} without the annotation each literal widens scheme to `string` */
@@ -79,6 +92,9 @@ export const THEMES = [
     success: '#0f6b45',
     star: '#8a6100',
     glow: 'rgba(26, 79, 214, 0.16)',
+    // The canonical round — what every button looked like before the axis.
+    btnRadius: 'var(--r-md)',
+    btnCut: '0px',
   },
   {
     id: 'midnight',
@@ -104,6 +120,9 @@ export const THEMES = [
     success: '#4cc38a',
     star: '#eab308',
     glow: 'rgba(122, 162, 255, 0.20)',
+    // Midnight squarer: --r-sm, the cool low-radius end of the scale.
+    btnRadius: 'var(--r-sm)',
+    btnCut: '0px',
   },
   {
     id: 'pilani',
@@ -131,6 +150,9 @@ export const THEMES = [
     success: '#67bb8a',
     star: '#eab308',
     glow: 'rgba(232, 148, 74, 0.22)',
+    // Pilani keeps the canonical round.
+    btnRadius: 'var(--r-md)',
+    btnCut: '0px',
   },
   {
     id: 'solarised',
@@ -159,6 +181,9 @@ export const THEMES = [
     success: '#526600', // AA on bgSunken, which is the darkest surface it lands on
     star: '#8a6100',
     glow: 'rgba(31, 111, 158, 0.16)',
+    // Solarised is the paper-soft outlier: full pill buttons.
+    btnRadius: 'var(--r-full)',
+    btnCut: '0px',
   },
   {
     id: 'nord',
@@ -181,6 +206,9 @@ export const THEMES = [
     success: '#adc898', // lifted from #a3be8c: was 4.49:1 on accentSoft
     star: '#ebcb8b',
     glow: 'rgba(136, 192, 208, 0.18)',
+    // Nord angular-calm: --r-sm.
+    btnRadius: 'var(--r-sm)',
+    btnCut: '0px',
   },
   {
     id: 'cyberpunk',
@@ -217,6 +245,9 @@ export const THEMES = [
     success: '#4fd6a0',
     star: '#f7dc0a',
     glow: 'rgba(66, 217, 234, 0.22)',
+    // The skin's hard turn: no radius, symmetric corner chop, depth from the one --cp-cut knob.
+    btnRadius: '0px',
+    btnCut: 'var(--cp-cut)',
   },
   {
     id: 'contrast',
@@ -241,6 +272,9 @@ export const THEMES = [
     success: '#00522f',
     star: '#6b4400',
     glow: 'rgba(0, 52, 196, 0.22)',
+    // High Contrast is square by policy: an edge is information.
+    btnRadius: '0px',
+    btnCut: '0px',
   },
 ];
 
@@ -264,7 +298,18 @@ const CSS_VAR = {
   success: '--success',
   star: '--star',
   glow: '--glow',
+  btnRadius: '--btn-radius',
+  btnCut: '--btn-cut',
 };
+
+/*
+ * The pre-axis look, used when a theme does not speak shape. setProperty is
+ * UNCONDITIONAL for these: a colour a theme omits simply keeps its :root
+ * fallback, but an omitted SHAPE would keep the PREVIOUS theme's live token
+ * — cyberpunk's chamfer silently following you into Daylight. Writing the
+ * default on every switch is what makes leaving a heavy theme residue-free.
+ */
+const SHAPE_DEF = { btnRadius: 'var(--r-md)', btnCut: '0px' };
 
 export function getTheme(id) {
   return THEMES.find((t) => t.id === id) || THEMES.find((t) => t.id === DEFAULT_THEME);
@@ -286,6 +331,9 @@ export function applyTheme(id, root = document.documentElement) {
   const style = root.style;
   for (const [key, cssVar] of Object.entries(CSS_VAR)) {
     if (theme[key]) style.setProperty(cssVar, theme[key]);
+    else if (key in SHAPE_DEF) style.setProperty(cssVar, SHAPE_DEF[key]);
+    /* shape keys write the DEFAULT rather than skip — see SHAPE_DEF above:
+       skipping is how cyberpunk's chamfer would leak into Daylight. */
   }
   root.dataset.theme = theme.id;
   // Drives form controls, scrollbars and the mail iframe's own rendering.

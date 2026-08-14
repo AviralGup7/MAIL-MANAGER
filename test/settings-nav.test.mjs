@@ -46,7 +46,7 @@ test('five named sections, in order, each holding its own keys', () => {
   const order = ['appearance', 'reading', 'composing', 'sync', 'general']
     .map((id) => panel.indexOf(`id: '${id}'`));
   assert.deepEqual([...order].sort((a, b) => a - b), order, 'nav order is stable');
-  for (const key of ['ambience', 'snippets', 'ctrlEnterSend']) {
+  for (const key of ['ambience', 'snippets', 'ctrlEnterSend', 'textures', 'sounds']) {
     assert.ok(panel.includes(`key: '${key}'`), `descriptor holds ${key}`);
     assert.match(schemaSrc, new RegExp(`${key}: \\{ type: 'bool', def: true \\}`),
       `schema promises ${key} with its default`);
@@ -60,8 +60,8 @@ test('consumers: one attr-stamp, one CSS guard per effect; compose gates the cho
     'one stamper owns both attributes, the way applyDensity owns density');
   assert.match(shell, /applyVisualPrefs\(\);\n\s*\n?\s*initToast\(/,
     'boot stamps the root before first paint');
-  assert.match(shell, /key === 'ambience' \|\| key === 'snippets'\) applyVisualPrefs\(\)/,
-    'a panel toggle takes effect without reload');
+  assert.match(shell, /key === 'ambience' \|\| key === 'snippets' \|\| key === 'textures' \|\| key === 'sounds'\) applyVisualPrefs\(\)/,
+    'a panel toggle takes effect without reload — all four visual-pref keys ride one subscriber');
   assert.match(motionCss, /:root\[data-ambience='off'\] \.lit::before \{\n  display: none;/,
     'the sheen dies at the root, next to the rule it guards');
   assert.match(listCss, /:root\[data-snippets='off'\] \.r-snip \{\n  display: none;/,

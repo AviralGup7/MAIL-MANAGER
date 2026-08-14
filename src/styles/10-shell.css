@@ -256,7 +256,19 @@ button,
 a.ghost {
   font: inherit;
   cursor: pointer;
-  border-radius: var(--r-md);
+  /* Shape is THEME DATA (the 2026-08-14 axis): the radius and a symmetric
+     top-left/bottom-right chamfer come from --btn-*, which applyTheme
+     writes on every switch. A 0px cut makes the polygon the full box, so
+     round themes pay nothing. The cut is SYMMETRIC on purpose: cyberpunk's
+     first cut took only the bottom-right while the base radius kept the
+     top-left round, and the compose button read as half-terminal,
+     half-mail-app — one corner language per control, or none. */
+  border-radius: var(--btn-radius);
+  clip-path: polygon(
+    var(--btn-cut) 0, 100% 0,
+    100% calc(100% - var(--btn-cut)), calc(100% - var(--btn-cut)) 100%,
+    0 100%, 0 var(--btn-cut)
+  );
   transition: background-color var(--dur-fast) linear, color var(--dur-fast) linear,
     border-color var(--dur-fast) linear;
 }

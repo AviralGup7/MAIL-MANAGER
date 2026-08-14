@@ -81,6 +81,14 @@ const SECTIONS = [
         hint: 'The soft light that follows the pointer across panels and dialogs. Pure atmosphere — nothing readable changes when it is off.',
       },
       {
+        kind: 'check', key: 'textures', label: 'Theme textures',
+        hint: 'Scanlines, vignettes and entry sweeps a theme may paint. Themes may offer atmosphere; they may not insist on it — this outranks them.',
+      },
+      {
+        kind: 'check', key: 'sounds', label: 'Interface sounds',
+        hint: 'The clicks and chirps a theme may voice (Cyberpunk has them). Off silences them on the very next click, whatever the theme promised.',
+      },
+      {
         kind: 'check', key: 'railOpen', label: 'Show the For-you rail',
         hint: 'Due soon, needs you, snoozed and the outbox, parked on the right. Below 1240px it is a slide-in drawer that only opens when you ask for it.',
       },

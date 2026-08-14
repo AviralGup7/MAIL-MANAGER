@@ -82,6 +82,20 @@ export const SCHEMA = {
    * entry lands WITH its consumer, as the note above demands.
    */
   ambience: { type: 'bool', def: true },
+  /*
+   * THEME TEXTURES / INTERFACE SOUNDS (2026-08-14)
+   *
+   * Themes gained power this cycle: a theme may ship scanlines, vignettes,
+   * entry sweeps, glowing edges and synthesized UI chirps. Settings outrank
+   * the theme — each axis of atmosphere has an escape hatch here, on the
+   * settings page, one click from the mail. Both default ON (a theme's
+   * author meant them), both publish their truth as a root attribute via
+   * applyVisualPrefs, and both consumers read the ATTRIBUTE (guards in
+   * 88-cyberpunk.css for the eyes, the play-time gate in cyberpunk-fx.js
+   * for the ears), so a flip lands mid-session with nothing to un-wire.
+   */
+  textures: { type: 'bool', def: true },
+  sounds: { type: 'bool', def: true },
 
   // ---- sending ----
   /*

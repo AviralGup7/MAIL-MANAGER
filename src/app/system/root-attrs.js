@@ -49,4 +49,10 @@ export function applyVisualPrefs() {
   const root = document.documentElement;
   root.setAttribute('data-ambience', settings.get('ambience') !== false ? 'on' : 'off');
   root.setAttribute('data-snippets', settings.get('snippets') !== false ? 'on' : 'off');
+  /* textures + sounds (2026-08-14): the two override axes a heavy theme must
+     answer to. Stamped for EVERY theme, not just skins that consume them —
+     the one-attribute promise says the DOM always states what the surface
+     believed, and a missing attribute would read as "default" not "off". */
+  root.setAttribute('data-textures', settings.get('textures') !== false ? 'on' : 'off');
+  root.setAttribute('data-sounds', settings.get('sounds') !== false ? 'on' : 'off');
 }
