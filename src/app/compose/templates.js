@@ -218,7 +218,15 @@ export function fill(text, values = {}) {
   return String(text || '').replace(
     /\{\{\s*([a-zA-Z][a-zA-Z0-9_]*)\s*\}\}/g,
     (whole, key) => {
-      const v = values[key];
+      /*
+       * Own-read (fuzz round 3, 2026-08-14, defect #8): `values[key]` used
+       * to walk the prototype chain, so a user template containing
+       * `{{constructor}}` or `{{toString}}` emitted "function Object() {
+       * [native code] }" into an OUTBOUND email. That is both a leak and a
+       * breach of this module's own contract above: unknown placeholders
+       * must survive, and an inherited method is not a known value.
+       */
+      const v = Object.hasOwn(values, key) ? values[key] : undefined;
       return v === undefined || v === null || v === '' ? whole : String(v);
     }
   );
@@ -255,7 +263,14 @@ export function applyTemplate(tpl, draft = {}, values = {}) {
      * list is the kind of loss that makes a feature unusable.
      */
     body: draft.body ? `${body}\n\n${draft.body}` : body,
-    _unfilled: unfilled(body),
+    /*
+     * Warn over subject AND body, not body alone (fuzz round 3, 2026-08-14,
+     * defect #18): a template whose SUBJECT still carries `{{course}}`
+     * passed this check clean (body warning list empty) and sent with the
+     * placeholder visible in the subject line -- the exact embarrass-a-
+     * hurried-user case the warn-before-send exists for.
+     */
+    _unfilled: unfilled(`${subject}\n${body}`),
   };
 }
 

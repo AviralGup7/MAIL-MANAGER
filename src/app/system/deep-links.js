@@ -57,8 +57,18 @@ let pendingSelection = null;
 export function formatHash({ mailbox, category, query, selected }) {
   let h = `#${mailbox || 'inbox'}/${category || 'all'}`;
   const params = [];
-  if (query) params.push(`q=${encodeURIComponent(query)}`);
-  if (selected) params.push(`m=${encodeURIComponent(selected)}`);
+  /*
+   * Lone surrogates are scrubbed before encoding (fuzz round 3, 2026-08-14,
+   * defect #9): encodeURIComponent THROWS URIError on one, and this
+   * function is called on the render path (mirrorHash, shell callbacks)
+   * with no try/catch anywhere above it -- one backup-imported saved view
+   * whose query carries a stray surrogate (JSON transmits them intact)
+   * made the whole view-switch throw. U+FFFD is the Unicode-sanctioned
+   * replacement; parseHash round-trips it as ordinary text.
+   */
+  const clean = (s) => String(s).replace(/[\uD800-\uDFFF]/g, '�');
+  if (query) params.push(`q=${encodeURIComponent(clean(query))}`);
+  if (selected) params.push(`m=${encodeURIComponent(clean(selected))}`);
   return params.length ? `${h}?${params.join('&')}` : h;
 }
 
