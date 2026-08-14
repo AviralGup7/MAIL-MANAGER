@@ -45,3 +45,44 @@ export function selectNotifiable(added, notifiedIds = []) {
   }
   return out;
 }
+
+/** The persisted dedupe list never outgrows this. */
+export const NOTIFIED_CAP = 100;
+
+/**
+ * Fold a run's notified ids into the persisted dedupe list (audit
+ * 2026-08-15, AUD-M3). The merge used to live inline in the sweep as one
+ * spread-and-slice — untestable, and its cap was a bare 100 in worker
+ * code. Pure here so the properties are pinnable: freshest first (a flood
+ * evicts the OLDEST memory, never the newest), no duplicate ids (a corrupt
+ * stored list is repaired, not propagated), junk entries dropped, capped.
+ *
+ * The single-flight guard in index.js is what makes this read-modify-write
+ * safe; this function is only the arithmetic of it.
+ */
+export function mergeNotified(freshIds, prev = []) {
+  const out = [];
+  const seen = new Set();
+  for (const id of [...(freshIds || []), ...(prev || [])]) {
+    if (typeof id !== 'string' || !id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+    if (out.length >= NOTIFIED_CAP) break;
+  }
+  return out;
+}
+
+/**
+ * Notification card copy, scrubbed and bounded.
+ *
+ * Bug-hunt #50 scrubbed the SENDER; the audit (2026-08-15, AUD-L2) found the
+ * SUBJECT took the same ride unwashed — a crafted Subject: header carries
+ * control characters (newlines that fake a second line of UI) and thousands
+ * of characters straight into the OS notification surface. Both sides now
+ * pass one gate; only the cap differs (a sender is a name, a subject is a
+ * sentence).
+ */
+export function cardText(s, max = 160) {
+  const clean = String(s || '').replace(/[\x00-\x1f\x7f]/g, '').trim();
+  return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
+}

@@ -230,6 +230,12 @@ function waitForAppReady(timeoutMs = 2000) {
 
 async function takeOver() {
   if (state !== 'idle') return;
+  /* AUD-L3 (audit 2026-08-15): `state` witnesses only THIS instance of the
+     content script. A double-injection — bfcache restore racing a
+     re-injection, or two registrations against one page — hands the page
+     two hosts, two suspended Gmail roots, and no coherent unwind. The DOM
+     is the witness every instance shares, so the guard is the DOM. */
+  if (document.getElementById(HOST_ID)) return;
   state = 'entering';
 
   host = document.createElement('div');

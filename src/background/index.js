@@ -16,10 +16,10 @@ import {
   _clearLabelCache, hydrateDraftAttachments,
 } from './gmail.js';
 import { classify } from '../classify/index.js';
-import { selectNotifiable } from './notify.js';
+import { selectNotifiable, mergeNotified, cardText } from './notify.js';
 import { SNOOZE_LABEL } from '../shared/labels.js';
 import { MAX_INLINE_BYTES, MAX_INLINE_PARTS, BULK_CHUNK } from '../shared/limits.js';
-import { loadSnoozed, removeSnooze, due } from '../app/system/snooze.js';
+import { loadSnoozed, removeSnooze, due, nextWakeAt } from '../app/system/snooze.js';
 // Pure queue helpers (state machine, backoff, normalisation). The RUNNER
 // lives here in the worker now: one dispatcher for every tab (bug-hunt P1).
 import { loadOutbox, saveOutbox, dueItems, markFailed, prioritizeDue, dispatchable } from '../app/compose/outbox.js';
@@ -230,9 +230,15 @@ async function handle(msg) {
       if (opts.labelName) {
         try {
           opts.labelIds = [await ensureLabel(opts.labelName)];
-        } catch {
-          // The label does not exist yet, which simply means nothing has ever
-          // been put in it. An empty page is the honest answer.
+        } catch (err) {
+          /* AUD-M1 (audit 2026-08-15): the catch used to swallow EVERY
+             failure class, so a network blip or a lapsed token resolving
+             the label answered an EMPTY PAGE — the snoozed mailbox read as
+             empty while offline, and the app then upserted that "truth".
+             Only "could not create" is honest-empty (the label simply does
+             not exist yet); everything else is reported as the failure it
+             is, and the caller's real error path keeps the cached page. */
+          if (!/Could not create/.test(String(err?.message || err))) throw err;
           return { messages: [], nextPageToken: '' };
         }
         delete opts.labelName;
@@ -588,19 +594,17 @@ async function wakeDue(now = Date.now()) {
 async function scheduleWake() {
   if (!chrome.alarms) return;
   const all = await loadSnoozed(chrome.storage.local);
-  const times = Object.values(all)
-    .map((v) => v?.at)
-    .filter((t) => typeof t === 'number');
-  if (!times.length) {
+  /* AUD-L1 (audit 2026-08-15): the selection arithmetic moved to pure,
+     pinned `nextWakeAt` in the snooze module. The old inline version
+     filtered `typeof t === 'number'` — NaN passes that filter — so a
+     damaged row reached alarms.create({when: NaN}) after the modify had
+     already succeeded: an armed-looking snooze nothing could wake. */
+  const at = nextWakeAt(all);
+  if (at == null) {
     await chrome.alarms.clear(WAKE_ALARM);
     return;
   }
-  // Reduce, not spread: a thousand snoozed messages would overflow the
-  // argument list. Loop is O(n) either way and cannot throw.
-  let next = Infinity;
-  for (const t of times) if (t < next) next = t;
-  // Never schedule in the past; Chrome fires those immediately and repeatedly.
-  await chrome.alarms.create(WAKE_ALARM, { when: Math.max(next, Date.now() + 5000) });
+  await chrome.alarms.create(WAKE_ALARM, { when: at });
 }
 
 /**
@@ -613,7 +617,24 @@ async function scheduleWake() {
  * nothing but the cursor and the dedupe list; the app still paints from its
  * own cache + full sync when it opens.
  */
+/* AUD-M3 (audit 2026-08-15): a sweep that outlives its own 15-minute slot
+   was re-entered by the next alarm, and both runs read the SAME bgNotifiedIds
+   before either wrote — the notify dedupe's read-modify-write was only ever
+   safe inside a single turn. One flag, whole-run scope: the worker's async
+   turns interleave, its runs must not. */
+let bgSyncRunning = false;
+
 async function backgroundSync() {
+  if (bgSyncRunning) return; // overlapped runs notify twice; the next slot retries
+  bgSyncRunning = true;
+  try {
+    await backgroundSyncRun();
+  } finally {
+    bgSyncRunning = false;
+  }
+}
+
+async function backgroundSyncRun() {
   if (!(await isSignedIn().catch(() => false))) return;
 
   let res;
@@ -637,8 +658,10 @@ async function backgroundSync() {
   if (!fresh.length) return;
 
   // Dedupe persists even when notifications are off, so toggling the
-  // setting back on cannot re-notify an already-seen message.
-  const merged = [...fresh.map((m) => m.id), ...(bgNotifiedIds || [])].slice(0, 100);
+  // setting back on cannot re-notify an already-seen message. The merge is
+  // pure and pinned (mergeNotified, AUD-M3): freshest-first, capped,
+  // duplicate-free even if the stored list was not.
+  const merged = mergeNotified(fresh.map((m) => m.id), bgNotifiedIds);
   await chrome.storage.local.set({ bgNotifiedIds: merged }).catch(() => {});
 
   if (bgNotify === false) return;
@@ -652,12 +675,11 @@ async function backgroundSync() {
       .create(`bmm-${m.id}`, {
         type: 'basic',
         iconUrl: chrome.runtime.getURL('icons/icon128.png'),
-        // Bug-hunt #50: the full display name can be 200 chars and pushes
-        // the subject off the card. Scrub control characters (a crafted
-        // From header must not inject line breaks into the card) and
-        // truncate the sender, keeping the subject as the message.
+        // Bug-hunt #50 scrubbed the SENDER; AUD-L2 (audit 2026-08-15)
+        // found the subject riding unwashed — control chars and unbounded
+        // length straight into the OS card. Both pass cardText now.
         title: `${m.category === 'augsd' ? 'AUGSD' : 'Academics'} — ${shortSender(m.from)}`,
-        message: m.subject,
+        message: cardText(m.subject),
       })
       .catch(() => {});
   }
@@ -665,9 +687,8 @@ async function backgroundSync() {
 
 /** Display name, control-char-scrubbed and truncated (bug-hunt #50). */
 function shortSender(from, max = 40) {
-  const clean = String(from || '').replace(/[\x00-\x1f\x7f]/g, '').trim();
-  if (!clean) return 'BITS mail';
-  return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
+  // The gate is notify.js's cardText; this adds the name-or-fallback rule.
+  return cardText(from, max) || 'BITS mail';
 }
 
 /** Single-flight guard for OUTBOX_PUMP: one dispatch loop at a time. */

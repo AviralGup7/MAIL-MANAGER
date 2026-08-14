@@ -177,8 +177,14 @@ test('the background resolves a label name before listing', () => {
 
 test('a missing snoozed label yields an empty page, not an error', () => {
   // The label not existing simply means nothing was ever snoozed.
+  // 2026-08-15 (AUD-M1): the catch no longer answers every failure class
+  // this way — transient and auth failures rethrow, and only the named
+  // label-absent class may masquerade as empty. The window grew because
+  // the classification did.
   const fn = bg.slice(bg.indexOf("case 'SYNC_PAGE'"));
-  assert.ok(fn.slice(0, 700).includes('return { messages: [], nextPageToken: \'\' }'));
+  assert.ok(fn.slice(0, 1100).includes('return { messages: [], nextPageToken: \'\' }'));
+  assert.ok(fn.slice(0, 1100).includes('Could not create'),
+    'the honest-empty class is named (AUD-M1); everything else rethrows');
 });
 
 test('the rail is still exactly one tab stop across both groups', () => {

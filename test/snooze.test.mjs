@@ -184,7 +184,12 @@ test('the catch-up sweep runs at startup, not only on the alarm', () => {
 
 test('the alarm is never scheduled in the past', () => {
   // Chrome fires past-dated alarms immediately and repeatedly.
-  assert.match(bg, /Math\.max\(next, Date\.now\(\) \+ 5000\)/);
+  /* 2026-08-15 (AUD-L1): the floor moved into pure `nextWakeAt` in
+     snooze.js beside its finite-row guard — the worker delegates rather
+     than deriving, and this pin now keeps it that way. The floor's
+     arithmetic pins (exactly now+5000, NaN never passes) live in
+     audit-hardening.test.mjs, beside the function under test. */
+  assert.match(bg, /nextWakeAt\(all\)/, 'the worker never derives a wake time itself');
 });
 
 test('one alarm is re-aimed rather than one alarm per message', () => {

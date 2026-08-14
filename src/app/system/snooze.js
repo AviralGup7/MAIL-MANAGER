@@ -155,6 +155,34 @@ export function due(all, now = Date.now()) {
     .map(([id]) => id);
 }
 
+/**
+ * The next alarm instant for the worker's one wake alarm, or null when
+ * nothing is armed (audit 2026-08-15, AUD-L1).
+ *
+ * `scheduleWake` in background/index.js used to reduce the stored wake
+ * times with a `typeof t === 'number'` filter — and NaN is a number. A
+ * damaged row (the store is untyped; fuzz round 3 proved the family lives)
+ * sailed through to `chrome.alarms.create({ when: NaN })` AFTER the modify
+ * that produced it had already succeeded: no alarm, no error, and the
+ * snooze looked armed while nothing could ever wake it.
+ *
+ * Same law as due()/pending(): the guard is Number.isFinite, total, at the
+ * boundary. The floor is the second half of the law — Chrome fires
+ * past-dated alarms immediately and repeatedly, so "later" is expressed
+ * as now + 5s, never as a bare `next` that may sit in the past.
+ */
+export function nextWakeAt(all, now = Date.now()) {
+  let next = Infinity;
+  for (const v of Object.values(all || {})) {
+    const t = v?.at;
+    // Not typeof: NaN and the Infinities are numbers and are not wake times.
+    if (!Number.isFinite(t)) continue;
+    if (t < next) next = t;
+  }
+  if (next === Infinity) return null;
+  return Math.max(next, now + 5000);
+}
+
 /** Still asleep, soonest first -- the order the Snoozed view should show. */
 export function pending(all, now = Date.now()) {
   return Object.entries(all)
