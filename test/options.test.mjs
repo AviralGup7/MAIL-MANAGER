@@ -336,8 +336,12 @@ test('every setting in the schema has a control on this page', async (t) => {
     /* `ambience`, `snippets` and `ctrlEnterSend` belong to this set from
        the day the in-app settings panel shipped (2026-08-13): the panel
        keeps every user-facing key one click from the mail, so the options
-       page keeps only workflows (rules dry-run, backup, sign-in). */
-    const ELSEWHERE = new Set(['clientId', 'theme', 'coachDone', 'railOpen', 'paletteRecents', 'ambience', 'snippets', 'ctrlEnterSend']);
+       page keeps only workflows (rules dry-run, backup, sign-in). The two
+       theme-authority axes, `textures` and `sounds`, are that same class
+       (2026-08-14): skin atmosphere toggles live beside Ambient light on
+       the panel's Appearance sheet, and the authority pins in
+       settings-authority.test.mjs watch the chain. */
+    const ELSEWHERE = new Set(['clientId', 'theme', 'coachDone', 'railOpen', 'paletteRecents', 'ambience', 'snippets', 'ctrlEnterSend', 'textures', 'sounds']);
     const missing = declared
       .filter((k) => !ELSEWHERE.has(k))
       .filter((k) => !doc.getElementById(k));
