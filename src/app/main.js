@@ -258,6 +258,19 @@ const EMBED_NONCE = (() => {
   const n = new URLSearchParams(search).get('embed');
   return n && /^[A-Za-z0-9_-]{8,64}$/.test(n) ? n : '';
 })();
+
+/* AUD-M2 (audit 2026-08-15): report which Gmail account's tab is hosting
+   us, so the worker's openGmailTab can prefer the /mail/u/N/ match over
+   blindly reusing the FIRST Gmail tab in query order. Only an embedded
+   takeover reports (standalone app.html has no parent's URL to speak for);
+   best-effort and session-ambience, never user data — the registry rows it
+   backup:false because a stale stamp is the fallback path, not a loss. */
+try {
+  const sp = new URLSearchParams(globalThis.window?.location?.search || '');
+  if (sp.has('u')) {
+    void chrome.storage?.local?.set({ activeAuthUser: ACCOUNT_INDEX }).catch(() => {});
+  }
+} catch { /* storage denied in an odd boot: the fallback IS the old behavior */ }
 const IS_EMBEDDED = (() => {
   const w = globalThis.window;
   return !!w && !!w.parent && w.parent !== w;

@@ -76,7 +76,10 @@ test('source sweep: every KEY a module declares is registered', () => {
     }
   }
   // Keys used without a KEY constant — listed so a removal is noticed.
-  for (const extra of ['imageAllow', 'accessToken', 'expiresAt']) {
+  // 2026-08-15: diagCounters and activeAuthUser joined the audit's registry
+  // rows; both are written inline (persistDiag takes any storage, the
+  // authuser report is a one-line set) rather than through a KEY constant.
+  for (const extra of ['imageAllow', 'accessToken', 'expiresAt', 'diagCounters', 'activeAuthUser']) {
     declared.set(extra, '(direct use)');
   }
 

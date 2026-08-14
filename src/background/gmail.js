@@ -23,6 +23,10 @@
  * wired.
  */
 import { getToken, forceRenew } from './auth.js';
+/* AUD-Q1 (audit 2026-08-15): the request/retry counters. diag.js is pure
+   module state — importing it here adds no chrome.* touch to this layer,
+   and the app-context copy simply never persists (its doctrine, declared). */
+import { bump } from './diag.js';
 
 const BASE = 'https://gmail.googleapis.com/gmail/v1/users/me';
 const BATCH_URL = 'https://gmail.googleapis.com/batch/gmail/v1';
@@ -102,6 +106,8 @@ const FETCH_BUDGET_MS = 30000;
 async function fetchRetrying(url, init, label) {
   let lastErr;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    bump('requests');
+    if (attempt > 1) bump('retries');
     let res;
     try {
       // AbortSignal.timeout: the hang budget without a setTimeout the test

@@ -9,6 +9,8 @@
  */
 
 import { signIn, signOut, isSignedIn, AUTH_RETRY_ALARM, runAuthRetry } from './auth.js';
+import { bump, persistDiag } from './diag.js';
+import { pickGmailTab } from './tab-pick.js';
 import {
   getFull, modify, batchModify, trash, profile,
   buildMime, sendMessage, saveDraft, getDraftForMessage,
@@ -113,7 +115,17 @@ chrome.runtime.onInstalled?.addListener(async () => {
  * the browser's default account rather than the one the user was reading.
  */
 async function openGmailTab() {
-  const [existing] = await chrome.tabs.query({ url: 'https://mail.google.com/*' });
+  /* AUD-M2 (audit 2026-08-15): the first Gmail tab used to win outright,
+     and Gmail query order is OPEN order — the session's account lost to
+     whichever tab opened first. The takeover frame reports its /mail/u/N/
+     (stored by the app as activeAuthUser); pickGmailTab prefers the match
+     and keeps the first-tab law as the fallback, so an unknown or stale
+     stamp degrades to exactly the old behavior. */
+  const tabs = await chrome.tabs.query({ url: 'https://mail.google.com/*' });
+  const { activeAuthUser } = await chrome.storage.local
+    .get('activeAuthUser')
+    .catch(() => ({}));
+  const existing = pickGmailTab(tabs, activeAuthUser);
   if (existing?.id) {
     await chrome.tabs.update(existing.id, { active: true });
     if (existing.windowId != null) {
@@ -670,6 +682,7 @@ async function backgroundSyncRun() {
   const open = await chrome.tabs.query({ url: 'https://mail.google.com/*' }).catch(() => []);
   if (open.length) return;
 
+  bump('notifications', fresh.length); // AUD-Q1: the card count has a number
   for (const m of fresh) {
     await chrome.notifications
       .create(`bmm-${m.id}`, {
@@ -712,6 +725,10 @@ if (chrome.alarms?.onAlarm) {
       // failing, say -- must not surface as an unhandled worker rejection.
       // The next 15-minute run retries; silence is the correct status.
       backgroundSync().catch(() => {});
+      /* AUD-Q1: the sweep's tick is the one rhythm the worker always keeps,
+         so it doubles as the diagnostics flush (fire-and-forget;
+         persistDiag never throws by its own doctrine). */
+      void persistDiag();
     } else if (alarm.name === AUTH_RETRY_ALARM) {
       /* AUD-M4 (audit 2026-08-15): the silent-renewal retry auth.js arms on
          AUTH_RENEW_TRANSIENT. Exactly one attempt (runAuthRetry frees the

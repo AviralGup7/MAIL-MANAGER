@@ -76,6 +76,10 @@ const REVOKE_ENDPOINT = 'https://oauth2.googleapis.com/revoke';
  * `authorized` deliberately stays in local (see storage.js).
  */
 import { TOKEN_STORAGE } from '../platform/storage.js';
+/* AUD-Q1: renewals and mismatch clearances are counted (the two numbers a
+   support conversation about sign-in health actually needs). diag.js holds
+   module state only; this import touches no chrome.* surface. */
+import { bump } from './diag.js';
 
 /*
  * The profile endpoint, read STRAIGHT from this module (audit 2026-08-15,
@@ -416,9 +420,11 @@ async function renew() {
       await chrome.storage.local.remove([
         'authorized', 'historyId', 'bgNotifiedIds', 'accountEmail',
       ]);
+      bump('mismatchClears'); // the number that proves the tripwire works
       throw new Error('ACCOUNT_CHANGED');
     }
     await persist(tok);
+    bump('renewals'); // a silent renewal that will actually be used
     // Legacy installs have no stamp yet: the first successful renewal after
     // the upgrade writes one; nobody is ever cleared for lacking a stamp.
     if (!knownCanon) await chrome.storage.local.set({ accountEmail: email });

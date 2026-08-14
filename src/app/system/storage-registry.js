@@ -68,6 +68,8 @@ const DOMAIN_KEYS = [
   { key: 'outboxPumpLock', owner: 'src/app/compose/outbox.js', purpose: 'one pump writer per window across tabs', backup: false, reason: 'transient coordination state; TTL is the crash backstop' },
   { key: 'historyId', owner: 'src/background/sync.js', purpose: 'Gmail delta-sync cursor', backup: false, reason: 'server-side truth; a stale cursor forces a resync at worst' },
   { key: 'accountEmail', owner: 'src/background/auth.js', purpose: 'identity of the consenting account — every silent renewal is validated against it (audit 2026-08-15, AUD-C1)', backup: false, reason: 'per-account identity; restoring it onto another account context is exactly the hazard it exists to catch' },
+  { key: 'diagCounters', owner: 'src/background/diag.js', purpose: 'worker-side request/retry/notification/renewal/mismatch counters, flushed on the sweep tick (audit 2026-08-15, AUD-Q1)', backup: false, reason: "process-scoped diagnostics — restoring another dead worker's counts would be fiction, and MV3 makes them lossy by design" },
+  { key: 'activeAuthUser', owner: 'src/app/main.js (writer) + src/background/index.js (reader)', purpose: "the /mail/u/N/ of the tab hosting the takeover, so openGmailTab reuses the session's account (audit 2026-08-15, AUD-M2)", backup: false, reason: 'session ambience — which tab hosted us; a restored stamp from another day is the AUD-M2 hazard inverted, and absence degrades to the first-tab fallback' },
   { key: 'accessToken', owner: 'src/background/auth.js', purpose: 'OAuth token (session area preferred)', backup: false, reason: 'credential — never travels' },
   { key: 'expiresAt', owner: 'src/background/auth.js', purpose: 'OAuth token expiry', backup: false, reason: 'credential metadata — never travels' },
 ];
