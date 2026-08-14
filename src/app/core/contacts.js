@@ -32,12 +32,23 @@
  * an `@`. That matters because its callers use it as a grouping key (which
  * sender did this come from?) where a null would silently drop a rule or a
  * correction. `parseAddress` below is the STRICT counterpart used when we
- * need to know whether something is a usable mailbox — the two answers differ
- * on 6 of 9 representative inputs, so they are separate functions on purpose
- * rather than one function with a flag.
+ * need to know whether something is a usable mailbox — the two disagree on
+ * most adversarial inputs, so they are separate functions on purpose rather
+ * than one function with a flag. (The original header counted their
+ * disagreements; fuzz round 3 changed both parsers and retired the count
+ * rather than re-litigate it on every future fix.)
  */
 export function addressOf(from) {
-  const m = /<([^>]+)>/.exec(String(from || ''));
+  /*
+   * [^<>] not [^>] (fuzz round 3, 2026-08-14, defect #12): `[^>]+` scans to
+   * the next '>' for EVERY '<' in the string, so a hostile From header of
+   * 20k '<' characters cost ~230ms at ingest -- once per message, on the
+   * main thread. A bracket body may not contain a bracket; the only
+   * divergence is the malformed '<<a>>' shape, which now yields 'a'
+   * instead of '<a' -- both are stable garbage grouping keys, and this
+   * function's own header documents it as lenient-by-design.
+   */
+  const m = /<([^<>]+)>/.exec(String(from || ''));
   return (m ? m[1] : String(from || '')).trim().toLowerCase();
 }
 
@@ -45,23 +56,80 @@ export function addressOf(from) {
 export function parseAddress(raw) {
   const s = String(raw || '').trim();
   if (!s) return null;
-  const m = /^(.*?)\s*<([^>]+)>\s*$/.exec(s);
-  if (m) {
-    const name = m[1].trim().replace(/^["']|["']$/g, '');
-    const address = m[2].trim().toLowerCase();
-    return address.includes('@') ? { name, address } : null;
+
+  /*
+   * The angle form, rewritten linear (fuzz round 3, defect #12). The old
+   * `/^(.*?)\s*<([^>]+)>\s*$/` backtracked the lazy prefix against every
+   * candidate '<', which cost ~500ms on 20k of nothing but '<'. The
+   * equivalent reads, in order, with the same edge semantics:
+   *   - the matched '>' must be the LAST '>' (only whitespace may follow),
+   *   - the matched '<' is the EARLIEST one after the second-to-last '>',
+   *   - the name is everything before it, minus the whitespace gap,
+   *   - the old `.` could not span line terminators, so a name containing
+   *     one disqualifies the angle form entirely (quirk preserved).
+   */
+  const gt = s.lastIndexOf('>');
+  if (gt !== -1 && /^\s*$/.test(s.slice(gt + 1))) {
+    const gt2 = s.lastIndexOf('>', gt - 1);
+    for (let p = s.indexOf('<', gt2 + 1); p !== -1 && p < gt; p = s.indexOf('<', p + 1)) {
+      if (p + 1 === gt) continue; // `[^>]+` needs at least one char
+      const nameRaw = s.slice(0, p).replace(/\s+$/, '');
+      if (/[\n\r\u2028\u2029]/.test(nameRaw)) break; // `.` never crossed these
+      const name = nameRaw.trim().replace(/^["']|["']$/g, '');
+      const address = s.slice(p + 1, gt).trim().toLowerCase();
+      if (address.includes('@')) return { name, address };
+      /*
+       * The old regex returned null here rather than falling through to the
+       * bare-address branch (`return address.includes('@') ? ... : null`),
+       * so an angle form with an address-less body vetoes the string.
+       */
+      return null;
+    }
   }
+
+  /*
+   * The RFC 5322 comment form `addr (Name)` (fuzz round 3, defect #15):
+   * Gmail accepts it, the old fallback swallowed it WHOLE as the address
+   * (spaces and parens included), and invalidAddresses then cried wolf
+   * before every send to a perfectly legal recipient. Recognise a single
+   * trailing comment as the display name.
+   */
+  const comment = /^([^\s()<>]+@[^\s()<>]+)\s*\(([^()]*)\)\s*$/.exec(s);
+  if (comment) {
+    return { name: comment[2].trim(), address: comment[1].toLowerCase() };
+  }
+
   return s.includes('@') ? { name: '', address: s.toLowerCase() } : null;
 }
 
 /** Split a To/Cc header, which may hold several comma-separated addresses. */
 export function parseAddressList(raw) {
   const out = [];
-  // Split on commas that are not inside quotes or angle brackets.
-  for (const part of String(raw || '').split(/,(?![^<]*>)/)) {
-    const a = parseAddress(part);
+  const s = String(raw || '');
+  /*
+   * Same split as the old `/,(?![^<]*>)/`, made linear (fuzz round 3,
+   * defect #12): the lookahead re-scanned to the next '>' for EVERY comma,
+   * so 'a@b.c,' x10000 cost ~535ms. The semantics, restated: a comma is a
+   * separator unless the NEXT angle bracket after it is a '>'. One pass to
+   * index the brackets (there are usually none), one pass over the commas.
+   */
+  const brackets = [];
+  for (let i = s.indexOf('<'); i !== -1; i = s.indexOf('<', i + 1)) brackets.push(i);
+  for (let i = s.indexOf('>'); i !== -1; i = s.indexOf('>', i + 1)) brackets.push(i);
+  brackets.sort((a, b) => a - b);
+
+  let start = 0;
+  let bi = 0;
+  for (let c = s.indexOf(','); c !== -1; c = s.indexOf(',', c + 1)) {
+    while (bi < brackets.length && brackets[bi] < c) bi++;
+    const nextBr = bi < brackets.length ? s[brackets[bi]] : '';
+    if (nextBr === '>') continue; // inside an angle bracket: not a separator
+    const a = parseAddress(s.slice(start, c));
     if (a) out.push(a);
+    start = c + 1;
   }
+  const last = parseAddress(s.slice(start));
+  if (last) out.push(last);
   return out;
 }
 
