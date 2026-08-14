@@ -77,8 +77,11 @@ faster, and it stays out of the way when it has nothing to add.
 - **Keyboard first:** 24 shortcuts, and `?` lists them all. `j`/`k` move,
   `Enter` open, `e` archive, `s` star, `u` unread, `#` delete, `z` snooze,
   `!` spam, `c` compose, `r` refresh, `/` search, `Ctrl+K` palette, `Esc` back to Gmail.
-- **Six themes**, every one audited against WCAG AA in CI — Daylight,
-  Midnight, Pilani Dusk, Solarised, Nord, and a AAA High Contrast.
+- **Seven themes**, every one audited against WCAG AA in CI — Daylight,
+  Midnight, Pilani Dusk, Solarised, Nord, a AAA High Contrast, and
+  **Cyberpunk**: a fan skin with scanline textures, chamfered controls,
+  glitch-in motion and its own synthesized UI sounds, all gated on the theme
+  so every other theme stays byte-for-byte untouched.
 - **Privacy by default:** remote images are blocked until you ask for them,
   which is stronger than Gmail's proxy. No telemetry, no server.
 
@@ -117,6 +120,7 @@ accessibility audit had listed contrast as "not yet measured".
 | Pilani Dusk | dark | BITS colours — warm sand on deep indigo. |
 | Solarised | light | Flat luminance, for long sessions. |
 | Nord | dark | Cool and desaturated. |
+| Cyberpunk | dark | Neon cyan on near-black maroon. The full skin: textures, chamfered buttons, glitch-in motion, synthesized sounds — all original code, all gated on the theme. |
 | High Contrast | light | AAA, heavy borders. Low vision and direct sunlight. |
 
 Adding one is an object in `themes.js`; it appears in the picker automatically.
@@ -394,7 +398,7 @@ src/
 timetable/data.json         GENERATED. 688 courses, 119 change rows.
 timetable/sources/          The two official documents, verbatim.
 tools/parse-timetable.mjs   Offline parser. Never runs in the extension.
-test/                       1,776 declared tests. `npm test` · `npm run test:ci` (fails on skips)
+test/                       1,781 declared tests. `npm test` · `npm run test:ci` (fails on skips)
   app.integration.test.mjs  Boots the real app.html in jsdom and drives it.
   resilience.test.mjs       Failure injection across every persistence module.
   package.test.mjs          Lints the manifest, tokens, motion rules, hit targets.
@@ -453,9 +457,9 @@ mis-file something the preview mis-files it too.
 
 ## Status
 
-**1,776+ declared tests pass, 0 skipped.** Many of them boot the real `app.html` in a real
+**1,781+ declared tests pass, 0 skipped.** Many of them boot the real `app.html` in a real
 DOM and drive it as a user would — click a row, type in search, press `j`/`k`,
-archive, snooze, sign out. All six themes pass WCAG AA in CI.
+archive, snooze, sign out. All seven themes pass WCAG AA in CI.
 
 **Still not run in Chrome against a real inbox.** Everything the tests cannot
 reach is unverified: the OAuth consent screen, the takeover animation on a live

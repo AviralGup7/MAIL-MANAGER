@@ -1,0 +1,217 @@
+/* ========================================================================= */
+/* CYBERPUNK — the fan skin (2026-08-14)                                       */
+/*                                                                            */
+/* AN ORIGINAL INTERPRETATION. The request was a theme in the mood of a       */
+/* neon-dystopia game; its UI was studied from reference screenshots and the  */
+/* language — chamfered corners, scanline texture, neon-on-black, glitch      */
+/* entrances — is re-expressed here in our own code. No artwork, fonts or     */
+/* audio from the game ships in this repo.                                    */
+/*                                                                            */
+/* THE LAWS THIS VOLUME KEEPS                                                 */
+/*   1. GATE. Every rule below the sentinel carries html[data-theme=          */
+/*      'cyberpunk']; the topbar-appearance menu and settings picker switch   */
+/*      data-theme on <html>, so the skin applies and UNAPPLIES with the      */
+/*      attribute alone. Picking another theme returns the app pixel-clean —  */
+/*      the isolation the brief demanded ("like nothing changed").            */
+/*      test/cyberpunk-theme.test.mjs audits the gate mechanically.           */
+/*   2. TOKENS OR NEUTRALS. package.test fails any hex/rgba literal in the    */
+/*      bundle outside an allowed neutral (black/white scrims). Everything    */
+/*      pigmented below is colour-mixed from this theme's own tokens, so      */
+/*      tuning themes.js re-tunes the skin.                                   */
+/*   3. FINITE MOTION. package.test fails any infinite animation outside the  */
+/*      three loading gates, so the skin's motion is entrances and arrivals   */
+/*      only; under prefers-reduced-motion, 99-reduced-motion.css neutralises */
+/*      it all globally. Durations and easings ride the shared tokens.        */
+/*   4. ONE-PER-LINE SELECTORS. The audit pin reads the gated region line by  */
+/*      line; keep every selector on its own line so the gate stays machine-  */
+/*      checkable.                                                            */
+/* ========================================================================= */
+
+/* Keyframes are global by nature — they cannot be attribute-scoped — but a
+   keyframe does nothing until a GATED rule references it, so these are inert
+   for every other theme. All below are finite and transform/opacity only. */
+
+@keyframes cp-flicker {
+  0% { opacity: 1; }
+  18% { opacity: 0.35; }
+  40% { opacity: 0.9; }
+  58% { opacity: 0.5; }
+  100% { opacity: 1; }
+}
+
+@keyframes cp-glitch-in {
+  0% { opacity: 0; transform: translate3d(-8px, 0, 0); }
+  30% { opacity: 1; transform: translate3d(5px, 0, 0); }
+  55% { transform: translate3d(-3px, 0, 0); }
+  78% { transform: translate3d(1px, 0, 0); }
+  100% { opacity: 1; transform: none; }
+}
+
+/* ---- GATE SENTINEL: every selector below carries [data-theme='cyberpunk']. */
+
+/* Skin-local tokens: the chamfer depth and the scanline recipe, named once. */
+html[data-theme='cyberpunk'] {
+  /* The 45° corner cut. 9px is large enough to read on a 28px control and
+     small enough to never collide with an icon's safe area. */
+  --cp-cut: 9px;
+  /* One scanline recipe for every surface: a 1px dark line every 3px. The
+     black scrim is an ALLOWED neutral — texture is shade, not colour. */
+  --cp-scan: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 3px);
+}
+
+/* ---- ambient texture ----------------------------------------------------- */
+
+/* The room tone: a scanline sheet over the app's own content, parked at
+   z-index 39 — one rung BELOW the overlay ladder (--z-menu starts at 40).
+   Overlays instead carry the scan as their own background-image (below), so
+   texture never mutes a dialog and the ladder keeps exactly one owner. */
+html[data-theme='cyberpunk'] body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 39;
+  pointer-events: none;
+  background-image: var(--cp-scan);
+  opacity: 0.5;
+}
+
+/* A faint maroon breathing room around the edges: a CRT vignette mixed from
+   the theme's own danger role. Under everything, above the page colour. */
+html[data-theme='cyberpunk'] body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 90% at 50% 0%, transparent 55%, color-mix(in srgb, var(--danger) 16%, transparent) 100%);
+}
+
+/* ---- buttons ------------------------------------------------------------- */
+
+/* The corner cut is the skin's signature: every button loses its bottom-right
+   corner to the chamfer, shouts its label in spaced capitals, and answers the
+   cursor with a cyan corona mixed from the theme's accent. */
+html[data-theme='cyberpunk'] button {
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--cp-cut)), calc(100% - var(--cp-cut)) 100%, 0 100%);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  transition: box-shadow var(--dur-instant) var(--ease-out), transform var(--dur-instant) var(--ease-out);
+}
+
+html[data-theme='cyberpunk'] button:hover {
+  box-shadow: 0 0 10px var(--glow), inset 0 0 0 1px var(--accent);
+}
+
+html[data-theme='cyberpunk'] button:active {
+  transform: translateY(1px);
+}
+
+html[data-theme='cyberpunk'] button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  box-shadow: 0 0 12px var(--glow);
+}
+
+/* ---- menus --------------------------------------------------------------- */
+
+/* Menus arrive with a two-frame horizontal jitter — the glitch-in — over the
+   shared 140ms "small state change" budget, and carry the scan sheet on their
+   own background since the ambient sheet sits beneath them. Rebuilt on every
+   open, so the animation replays exactly once per opening. */
+html[data-theme='cyberpunk'] .snooze-menu {
+  clip-path: polygon(var(--cp-cut) 0, 100% 0, 100% calc(100% - var(--cp-cut)), calc(100% - var(--cp-cut)) 100%, 0 100%, 0 var(--cp-cut));
+  border: 1px solid var(--line-strong);
+  box-shadow: 0 0 18px var(--glow);
+  background-image: var(--cp-scan);
+  animation: cp-glitch-in var(--dur-fast) var(--ease-out);
+}
+
+html[data-theme='cyberpunk'] .snooze-menu button {
+  letter-spacing: 0.08em;
+}
+
+/* ---- dialogs and compose ------------------------------------------------- */
+
+/* Dialogs get the chop and the border but NOT the glitch entrance: several
+   drive their own show/hide animation classes, and outbidding those by
+   specificity would trade a look for a behaviour. */
+html[data-theme='cyberpunk'] [role='dialog'],
+html[data-theme='cyberpunk'] #compose {
+  clip-path: polygon(var(--cp-cut) 0, 100% 0, 100% calc(100% - var(--cp-cut)), calc(100% - var(--cp-cut)) 100%, 0 100%, 0 var(--cp-cut));
+  border: 1px solid var(--line-strong);
+  box-shadow: 0 0 22px color-mix(in srgb, var(--accent) 24%, transparent);
+  background-image: var(--cp-scan);
+}
+
+/* ---- the list ------------------------------------------------------------ */
+
+/* Row hover draws the lit leading edge — a single 3px inset bar in accent,
+   the list equivalent of a cursor chirp. Selection styling already lives in
+   the base volumes and rides the same tokens, so it follows for free. */
+html[data-theme='cyberpunk'] .row:hover {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+/* ---- fields -------------------------------------------------------------- */
+
+html[data-theme='cyberpunk'] input,
+html[data-theme='cyberpunk'] select,
+html[data-theme='cyberpunk'] textarea {
+  border-color: var(--line-strong);
+}
+
+html[data-theme='cyberpunk'] input:focus,
+html[data-theme='cyberpunk'] select:focus,
+html[data-theme='cyberpunk'] textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+  border-color: var(--accent);
+  box-shadow: 0 0 12px var(--glow);
+}
+
+/* Native checkboxes and radios take the accent — one property, and every
+   toggle in settings lights cyan instead of browser blue. */
+html[data-theme='cyberpunk'] input {
+  accent-color: var(--accent);
+}
+
+/* ---- chrome details ------------------------------------------------------ */
+
+html[data-theme='cyberpunk'] #topbar {
+  border-bottom: 1px solid var(--line-strong);
+}
+
+/* Marked text inverts to dark-on-cyan, like selecting a data shard. */
+html[data-theme='cyberpunk'] ::selection {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+/* Thin cyan thumb on a quiet track. Width lives outside gap/margin/padding,
+   so the scrollbar is exempt from the 4px rhythm gate by its own rules. */
+html[data-theme='cyberpunk'] *::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+html[data-theme='cyberpunk'] *::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--accent) 45%, var(--bg-sunken));
+  border: 2px solid var(--bg-sunken);
+}
+
+html[data-theme='cyberpunk'] *::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---- the arrival flicker -------------------------------------------------- */
+
+/* cyberpunk-fx.js sets .cp-enter on <html> for one animation cycle when the
+   theme is picked (and strips it after a timeout even if animationend never
+   fires, which in jsdom it does not). One CRT blink, then stillness — and
+   only ever on ARRIVAL, never while idle. The class name means nothing
+   without the data-theme gate, so a stale class can never flicker another
+   theme. */
+html.cp-enter[data-theme='cyberpunk'] #shell {
+  animation: cp-flicker var(--dur-base) ease-out 1;
+}

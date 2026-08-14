@@ -12,12 +12,15 @@
  *
  * Every value below has been through the checker. `npm run contrast`.
  *
- * WHY THESE SIX
- * Not six variations on blue. Each one exists for a situation:
+ * WHY THESE SEVEN
+ * Not seven variations on blue. Each one exists for a situation:
  *   - Daylight / Midnight  the neutral defaults, light and dark
  *   - Pilani Dusk          BITS colours, warm — the reason this extension exists
  *   - Solarised            the classic low-eyestrain palette, for long sessions
  *   - Nord                 cool and desaturated, the most "calm" of the darks
+ *   - Cyberpunk            the fan skin; neon cyan on near-black maroon, with
+ *                          textures, motion and synthesized sound — the skin
+ *                          itself is 88-cyberpunk.css + cyberpunk-fx.js
  *   - High Contrast        not a style choice: pure black on white, AAA
  *
  * ADDING ONE
@@ -178,6 +181,42 @@ export const THEMES = [
     success: '#adc898', // lifted from #a3be8c: was 4.49:1 on accentSoft
     star: '#ebcb8b',
     glow: 'rgba(136, 192, 208, 0.18)',
+  },
+  {
+    id: 'cyberpunk',
+    name: 'Cyberpunk',
+    scheme: 'dark',
+    swatch: '#42d9ea',
+    /*
+     * AN ORIGINAL INTERPRETATION, not a port. The 2026-08-14 request asked
+     * for a theme in the mood of a certain neon-dystopia game; the design
+     * language was studied from reference screenshots and re-expressed here
+     * as our own palette and our own CSS (88-cyberpunk.css) and synthesized
+     * UI sounds (cyberpunk-fx.js). No game artwork, fonts or audio ship in
+     * this repo — the skin is token-derived, so tuning this object re-tunes
+     * the whole skin.
+     *
+     * Every role passed the contrast gate at first draft; the closest pairs
+     * are fgFaint on accentSoft (4.66) and danger on accentSoft (4.82), both
+     * clear of AA's 4.5. Darkening accentSoft further would buy margin but
+     * costs the cyan cast that makes the selection read as lit glass.
+     */
+    bg: '#0b0508',
+    bgRaised: '#170b11',
+    bgSunken: '#050304',
+    fg: '#f5eae6',
+    fgDim: '#cfaeb2',
+    fgFaint: '#ad8a90', // AA everywhere; on accentSoft it is 4.66, the tightest pair
+    line: '#3a2330',
+    lineStrong: '#77465a',
+    accent: '#42d9ea',
+    accentFg: '#032025',
+    accentSoft: '#0f2e35',
+    danger: '#ff5c78',
+    warning: '#f2c14e',
+    success: '#4fd6a0',
+    star: '#f7dc0a',
+    glow: 'rgba(66, 217, 234, 0.22)',
   },
   {
     id: 'contrast',

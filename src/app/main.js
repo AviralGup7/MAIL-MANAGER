@@ -37,6 +37,7 @@ import { setAttr } from './core/dom.js';
 import { toast, hideToast, initToast } from './overlays/toast.js';
 import { loadViews, saveView, removeView } from './system/view-store.js';
 import { extractDeadline, endOfDay } from './academic/deadlines.js';
+import { initCyberpunkFx, cyberpunkEnterFx } from './system/cyberpunk-fx.js';
 import { runInPage, probeWorker } from './system/fallback.js';
 import { closeHelp, toggleHelp, helpOpen } from './overlays/help.js';
 import { openSettings } from './overlays/settings-panel.js';
@@ -2437,6 +2438,10 @@ function openDeadlineMenu(id, anchor) {
 function setTheme(id) {
   const theme = applyTheme(id);
   state.theme = theme.id;
+  /* Cyberpunk is the one theme that MARKS its arrival: a CRT flicker and a
+     rising sting. Gated here by id, not by the module, so the effect fires
+     on CHOICE — a saved cyberpunk booting up stays silent. */
+  if (theme.id === 'cyberpunk') cyberpunkEnterFx();
   /*
    * Through the settings module, not straight to storage.
    *
@@ -3412,6 +3417,10 @@ async function boot() {
   /* Ambience + snippets: same one-attribute promise as density — boot
      stamps the root and moves on. */
   applyVisualPrefs();
+  /* The cyberpunk skin's ears: two delegated listeners that gate on
+     data-theme AT PLAY TIME, so they cost nothing in every other theme and
+     never need unwiring when the theme changes. */
+  initCyberpunkFx();
 
   initToast({
     toast: el.toast, toastText: el.toastText, toastAction: el.toastAction,

@@ -656,7 +656,9 @@ test('every theme defines every colour role the CSS consumes', () => {
 
   const camel = (s) => s.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
   const blocks = themes.split(/\n  \{\n/).slice(1);
-  assert.equal(blocks.length, 6, 'expected six themes');
+  // Seven since 2026-08-14: cyberpunk joined. The pin exists so a new theme
+  // is a CONSCIOUS act — every block below is role-audited against the CSS.
+  assert.equal(blocks.length, 7, 'expected seven themes');
 
   for (const block of blocks) {
     const name = /name: '([^']+)'/.exec(block)?.[1] || '?';
