@@ -220,7 +220,31 @@ function resolveCid(raw, cid) {
   return '';
 }
 
-function walk(src, dest, doc, ctx) {
+/**
+ * DEPTH IS BOUNDED, AND THIS WAS A READER CRASH (fuzz sweep #21, 2026-08-14).
+ *
+ * The walk recursed once per element level with no limit. A body nested
+ * ~8000 ALLOWED elements deep -- nothing exotic, just eight thousand
+ * <div>s, which a sender assembles in one line of Python and a broken
+ * mail-merge template manages by accident -- overflowed the stack with a
+ * bare RangeError. renderBody has no catch above the sanitiser, so the
+ * message failed as a generic load error FOREVER: every retry re-crashed,
+ * and the theme-repaint call site has no catch at all. The fail-closed
+ * doctrine (stats.failedClosed) guards the no-parser case; this was the
+ * same blank reader arriving by crash instead of by policy.
+ *
+ * Real nesting is ~5 (a wrapper) to ~60 (the ugliest table-in-table
+ * newsletter measured during the fix); 256 keeps ~4x headroom over real
+ * mail and sits ~30x under the measured overflow. Past the bound the
+ * SUBTREE is dropped and siblings keep walking -- a strip, like
+ * DROP_ENTIRELY, not an exception. The mime walker made the same trade at
+ * 64 for MIME trees; parsers that trust attacker-controlled depth learn
+ * this lesson once each.
+ */
+const MAX_DEPTH = 256;
+
+function walk(src, dest, doc, ctx, depth = 0) {
+  if (depth > MAX_DEPTH) return;
   for (const node of Array.from(src.childNodes)) {
     // Text is always safe: it is inserted as a text node, never parsed.
     if (node.nodeType === 3) {
@@ -234,7 +258,7 @@ function walk(src, dest, doc, ctx) {
 
     if (!ALLOWED.has(tag)) {
       // Unknown element: keep the text inside it, discard the element itself.
-      walk(node, dest, doc, ctx);
+      walk(node, dest, doc, ctx, depth + 1);
       continue;
     }
 
@@ -245,7 +269,7 @@ function walk(src, dest, doc, ctx) {
     // opener to the target.
     if (tag === 'a') {
       if (!el.getAttribute('href')) {
-        walk(node, dest, doc, ctx);
+        walk(node, dest, doc, ctx, depth + 1);
         continue;
       }
       el.setAttribute('target', '_blank');
@@ -258,7 +282,7 @@ function walk(src, dest, doc, ctx) {
       } catch { /* a href the URL parser rejects stays untitled */ }
     }
 
-    walk(node, el, doc, ctx);
+    walk(node, el, doc, ctx, depth + 1);
     dest.appendChild(el);
   }
 }

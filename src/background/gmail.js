@@ -282,6 +282,32 @@ function payloadHasAttachment(payload) {
   return false;
 }
 
+/**
+ * Collapse internalDate + the Date: header to ONE finite epoch, or 0.
+ *
+ * (fuzz sweep #19, 2026-08-14). The old cascade `Number(x) || Date.parse(y)
+ * || 0` read as "fall back on garbage", but a wire value of '1e999' parses
+ * to Infinity -- TRUTHY -- so the fallback never ran and an infinite instant
+ * crossed the trust boundary into the canonical store: the row sorted above
+ * every message forever, persisted across restarts, and every consumer had
+ * to learn to abstain (fuzz #2's relativeLabel, #6's fullDate, #13's
+ * deadline anchor). Non-finite dies HERE now, at the one place data enters:
+ * any finite nonzero number is honoured exactly as before (pre-1970 mail is
+ * negative and stays negative); 0, NaN and ±Infinity fall through to the
+ * Date header, which is itself finite-or-floor. Exactly the old falsy
+ * semantics, minus the non-finite ones.
+ *
+ * Shared with mime.js's extractBody, which made the same promise with the
+ * same broken cascade on the GET_BODY path.
+ */
+export function toEpoch(internalDate, dateHeader) {
+  const ms = Number(internalDate);
+  if (ms && Number.isFinite(ms)) return ms;
+  // Date.parse returns NaN or a finite number -- never a non-finite one --
+  // so the `|| 0` floor is the whole second half of the contract.
+  return Date.parse(dateHeader) || 0;
+}
+
 export function normalise(g) {
   if (!g?.id) return null;
 
@@ -315,7 +341,7 @@ export function normalise(g) {
     // The fallback keeps it anyway (bug-hunt #41): no-internalDate records
     // are rarer than wrong Date headers, and a 1970 date would sink the
     // message below everything and hide it -- worse than a wrong position.
-    date: Number(g.internalDate) || Date.parse(h.date) || 0,
+    date: toEpoch(g.internalDate, h.date),
     unread: labels.includes('UNREAD'),
     starred: labels.includes('STARRED'),
     important: labels.includes('IMPORTANT'),

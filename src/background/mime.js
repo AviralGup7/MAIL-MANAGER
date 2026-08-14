@@ -21,7 +21,8 @@
 
 // The header lookup lives in gmail.js, which is a pure API wrapper with no
 // listeners, so importing it here is safe from both the worker and a page.
-import { headerMap } from './gmail.js';
+// toEpoch rides the same import: one trust boundary, one epoch rule (#19).
+import { headerMap, toEpoch } from './gmail.js';
 
 /**
  * Pull a displayable body out of Gmail's MIME tree.
@@ -62,8 +63,9 @@ export function extractBody(full) {
     replyTo: h['reply-to'] || '',
     subject: h.subject || '',
     // internalDate is authoritative; the Date: header is sender-controlled and
-    // routinely wrong. Needed for the reply attribution line.
-    date: Number(full.internalDate) || Date.parse(h.date) || 0,
+    // routinely wrong. Needed for the reply attribution line. toEpoch, not a
+    // local cascade: '1e999' used to cross here as a truthy Infinity (#19).
+    date: toEpoch(full.internalDate, h.date),
     listUnsubscribe: h['list-unsubscribe'] || '',
   };
   walk(full.payload, 0);
@@ -89,9 +91,29 @@ export function extractBody(full) {
    * nothing to defend against -- is caught by the same bound.
    */
   function walk(part, depth) {
-    if (!part || depth > 64) return;
-    const mime = part.mimeType || '';
-    const filename = part.filename || '';
+    /* TOTALITY OVER THE WIRE (fuzz sweep #20, 2026-08-14), the parts half of
+       the headerMap lesson. headerMap healed the HEADER loops; the PART loop
+       kept reading raw fields as if Gmail's types were guaranteed: a numeric
+       mimeType threw 'mime.startsWith is not a function', a truthy non-array
+       `parts` threw 'object is not iterable', and a numeric body.data threw
+       inside b64url. Each throw escapes walk, escapes extractBody, and
+       surfaces in the service worker's GET_BODY handler -- one malformed
+       message made itself permanently unreadable, and the unhandled
+       rejection sat on the same worker that wakes snoozes. Every field is
+       coerced AT READ now, which is what "one parser, one assumption" was
+       always supposed to mean. */
+    if (!part || typeof part !== 'object' || depth > 64) return;
+    const mime = typeof part.mimeType === 'string' ? part.mimeType : '';
+    const filename = typeof part.filename === 'string' ? part.filename : '';
+    /* body is read through locals for the same reason: `part.body?.data`
+       truthy was enough to reach b64url, whose .replace demands a string. */
+    const body = part.body && typeof part.body === 'object' ? part.body : {};
+    const data = typeof body.data === 'string' ? body.data : '';
+    const attachmentId =
+      typeof body.attachmentId === 'string' && body.attachmentId
+        ? body.attachmentId
+        : '';
+    const size = Number.isFinite(body.size) ? body.size : 0;
 
     /*
      * INLINE vs ATTACHED.
@@ -108,25 +130,25 @@ export function extractBody(full) {
     const isInline = mime.startsWith('image/') &&
       (!!contentId || disposition.startsWith('inline'));
 
-    if (isInline && part.body?.attachmentId) {
+    if (isInline && attachmentId) {
       out.inline.push({
         contentId,
         filename,
         mimeType: mime,
-        size: part.body.size || 0,
-        attachmentId: part.body.attachmentId,
+        size,
+        attachmentId,
       });
-    } else if (filename && part.body?.attachmentId) {
+    } else if (filename && attachmentId) {
       out.attachments.push({
         filename,
         mimeType: mime,
-        size: part.body.size || 0,
-        attachmentId: part.body.attachmentId,
+        size,
+        attachmentId,
       });
-    } else if (mime === 'text/html' && part.body?.data && !out.html) {
-      out.html = b64url(part.body.data);
-    } else if (mime === 'text/plain' && part.body?.data && !out.text) {
-      out.text = b64url(part.body.data);
+    } else if (mime === 'text/html' && data && !out.html) {
+      out.html = b64url(data);
+    } else if (mime === 'text/plain' && data && !out.text) {
+      out.text = b64url(data);
     }
     /*
      * BREADTH IS DELIBERATELY *NOT* BOUNDED, AND THAT DECISION WAS MEASURED.
@@ -144,7 +166,11 @@ export function extractBody(full) {
      * Depth is different and stays bounded -- recursion overflows the stack and
      * kills the worker, which is a real failure with a real trigger.
      */
-    for (const child of part.parts || []) walk(child, depth + 1);
+    /* `parts` claims to be an array; the wire only claims JSON. A truthy
+       non-array ({} survives every truthiness check) met `for..of` and
+       threw "object is not iterable" (#20). */
+    const children = Array.isArray(part.parts) ? part.parts : [];
+    for (const child of children) walk(child, depth + 1);
   }
 }
 
