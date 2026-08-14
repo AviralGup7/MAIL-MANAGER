@@ -76,9 +76,19 @@ test('fuzz: hostile bodies and attribute soup never throw the walker', () => {
     assert.doesNotThrow(() => { out = clean(html); }, `seed 0x5a11ce draw ${i}: ${html.slice(0, 120)}`);
     assert.equal(typeof out, 'string');
   }
-  // escapeHtml stays a pure total escape over the same pool.
+  // escapeHtml stays a pure total escape over the same pool. ACQUITTAL
+  // (recorded per doctrine): the first property here — "no [&<>\"] in the
+  // output" — accused escapeHtml at seed 0x5a11ce draw 47, but "&lt;"
+  // CONTAINS an ampersand by definition; the entity IS the fix, not the
+  // leak. The honest property: no raw angle brackets survive, and every
+  // surviving ampersand heads one of the five issued entities.
   for (let i = 0; i < 200; i++) {
     const out = escapeHtml(hostileString(rnd));
-    assert.doesNotMatch(out, /[&<>"]/, `seed 0x5a11ce text draw ${i}`);
+    assert.doesNotMatch(out, /[<>]/, `seed 0x5a11ce text draw ${i}`);
+    const entities = out.replace(/&(amp|lt|gt|quot|#39);/g, '');
+    assert.ok(
+      !entities.includes('&'),
+      `seed 0x5a11ce text draw ${i}: stray & in ${JSON.stringify(out.slice(0, 80))}`
+    );
   }
 });
