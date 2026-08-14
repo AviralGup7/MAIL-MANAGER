@@ -11,8 +11,11 @@
  * mail failed as a generic load error FOREVER — every retry re-crashed, and
  * the theme-repaint call site (reader.js:1095) has no catch at all. The
  * same "unbounded attacker depth" lesson mime.js learned at 64; the HTML
- * walker now holds its own line at 256 (~4x the deepest real marketing mail
- * measured during the fix, ~30x under the measured overflow).
+ * walker now holds its own line at 1024, not the first draft's 256:
+ * sanitize.test.mjs has pinned 400-deep real generators since before the
+ * bound existed, and a fix that strips mail we already promised to render
+ * trades a crash for silent data loss. 1024 keeps that promise and sits ~8x
+ * under the measured overflow.
  *
  * Properties pinned:
  *   - sanitizeHtml NEVER throws across the depth boundary, including the
@@ -47,7 +50,7 @@ const nest = (depth, leaf) => '<div>'.repeat(depth) + leaf + '</div>'.repeat(dep
 
 test('the walk never overflows, at and far past the boundary', () => {
   if (!JSDOM) return;
-  for (const depth of [100, 255, 256, 257, 2000, 8000]) {
+  for (const depth of [100, 1023, 1024, 1025, 2000, 8000]) {
     let out;
     assert.doesNotThrow(() => { out = clean(nest(depth, 'leaf')); }, `depth ${depth}`);
     assert.equal(typeof out, 'string');
@@ -56,7 +59,7 @@ test('the walk never overflows, at and far past the boundary', () => {
 
 test('legal depth is preserved; past the bound the subtree strips, siblings survive', () => {
   if (!JSDOM) return;
-  const shallow = clean(nest(60, 'keep-me'));
+  const shallow = clean(nest(400, 'keep-me')); // 400 is the legacy pin from sanitize.test.mjs
   assert.match(shallow, /keep-me/);
   // A leaf at depth 4000 is past the bound: it strips. A sibling at the
   // surface lives at its own depth and must not be punished for it.

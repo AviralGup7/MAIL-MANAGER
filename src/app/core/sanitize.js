@@ -234,14 +234,15 @@ function resolveCid(raw, cid) {
  * same blank reader arriving by crash instead of by policy.
  *
  * Real nesting is ~5 (a wrapper) to ~60 (the ugliest table-in-table
- * newsletter measured during the fix); 256 keeps ~4x headroom over real
- * mail and sits ~30x under the measured overflow. Past the bound the
- * SUBTREE is dropped and siblings keep walking -- a strip, like
- * DROP_ENTIRELY, not an exception. The mime walker made the same trade at
- * 64 for MIME trees; parsers that trust attacker-controlled depth learn
- * this lesson once each.
+ * newsletter measured during the fix), but sanitize.test.mjs has pinned
+ * 400-deep generators since before this bound existed, and that promise
+ * stands: 1024 keeps old mail readable, sits ~8x under the measured
+ * overflow, and still refuses the crash. Past the bound the SUBTREE is
+ * dropped and siblings keep walking -- a strip, like DROP_ENTIRELY, not an
+ * exception. The mime walker made the same trade at 64 for MIME trees;
+ * parsers that trust attacker-controlled depth learn this lesson once each.
  */
-const MAX_DEPTH = 256;
+const MAX_DEPTH = 1024;
 
 function walk(src, dest, doc, ctx, depth = 0) {
   if (depth > MAX_DEPTH) return;
