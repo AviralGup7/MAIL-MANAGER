@@ -34,7 +34,10 @@ test('the options page styles every rules/backup selector it ships', () => {
 });
 
 test('the app bundle carries no selector for markup it never mounts', () => {
-  const appCss = read('src/styles/40-suggest.css');
+  /* Comments are stripped first: the CSS note explaining this removal
+     names the selector, and a comment that names the incident is
+     decision-record, not style (the no-npx check sets the precedent). */
+  const appCss = read('src/styles/40-suggest.css').replace(/\/\*[\s\S]*?\*\//g, ' ');
   assert.ok(!appCss.includes('#backup-status'),
     'options-only markup stays out of the app bundle — a selector that can never match is a fake door');
 });
