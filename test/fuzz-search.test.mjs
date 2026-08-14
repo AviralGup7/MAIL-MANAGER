@@ -76,8 +76,14 @@ test('describeQuery always has words for whatever parsed', () => {
     } catch (err) {
       assert.fail(`describeQuery threw: ${err.message}`);
     }
-    assert.ok(typeof desc === 'string' && !/NaN|Infinity|undefined/.test(desc),
-      `description "${desc}" must read as human words`);
+    /* QUOTED words are the user's own text echoed back ("undefined" queried
+       finds mail about undefined) — that is not the defect this hunts. The
+       defect shape is an UNQUOTED artifact slipping in from a missing slot,
+       so scan only what is NOT inside quotes. Batch 2's first accusation
+       here dissolved into exactly this acquittal. */
+    const bare = desc.replace(/"[^"]*"/g, '""');
+    assert.ok(typeof desc === 'string' && !/NaN|Infinity|undefined/.test(bare),
+      `description "${desc}" must read as human words outside the quotes`);
   }
 });
 

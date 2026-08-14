@@ -123,6 +123,17 @@ function spanCutoff(v, now) {
  *   `terms` is the free text for the inverted index; `predicate` applies
  *   everything the index cannot express.
  */
+/*
+ * TOTALITY (fuzz catch 2026-08-14, defect #3 of the sweep). Predicates run
+ * against the STORED corpus, and a damaged cache row used to cost the whole
+ * search: `(m.from || '').toLowerCase()` survives a MISSING field but not a
+ * mistyped one — a numeric or object `from` threw mid-filter and the list
+ * went dark behind an honest-seeming TypeError. Classify learned the same
+ * lesson the same day (defect #1). Fields coerce to text; labels must first
+ * prove they are an array. One poisoned record now costs only its own verdict.
+ */
+const asText = (v) => String(v ?? '');
+
 export function parseQuery(q, now = Date.now(), ctx = {}) {
   const tokens = tokenize(String(q || '').trim());
 
@@ -279,14 +290,14 @@ function compileFlat(tokens, now, { textAsPredicate = false } = {}, ctx = {}) {
       if (body.startsWith('"') && body.length > 1) {
         const needle = unquoted.toLowerCase();
         checks.push((m) =>
-          negated !== `${m.subject} ${m.from} ${m.snippet}`.toLowerCase().includes(needle)
+          negated !== `${asText(m.subject)} ${asText(m.from)} ${asText(m.snippet)}`.toLowerCase().includes(needle)
         );
       } else if (negated) {
         const needle = unquoted.toLowerCase();
-        checks.push((m) => !`${m.subject} ${m.from} ${m.snippet}`.toLowerCase().includes(needle));
+        checks.push((m) => !`${asText(m.subject)} ${asText(m.from)} ${asText(m.snippet)}`.toLowerCase().includes(needle));
       } else if (textAsPredicate) {
         const needle = unquoted.toLowerCase();
-        checks.push((m) => `${m.subject} ${m.from} ${m.snippet}`.toLowerCase().includes(needle));
+        checks.push((m) => `${asText(m.subject)} ${asText(m.from)} ${asText(m.snippet)}`.toLowerCase().includes(needle));
       } else {
         terms.push(unquoted);
       }
@@ -320,16 +331,16 @@ function compileFlat(tokens, now, { textAsPredicate = false } = {}, ctx = {}) {
 function buildCheck(key, value, now, ctx = {}) {
   switch (key) {
     case 'from':
-      return (m) => (m.from || '').toLowerCase().includes(value);
+      return (m) => asText(m.from).toLowerCase().includes(value);
     case 'to':
       // We only ever hold the signed-in mailbox, so `to:me` is a tautology and
       // anything else cannot be answered from stored headers. Honest: match
       // everything for `me`, nothing otherwise, rather than pretend.
       return value === 'me' ? () => true : () => false;
     case 'subject':
-      return (m) => (m.subject || '').toLowerCase().includes(value);
+      return (m) => asText(m.subject).toLowerCase().includes(value);
     case 'category':
-      return (m) => (m.category || '').toLowerCase() === value;
+      return (m) => asText(m.category).toLowerCase() === value;
 
     /*
      * `label:` MEANS A GMAIL LABEL, NOT ONE OF OUR CATEGORIES.
@@ -350,7 +361,7 @@ function buildCheck(key, value, now, ctx = {}) {
      * and what Gmail itself does not do -- a small, defensible improvement.
      */
     case 'label':
-      return (m) => (m.labels || []).some((l) => {
+      return (m) => (Array.isArray(m.labels) ? m.labels : []).some((l) => {
         const name = String(l).toLowerCase();
         return name === value || name.endsWith(`/${value}`);
       });

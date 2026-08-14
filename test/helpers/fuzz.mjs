@@ -57,7 +57,19 @@ export function hostileValue(rnd, depth = 0) {
   }
   const o = {};
   const n = Math.floor(rnd() * 5);
-  for (let i = 0; i < n; i++) o[hostileString(rnd).slice(0, 24) || 'k'] = hostileValue(rnd, depth + 1);
+  for (let i = 0; i < n; i++) {
+    const key = hostileString(rnd).slice(0, 24) || 'k';
+    /* MODEL THE WIRE. Bracket-assigning a '__proto__' KEY triggers the
+       prototype setter — a null value silently builds a null-prototype
+       object that no JSON can ever carry, and join()/String() then throw
+       "Cannot convert object to primitive". That trap accused buildReply in
+       batch 2; the wire-faithful '__proto__' is a DATA property, which is
+       what JSON.parse creates. defineProperty gives exactly that. */
+    Object.defineProperty(o, key, {
+      value: hostileValue(rnd, depth + 1),
+      enumerable: true, configurable: true, writable: true,
+    });
+  }
   return o;
 }
 
