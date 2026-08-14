@@ -116,7 +116,21 @@ export function extractDeadline(msg, now = Date.now()) {
 
   // Anchor relative dates ("this Friday") to when the mail was SENT, not to
   // now. Opening a three-day-old mail must not shift its deadline forward.
-  const anchor = msg.date || now;
+  /*
+   * Fuzz round 3 (2026-08-14, defect #13): the wire can carry a truthy but
+   * unusable date -- shapeMessage's `Number(...) || ...` cascade passes
+   * '1e999' through as Infinity, and hand-built or backup-restored rows
+   * can carry strings/objects. The old `msg.date || now` accepted any of
+   * them, with two measured outcomes: the matchers returned {at: NaN}
+   * straight to the store, and the plausibility rail below compared NaN
+   * (every comparison false) so a deadline FOUR YEARS out ("15 March
+   * 2099") sailed through what should have rejected it. Non-finite
+   * anchors now fall back to `now`, and the result is checked too. The
+   * fallback keeps the old falsy behaviour (a 0 date means "unknown" --
+   * shapeMessage writes 0 when neither internalDate nor the Date header
+   * parses -- and unknown always anchored on now).
+   */
+  const anchor = (Number.isFinite(msg.date) && msg.date) || now;
 
   const found =
     matchNumericDate(haystack, anchor) ||
@@ -125,6 +139,10 @@ export function extractDeadline(msg, now = Date.now()) {
     matchWeekday(haystack, anchor);
 
   if (!found) return null;
+  /* Defect #13 belt-and-braces: even with a clean anchor a matcher must
+   * never hand back a non-finite instant; one poisoned deadline row is a
+   * permanently broken radar chip. */
+  if (!Number.isFinite(found.at)) return null;
 
   // Reject anything implausible. A parse that lands two years out is a parse
   // that went wrong, and showing it would be worse than showing nothing.
