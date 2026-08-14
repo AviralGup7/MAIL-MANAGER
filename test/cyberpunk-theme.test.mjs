@@ -69,7 +69,10 @@ test('the fx module gates on the theme and builds nothing eagerly', () => {
 
 test('one owner: only the skin volume and the fx module speak cyberpunk', () => {
   const files = styleFiles().filter((f) => !f.includes('88-cyberpunk'));
-  const css = files.map((f) => read(f)).join('\n');
+  /* Comments first: the definer volumes NAME the gate when recording why the
+     skin's tokens live there, and a comment that names the incident is
+     decision-record, not a rule (the precedent the options-style pin set). */
+  const css = files.map((f) => read(f)).join('\n').replace(/\/\*[\s\S]*?\*\//g, ' ');
   assert.ok(!css.includes("data-theme='cyberpunk'"),
     'another style volume carries cyberpunk rules — the skin has exactly one home');
   /* And the volume is actually shipped: in the directory listing (which is
