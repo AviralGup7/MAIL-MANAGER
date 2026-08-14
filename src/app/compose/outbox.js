@@ -66,6 +66,11 @@ export const MAX_ATTEMPTS = BACKOFF_MS.length;
  *                                log from mixing two id spaces in one field.
  * @property {boolean}  [more]    due items remain beyond this batch; the
  *                                caller re-arms promptly
+ * @property {number}   [wrongAccount] rows the pump REFUSED for the session's
+ *                                account (AUD-C2, 2026-08-15): they stay
+ *                                queued, armed for their owner, and the count
+ *                                is the honest receipt. Absent when zero —
+ *                                a silent field is a door nobody walks through.
  */
 
 /**
@@ -197,7 +202,7 @@ export async function clearOutbox(storage = STORAGE) {
  * Queue a message.
  *
  * @param {object} draft
- * @param {{holdMs?:number, now?:number, threadId?:string}} [opts]
+ * @param {{holdMs?:number, now?:number, threadId?:string, accountEmail?:string}} [opts]
  * @returns {OutboxItem}
  */
 export function enqueue(draft, { holdMs = DEFAULT_HOLD_MS, now = Date.now(), threadId, accountEmail } = {}) {

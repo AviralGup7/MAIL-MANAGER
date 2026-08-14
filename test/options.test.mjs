@@ -340,8 +340,11 @@ test('every setting in the schema has a control on this page', async (t) => {
        theme-authority axes, `textures` and `sounds`, are that same class
        (2026-08-14): skin atmosphere toggles live beside Ambient light on
        the panel's Appearance sheet, and the authority pins in
-       settings-authority.test.mjs watch the chain. */
-    const ELSEWHERE = new Set(['clientId', 'theme', 'coachDone', 'railOpen', 'paletteRecents', 'ambience', 'snippets', 'ctrlEnterSend', 'textures', 'sounds']);
+       settings-authority.test.mjs watch the chain. `clearOutboxOnSignOut`
+       joins them (2026-08-15, AUD-C2): its control is a send-semantics
+       choice, so it lives on the panel's Composing sheet beside the undo
+       window it governs, and settings-panel.test.mjs counts it there. */
+    const ELSEWHERE = new Set(['clientId', 'theme', 'coachDone', 'railOpen', 'paletteRecents', 'ambience', 'snippets', 'ctrlEnterSend', 'textures', 'sounds', 'clearOutboxOnSignOut']);
     const missing = declared
       .filter((k) => !ELSEWHERE.has(k))
       .filter((k) => !doc.getElementById(k));

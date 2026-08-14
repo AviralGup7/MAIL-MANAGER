@@ -233,17 +233,20 @@ test('the shell resolves the strip and drops the floor on sign-out', () => {
   const src = read('src/app/main.js');
   assert.match(src, /rOffline: \$\('r-offline'\)/);
   assert.match(src, /rOfflineText: \$\('r-offline-text'\)/);
-  const btn = src.indexOf("$('btn-signout')");
-  const clear = src.indexOf('clearBodyCache()', btn);
-  assert.ok(btn !== -1 && clear !== -1, 'sign-out clears the floor with the cache');
+  /* 2026-08-15 (AUD-C1): the teardown moved into endAccountSession so the
+     account-change tripwire runs the same drop — sign-out included. The
+     floor dies with an account session, by either exit. */
+  assert.ok(src.indexOf("$('btn-signout')") !== -1);
+  assert.match(src, /async function endAccountSession\(gateMessage\) \{[^]*?await clearBodyCache\(\);/,
+    'the session teardown drops the floor with the cache');
 });
 
 test('resync keeps bodies (a body is immutable; only sign-out changes the account)', () => {
   const src = read('src/app/main.js');
-  /* All clearBodyCache() calls must live inside the sign-out handler. */
-  const btn = src.indexOf("$('btn-signout')");
-  const afterSignout = src.slice(btn);
-  const callsBefore = src.slice(0, btn).split('clearBodyCache()').length - 1;
-  assert.equal(callsBefore, 0, 'nothing before sign-out drops the floor');
-  assert.ok(afterSignout.includes('clearBodyCache()'));
+  /* Every clearBodyCache() lives in the account-session teardown (button
+     and tripwire share it since 2026-08-15) — exactly one call site, so a
+     resync can never drop the floor. */
+  assert.equal(src.split('clearBodyCache()').length - 1, 1,
+    'exactly one drop site in the shell');
+  assert.match(src, /async function endAccountSession\(gateMessage\) \{[^]*?await clearBodyCache\(\);/);
 });

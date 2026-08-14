@@ -90,10 +90,14 @@ test('background never imports app statically — except the declared store help
   }
   // And even those edges are limited to their storage helpers, not the label
   // (which lives in shared/labels.js) or any UI code.
+  /* 2026-08-15 (audit, AUD-L1/C2): two symbols joined their own edges —
+     nextWakeAt is the wake alarm's arithmetic (the reason the snooze edge
+     exists), pure and DOM-free; dispatchable is the pump's owner gate (the
+     reason the outbox edge exists). Declared, not smuggled. */
   const idx = readFileSync(join(SRC, 'background', 'index.js'), 'utf8');
   const declared = [
-    ['system/snooze.js', ['loadSnoozed', 'removeSnooze', 'due']],
-    ['compose/outbox.js', ['loadOutbox', 'saveOutbox', 'dueItems', 'markFailed', 'prioritizeDue']],
+    ['system/snooze.js', ['loadSnoozed', 'removeSnooze', 'due', 'nextWakeAt']],
+    ['compose/outbox.js', ['loadOutbox', 'saveOutbox', 'dueItems', 'markFailed', 'prioritizeDue', 'dispatchable']],
   ];
   for (const [file, symbols] of declared) {
     const marker = `from '../app/${file}'`;

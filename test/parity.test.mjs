@@ -229,7 +229,13 @@ test('OUTBOX_PUMP answers the ONE canonical PumpResult shape (bug-hunt 43 #50)',
     assert.match(o, new RegExp(`@property .*${field}`), `contract names ${field}`);
   }
   // Worker and runner answer every field; namespaced ids on all sides.
-  assert.match(w, /return \{ sent, failed, skipped: false, sentIds, more \}/);
+  /* 2026-08-15 (AUD-C2): the contract gained the optional `wrongAccount`
+     receipt — rows refused for this session's account stay armed for their
+     owner, and a pump that refuses silently would be lying by omission. It
+     is conditional (absent at zero), so the base shape below is a prefix. */
+  assert.match(w, /return \{ sent, failed, skipped: false, sentIds, more,\s*\n?\s*\.\.\.\(wrongAccount \? \{ wrongAccount \} : \{\}\) \};/,
+    'the worker answers the contract plus the AUD-C2 receipt');
+  assert.match(o, /@property \{number\}\s+\[wrongAccount\]/, 'the contract names the receipt');
   assert.match(w, /`g:\$\{res\.id\}`/, 'worker ids carry the g: namespace');
   assert.match(o, /`g:\$\{res\.id\}` : `q:\$\{item\.id\}`/, 'runner ids are namespaced');
   assert.match(h, /g:sent-/, 'the harness emulation speaks the same namespace');
