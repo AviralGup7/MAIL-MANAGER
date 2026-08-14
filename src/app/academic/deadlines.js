@@ -295,7 +295,18 @@ function isRealDate(y, m, d) {
   return dt.getUTCFullYear() === y && dt.getUTCMonth() === m && dt.getUTCDate() === d;
 }
 
-function endOfDay(ms) {
+/*
+ * THE deadline axis. Every deadline this system names — extracted, labelled,
+ * or set by hand from the deadline menu — is an end-of-day on the UTC wall
+ * clock, and the contract is pinned in features.test.mjs as Date.UTC epochs.
+ *
+ * Exported since 2026-08-14: main.js's deadline menu forked this helper in
+ * LOCAL time while claiming this module's convention in its comment. For an
+ * IST user (UTC+5:30) a "Tomorrow" override then disagreed with the
+ * extractor's "due tomorrow" by half a day, and relativeLabel could flip
+ * the override to "due today". One axis, one owner.
+ */
+export function endOfDay(ms) {
   const d = new Date(ms);
   return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 23, 59, 0);
 }

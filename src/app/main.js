@@ -36,7 +36,7 @@ import { icon, setIcon } from './core/icons.js';
 import { setAttr } from './core/dom.js';
 import { toast, hideToast, initToast } from './overlays/toast.js';
 import { loadViews, saveView, removeView } from './system/view-store.js';
-import { extractDeadline } from './academic/deadlines.js';
+import { extractDeadline, endOfDay } from './academic/deadlines.js';
 import { runInPage, probeWorker } from './system/fallback.js';
 import { closeHelp, toggleHelp, helpOpen } from './overlays/help.js';
 import { openSettings } from './overlays/settings-panel.js';
@@ -2412,12 +2412,10 @@ function openDeadlineMenu(id, anchor) {
   openMenu({ anchor, name: 'deadline', label: `Deadline — currently: ${stateDesc}`, items });
 }
 
-/** End of the given day, local time -- the same convention deadlines.js uses. */
-function endOfDay(ms) {
-  const d = new Date(ms);
-  d.setHours(23, 59, 0, 0);
-  return d.getTime();
-}
+/* The deadline menu's presets ride the extractor's axis: endOfDay comes
+   from academic/deadlines.js (UTC end-of-day, pinned). The local-time fork
+   that sat here claimed the same convention as deadlines.js while doing
+   the opposite — the 2026-08-14 sweep aligned them; one axis, one owner. */
 
 /* ========================================================================== *
  * THE OUTBOX RUNNER
