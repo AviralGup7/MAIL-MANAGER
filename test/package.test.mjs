@@ -1136,7 +1136,12 @@ test('the From-header address regex is defined in exactly one module', () => {
     const src = read(f)
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/\/\/[^\n]*/g, '');
-    if (/<\(\[\^>\]\+\)>/.test(src)) owners.push(f);
+    /* Pattern text updated (2026-08-14): fuzz defect #15 rewrote the
+       canonical extraction from /<([^>]+)>/ to /<([^<>]+)>/ so 'a@b.c (Raj)'
+       stops tripping the pre-send warning. The PIN is unchanged: exactly one
+       owner for the From-header address regex. Scanning for the old text
+       found zero owners and failed every shard until this amendment. */
+    if (/<\(\[\^<>\]\+\)>/.test(src)) owners.push(f);
   }
   assert.deepEqual(
     owners, ['src/app/core/contacts.js'],

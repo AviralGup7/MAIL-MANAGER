@@ -326,8 +326,14 @@ test('the background actually supplies the date the attribution needs', () => {
   // which is the failure mode this whole suite exists to avoid.
   const bg = readFileSync(new URL('../src/background/mime.js', import.meta.url), 'utf8');
   const fn = bg.slice(bg.indexOf('function extractBody'));
+  /* REPOINTED AGAIN (fuzz sweep #19, 2026-08-14): the scan used to demand the
+     local cascade `date: Number(full.internalDate)`, which was precisely the
+     defect — '1e999' crossed it as a truthy Infinity. The date now comes
+     from toEpoch (finite or floor), and the scan tracks the call, not the
+     old expression. The CONTRACT being pinned is unchanged: extractBody
+     returns a real date for the attribution line. */
   assert.ok(
-    /date: Number\(full\.internalDate\)/.test(fn.slice(0, 1600)),
+    /date: toEpoch\(full\.internalDate/.test(fn.slice(0, 1600)),
     'extractBody must return a date for the reply attribution'
   );
 });

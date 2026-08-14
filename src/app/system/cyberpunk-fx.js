@@ -92,12 +92,30 @@ function chirp({ from, to, ms, type, peak = 1 }) {
 const VOICED = 'button, [role="button"], [role="menuitem"], [role="option"], [role="tab"], a, input, select, label';
 
 function onClick(e) {
-  if (!(e.target instanceof Element) || !e.target.closest(VOICED)) return;
+  const t = e.target;
+  /* No bare `Element` (fuzz-campaign CI debt, 2026-08-14): the jsdom
+     harness has no DOM globals, so `instanceof Element` threw
+     ReferenceError inside this capture listener on EVERY app click in
+     the integration shards -- the click died before chirp() could
+     gate itself. It stayed latent until defect #7's repair let the
+     jsdom boot reach initCyberpunkFx. Duck-typing is also the
+     honest shape here: the only thing this handler truly needs is a
+     target that can closest(). */
+  if (!t || typeof t.closest !== 'function' || !t.closest(VOICED)) return;
   chirp({ from: 1180, to: 1560, ms: 45, type: 'square' });
 }
 
 function onHover(e) {
-  if (!(e.target instanceof Element) || !e.target.closest(VOICED)) return;
+  const t = e.target;
+  /* No bare `Element` (fuzz-campaign CI debt, 2026-08-14): the jsdom
+     harness has no DOM globals, so `instanceof Element` threw
+     ReferenceError inside this capture listener on EVERY app click in
+     the integration shards -- the click died before chirp() could
+     gate itself. It stayed latent until defect #7's repair let the
+     jsdom boot reach initCyberpunkFx. Duck-typing is also the
+     honest shape here: the only thing this handler truly needs is a
+     target that can closest(). */
+  if (!t || typeof t.closest !== 'function' || !t.closest(VOICED)) return;
   const now = Date.now();
   if (now - _lastHover < 90) return; // pointer sweep is one tick, not twenty
   _lastHover = now;
