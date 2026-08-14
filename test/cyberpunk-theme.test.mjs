@@ -58,7 +58,10 @@ test('skin motion stays finite and skin keyframes stay namespaced', () => {
 
 test('the fx module gates on the theme and builds nothing eagerly', () => {
   const fx = read('src/app/system/cyberpunk-fx.js').replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, '');
-  assert.ok(fx.includes("dataset.theme === 'cyberpunk'"), 'play-time gate on the theme attribute');
+  /* 2026-08-14: the gate gained the settings override and now reads
+     `d.theme` off a dataset alias — the pin follows the refactor; the
+     authority twin (settings-authority.test) pins the exact new shape. */
+  assert.ok(fx.includes("theme === 'cyberpunk'"), 'play-time gate on the theme attribute');
   assert.ok(fx.indexOf('AudioContext') > fx.indexOf('function audio()'),
     'AudioContext may only be reached through the lazy constructor — creating one at import trips the console-clean smoke gate');
   assert.ok(!/^initCyberpunkFx\(\);?\s*$/m.test(fx), 'no self-wiring; main.js owns the call');
