@@ -3417,15 +3417,15 @@ async function boot() {
   /* Ambience + snippets: same one-attribute promise as density — boot
      stamps the root and moves on. */
   applyVisualPrefs();
-  /* The cyberpunk skin's ears: two delegated listeners that gate on
-     data-theme AT PLAY TIME, so they cost nothing in every other theme and
-     never need unwiring when the theme changes. */
-  initCyberpunkFx();
 
   initToast({
     toast: el.toast, toastText: el.toastText, toastAction: el.toastAction,
     toastDrain: el.toastDrain, toastIcon: el.toastIcon, toastKbd: el.toastKbd,
   });
+  /* The cyberpunk skin's ears: two delegated listeners that gate on
+     data-theme AT PLAY TIME, so they cost nothing in every other theme and
+     never need unwiring when the theme changes. */
+  initCyberpunkFx();
   wireList({
     get store() { return store; },
     state, el,

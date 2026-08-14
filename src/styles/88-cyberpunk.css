@@ -49,42 +49,29 @@
 
 /* ---- GATE SENTINEL: every selector below carries [data-theme='cyberpunk']. */
 
-/* Skin-local tokens: the chamfer depth and the scanline recipe, named once. */
-html[data-theme='cyberpunk'] {
-  /* The 45° corner cut. 9px is large enough to read on a 28px control and
-     small enough to never collide with an icon's safe area. */
-  --cp-cut: 9px;
-  /* One scanline recipe for every surface: a 1px dark line every 3px. The
-     black scrim is an ALLOWED neutral — texture is shade, not colour. */
-  --cp-scan: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 3px);
-}
+/* The skin's own tokens (--cp-cut, --cp-scan, --track-caps) are DEFINED in
+   the two volumes allowed to define tokens (00-tokens.css holds the scale,
+   86-v3-skin.css the component layer — structure.test enforces it); this
+   volume only CONSUMES them, from behind the gate. A token with no reader is
+   inert, so their definitions are residue-free for the other six themes. */
 
 /* ---- ambient texture ----------------------------------------------------- */
 
-/* The room tone: a scanline sheet over the app's own content, parked at
-   z-index 39 — one rung BELOW the overlay ladder (--z-menu starts at 40).
-   Overlays instead carry the scan as their own background-image (below), so
-   texture never mutes a dialog and the ladder keeps exactly one owner. */
+/* The room tone, ONE sheet: scanlines over a faint maroon CRT vignette (the
+   vignette mixed from the theme's own danger role). Stacking is expressed
+   against the ladder instead of by magic number: one rung below --z-menu,
+   so the sheet tints the app's content and never mutes an overlay. Overlays
+   themselves carry the scan as their own background-image (below). */
 html[data-theme='cyberpunk'] body::after {
   content: '';
   position: fixed;
   inset: 0;
-  z-index: 39;
+  z-index: calc(var(--z-menu) - 1);
   pointer-events: none;
-  background-image: var(--cp-scan);
-  opacity: 0.5;
-}
-
-/* A faint maroon breathing room around the edges: a CRT vignette mixed from
-   the theme's own danger role. Under everything, above the page colour. */
-html[data-theme='cyberpunk'] body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background:
+  background-image:
+    var(--cp-scan),
     radial-gradient(120% 90% at 50% 0%, transparent 55%, color-mix(in srgb, var(--danger) 16%, transparent) 100%);
+  opacity: 0.5;
 }
 
 /* ---- buttons ------------------------------------------------------------- */
@@ -95,7 +82,7 @@ html[data-theme='cyberpunk'] body::before {
 html[data-theme='cyberpunk'] button {
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--cp-cut)), calc(100% - var(--cp-cut)) 100%, 0 100%);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: var(--track-caps);
   transition: box-shadow var(--dur-instant) var(--ease-out), transform var(--dur-instant) var(--ease-out);
 }
 
@@ -125,10 +112,6 @@ html[data-theme='cyberpunk'] .snooze-menu {
   box-shadow: 0 0 18px var(--glow);
   background-image: var(--cp-scan);
   animation: cp-glitch-in var(--dur-fast) var(--ease-out);
-}
-
-html[data-theme='cyberpunk'] .snooze-menu button {
-  letter-spacing: 0.08em;
 }
 
 /* ---- dialogs and compose ------------------------------------------------- */

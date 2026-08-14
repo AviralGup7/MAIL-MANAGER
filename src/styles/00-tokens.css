@@ -91,6 +91,11 @@ html:not([data-theme]) body {
   --track-wide: 0.4px;
   --track-normal: 0;
   --track-tight: -0.01em;
+  /* Caps tracking, for the cyberpunk skin's uppercased buttons: wide enough
+     to read as a terminal label, far short of display tracking. Defined on
+     the scale (the only lawful home) and consumed only behind the
+     [data-theme='cyberpunk'] gate in 88-cyberpunk.css. */
+  --track-caps: 0.06em;
   /*
    * Completes the scale rather than extending it.
    *

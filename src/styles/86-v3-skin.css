@@ -34,6 +34,18 @@
   --z-palette: 690;
   --z-gate: 700;
 
+  /* THE CYBERPUNK SKIN's recipe, defined at the component layer where skin
+     tokens live; consumed ONLY behind the [data-theme='cyberpunk'] gate in
+     88-cyberpunk.css, so a definition without a reader is the whole of
+     their footprint in every other theme.
+     --cp-cut is the 45° corner chop: deep enough to read on a 28px control,
+     shallow enough to never reach an icon's safe area.
+     --cp-scan is one scanline recipe for every surface (a 1px dark line
+     every 3px); black scrim is an ALLOWED neutral in the colour gate —
+     texture is shade, not colour. */
+  --cp-cut: 9px;
+  --cp-scan: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 3px);
+
   /* New row scale: scannable without becoming cramped. Compact drops the
      snippet line entirely (rule earlier in the file, kept deliberately).
      The values obey the density invariant the token remap established --
