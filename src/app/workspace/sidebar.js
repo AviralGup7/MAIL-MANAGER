@@ -202,7 +202,7 @@ function catButton(key, label, color) {
  * @param {number} then  epoch ms of the last successful sync, 0 for never
  * @param {number} now   epoch ms
  */
-export function freshnessLabel(then, now) {
+function freshnessLabel(then, now) {
   if (!then) return '';
   const secs = Math.max(0, Math.round((now - then) / 1000));
   // Under a minute reads as "just now" rather than "0 min ago", which looks

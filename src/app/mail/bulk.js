@@ -71,7 +71,7 @@ export function wireBulk(c) {
  * with a cache-busting URL, but THIS module is cached, so a selection left
  * ticking by one test would otherwise hand the next boot a live bulk mode.
  */
-export function _resetBulk() {
+function _resetBulk() {
   selection.clear();
 }
 

@@ -232,7 +232,7 @@ export function canUndo(item, now = Date.now()) {
  * such failure goes straight to stuck. The user's retry button (retryNow)
  * stays the explicit override.
  */
-export const ATTACHMENT_LOST = /Cannot recover attachment|Could not read attachment/;
+const ATTACHMENT_LOST = /Cannot recover attachment|Could not read attachment/;
 
 /**
  * THE failure-classification predicate, defined ONCE (roadmap Phase 4 /

@@ -255,7 +255,7 @@ const $ = (id) => document.getElementById(id);
  * index and scroll memory would otherwise leak rows from a discarded document
  * into the next test's boot.
  */
-export function _resetList() {
+function _resetList() {
   renderedIds = [];
   firstPaint = false;
   nodeById.clear();

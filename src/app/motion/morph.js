@@ -20,7 +20,7 @@ import { animateValue } from './spring.js';
 /** @typedef {{x:number,y:number,w:number,h:number,r:number}} Box */
 
 /** Capture an element's box as data. radius = top-right border-radius. */
-export function measureBox(el) {
+function measureBox(el) {
   const b = el.getBoundingClientRect();
   const cs = getComputedStyle(el);
   return { x: b.left, y: b.top, w: b.width, h: b.height, r: parseFloat(cs.borderTopRightRadius) || 0 };

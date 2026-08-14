@@ -532,14 +532,17 @@ test('the live token lives in session storage; consent stays in local (SEC-5)', 
   // The token is a live credential: session storage is memory-only and dies
   // with the browser. The `authorized` consent flag must survive restarts so
   // a fresh session renews SILENTLY (prompt=none) instead of popping consent.
-  assert.match(AUTH_SRC, /function tokenArea\(\)/, 'one helper decides the area');
-  assert.match(AUTH_SRC, /chrome\.storage\?\.session \|\| chrome\.storage\?\.local/,
-    'session preferred, local fallback');
-  assert.match(AUTH_SRC, /tokenArea\(\)\.set\(\{\s*accessToken/, 'token written to the area');
+  // Since the 2026-08-14 sweep the helper IS the platform seam's export —
+  // background/auth.js once carried a private tokenArea() duplicating it.
+  assert.match(AUTH_SRC, /import \{ TOKEN_STORAGE \} from '\.\.\/platform\/storage\.js';/, 'the token rides the seam');
+  assert.match(AUTH_SRC, /TOKEN_STORAGE\(\)\.set\(\{\s*accessToken/, 'token written to the area');
   assert.match(AUTH_SRC, /chrome\.storage\.local\.get\('authorized'\)/,
     'consent flag read from local');
   assert.match(AUTH_SRC, /chrome\.storage\.local\.remove\(\['authorized', 'historyId', 'bgNotifiedIds'\]\)/,
     'sign-out clears consent + cursor + notification dedupe from local, token from the area');
+  /* The preference chain itself now lives at the seam — pin it there. */
+  const SEAM_SRC = readFileSync(new URL('../src/platform/storage.js', import.meta.url), 'utf8');
+  assert.match(SEAM_SRC, /storage\?\.session \|\| localArea\(\)/, 'the seam: session preferred, local fallback');
 });
 
 // ----------------------------------------------------- bug-hunt SEC-5 seams --
@@ -548,13 +551,13 @@ test('forceRenew and the revocation path drop the token from the TOKEN area (bug
   // SEC-5 moved the token to session storage; two paths kept removing it from
   // local, which removed nothing -- the stale 401'ing token came right back.
   const renew = AUTH_SRC.slice(AUTH_SRC.indexOf('export async function forceRenew'));
-  assert.match(renew, /tokenArea\(\)\.remove\(\['accessToken', 'expiresAt'\]\)/,
+  assert.match(renew, /TOKEN_STORAGE\(\)\.remove\(\['accessToken', 'expiresAt'\]\)/,
     'forceRenew must drop the token from the area persist() wrote it to');
   assert.ok(!/chrome\.storage\.local\.remove\(\['accessToken'/.test(renew),
     'no local-area token removal may survive in forceRenew');
 
   const revoked = AUTH_SRC.slice(AUTH_SRC.indexOf('const revoked ='), AUTH_SRC.indexOf('scheduleRenewRetry()'));
-  assert.match(revoked, /tokenArea\(\)\.remove\(\['accessToken', 'expiresAt'\]\)/,
+  assert.match(revoked, /TOKEN_STORAGE\(\)\.remove\(\['accessToken', 'expiresAt'\]\)/,
     'an explicit Google rejection must drop the token from the token area');
   assert.match(revoked, /chrome\.storage\.local\.remove\(\['authorized'\]\)/,
     'consent still comes out of local storage');

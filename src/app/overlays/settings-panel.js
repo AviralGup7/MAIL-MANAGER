@@ -523,11 +523,6 @@ export function settingsOpen() {
   return !!panelLayer;
 }
 
-export function toggleSettings(ctx = {}) {
-  if (panelLayer) closeSettings();
-  else openSettings(ctx);
-}
-
 /** Full options page: rules dry-run, backup, and the OAuth client ID. */
 export function openFullOptions() {
   /* In the extension this is the canonical hand-off; in a file:// preview

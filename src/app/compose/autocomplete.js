@@ -150,7 +150,7 @@ export function wireAutocomplete(inputId, listId) {
  * into the next. Self-registered below (S2 dissolved the barrel's composite
  * 'features' entry into per-module registrations, the list/bulk pattern).
  */
-export function _resetContacts() {
+function _resetContacts() {
   contactBook = [];
 }
 

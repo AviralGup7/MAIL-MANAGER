@@ -65,20 +65,17 @@ const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
 const REVOKE_ENDPOINT = 'https://oauth2.googleapis.com/revoke';
 
 /**
- * Where the live access token lives.
+ * Where the live access token lives: the platform seam's TOKEN_STORAGE
+ * (session-preferred, local fallback — the security rationale, audit 28 F2,
+ * now lives with the definition in platform/storage.js).
  *
- * SECURITY (audit 28 F2): the access token is a live credential. Keeping it
- * in chrome.storage.local writes it to disk with the rest of the browser
- * profile; chrome.storage.session is memory-only and is cleared when the
- * browser exits. The `authorized` consent flag deliberately stays in local,
- * so a browser restart is a SILENT renewal (prompt=none) — never a consent
- * popup, never a sign-out — because the Google session cookie is still alive.
- * Browsers without session storage fall back to local (same behaviour as
- * before, no worse).
+ * SECURITY HISTORY: this file once carried a private tokenArea() with the
+ * same body — the all-code sweep (2026-08-14) found the seam's purpose-built
+ * export unused and the law (ARCH R-7: chrome.* access is greppable in one
+ * place) duplicated. The token now rides the seam; the consent flag
+ * `authorized` deliberately stays in local (see storage.js).
  */
-function tokenArea() {
-  return chrome.storage?.session || chrome.storage?.local;
-}
+import { TOKEN_STORAGE } from '../platform/storage.js';
 
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.modify',
@@ -271,7 +268,7 @@ function friendlyAuthError(code, description) {
 }
 
 async function persist(tok) {
-  await tokenArea().set({
+  await TOKEN_STORAGE().set({
     accessToken: tok.access_token,
     // Renew 5 minutes early. Implicit tokens cannot be refreshed on demand,
     // so a wider margin avoids a request racing the expiry mid-sync.
@@ -310,7 +307,7 @@ let sessionEpoch = 0;
 
 export async function getToken() {
   const [t, a] = await Promise.all([
-    tokenArea().get(['accessToken', 'expiresAt']),
+    TOKEN_STORAGE().get(['accessToken', 'expiresAt']),
     chrome.storage.local.get('authorized'),
   ]);
 
@@ -360,7 +357,7 @@ async function renew() {
       // Token keys come out of the SAME area persist() wrote them to
       // (bug-hunt #4): since SEC-5 that is the session area, and removing
       // them from local left the revoked token live for up to an hour.
-      await tokenArea().remove(['accessToken', 'expiresAt']);
+      await TOKEN_STORAGE().remove(['accessToken', 'expiresAt']);
       await chrome.storage.local.remove(['authorized']);
       throw new Error('NOT_SIGNED_IN');
     }
@@ -392,7 +389,7 @@ export async function signOut() {
   sessionEpoch++;
   inFlight = null;
 
-  const { accessToken } = await tokenArea().get('accessToken');
+  const { accessToken } = await TOKEN_STORAGE().get('accessToken');
 
   // Revoke server-side, not just locally. The implicit flow issues no refresh
   // token, so the access token IS the whole grant -- revoking it ends access
@@ -415,7 +412,7 @@ export async function signOut() {
   // account-scoped, so the background-sync dedupe list of account A is
   // private data that must not survive into account B's session (nor hold a
   // slot in its 100-entry cap).
-  await tokenArea().remove(['accessToken', 'expiresAt']);
+  await TOKEN_STORAGE().remove(['accessToken', 'expiresAt']);
   await chrome.storage.local.remove(['authorized', 'historyId', 'bgNotifiedIds']);
 }
 
@@ -433,10 +430,10 @@ export async function signOut() {
  * NOT_SIGNED_IN (revoked consent) vs AUTH_RENEW_TRANSIENT (network).
  */
 export async function forceRenew() {
-  // The token lives in tokenArea() since SEC-5 -- removing it from local
+  // The token lives in TOKEN_STORAGE() since SEC-5 -- removing it from local
   // storage removed NOTHING and the stale 401'ing token came right back
   // (bug-hunt #3).
-  await tokenArea().remove(['accessToken', 'expiresAt']);
+  await TOKEN_STORAGE().remove(['accessToken', 'expiresAt']);
   return getToken();
 }
 

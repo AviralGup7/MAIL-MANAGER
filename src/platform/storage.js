@@ -22,7 +22,18 @@ export function localArea() {
   return globalThis.chrome?.storage?.local;
 }
 
-/** The memory-only session area, when the browser provides it. */
+/**
+ * The memory-only session area, falling back to local.
+ *
+ * SECURITY (audit 28 F2 — moved here from auth.js when the token took the
+ * seam, 2026-08-14): a live access token in chrome.storage.local is written
+ * to disk with the rest of the browser profile; session storage dies with
+ * the browser. The `authorized` CONSENT FLAG deliberately stays in local,
+ * so a browser restart is a silent renewal (prompt=none) — never a consent
+ * popup, never a sign-out — because the Google session cookie outlives the
+ * token either way. Where session storage is absent, local is no worse
+ * than the pre-session behaviour.
+ */
 export function sessionArea() {
   return globalThis.chrome?.storage?.session || localArea();
 }

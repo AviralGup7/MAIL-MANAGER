@@ -45,7 +45,7 @@ export function menuIsOpen() {
 
 
 /** Test seam: module state outlives a jsdom boot, so tests must clear it. */
-export function _resetMenu() {
+function _resetMenu() {
   if (current) {
     try { current.layer.close(); } catch { /* already gone */ }
   }

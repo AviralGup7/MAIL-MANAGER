@@ -481,7 +481,7 @@ export function wirePalette(ctx) {
  * Each module resets its OWN state rather than one function reaching into
  * four files' internals.
  */
-export function _resetPalette() {
+function _resetPalette() {
   paletteCommands = [];
   paletteFiltered = [];
   paletteIndex = 0;

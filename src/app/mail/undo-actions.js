@@ -63,7 +63,7 @@ export async function performUndo(ctx) {
  * The same hazard is already handled for features.js, timetable-ui.js and
  * menu.js. This file was missed.
  */
-export function _resetUndo() {
+function _resetUndo() {
   undoStack.clear();
 }
 
