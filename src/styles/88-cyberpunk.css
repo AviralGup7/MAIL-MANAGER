@@ -144,9 +144,12 @@ html[data-theme='cyberpunk'] textarea {
   border-color: var(--line-strong);
 }
 
-html[data-theme='cyberpunk'] input:focus,
-html[data-theme='cyberpunk'] select:focus,
-html[data-theme='cyberpunk'] textarea:focus {
+/* focus-visible, not bare :focus — the layout contract reserves bare :focus
+   for a named handful of text surfaces; keyboard focus is the signal that
+   earns the ring and the glow. */
+html[data-theme='cyberpunk'] input:focus-visible,
+html[data-theme='cyberpunk'] select:focus-visible,
+html[data-theme='cyberpunk'] textarea:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 0;
   border-color: var(--accent);
