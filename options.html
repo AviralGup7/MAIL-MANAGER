@@ -54,6 +54,29 @@
       }
       textarea:focus { outline: 2px solid #1a4fd6; outline-offset: 1px; border-color: #1a4fd6; }
       fieldset label:not(:first-of-type) { margin-top: 16px; }
+      /*
+       * The rules editor + backup readout. Until 2026-08-14 these ids were
+       * styled only in the APP's 40-suggest.css — a bundle this page has
+       * never linked — so the rule list shipped as a browser-default bulleted
+       * list and [data-bad] never turned red. Found in the all-code sweep.
+       */
+      #rule-list { list-style: none; margin: 0 0 12px; padding: 0; }
+      .rule-row {
+        display: flex; align-items: center; gap: 8px;
+        padding: 7px 0; border-bottom: 1px solid #dfe3ea; margin-bottom: 0;
+      }
+      .rule-text {
+        flex: 1; min-width: 0; font-size: 12px; color: #5b6270;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      }
+      .rule-row input[type='checkbox'] { margin: 0; }
+      button.ghost.small { padding: 4px 10px; font-size: 12px; }
+      #rule-query { flex: 1; }
+      #rule-preview, #backup-status {
+        font-size: 12px; color: #5b6270; min-height: 1.4em; margin-top: 8px;
+      }
+      #rule-preview[data-bad='true'], #backup-status[data-bad='true'] { color: #b3261e; }
     </style>
   </head>
   <body>

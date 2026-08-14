@@ -110,18 +110,21 @@
  * is invalid, so "this matches 312 messages" reads as information and "that
  * condition matches everything" reads as a stop. #rule-empty (G4 m1, the
  * in-app editor) speaks in the same register: quiet, never an alarm.
+ *
+ * (#backup-status once rode these groups for the OPTIONS page — but that
+ * page has never linked this bundle; it got its own inline rules on
+ * 2026-08-14, and the selector left here. A selector that can never match
+ * is a fake door.)
  */
 #rule-preview,
-#rule-empty,
-#backup-status {
+#rule-empty {
   font-size: var(--t-sm);
   color: var(--fg-dim);
   min-height: 1.4em;
   margin: 0;
 }
 
-#rule-preview[data-bad='true'],
-#backup-status[data-bad='true'] {
+#rule-preview[data-bad='true'] {
   color: var(--danger);
 }
 
