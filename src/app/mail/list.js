@@ -922,7 +922,9 @@ function fillRow(li, m) {
   const subjEl = q('.r-subj');
   // The ORIGINAL subject on a conversation: it is named for what it is about,
   // not for the last reply, which is almost always "Re: ...".
-  const subject = isConv ? conv.subject : m.subject;
+  // String(): a damaged corpus record can carry a non-string here (fuzz round
+  // 3); the row renders the coercion, it must not die on the type.
+  const subject = String((isConv ? conv.subject : m.subject) ?? '');
   setHighlighted(subjEl, subject, state.query);
   setAttr(subjEl, 'title', subject);
 
@@ -1030,6 +1032,12 @@ function fillRow(li, m) {
  */
 function setHighlighted(node, text, query) {
   if (!query || /[:"]/.test(query)) { setText(node, text); return; }
+  // TOTALITY (fuzz round 3, 2026-08-14): the corpus can hand us a
+  // non-string subject (a damaged cache row clears only the id/date guards),
+  // and the with-query branch then throws on text.toLowerCase, aborting the
+  // whole list render mid-batch. Coerce once: one poisoned record loses one
+  // row's highlight, never the inbox.
+  text = String(text ?? '');
   const q = query.trim().toLowerCase();
   const hay = text.toLowerCase();
   let pos = q ? hay.indexOf(q) : -1;
