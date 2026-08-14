@@ -16,6 +16,10 @@ import { mulberry32, hostileString, hostileValue } from './helpers/fuzz.mjs';
 const VALID = new Set([...(CATEGORIES ? Object.keys(CATEGORIES) : []), ...(SIDEBAR_ORDER || [])]);
 
 function randomMsg(rnd) {
+  /* 1 in 20 draws the record itself is missing/wrong — totality defect #1
+     (2026-08-14) was found by numeric FIELDS; this keeps the nullish door
+     watched too. */
+  if (rnd() < 0.05) return rnd() < 0.5 ? null : hostileValue(rnd);
   const m = {
     from: hostileString(rnd),
     subject: hostileString(rnd),

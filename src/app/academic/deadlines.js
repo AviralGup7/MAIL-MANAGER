@@ -314,6 +314,10 @@ export function endOfDay(ms) {
 /** Bucket for the radar UI. */
 export function urgency(at, now = Date.now()) {
   const delta = at - now;
+  /* Corrupt epochs (fuzz catch 2026-08-14): NaN loses every comparison and
+     used to wash out as 'later' BY ACCIDENT. Keep the bucket closed and say
+     so — the label half of the pair just says nothing. */
+  if (!Number.isFinite(delta)) return 'later';
   if (delta < 0) return 'overdue';
   if (delta < DAY_MS) return 'today';
   if (delta < 3 * DAY_MS) return 'soon';
@@ -323,6 +327,12 @@ export function urgency(at, now = Date.now()) {
 
 /** Short human label: "in 3 days", "overdue by 2 days", "today". */
 export function relativeLabel(at, now = Date.now()) {
+  /* A corrupted deadline epoch used to render "due in NaNw" (fuzz catch
+     2026-08-14, defect #2 of the sweep): NaN loses every comparison until the
+     weeks branch stringifies it. Storage damage and hostile imports can put
+     any number here. The honest answer to an unreadable instant is SILENCE —
+     the UI omits the line rather than printing arithmetic's shrug. */
+  if (!Number.isFinite(at) || !Number.isFinite(now)) return '';
   // CALENDAR days, not elapsed 24h periods. A deadline at 23:59 tomorrow is
   // "due tomorrow" to a human, but is 1.9 elapsed days, which a rounding
   // implementation reports as "due in 2d". Comparing midnights is what people

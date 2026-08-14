@@ -67,9 +67,27 @@ import {
  * @returns {Classification}
  */
 export function classify(msg) {
-  const from = msg.from || '';
-  const subject = (msg.subject || '').toLowerCase();
-  const snippet = (msg.snippet || '').toLowerCase();
+  /*
+   * TOTALITY (fuzz catch 2026-08-14, defect #1 of the sweep). `msg.from || ''`
+   * tolerates a MISSING field but not a mistyped one: a numeric `from` from a
+   * damaged cache threw `from.toLowerCase is not a function`, and because
+   * classifyAll is a plain loop, ONE poisoned record aborted classification
+   * for the entire inbox. A classifier is only trustworthy if it is total:
+   * stray types coerce to text, and a missing message gets the floor verdict
+   * with zero confidence rather than an exception.
+   */
+  if (!msg || typeof msg !== 'object' || Array.isArray(msg)) {
+    return {
+      category: FALLBACK_CATEGORY,
+      confidence: 0,
+      source: 'fallback',
+      reason: 'Nothing to read',
+      hits: [],
+    };
+  }
+  const from = String(msg.from ?? '');
+  const subject = String(msg.subject ?? '').toLowerCase();
+  const snippet = String(msg.snippet ?? '').toLowerCase();
   const fromLower = from.toLowerCase();
 
   const { isBits } = detectBitsSource(from);

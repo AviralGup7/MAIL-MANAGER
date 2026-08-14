@@ -90,7 +90,15 @@ test('an import writes exactly the exported data — no more, no less', async ()
     const result = await importBackup(JSON.parse(toJson(backup)), target);
     assert.ok(result.ok !== false, 'import of our own export must succeed');
     const stored = target._data ? target._data() : target.data;
-    for (const [key, value] of Object.entries(backup.data)) {
+    /* IMPORT SEES THE WIRE, NOT THE MEMORY. The values an importer ever
+       meets have been through toJson, so the honest comparison is
+       wire-to-wire: NaN and Infinity arrive as null, undefined fields go
+       absent. The first run of this test compared memory-to-wire and
+       accused the importer of rewriting `ctrlEnterSend` — the figure was
+       NaN becoming null IN TRANSIT; exporter and importer were both
+       innocent. A fuzz accusation is a hypothesis, not a verdict. */
+    const wire = JSON.parse(toJson(backup)).data;
+    for (const [key, value] of Object.entries(wire)) {
       assert.deepEqual(stored[key], value, `import rewrote ${key}`);
     }
   }
