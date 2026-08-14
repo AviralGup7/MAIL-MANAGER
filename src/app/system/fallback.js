@@ -84,9 +84,19 @@ async function buildHandler() {
  * caller gets "this needs the background worker" instead of a TypeError.
  */
 function makeHandler({ auth, gmail, sync, snooze, outbox, mime }) {
+  /* Same ACCOUNT_CHANGED duty as the worker router (AUD-C1): auth.js ends
+     its own set; the label cache is the account-scoped piece THIS context
+     owns, and the page-context gmail.js instance has its own. */
+  const clearOnAccountChange = (err) => {
+    if (String(err?.message || err).includes('ACCOUNT_CHANGED')) gmail._clearLabelCache();
+    throw err;
+  };
   return async function handleInPage(msg) {
-    const { type } = msg;
+    return dispatch(msg).catch(clearOnAccountChange);
+  }
 
+  async function dispatch(msg) {
+    const { type } = msg;
     switch (type) {
       case 'AUTH_STATUS': return { signedIn: await auth.isSignedIn() };
       case 'SIGN_IN': return auth.signIn();
@@ -230,14 +240,18 @@ function makeHandler({ auth, gmail, sync, snooze, outbox, mime }) {
        * itself with the existing claim guard -- a weaker, multi-tab-safe
        * fallback, because degraded mode already lost the stronger guarantee.
        */
-      case 'OUTBOX_PUMP':
+      case 'OUTBOX_PUMP': {
+        /* Owner gate parity with the worker pump (AUD-C2). */
+        const { accountEmail } = (await chrome.storage?.local?.get('accountEmail')) || {};
         return outbox.flushOutbox({
           send: async (draft) => {
             const d = await gmail.hydrateDraftAttachments(draft);
             return gmail.sendMessage(gmail.buildMime(d), d.threadId);
           },
           storage: chrome.storage?.local,
+          accountEmail,
         });
+      }
 
       case 'LIST_LABELS': return gmail.listLabels();
       case 'CREATE_LABEL': return gmail.createLabel(msg.name);

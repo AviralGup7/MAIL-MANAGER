@@ -79,6 +79,10 @@ export const MAX_ATTEMPTS = BACKOFF_MS.length;
  * @property {number} nextAttempt
  * @property {string} [error]
  * @property {string} [threadId]    for a reply
+ * @property {string} [accountEmail] the account that queued it (AUD-C2):
+ *                                the pump refuses a record whose owner is
+ *                                not the current session. Absent on legacy
+ *                                rows, which pass (they predate identity).
  */
 
 function makeId() {
@@ -123,6 +127,10 @@ export function normaliseOutbox(raw) {
         : (Number.isFinite(it.queuedAt) ? it.queuedAt : Date.now()) + DEFAULT_HOLD_MS,
       attempts: Number.isFinite(it.attempts) ? it.attempts : 0,
       nextAttempt: Number.isFinite(it.nextAttempt) ? it.nextAttempt : 0,
+      // The owner stamp survives the round trip (AUD-C2): a normalise that
+      // dropped it would un-scope every queued record on every reload.
+      ...(typeof it.accountEmail === 'string' && it.accountEmail
+        ? { accountEmail: it.accountEmail } : {}),
       ...(typeof it.error === 'string' ? { error: it.error.slice(0, 200) } : {}),
       ...(typeof it.threadId === 'string' ? { threadId: it.threadId } : {}),
       ...(unknownState ? { error: 'unrecognised persisted state; held back from sending' } : {}),
@@ -150,18 +158,57 @@ export async function saveOutbox(items, storage = STORAGE) {
 }
 
 /**
+ * May THIS session send this queued item? (audit 2026-08-15, AUD-C2)
+ *
+ * The queue predates account identity, so the rule is asymmetric on purpose:
+ * an UNSTAMPED record (queued before the stamp existed, or by a session that
+ * never proved one) dispatches — refusing it would strand real mail nobody
+ * can identify. A STAMPED record sends only for its own account: a queued
+ * draft is a promise made BY someone, and the stamp is how the pump knows
+ * the promise is not being handed to a stranger.
+ */
+export function dispatchable(item, accountEmail) {
+  const mine = typeof item?.accountEmail === 'string'
+    ? item.accountEmail.trim().toLowerCase() : '';
+  const current = typeof accountEmail === 'string'
+    ? accountEmail.trim().toLowerCase() : '';
+  if (!mine || !current) return true;
+  return mine === current;
+}
+
+/**
+ * Empty the queue (audit 2026-08-15, AUD-C2) — the first removal verb the
+ * outbox ever grew, and deliberately NOT called from the worker. Its one
+ * caller is the app's sign-out, UNDER the `clearOutboxOnSignOut` setting
+ * (default ON): "nothing is removed" is the house rule, so the removal is
+ * a preference, not a policy. A queue kept (setting OFF) is still scoped by
+ * `dispatchable`, so keeping it cannot produce a cross-account send.
+ */
+export async function clearOutbox(storage = STORAGE) {
+  try {
+    await storage.remove(KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Queue a message.
  *
  * @param {object} draft
  * @param {{holdMs?:number, now?:number, threadId?:string}} [opts]
  * @returns {OutboxItem}
  */
-export function enqueue(draft, { holdMs = DEFAULT_HOLD_MS, now = Date.now(), threadId } = {}) {
+export function enqueue(draft, { holdMs = DEFAULT_HOLD_MS, now = Date.now(), threadId, accountEmail } = {}) {
   return {
     id: makeId(),
     state: 'held',
     draft,
     queuedAt: now,
+    // Who queued it (AUD-C2). The dispatch gate is at the pump, not here:
+    // enqueueing never needs a session, SENDING does.
+    ...(typeof accountEmail === 'string' && accountEmail ? { accountEmail } : {}),
     // holdMs of 0 means "send immediately" -- the user turned undo-send off.
     releaseAt: now + Math.max(0, holdMs),
     attempts: 0,
@@ -445,8 +492,12 @@ async function claim(storage, id, now) {
   }
 }
 
-export async function flushOutbox(/** @type {{send?:(item:any)=>Promise<any>, storage?:any, now?:number, onChange?:(items:any)=>void, settleMs?:number}} */
-  { send, storage = STORAGE, now = Date.now(), onChange, settleMs = CLAIM_SETTLE_MS } = {}) {
+export async function flushOutbox(/** @type {{send?:(item:any)=>Promise<any>, storage?:any, now?:number, onChange?:(items:any)=>void, settleMs?:number, accountEmail?:string}} */
+  { send, storage = STORAGE, now = Date.now(), onChange, settleMs = CLAIM_SETTLE_MS, accountEmail } = {}) {
+  /* The SAME owner gate the worker pump applies (AUD-C2): a stamped record
+     sends only for its own account. The fallback is the wrong place to
+     discover a cross-account send, not the right place to allow one. */
+  let wrongAccount = 0;
   if (inFlight) return { sent: 0, failed: 0, skipped: true };
   let items = await loadOutbox(storage);
   let due = prioritizeDue(dueItems(items, now));
@@ -474,6 +525,11 @@ export async function flushOutbox(/** @type {{send?:(item:any)=>Promise<any>, st
     const sentIds = [];
 
     for (const item of due) {
+      if (!dispatchable(item, accountEmail)) {
+        // Not ours to send; it stays armed for its owner (AUD-C2).
+        wrongAccount++;
+        continue;
+      }
       // Claim it before awaiting, so a concurrent load cannot pick it up.
       dispatching.add(item.id);
       if (!(await claim(storage, item.id, now))) {
@@ -534,7 +590,8 @@ export async function flushOutbox(/** @type {{send?:(item:any)=>Promise<any>, st
       if (changed) await storage.set({ [CLAIM_KEY]: claims });
     } catch { /* the TTL remains the backstop */ }
 
-    return { sent, failed, skipped: false, sentIds };
+    return { sent, failed, skipped: false, sentIds,
+           ...(wrongAccount ? { wrongAccount } : {}) };
   } finally {
     inFlight = false;
     // Release the pump lock on EVERY exit path that acquired it (the early

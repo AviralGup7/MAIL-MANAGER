@@ -108,6 +108,23 @@ export const SCHEMA = {
    * unqueued branch to drift.
    */
   undoSendSeconds: { type: 'int', def: 5, min: 0, max: 30 },
+  /*
+   * CANCEL UNSENT MESSAGES ON SIGN-OUT (audit 2026-08-15, AUD-C2).
+   *
+   * The outbox used to outlive sign-out entirely: a message account A
+   * queued (or failed sending) could be pumped under account B's token —
+   * A's words leaving from B's mailbox. The safe floor is cancellation at
+   * sign-out, and the owner's rule is "nothing is removed": so the removal
+   * is a PREFERENCE, not a policy. ON (default) = the audit's floor. OFF is
+   * honest only for people who sign out and back into the SAME account and
+   * want queued sends to wait for them — and even then, the pump's
+   * `dispatchable` gate refuses a stamped record under any other account,
+   * so OFF cannot produce a cross-account send either.
+   *
+   * Read at sign-out in main.js; the queue-clearing verb lives in
+   * outbox.js (`clearOutbox`). Entry and consumer land together.
+   */
+  clearOutboxOnSignOut: { type: 'bool', def: true },
 
   // ---- reading ----
   /*

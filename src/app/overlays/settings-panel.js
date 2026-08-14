@@ -132,6 +132,10 @@ const SECTIONS = [
     title: 'Composing',
     items: [
       {
+        kind: 'check', key: 'clearOutboxOnSignOut', label: 'Cancel unsent messages when I sign out',
+        hint: 'On, and safe: nothing one account queued can ever leave from another. Off is for signing out and back into the SAME account while sends stay queued — the pump still refuses them for anyone else.',
+      },
+      {
         kind: 'range', key: 'undoSendSeconds', label: 'Undo window',
         min: 0, max: 30, step: 1, format: fmtUndo,
         hint: 'How long a sent message waits before it actually goes. A message that fails waits in the Outbox either way — nothing is lost.',

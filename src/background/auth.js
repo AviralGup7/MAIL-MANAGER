@@ -77,6 +77,36 @@ const REVOKE_ENDPOINT = 'https://oauth2.googleapis.com/revoke';
  */
 import { TOKEN_STORAGE } from '../platform/storage.js';
 
+/*
+ * The profile endpoint, read STRAIGHT from this module (audit 2026-08-15,
+ * AUD-C1) — not imported from gmail.js. gmail.js imports getToken/forceRenew
+ * from here, so reaching back for its `profile()` would close an
+ * auth<->gmail import cycle. One tiny GET duplicated beats a cycle, and the
+ * cycle version also couples "who am I" to the whole REST layer at module
+ * load. This is the ONLY direct fetch auth.js makes beside revocation.
+ */
+const PROFILE_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/profile';
+
+/**
+ * Which account does THIS token belong to?
+ *
+ * Canonical form: lowercased, trimmed. Throws on any failure (network,
+ * non-200, malformed) — callers classify that as transient, because
+ * treating "couldn't check" as "account changed" is exactly the destructive
+ * default this feature exists to refuse.
+ */
+async function fetchAccountEmail(accessToken) {
+  const res = await fetch(PROFILE_URL, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!res.ok) throw new Error(`identity check failed (${res.status})`);
+  const data = await res.json();
+  const email = String(data?.emailAddress || '').trim().toLowerCase();
+  if (!email) throw new Error('identity check returned no address');
+  return email;
+}
+
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.modify',
   'https://www.googleapis.com/auth/gmail.send',
@@ -224,6 +254,14 @@ export async function signIn() {
   // Remember that consent was granted, so getToken() knows silent renewal is
   // worth attempting. Implicit flow gives us no refresh token to test for.
   await chrome.storage.local.set({ authorized: true });
+  /* Stamp the identity this consent just proved (audit 2026-08-15, AUD-C1).
+     The account is an IDENTITY now, not an assumption: silent renewals are
+     validated against this value forever after. Best-effort by design — a
+     profile read failing right after consent must not block a sign-in that
+     just succeeded; the first successful renewal stamps instead. */
+  try {
+    await chrome.storage.local.set({ accountEmail: await fetchAccountEmail(tok.access_token) });
+  } catch { /* the renewal validator stamps on its next success */ }
   return tok;
 }
 
@@ -337,13 +375,69 @@ async function renew() {
     // The user may have signed out while this was in flight. Persisting now
     // would resurrect the session they just ended.
     if (epoch !== sessionEpoch) throw new Error('NOT_SIGNED_IN');
+    /*
+     * WHOSE TOKEN IS THIS? (audit 2026-08-15, AUD-C1)
+     *
+     * `prompt=none` mints for whoever Google considers the browser's current
+     * account THIS HOUR. A user who moves their default session from their
+     * institute account to a personal one used to hand us the new account's
+     * token with no indication -- and the extension then applied the old
+     * account's historyId, label ids, notify dedupe and QUEUED SENDS to it.
+     * The audit traced the full blast radius; this is the gate that closes
+     * it. Every silent renewal proves identity before it persists anything.
+     *
+     * Only "proved different" is destructive. A failed CHECK is transient
+     * (the renewal simply did not happen): a network blip during validation
+     * must never masquerade as an account change, because the remedy for a
+     * real change clears account-scoped state.
+     */
+    let email;
+    try {
+      email = await fetchAccountEmail(tok.access_token);
+    } catch {
+      scheduleRenewRetry();
+      throw new Error('AUTH_RENEW_TRANSIENT');
+    }
+    if (epoch !== sessionEpoch) throw new Error('NOT_SIGNED_IN');
+    const { accountEmail: known } = await chrome.storage.local.get('accountEmail');
+    const knownCanon = String(known || '').trim().toLowerCase();
+    if (knownCanon && email !== knownCanon) {
+      /*
+       * The browser's account moved. End THIS session, exactly the set
+       * signOut clears, because the next layer up (worker router, then the
+       * app) finishes the teardown on ACCOUNT_CHANGED: label cache, message
+       * cache, body floor, intents, and — under clearOutboxOnSignOut — the
+       * queue that would otherwise fire account A's drafts from account B.
+       * The fresh token is deliberately NOT persisted: holding a valid
+       * credential for an account the user never consented to HERE is the
+       * state this class exists to prevent.
+       */
+      await TOKEN_STORAGE().remove(['accessToken', 'expiresAt']);
+      await chrome.storage.local.remove([
+        'authorized', 'historyId', 'bgNotifiedIds', 'accountEmail',
+      ]);
+      throw new Error('ACCOUNT_CHANGED');
+    }
     await persist(tok);
+    // Legacy installs have no stamp yet: the first successful renewal after
+    // the upgrade writes one; nobody is ever cleared for lacking a stamp.
+    if (!knownCanon) await chrome.storage.local.set({ accountEmail: email });
     return tok.access_token;
   } catch (err) {
     // Do NOT clear storage for a superseded renewal: sign-out has already
     // cleared it, and a sign-IN may since have populated it afresh. Wiping
     // here would sign the user back out immediately after they signed in.
     if (epoch !== sessionEpoch) throw new Error('NOT_SIGNED_IN');
+    const msg = String((err && err.message) || err);
+    /*
+     * ACCOUNT_CHANGED must reach the router VERBATIM (audit 2026-08-15,
+     * AUD-C1 — caught by test, not review: the pin refused a mislabelled
+     * AUTH_RENEW_TRANSIENT). The clearance above has already ended the local
+     * session; this throw is the signal the worker and the surface tear down
+     * on. Relabelling it "transient" would also schedule a RETRY of the
+     * renewal that just proved the account moved.
+     */
+    if (msg === 'ACCOUNT_CHANGED') throw err;
     /*
      * A RENEWAL FAILURE IS NOT A REVOCATION (cross-audit H3). A wifi dropout
      * during the hourly silent renewal used to delete `authorized`, turning
@@ -351,7 +445,6 @@ async function renew() {
      * rejection from Google ends consent; everything else keeps the flag,
      * surfaces as transient, and retries when the network returns.
      */
-    const msg = String((err && err.message) || err);
     const revoked = /access_denied|invalid_client|invalid_grant|deleted_client|interaction_required|login_required/.test(msg);
     if (revoked) {
       // Token keys come out of the SAME area persist() wrote them to
@@ -413,7 +506,7 @@ export async function signOut() {
   // private data that must not survive into account B's session (nor hold a
   // slot in its 100-entry cap).
   await TOKEN_STORAGE().remove(['accessToken', 'expiresAt']);
-  await chrome.storage.local.remove(['authorized', 'historyId', 'bgNotifiedIds']);
+  await chrome.storage.local.remove(['authorized', 'historyId', 'bgNotifiedIds', 'accountEmail']);
 }
 
 /**

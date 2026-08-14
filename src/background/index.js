@@ -22,7 +22,7 @@ import { MAX_INLINE_BYTES, MAX_INLINE_PARTS, BULK_CHUNK } from '../shared/limits
 import { loadSnoozed, removeSnooze, due } from '../app/system/snooze.js';
 // Pure queue helpers (state machine, backoff, normalisation). The RUNNER
 // lives here in the worker now: one dispatcher for every tab (bug-hunt P1).
-import { loadOutbox, saveOutbox, dueItems, markFailed, prioritizeDue } from '../app/compose/outbox.js';
+import { loadOutbox, saveOutbox, dueItems, markFailed, prioritizeDue, dispatchable } from '../app/compose/outbox.js';
 import { syncPage, syncDelta } from './sync.js';
 import { api } from './gmail.js';
 // The MIME parser lives in its own module so the in-page fallback can reuse
@@ -193,7 +193,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (sender?.id && sender.id !== chrome.runtime.id) return false;
   handle(msg)
     .then((data) => sendResponse({ ok: true, data }))
-    .catch((err) => sendResponse({ ok: false, error: String(err?.message || err) }));
+    .catch((err) => {
+      /* AUD-C1 (2026-08-15): a silent renewal proved the browser's account
+         moved. auth.js already ended its own session set; the label-id
+         cache is this module's piece of account-scoped state, dropped here
+         so ACCOUNT_CHANGED is never followed by a stale id. */
+      if (String(err?.message || err).includes('ACCOUNT_CHANGED')) _clearLabelCache();
+      sendResponse({ ok: false, error: String(err?.message || err) });
+    });
   return true; // keep the channel open for the async reply
 });
 
@@ -360,6 +367,12 @@ async function handle(msg) {
       outboxPumping = true;
       try {
         let items = await loadOutbox(chrome.storage.local);
+        /* The session's identity ONCE per pump (AUD-C2): queued records
+           carry their owner's accountEmail, and a record whose owner is not
+           this session is skipped — left armed for the account that made
+           the promise, never fired by the one that didn't. */
+        const { accountEmail } = await chrome.storage.local.get('accountEmail');
+        let wrongAccount = 0;
         // HELD FIRST (bug-hunt 43 #1): a fresh send must not wait behind a
         // backlog of automatic retries for a slot in the batch.
         const allDue = prioritizeDue(dueItems(items));
@@ -394,6 +407,12 @@ async function handle(msg) {
             items = items.filter((x) => x.id !== item.id);
             continue;
           }
+          if (!dispatchable(item, accountEmail)) {
+            // Not ours to send (AUD-C2). It stays queued exactly as loaded;
+            // the count travels back so the caller may tell the user.
+            wrongAccount++;
+            continue;
+          }
           // Persist `sending` BEFORE the request: the crash contract reads it
           // on next boot, and cancel() refuses a record in this state.
           items = items.map((x) => (x.id === item.id ? { ...x, state: 'sending' } : x));
@@ -415,7 +434,8 @@ async function handle(msg) {
           }
           await saveOutbox(items, chrome.storage.local);
         }
-        return { sent, failed, skipped: false, sentIds, more };
+        return { sent, failed, skipped: false, sentIds, more,
+          ...(wrongAccount ? { wrongAccount } : {}) };
       } finally {
         outboxPumping = false;
       }

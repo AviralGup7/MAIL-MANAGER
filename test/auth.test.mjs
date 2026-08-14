@@ -84,8 +84,18 @@ async function load({ storage = { clientId: CLIENT_ID } } = {}) {
     },
   };
 
+  /* 2026-08-15 (AUD-C1): sign-in and every silent renewal now validate the
+     token's OWNER against the Gmail profile endpoint, so the default fetch
+     must answer it — an anonymous `{}` would make every renewal here report
+     AUTH_RENEW_TRANSIENT and dissolve the session these tests stand up.
+     Per-token profiles live in account-identity.test.mjs, which owns the
+     mismatch/clearance matrix; here one stable address keeps the pre-AUD-C1
+     pins exactly as they were. */
   globalThis.fetch = async (url, init) => {
     calls.fetch.push({ url: String(url), init });
+    if (String(url).includes('/users/me/profile')) {
+      return { ok: true, status: 200, json: async () => ({ emailAddress: 'user@example.com' }) };
+    }
     return { ok: true, status: 200, json: async () => ({}), text: async () => '' };
   };
 
@@ -538,8 +548,12 @@ test('the live token lives in session storage; consent stays in local (SEC-5)', 
   assert.match(AUTH_SRC, /TOKEN_STORAGE\(\)\.set\(\{\s*accessToken/, 'token written to the area');
   assert.match(AUTH_SRC, /chrome\.storage\.local\.get\('authorized'\)/,
     'consent flag read from local');
-  assert.match(AUTH_SRC, /chrome\.storage\.local\.remove\(\['authorized', 'historyId', 'bgNotifiedIds'\]\)/,
-    'sign-out clears consent + cursor + notification dedupe from local, token from the area');
+  /* 2026-08-15 (AUD-C1): the identity stamp `accountEmail` joined the clear
+     list — the account that signed in is itself account-scoped state, and a
+     stale stamp would make the NEXT account's first renewal look like an
+     account change. */
+  assert.match(AUTH_SRC, /chrome\.storage\.local\.remove\(\['authorized', 'historyId', 'bgNotifiedIds', 'accountEmail'\]\)/,
+    'sign-out clears consent + cursor + notification dedupe + identity from local, token from the area');
   /* The preference chain itself now lives at the seam — pin it there. */
   const SEAM_SRC = readFileSync(new URL('../src/platform/storage.js', import.meta.url), 'utf8');
   assert.match(SEAM_SRC, /storage\?\.session \|\| localArea\(\)/, 'the seam: session preferred, local fallback');
@@ -556,7 +570,14 @@ test('forceRenew and the revocation path drop the token from the TOKEN area (bug
   assert.ok(!/chrome\.storage\.local\.remove\(\['accessToken'/.test(renew),
     'no local-area token removal may survive in forceRenew');
 
-  const revoked = AUTH_SRC.slice(AUTH_SRC.indexOf('const revoked ='), AUTH_SRC.indexOf('scheduleRenewRetry()'));
+  /* 2026-08-15 (AUD-C1): renew() gained an identity check whose transient
+     arm ALSO calls scheduleRenewRetry(), so the first `scheduleRenewRetry()`
+     in the file now precedes this block and the old slice end-anchor collapsed
+     to an empty window. The revocation branch is short and stable; a bounded
+     window from its own start is the robust anchor. */
+  const revokedStart = AUTH_SRC.indexOf('const revoked =');
+  assert.ok(revokedStart > 0, 'the revocation branch must exist');
+  const revoked = AUTH_SRC.slice(revokedStart, revokedStart + 900);
   assert.match(revoked, /TOKEN_STORAGE\(\)\.remove\(\['accessToken', 'expiresAt'\]\)/,
     'an explicit Google rejection must drop the token from the token area');
   assert.match(revoked, /chrome\.storage\.local\.remove\(\['authorized'\]\)/,

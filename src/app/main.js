@@ -27,6 +27,7 @@
 import { Store } from './mail/store.js';
 import { loadCache, saveCache, clearCache, createSaver, CACHE_MAX } from './system/cache.js';
 import { clearBodyCache } from './system/body-cache.js';
+import { clearOutbox } from './compose/outbox.js';
 import {
   enqueueIntent, cancelIntent, drainIntents, queuedIntentCount, clearIntents,
   INTENT_MAX_ATTEMPTS,
@@ -384,7 +385,7 @@ const VERB_TIMEOUT_MS = {
 const DEFAULT_TIMEOUT_MS = 10000;
 
 function send(type, extra = {}) {
-  if (workerDown) return runInPage(type, extra);
+  if (workerDown) return runInPageGuarded(type, extra);
 
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -397,7 +398,7 @@ function send(type, extra = {}) {
       if (settled) return;
       settled = true;
       degradeToFallback('the background worker stopped responding');
-      runInPage(type, extra).then(resolve, reject);
+      runInPageGuarded(type, extra).then(resolve, reject);
     }, VERB_TIMEOUT_MS[type] ?? DEFAULT_TIMEOUT_MS);
 
     try {
@@ -409,18 +410,68 @@ function send(type, extra = {}) {
         const lastErr = chrome.runtime.lastError;
         if (lastErr || !res) {
           degradeToFallback(lastErr?.message || 'the background worker did not start');
-          runInPage(type, extra).then(resolve, reject);
+          runInPageGuarded(type, extra).then(resolve, reject);
           return;
         }
-        res.ok ? resolve(res.data) : reject(new Error(res.error));
+        if (res.ok) {
+          resolve(res.data);
+        } else {
+          // The worker already cleared ITS side; the surface clears its own.
+          if (String(res.error).includes('ACCOUNT_CHANGED')) void onAccountChanged();
+          reject(new Error(res.error));
+        }
       });
     } catch (err) {
       settled = true;
       clearTimeout(timer);
       degradeToFallback(err.message);
-      runInPage(type, extra).then(resolve, reject);
+      runInPageGuarded(type, extra).then(resolve, reject);
     }
   });
+}
+
+/*
+ * The account tripwire, surface half (AUD-C1, 2026-08-15).
+ *
+ * THE HAZARD: silent OAuth renewal mints a token for whichever account the
+ * BROWSER is signed into. The worker validates every renewal against the
+ * account that signed this session in and, on a mismatch, clears its side
+ * (token, history cursor, notification floor) and answers ACCOUNT_CHANGED.
+ * This function is the surface's share of that law: the session on screen is
+ * torn down exactly as at sign-out, once, with a gate message that says WHY
+ * — a silent swap would show the previous account's cached mail to the next
+ * person and attribute actions to the wrong sender.
+ *
+ * The once-guard matters: a mismatch can surface from several in-flight
+ * verbs at once (the timer, the response, and the catch all reach here), and
+ * each teardown schedules writes on the stores the previous one cleared.
+ */
+let accountChangeHandled = false;
+async function onAccountChanged() {
+  if (accountChangeHandled || state.signedIn === false) return;
+  accountChangeHandled = true;
+  await endAccountSession(
+    'Your browser signed into a different Google account. ' +
+    'This session was cleared — sign in again to continue.'
+  );
+}
+
+/*
+ * In-page fallback WITH the tripwire. When the worker is down every verb
+ * runs here, and auth.js applies the same account law in-page — so the same
+ * teardown has to be reachable from this path too. Guarding only the worker
+ * path would disarm the tripwire in precisely the mode where the surface is
+ * doing the worker's job.
+ */
+async function runInPageGuarded(type, extra) {
+  try {
+    return await runInPage(type, extra);
+  } catch (err) {
+    if (String(err?.message || err).includes('ACCOUNT_CHANGED')) {
+      void onAccountChanged();
+    }
+    throw err;
+  }
 }
 
 /**
@@ -2187,12 +2238,20 @@ $('btn-more').addEventListener('click', () => {
   else loadMailboxPage(state.mailbox, mbState(state.mailbox).nextPageToken);
 });
 $('btn-gmail').addEventListener('click', release);
-$('btn-signout').addEventListener('click', async () => {
-  await send('SIGN_OUT').catch(() => {});
-  // Signing out must leave nothing of this ACCOUNT behind — not just the
-  // mailbox on screen. `allMailboxes` clears every store, because Sent, Trash
-  // and the rest stayed fully populated in memory and were one click away
-  // after the gate appeared.
+/*
+ * Account-session teardown, shared by two callers that must do the SAME
+ * thing (AUD-C1, 2026-08-15):
+ *   1. the sign-out button — the USER ended the session;
+ *   2. onAccountChanged — the WORKER discovered at a silent renewal that the
+ *      browser's Google account is no longer this session's account.
+ * The gate message is the only difference, so it is the only parameter.
+ *
+ * Signing out must leave nothing of this ACCOUNT behind — not just the
+ * mailbox on screen. `allMailboxes` clears every store, because Sent, Trash
+ * and the rest stayed fully populated in memory and were one click away
+ * after the gate appeared.
+ */
+async function endAccountSession(gateMessage) {
   // The saver defers writes to idle; a save scheduled by the store
   // notifications below would otherwise resurrect an (empty) cache blob
   // AFTER clearCache() removed it. Invalidate before AND after resetView —
@@ -2207,14 +2266,31 @@ $('btn-signout').addEventListener('click', async () => {
      that signs out must not leave its pending archives pointed at the NEXT
      account's mailbox (same law as the body floor, one blob up). */
   await clearIntents();
+  /* The outbox is the one account-scoped store that used to survive
+     (AUD-C2): a queued — or worse, a FAILED-but-retryable — send from
+     this account could be pumped under the NEXT account's token. Under
+     `clearOutboxOnSignOut` (def true) the queue dies with the session.
+     Setting OFF keeps it, and even then every stamped record is refused
+     for a different account at the pump — keeping is safe, sending is
+     scoped. */
+  if (settings.get('clearOutboxOnSignOut')) await clearOutbox();
   resetView({ allMailboxes: true });
   saver.invalidate();
   state.signedIn = false;
+  // The address on the chrome identity belongs to the account that is
+  // LEAVING. Keeping it would sign follow-ups, snoozes and audience marks
+  // with the previous account's name.
+  state.selfEmail = '';
   opEpoch++; // late responses from this session are now stale
   // A signed-out app that keeps polling is a privacy problem, not just a bug.
   stopAutoRefresh();
   clearHash(); // 65/g: the gate has no view state worth a URL.
-  showGate('Signed out.');
+  showGate(gateMessage);
+}
+
+$('btn-signout').addEventListener('click', async () => {
+  await send('SIGN_OUT').catch(() => {});
+  await endAccountSession('Signed out.');
 });
 $('btn-signin').addEventListener('click', doSignIn);
 $('btn-options').addEventListener('click', () => chrome.runtime.openOptionsPage());
@@ -2542,6 +2618,7 @@ async function doSignIn() {
   btn.textContent = 'Opening Google…';
   try {
     await send('SIGN_IN');
+    accountChangeHandled = false; // new session: the tripwire arms again
     state.signedIn = true;
     hideGate();
     await start();

@@ -226,12 +226,22 @@ test('drains ride the online event plus one boot pass, with honest provenance', 
 
 test('sign-out disarms the queue; nothing else touches it', () => {
   const src = read('src/app/main.js');
+  /* 2026-08-15 (AUD-C1): the teardown moved into endAccountSession(), which
+     the account-change tripwire shares — the disarm had to move with it. The
+     LAW is unchanged and now pinned against the extraction: exactly ONE
+     disarm call in the shell, inside the shared teardown, whose only callers
+     are the two ways an account session ends (the button, the tripwire). A
+     resync must still never touch armed verbs. */
+  assert.equal(src.split('clearIntents()').length - 1, 1,
+    'exactly one disarm site — a resync keeps verbs armed');
+  assert.match(src, /async function endAccountSession\(gateMessage\) \{[^]*?await clearIntents\(\);/,
+    'the one disarm lives in the account-session teardown');
   const btn = src.indexOf("$('btn-signout')");
   assert.ok(btn !== -1);
-  assert.equal(src.slice(0, btn).split('clearIntents()').length - 1, 0,
-    'only sign-out disarms queued verbs — a resync keeps them armed');
-  assert.ok(src.slice(btn).includes('clearIntents()'),
+  assert.ok(src.slice(btn).includes('endAccountSession('),
     'an account that signs out leaves no armed verbs for the next account');
+  assert.ok(src.includes('.includes(\'ACCOUNT_CHANGED\')'),
+    'the tripwire exists — the teardown is reachable without the button');
 });
 
 test('the key is registered, excluded from backups, and the exclusion says why', () => {

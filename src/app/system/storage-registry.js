@@ -67,6 +67,7 @@ const DOMAIN_KEYS = [
   { key: 'outboxClaims', owner: 'src/app/compose/outbox.js', purpose: 'dispatch coordination claims', backup: false, reason: 'transient coordination state' },
   { key: 'outboxPumpLock', owner: 'src/app/compose/outbox.js', purpose: 'one pump writer per window across tabs', backup: false, reason: 'transient coordination state; TTL is the crash backstop' },
   { key: 'historyId', owner: 'src/background/sync.js', purpose: 'Gmail delta-sync cursor', backup: false, reason: 'server-side truth; a stale cursor forces a resync at worst' },
+  { key: 'accountEmail', owner: 'src/background/auth.js', purpose: 'identity of the consenting account — every silent renewal is validated against it (audit 2026-08-15, AUD-C1)', backup: false, reason: 'per-account identity; restoring it onto another account context is exactly the hazard it exists to catch' },
   { key: 'accessToken', owner: 'src/background/auth.js', purpose: 'OAuth token (session area preferred)', backup: false, reason: 'credential — never travels' },
   { key: 'expiresAt', owner: 'src/background/auth.js', purpose: 'OAuth token expiry', backup: false, reason: 'credential metadata — never travels' },
 ];

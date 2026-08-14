@@ -241,7 +241,11 @@ export async function startReply(ctx, mode) {
   if (!id) return;
   try {
     const body = await ctx.send('GET_BODY', { id });
-    const r = buildReply(body, ctx.state.email || '', mode);
+    /* Stale property, found 2026-08-15 while stamping outbox rows for
+       AUD-C1: app state carries the signed-in address as `selfEmail`, and
+       `state.email` never existed — so reply-all never received the self
+       address here and could not strip it. Fixed at the reference. */
+    const r = buildReply(body, ctx.state.selfEmail || '', mode);
     openCompose(ctx, {
       ...r,
       replyTo: body, // bug-hunt #35: template auto-values need the source
@@ -661,6 +665,11 @@ async function doSend(ctx) {
     const item = outbox.enqueue(draft, {
       holdMs: ctx.undoSendMs ? ctx.undoSendMs() : outbox.DEFAULT_HOLD_MS,
       threadId: composeMeta.threadId,
+      /* AUD-C1 (2026-08-15): the row is stamped with the account that queued
+         it, so a pump running under a DIFFERENT account's token refuses it
+         instead of sending one account's mail as another. Legacy unstamped
+         rows stay dispatchable — see outbox.dispatchable. */
+      accountEmail: ctx.state?.selfEmail || '',
     });
     const queue = await outbox.loadOutbox();
     await outbox.saveOutbox([...queue, item]);
