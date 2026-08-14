@@ -59,15 +59,28 @@ export function normaliseOverrides(raw) {
     const at = v.at === null ? null : Number.isFinite(v.at) ? v.at : undefined;
     if (at === undefined) continue;
     const origin = ['corrected', 'manual', 'dismissed'].includes(v.origin) ? v.origin : 'manual';
-    out[id] = {
-      messageId: id,
-      at,
-      origin,
-      setAt: Number.isFinite(v.setAt) ? v.setAt : 0,
-      ...(typeof v.note === 'string' && v.note ? { note: v.note.slice(0, 200) } : {}),
-      ...(typeof v.wasText === 'string' ? { wasText: v.wasText.slice(0, 200) } : {}),
-      ...(Number.isFinite(v.wasAt) ? { wasAt: v.wasAt } : {}),
-    };
+    /*
+     * defineProperty, never `out[id] = ...` (fuzz round 3, 2026-08-14,
+     * defect #10b): an id of '__proto__' hits the prototype SETTER, and
+     * because the value here is an OBJECT the assignment SUCCEEDS -- the
+     * map's prototype is replaced with the override record itself (the
+     * entry is simultaneously lost AND every subsequent miss reads
+     * through to the override's fields, e.g. map2['at'] would return the
+     * poisoned timestamp). 'deadlineOverrides' is backup:true, so this is
+     * backup-import reachable.
+     */
+    Object.defineProperty(out, id, {
+      value: {
+        messageId: id,
+        at,
+        origin,
+        setAt: Number.isFinite(v.setAt) ? v.setAt : 0,
+        ...(typeof v.note === 'string' && v.note ? { note: v.note.slice(0, 200) } : {}),
+        ...(typeof v.wasText === 'string' ? { wasText: v.wasText.slice(0, 200) } : {}),
+        ...(Number.isFinite(v.wasAt) ? { wasAt: v.wasAt } : {}),
+      },
+      writable: true, enumerable: true, configurable: true,
+    });
     n++;
   }
   return out;
@@ -237,8 +250,13 @@ export function pruneOverrides(map, liveIds) {
   const kept = {};
   let dropped = 0;
   for (const [id, v] of Object.entries(map)) {
-    if (live.has(id)) kept[id] = v;
-    else dropped++;
+    /* Same '__proto__' prototype-setter trap as normaliseOverrides (fuzz
+     * round 3, defect #10b): define the entry, do not assign it. */
+    if (live.has(id)) {
+      Object.defineProperty(kept, id, {
+        value: v, writable: true, enumerable: true, configurable: true,
+      });
+    } else dropped++;
   }
   return dropped === 0 ? map : kept;
 }

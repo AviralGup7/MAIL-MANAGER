@@ -142,20 +142,41 @@ export async function removeSnooze(id, storage = STORAGE) {
  */
 export function due(all, now = Date.now()) {
   return Object.entries(all)
-    .filter(([, v]) => v && typeof v.at === 'number' && v.at <= now)
+    /*
+     * Number.isFinite, not typeof === 'number' (fuzz round 3, 2026-08-14,
+     * defect #5): a damaged row carrying `at: -Infinity` passes the old
+     * check and reports due IMMEDIATELY -- the message is silently
+     * unsnoozed the moment it is snoozed, which is exactly the "lost mail"
+     * failure this module's header swears to prevent. NaN and +Infinity
+     * fail `<= now` on their own; only -Infinity escapes, but the guard
+     * must be total because the stored blob is not.
+     */
+    .filter(([, v]) => v && Number.isFinite(v.at) && v.at <= now)
     .map(([id]) => id);
 }
 
 /** Still asleep, soonest first -- the order the Snoozed view should show. */
 export function pending(all, now = Date.now()) {
   return Object.entries(all)
-    .filter(([, v]) => v && typeof v.at === 'number' && v.at > now)
+    /*
+     * Same fuzz-5 guard as due(): a row with `at: Infinity` passes
+     * `> now` forever, so it lists in the Snoozed view with a wake label
+     * computed from an infinite instant ("Invalid Date"). An unbounded
+     * deferral is indistinguishable from loss; drop the row instead of
+     * displaying a lie.
+     */
+    .filter(([, v]) => v && Number.isFinite(v.at) && v.at > now)
     .sort((a, b) => a[1].at - b[1].at)
     .map(([id, v]) => ({ id, at: v.at }));
 }
 
 /** "in 3 hours", "tomorrow", "on 14 Mar" -- the same voice as the radar. */
 export function wakeLabel(wakeAt, now = Date.now()) {
+  /* Fuzz round 3 defect #5: a non-finite instant formats as "Invalid Date"
+   * (or "in Infinity hours"); a label helper must be total and never show
+   * either. Display modules return '' for garbage (display.js contract);
+   * this one does the same. */
+  if (!Number.isFinite(wakeAt) || !Number.isFinite(now)) return '';
   const ms = wakeAt - now;
   if (ms <= 0) return 'now';
   const mins = Math.round(ms / 60000);

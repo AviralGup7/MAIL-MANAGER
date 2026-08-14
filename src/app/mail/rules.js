@@ -63,8 +63,35 @@ export function normaliseRules(raw) {
   }
   if (raw.corrections && typeof raw.corrections === 'object' && !Array.isArray(raw.corrections)) {
     for (const [k, v] of Object.entries(raw.corrections)) {
-      if (typeof k === 'string' && typeof v === 'string') out.corrections[k.toLowerCase()] = v;
+      if (typeof k !== 'string' || typeof v !== 'string') continue;
+      /*
+       * defineProperty, never `out.corrections[key] = v` (fuzz round 3,
+       * 2026-08-14, defect #10a): a corrections key of '__proto__' (a
+       * sender literally named that; addressOf needs no '@') goes through
+       * the prototype SETTER. With a string value the assignment is
+       * silently ignored -- the user's correction vanishes on every
+       * load/save round-trip. Backup import carries this map verbatim, so
+       * a hostile backup can also plant it. Defining an own data property
+       * keeps every other key byte-identical.
+       */
+      Object.defineProperty(out.corrections, k.toLowerCase(), {
+        value: v, writable: true, enumerable: true, configurable: true,
+      });
     }
+  }
+  /*
+   * Resolve muted-vs-autoArchive contradictions in favour of muted (fuzz
+   * round 3, defect #14). The UI toggles keep the two lists mutually
+   * exclusive -- toggleMute drops the archive rule and vice versa -- but a
+   * blob arriving from storage/backup can carry BOTH for the same
+   * category, which would hide the category locally AND archive it
+   * upstream: mail that leaves no trace anywhere. Local-hide wins because
+   * it is the reversible half (unmute restores the view; unarchiving mail
+   * that Gmail already archived needs a second trip upstream).
+   */
+  if (out.muted.length && out.autoArchive.length) {
+    const muted = new Set(out.muted);
+    out.autoArchive = out.autoArchive.filter((c) => !muted.has(c));
   }
   return out;
 }
@@ -161,8 +188,22 @@ export function clearCorrection(rules, from) {
  */
 export function applyCorrection(rules, msg) {
   const addr = addressOf(msg.from);
-  const category = rules.corrections[addr];
-  if (!category || category === msg.category) return msg;
+  /*
+   * Own-read + string check (fuzz round 3, 2026-08-14, defect #4): the
+   * sender string is attacker-controlled -- 'constructor', '__proto__',
+   * 'hasOwnProperty' all parse as addresses without needing an '@'. A
+   * plain `rules.corrections[addr]` walks the PROTOTYPE chain on a miss,
+   * so a message "From: Evil <constructor>" would be classified with
+   * category = the Object constructor, poisoning every downstream switch
+   * and the persisted category. The normalised map holds only string
+   * values, but applyCorrection is also reachable with a caller-built
+   * rules object, so the type check is not redundant with the loader.
+   */
+  const category =
+    rules.corrections && Object.hasOwn(rules.corrections, addr)
+      ? rules.corrections[addr]
+      : undefined;
+  if (typeof category !== 'string' || !category || category === msg.category) return msg;
   return { ...msg, category, confidence: 1, source: 'you', reason: 'You filed this sender here' };
 }
 
