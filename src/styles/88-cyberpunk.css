@@ -235,14 +235,17 @@ html[data-theme='cyberpunk'] .rail-heading {
 
 /* SQUARE DATA. The legend chips and the row's category pills are squared
    slabs with a hairline — no pills in a terminal. */
+/* Square means ZERO, not a small radius: the scale's --r-sm (6px) is still
+   visibly round, and the whole point is that data chips read as terminal
+   slabs. 0 needs no token — it is the absence of a corner, not a size. */
 html[data-theme='cyberpunk'] kbd {
-  border-radius: 1px;
+  border-radius: 0;
   letter-spacing: var(--track-caps);
   box-shadow: inset 0 0 0 1px var(--line-strong);
 }
 
 html[data-theme='cyberpunk'] .tag {
-  border-radius: 2px;
+  border-radius: 0;
   letter-spacing: var(--track-caps);
 }
 
