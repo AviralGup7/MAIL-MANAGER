@@ -226,8 +226,22 @@ export function fill(text, values = {}) {
        * breach of this module's own contract above: unknown placeholders
        * must survive, and an inherited method is not a known value.
        */
-      const v = Object.hasOwn(values, key) ? values[key] : undefined;
-      return v === undefined || v === null || v === '' ? whole : String(v);
+      if (!Object.hasOwn(values, key)) return whole;
+      const v = values[key];
+
+      /*
+       * Only plain primitives may substitute in (same round, residual):
+       * String(value) on a null-prototype object THROWS ("Cannot convert
+       * object to primitive value") -- measurable on a backup-imported
+       * profile -- and on Symbol() it prints "Symbol(x)". Auto-values are
+       * always strings, so treating anything exotic as unfilled costs
+       * nothing and keeps fill total over any values map. The placeholder
+       * survives, which is what "unknown placeholders survive" promises.
+       */
+      const t = typeof v;
+      if (v === null || (t !== 'string' && t !== 'number' && t !== 'boolean' && t !== 'bigint')) return whole;
+      if (v === '') return whole;
+      return String(v);
     }
   );
 }

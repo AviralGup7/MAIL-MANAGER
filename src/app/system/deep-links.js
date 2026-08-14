@@ -66,7 +66,7 @@ export function formatHash({ mailbox, category, query, selected }) {
    * made the whole view-switch throw. U+FFFD is the Unicode-sanctioned
    * replacement; parseHash round-trips it as ordinary text.
    */
-  const clean = (s) => String(s).replace(/[\uD800-\uDFFF]/g, '�');
+  const clean = (s) => String(s).replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '�');
   if (query) params.push(`q=${encodeURIComponent(clean(query))}`);
   if (selected) params.push(`m=${encodeURIComponent(clean(selected))}`);
   return params.length ? `${h}?${params.join('&')}` : h;
