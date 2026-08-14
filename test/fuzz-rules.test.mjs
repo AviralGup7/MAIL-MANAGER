@@ -32,6 +32,11 @@ import { normaliseRules, applyCorrection, emptyRules } from '../src/app/mail/rul
 import { normaliseOverrides, pruneOverrides, isOverridden } from '../src/app/academic/deadline-store.js';
 import { mulberry32, hostileString } from './helpers/fuzz.mjs';
 
+/** What the wire and storage actually hand us: own enumerable '__proto__'
+    keys. JSON.parse defines them as DATA properties; object literals cannot
+    express that shape at all. */
+const json = (s) => JSON.parse(s);
+
 const PROTOTYPE_KEYS = ['__proto__', 'constructor', 'prototype', 'hasOwnProperty', 'toString', 'valueOf'];
 
 test('applyCorrection never resolves a sender through the prototype chain', () => {
@@ -59,7 +64,14 @@ test('applyCorrection still honours real corrections', () => {
 });
 
 test('normaliseRules keeps a __proto__ correction without touching the prototype', () => {
-  const rules = normaliseRules({ corrections: { __proto__: 'academics', 'ok@bits.ac.in': 'updates' } });
+  /* WIRE-FAITHFUL INPUT (amended 2026-08-14, the same day): the first draft
+     passed the literal `{ __proto__: 'academics', ... }`, which is a trap —
+     object-literal __proto__ with a non-object value is SWALLOWED (no own
+     property is ever created), so the entry these assertions guard was
+     never in the input and the test could never pass. json() below builds
+     exactly what storage and backup imports deliver: an own enumerable
+     '__proto__'. The code was innocent; the literal was the defect. */
+  const rules = normaliseRules(json('{"corrections":{"__proto__":"academics","ok@bits.ac.in":"updates"}}'));
   assert.equal(Object.getPrototypeOf(rules.corrections), Object.prototype, 'prototype must stay stock');
   assert.equal(Object.hasOwn(rules.corrections, '__proto__'), true, 'the entry must survive as own data');
   assert.equal(rules.corrections['__proto__'], 'academics');
@@ -84,21 +96,23 @@ test('normaliseRules resolves a muted+autoArchive contradiction in favour of mut
 });
 
 test('normaliseOverrides: __proto__ keeps its entry, poisons nothing', () => {
+  // Same literal trap, object-valued branch: `{ __proto__: evil }` would
+  // have made evil the PROTOTYPE and left zero own keys.
   const evil = { messageId: '__proto__', at: 1_700_000_000_001, origin: 'manual', setAt: 7 };
-  const map = normaliseOverrides({ __proto__: evil, real1: { at: 1_700_000_000_002, origin: 'corrected', setAt: 8 } });
+  const map = normaliseOverrides(json('{"__proto__":' + JSON.stringify(evil) + ',"real1":{"at":1700000000002,"origin":"corrected","setAt":8}}'));
   assert.equal(Object.getPrototypeOf(map), Object.prototype, 'object value must NOT become the prototype');
   assert.equal(Object.hasOwn(map, '__proto__'), true, 'the entry must survive');
   assert.equal(map['__proto__'].at, 1_700_000_000_001);
   // The historical pollution read: with `out[id] = v`, every miss read
   // through to the override's own fields.
-  assert.equal(normaliseOverrides({ __proto__: evil, k: { at: 5, setAt: 1 } }).missing, undefined);
+  assert.equal(normaliseOverrides(json('{"__proto__":' + JSON.stringify(evil) + ',"k":{"at":5,"setAt":1}}')).missing, undefined);
   assert.equal(isOverridden(map, '__proto__'), true);
   assert.equal(map.real1.at, 1_700_000_000_002);
 });
 
 test('pruneOverrides keeps __proto__ among the living instead of eating it', () => {
   const evil = { messageId: '__proto__', at: 1_700_000_000_001, origin: 'manual', setAt: 7 };
-  const map = normaliseOverrides({ __proto__: evil, gone: { at: 1_700_000_000_002, origin: 'manual', setAt: 8 } });
+  const map = normaliseOverrides(json('{"__proto__":' + JSON.stringify(evil) + ',"gone":{"at":1700000000002,"origin":"manual","setAt":8}}'));
   const pruned = pruneOverrides(map, new Set(['__proto__'])); // 'gone' drops -> the rebuild path runs
   assert.equal(Object.getPrototypeOf(pruned), Object.prototype);
   assert.equal(Object.hasOwn(pruned, '__proto__'), true, 'the live override must not vanish in a prune');
