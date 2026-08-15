@@ -202,8 +202,14 @@ export class Store {
       if (folded && folded !== tok && folded.length >= 2) out.add(folded);
     };
 
-    // Split on anything that is not a Unicode letter, digit or @ . -
-    for (const raw of text.split(/[^\p{L}\p{N}@.\-]+/u)) {
+    // Split on anything that is not a Unicode letter, MARK, digit or @ . -
+    //
+    // \p{M} is not decoration. In Devanagari the vowel signs (matras) are
+    // Mn/Mc marks, not letters, so a class of \p{L}\p{N} alone treated them
+    // as SEPARATORS and shattered the word: छात्रावास tokenised to a
+    // meaningless 'चन'. Indic, Thai, Arabic and Hebrew all carry meaning in
+    // marks; excluding them re-creates R3-02 for half the world's scripts.
+    for (const raw of text.split(/[^\p{L}\p{M}\p{N}@.\-]+/u)) {
       if (!raw) continue;
       add(raw);
       // Also index the local part and domain of an address separately, so
@@ -244,10 +250,32 @@ export class Store {
    * finds the message.
    */
   static foldTerm(s) {
-    return String(s || '')
-      .toLowerCase()
-      .normalize('NFKD')
-      .replace(/\p{Diacritic}/gu, '');
+    const raw = String(s || '').toLowerCase();
+    /*
+     * FOLD LATIN ACCENTS, NEVER INDIC MATRAS.
+     *
+     * \p{Diacritic} also matches Devanagari vowel signs, so a blanket strip
+     * turned छात्रावास into छातरावास — a different, wrong word that no user
+     * will ever type. The fold exists so "cafe" finds "café"; it has no
+     * business rewriting scripts where the mark IS the vowel.
+     *
+     * Decomposed marks are therefore removed only when the base character
+     * they attach to is Latin. Everything else keeps its marks and is
+     * indexed in its raw (already-normalised) form.
+     */
+    const nfkd = raw.normalize('NFKD');
+    let out = '';
+    let lastBaseIsLatin = false;
+    for (const ch of nfkd) {
+      if (/\p{M}/u.test(ch)) {
+        if (!lastBaseIsLatin) out += ch; // Indic/Thai/Arabic: the mark stays
+        continue;                        // Latin: drop the accent
+      }
+      lastBaseIsLatin = /[a-z]/.test(ch);
+      out += ch;
+    }
+    // Re-compose so the result is comparable with NFC text elsewhere.
+    return out.normalize('NFC');
   }
 
   _index(msg) {
