@@ -365,10 +365,7 @@ html[data-theme='cyberpunk'] #system-strip .sys-action {
   border-color: var(--cp-structural);
   clip-path: polygon(var(--s-1) 0, 100% 0, 100% calc(100% - var(--s-1)), calc(100% - var(--s-1)) 100%, 0 100%, 0 var(--s-1));
 }
-html.cp-signal-activate[data-theme='cyberpunk'] #system-strip,
-html.cp-signal-success[data-theme='cyberpunk'] #system-strip,
-html.cp-signal-warning[data-theme='cyberpunk'] #system-strip,
-html.cp-signal-error[data-theme='cyberpunk'] #system-strip {
+html:is(.cp-signal-activate, .cp-signal-success, .cp-signal-warning, .cp-signal-error)[data-theme='cyberpunk'] #system-strip {
   animation: cp-signal-kick var(--dur-base) var(--ease-out) 1;
 }
 html.cp-signal-success[data-theme='cyberpunk'] #system-strip {
