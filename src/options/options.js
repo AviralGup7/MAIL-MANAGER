@@ -30,7 +30,7 @@ function persist(promise) {
   return Promise.resolve(promise).catch(() => {
     const status = $('status');
     if (status) {
-      status.style.color = '#c0392b';
+      setTone(status, 'error');
       status.textContent = 'Could not save that setting — storage is full or unavailable.';
     }
   });
@@ -49,6 +49,11 @@ const V1_CLIENT_ID = '67277529230-7onu3erjki89r3vcsjmjc4ud2m026tpl.apps.googleus
 
 const $ = (id) => document.getElementById(id);
 
+function setTone(node, tone) {
+  if (!node) return;
+  node.dataset.tone = tone;
+}
+
 // chrome.identity.getRedirectURL() is derived from the extension ID. Showing
 // the live value avoids the single most common setup failure:
 // redirect_uri_mismatch.
@@ -66,7 +71,7 @@ const idEl = document.getElementById('extid');
 if (idEl) {
   idEl.textContent = chrome.runtime.id;
   if (chrome.runtime.id !== EXPECTED_ID) {
-    idEl.style.color = '#c0392b';
+    setTone(idEl, 'error');
     idEl.title =
       'Unexpected extension ID. manifest.json should contain the fixed "key" ' +
       'field; without it the ID changes on every load and OAuth cannot work.';
@@ -92,7 +97,7 @@ async function save() {
 
   if (!raw) {
     await chrome.storage.local.remove('clientId');
-    status.style.color = '#5b6270';
+    setTone(status, 'neutral');
     status.textContent = 'Cleared.';
     return;
   }
@@ -110,18 +115,18 @@ async function save() {
    * exact mistake v1 institutionalised.
    */
   if (/^GOCSPX-/.test(raw)) {
-    status.style.color = '#c0392b';
+    setTone(status, 'error');
     status.textContent = 'That is a client SECRET. Never paste it here — rotate it instead.';
     return;
   }
   if (!/\.apps\.googleusercontent\.com$/.test(raw)) {
-    status.style.color = '#c0392b';
+    setTone(status, 'error');
     status.textContent = 'That does not look like a client ID.';
     return;
   }
 
   await chrome.storage.local.set({ clientId: raw });
-  status.style.color = '#1e9e6a';
+  setTone(status, 'success');
   status.textContent = 'Saved.';
   // F1 (39-PRACTICAL): a saved-but-wrong client ID is the #1 first-run
   // drop-off — the user only discovers it at the Gmail sign-in gate. Probe
@@ -143,7 +148,7 @@ function verifyClientId(status) {
   const finish = (msg) => {
     if (done) return;
     done = true;
-    status.style.color = msg.includes('signed in') ? '#1e9e6a' : '#5b6270';
+    setTone(status, msg.includes('signed in') ? 'success' : 'neutral');
     status.textContent = msg;
     setTimeout(() => (status.textContent = ''), 4000);
   };
