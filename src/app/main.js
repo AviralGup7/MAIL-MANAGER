@@ -397,6 +397,23 @@ const VERB_TIMEOUT_MS = {
 /** Everything else is a small request that should answer quickly. */
 const DEFAULT_TIMEOUT_MS = 10000;
 
+/*
+ * Only observation-only verbs may be replayed after an ambiguous worker
+ * timeout. A timeout proves that the acknowledgement is missing, not that the
+ * operation failed. Replaying a mutation in-page can execute it twice while
+ * the slow worker completes in the background.
+ */
+const SAFE_FALLBACK_REPLAY = new Set([
+  'AUTH_STATUS', 'PROFILE', 'GET_BODY', 'GET_INLINE', 'GET_ATTACHMENT',
+  'LIST_LABELS',
+]);
+
+function uncertainWorkerOutcome(type) {
+  const err = new Error(`OUTCOME_UNKNOWN: ${type} may still be completing in the background`);
+  err.code = 'OUTCOME_UNKNOWN';
+  return err;
+}
+
 function send(type, extra = {}) {
   if (workerDown) return runInPageGuarded(type, extra);
 
@@ -411,7 +428,11 @@ function send(type, extra = {}) {
       if (settled) return;
       settled = true;
       degradeToFallback('the background worker stopped responding');
-      runInPageGuarded(type, extra).then(resolve, reject);
+      if (SAFE_FALLBACK_REPLAY.has(type)) {
+        runInPageGuarded(type, extra).then(resolve, reject);
+      } else {
+        reject(uncertainWorkerOutcome(type));
+      }
     }, VERB_TIMEOUT_MS[type] ?? DEFAULT_TIMEOUT_MS);
 
     try {
@@ -423,7 +444,11 @@ function send(type, extra = {}) {
         const lastErr = chrome.runtime.lastError;
         if (lastErr || !res) {
           degradeToFallback(lastErr?.message || 'the background worker did not start');
-          runInPageGuarded(type, extra).then(resolve, reject);
+          if (SAFE_FALLBACK_REPLAY.has(type)) {
+            runInPageGuarded(type, extra).then(resolve, reject);
+          } else {
+            reject(uncertainWorkerOutcome(type));
+          }
           return;
         }
         if (res.ok) {

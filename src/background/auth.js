@@ -252,20 +252,28 @@ export async function signIn() {
   // read after any concurrent change and can never differ.
   const epoch = sessionEpoch;
   const tok = await authorize(true);
-  // If a signOut landed while the consent screen was open, do not persist.
+  // Identity is part of activation, not optional metadata. A token whose
+  // account cannot be proved must never become the active session: otherwise
+  // account-scoped caches and queued sends have no safe owner to compare.
+  const accountEmail = await fetchAccountEmail(tok.access_token);
+  // If a signOut landed while consent/profile was open, do not persist.
   if (epoch !== sessionEpoch) throw new Error('NOT_SIGNED_IN');
+
   await persist(tok);
-  // Remember that consent was granted, so getToken() knows silent renewal is
-  // worth attempting. Implicit flow gives us no refresh token to test for.
-  await chrome.storage.local.set({ authorized: true });
-  /* Stamp the identity this consent just proved (audit 2026-08-15, AUD-C1).
-     The account is an IDENTITY now, not an assumption: silent renewals are
-     validated against this value forever after. Best-effort by design — a
-     profile read failing right after consent must not block a sign-in that
-     just succeeded; the first successful renewal stamps instead. */
-  try {
-    await chrome.storage.local.set({ accountEmail: await fetchAccountEmail(tok.access_token) });
-  } catch { /* the renewal validator stamps on its next success */ }
+  if (epoch !== sessionEpoch) {
+    await TOKEN_STORAGE().remove(['accessToken', 'expiresAt']);
+    throw new Error('NOT_SIGNED_IN');
+  }
+
+  // Activate consent and identity together in the same local-storage write.
+  // The token is in session storage, so the epoch checks on both sides of this
+  // await are the cross-area transaction fence.
+  await chrome.storage.local.set({ authorized: true, accountEmail });
+  if (epoch !== sessionEpoch) {
+    await TOKEN_STORAGE().remove(['accessToken', 'expiresAt']);
+    await chrome.storage.local.remove(['authorized', 'accountEmail']);
+    throw new Error('NOT_SIGNED_IN');
+  }
   return tok;
 }
 

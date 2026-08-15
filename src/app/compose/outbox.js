@@ -177,7 +177,12 @@ export function dispatchable(item, accountEmail) {
     ? item.accountEmail.trim().toLowerCase() : '';
   const current = typeof accountEmail === 'string'
     ? accountEmail.trim().toLowerCase() : '';
-  if (!mine || !current) return true;
+  // Legacy UNOWNED rows cannot be assigned safely, so they remain visible and
+  // dispatchable for migration compatibility. An OWNED row is different: an
+  // unproved current session is not permission to send it. Fail closed until
+  // identity activation succeeds.
+  if (!mine) return true;
+  if (!current) return false;
   return mine === current;
 }
 

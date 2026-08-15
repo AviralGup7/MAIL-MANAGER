@@ -561,6 +561,12 @@ const WAKE_ALARM = 'bmm-wake';
 /** Background sync + notification sweep. See `backgroundSync`. */
 const SYNC_ALARM = 'bmm-sync';
 const SYNC_PERIOD_MIN = 15;
+// Containment for CAN-SYNC-1: the notification sweep and the app used the
+// same cursor, so observing mail in the background consumed changes the warm
+// cache had not committed. Keep the alarm name for cleanup/migration, but do
+// not run or schedule this consumer until it has an independent cursor or a
+// transactional change journal.
+const BACKGROUND_SYNC_ENABLED = false;
 
 async function wakeDue(now = Date.now()) {
   let all;
@@ -712,7 +718,13 @@ const MAX_PUMP_BATCH = 8;
 
 function scheduleBackgroundSync() {
   if (!chrome.alarms) return;
-  chrome.alarms.create(SYNC_ALARM, { periodInMinutes: SYNC_PERIOD_MIN }).catch?.();
+  if (!BACKGROUND_SYNC_ENABLED) {
+    void chrome.alarms.clear(SYNC_ALARM).catch(() => {});
+    return;
+  }
+  void chrome.alarms
+    .create(SYNC_ALARM, { periodInMinutes: SYNC_PERIOD_MIN })
+    .catch(() => {});
 }
 
 if (chrome.alarms?.onAlarm) {
@@ -721,13 +733,13 @@ if (chrome.alarms?.onAlarm) {
       await wakeDue();
       await scheduleWake(); // re-aim at whatever is next
     } else if (alarm.name === SYNC_ALARM) {
+      if (!BACKGROUND_SYNC_ENABLED) {
+        await chrome.alarms.clear(SYNC_ALARM).catch(() => {});
+        return;
+      }
       // Guarded (bug-hunt #27): a throw inside the sweep -- a storage get
       // failing, say -- must not surface as an unhandled worker rejection.
-      // The next 15-minute run retries; silence is the correct status.
       backgroundSync().catch(() => {});
-      /* AUD-Q1: the sweep's tick is the one rhythm the worker always keeps,
-         so it doubles as the diagnostics flush (fire-and-forget;
-         persistDiag never throws by its own doctrine). */
       void persistDiag();
     } else if (alarm.name === AUTH_RETRY_ALARM) {
       /* AUD-M4 (audit 2026-08-15): the silent-renewal retry auth.js arms on

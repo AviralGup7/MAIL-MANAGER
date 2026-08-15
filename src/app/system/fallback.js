@@ -110,7 +110,22 @@ function makeHandler({ auth, gmail, sync, snooze, outbox, mime }) {
       }
       case 'PROFILE': return gmail.profile();
 
-      case 'SYNC_PAGE': return sync.syncPage(msg.opts || {});
+      case 'SYNC_PAGE': {
+        // Keep the fallback contract identical to the worker router. syncPage
+        // accepts label IDs, not the user-facing labelName used by Snoozed.
+        // Passing labelName through silently falls back to INBOX.
+        const opts = { ...(msg.opts || {}) };
+        if (opts.labelName) {
+          try {
+            opts.labelIds = [await gmail.ensureLabel(opts.labelName)];
+          } catch (err) {
+            if (!/Could not create/.test(String(err?.message || err))) throw err;
+            return { messages: [], nextPageToken: '' };
+          }
+          delete opts.labelName;
+        }
+        return sync.syncPage(opts);
+      }
       // syncDelta() takes NO arguments -- it reads the cursor from storage.
       // Passing one suggested a contract the function does not have
       // (bug-hunt #23).
