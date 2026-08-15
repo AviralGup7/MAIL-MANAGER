@@ -315,6 +315,32 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
     }
 
     /*
+     * LATE-CHROME NO-OP: the same hazard, one API along.
+     *
+     * A deferred app callback (the post-sync cache flush, an intent drain)
+     * can land after restore() has swapped `globalThis.chrome` back to
+     * undefined, and `chrome.runtime.sendMessage` then throws
+     * "Cannot read properties of undefined (reading 'runtime')". node:test
+     * attributes that to whichever test is running — or, when nothing is,
+     * fails the FILE with no assertion attached. That is exactly the
+     * misleading shape the RAF guard above was written for, so it gets the
+     * same treatment: an inert stub, only when the real one is gone.
+     *
+     * This is a HARNESS concern, not a product bug being papered over: the
+     * app's own teardown cancels its work, but a promise already resolved
+     * cannot be un-queued, and in a browser `chrome` never disappears
+     * mid-flight the way it does between two tests in one process.
+     */
+    if (globalThis.chrome === undefined) {
+      const noop = () => {};
+      const area = { get: async () => ({}), set: async () => {}, remove: async () => {} };
+      globalThis.chrome = {
+        runtime: { sendMessage: noop, lastError: null, getURL: (p) => p, id: 'test' },
+        storage: { local: area, session: area, onChanged: { addListener: noop, removeListener: noop } },
+      };
+    }
+
+    /*
      * CLOSE THE WINDOW. This was missing, and it is why the suite eventually
      * died with "Ineffective mark-compacts near heap limit".
      *
