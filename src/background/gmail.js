@@ -395,13 +395,23 @@ function payloadHasAttachment(payload) {
 export function toEpoch(internalDate, dateHeader) {
   const ms = Number(internalDate);
   /*
-   * `> 0`, not merely finite (audit R3-13). A negative internalDate --
-   * '-5' coerces to -5, which is finite and truthy -- became a pre-1970
-   * date, sorting the message below everything and hiding it exactly the
-   * way the 1970 case this function already guards against does. The
-   * comment above reasoned carefully about '1e999' and never about sign.
+   * R3-13, RESOLVED AS "WORKING AS DESIGNED" — recorded because the audit
+   * called it a defect and the audit was wrong.
+   *
+   * The finding was that '-5' passes through as a pre-1970 instant. It
+   * does, and that is DELIBERATE: pre-1970 mail is negative and stays
+   * negative (see the contract above, and the fuzz reproducer pinning
+   * '-31536000000'). Tightening this to `ms > 0` would silently relocate
+   * genuinely old archived mail to whatever its Date header claims, which
+   * is the sender-controlled value this function exists to distrust.
+   *
+   * A nonsensical '-5' is indistinguishable from a legitimately ancient
+   * message at this layer, and the harm of the two mistakes is not
+   * symmetric: mis-sorting one absurd record costs a row in the wrong
+   * place, while rewriting every pre-1970 date costs real mail its real
+   * timestamp. The boundary that matters — non-finite — is already closed.
    */
-  if (ms > 0 && Number.isFinite(ms)) return ms;
+  if (ms && Number.isFinite(ms)) return ms;
   // Date.parse returns NaN or a finite number -- never a non-finite one --
   // so the `|| 0` floor is the whole second half of the contract.
   return Date.parse(dateHeader) || 0;

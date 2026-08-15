@@ -897,16 +897,24 @@ test('an unrecoverable preserved attachment THROWS, it never sends without it (b
 /* ==========================================================================
  * Audit R3 regressions (2026-08-15)
  * ========================================================================== */
-test('toEpoch refuses a negative internalDate (audit R3-13)', async () => {
+test('toEpoch keeps pre-1970 mail negative (audit R3-13, disproved)', async () => {
   const { toEpoch } = await import('../src/background/gmail.js');
-  // '-5' is finite AND truthy, so it used to pass straight through and sort
-  // the message below everything -- the same hiding the 1970 fallback exists
-  // to prevent.
-  assert.equal(toEpoch('-5', undefined), 0);
-  assert.equal(toEpoch('1e999', undefined), 0, 'Infinity stays refused');
+  /*
+   * The R3 audit filed the pass-through of a negative internalDate as a
+   * defect. It is not: pre-1970 mail is legitimately negative, and
+   * refusing it would relocate genuinely old archived mail to whatever its
+   * sender-controlled Date header claims. Pinned so the "fix" is not
+   * re-attempted -- a disproved finding is worth a test, not a silent
+   * revert.
+   */
+  assert.equal(toEpoch('-31536000000', undefined), -31536000000,
+    'a real pre-1970 instant survives');
+  assert.equal(toEpoch('1e999', undefined), 0, 'non-finite is the real boundary');
+  assert.equal(toEpoch('-1e999', undefined), 0);
   assert.equal(toEpoch('1700000000000', undefined), 1700000000000);
-  assert.ok(toEpoch('-5', 'Wed, 01 Jan 2025 10:00:00 GMT') > 0,
-    'a bad internalDate still falls back to the Date header');
+  assert.equal(toEpoch('', 'Wed, 01 Jan 2025 10:00:00 GMT'),
+    Date.parse('Wed, 01 Jan 2025 10:00:00 GMT'),
+    'an empty internalDate still falls back to the Date header');
 });
 
 test('parseBatch survives a body containing the boundary (audit R3-14)', async () => {
