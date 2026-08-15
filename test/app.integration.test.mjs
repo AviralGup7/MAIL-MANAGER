@@ -2553,6 +2553,10 @@ test('FALLBACK: a slow but healthy worker is not declared dead', async (t) => {
     while (rows(doc).length === 0 && Date.now() < deadline) {
       await settle(4);
     }
+    // Rows paint before the post-persistence cursor commit and the remaining
+    // boot continuations settle. Let that bounded tail finish before teardown,
+    // otherwise a healthy delayed worker writes into a closed jsdom document.
+    await settle(12);
 
     assert.equal(
       doc.getElementById('sw-warn'), null,
