@@ -591,6 +591,22 @@ const SYNC_PERIOD_MIN = 15;
 // transactional change journal.
 const BACKGROUND_SYNC_ENABLED = false;
 
+/*
+ * THE PERMISSION LEFT WITH THE FEATURE (audit EXT2-H6).
+ *
+ * While BACKGROUND_SYNC_ENABLED is false the sweep never runs, so
+ * `chrome.notifications.create` is unreachable and `"notifications"` was a
+ * granted capability with no caller — the exact shape v1 was criticised for
+ * (a `generativelanguage` host permission no code referenced), and a Web
+ * Store review flag. It is removed from the manifest and comes back in the
+ * same commit that re-enables the sweep.
+ *
+ * Every notifications call site is therefore optional-chained AND guarded by
+ * this flag. `chrome.notifications` is simply undefined without the
+ * permission, so an unguarded `.create` would be a TypeError inside the
+ * worker rather than a no-op.
+ */
+
 async function wakeDue(now = Date.now()) {
   let all;
   try {
@@ -711,6 +727,11 @@ async function backgroundSyncRun() {
   await chrome.storage.local.set({ bgNotifiedIds: merged }).catch(() => {});
 
   if (bgNotify !== true) return;
+  /* No permission, no cards (EXT2-H6). `chrome.notifications` is undefined
+     while the sweep is disabled and the permission is withdrawn; the dedupe
+     list above is still maintained, so re-enabling both cannot re-notify
+     anything already seen. */
+  if (!chrome.notifications) return;
   // A Gmail tab is already on screen: the user is looking at mail. A
   // notification on top of that is noise, not service.
   const open = await chrome.tabs.query({ url: 'https://mail.google.com/*' }).catch(() => []);
@@ -760,6 +781,14 @@ if (chrome.alarms?.onAlarm) {
     if (alarm.name === WAKE_ALARM) {
       await wakeDue();
       await scheduleWake(); // re-aim at whatever is next
+      /* THE COUNTERS FLUSH FROM A PATH THAT ACTUALLY RUNS (audit EXT2-L3).
+         persistDiag's only call site was the SYNC_ALARM branch, which
+         BACKGROUND_SYNC_ENABLED turns off — so in production the diagnostics
+         AUD-Q1 added never reached storage at all, and `diagCounters` was
+         permanently absent. The wake alarm is the one durable tick that does
+         fire, so the counters ride it. Still best-effort and never throwing,
+         exactly as diag.js's doctrine states. */
+      void persistDiag();
     } else if (alarm.name === SYNC_ALARM) {
       if (!BACKGROUND_SYNC_ENABLED) {
         await chrome.alarms.clear(SYNC_ALARM).catch(() => {});
@@ -768,7 +797,6 @@ if (chrome.alarms?.onAlarm) {
       // Guarded (bug-hunt #27): a throw inside the sweep -- a storage get
       // failing, say -- must not surface as an unhandled worker rejection.
       backgroundSync().catch(() => {});
-      void persistDiag();
     } else if (alarm.name === AUTH_RETRY_ALARM) {
       /* AUD-M4 (audit 2026-08-15): the silent-renewal retry auth.js arms on
          AUTH_RENEW_TRANSIENT. Exactly one attempt (runAuthRetry frees the
@@ -781,8 +809,11 @@ if (chrome.alarms?.onAlarm) {
 
 chrome.notifications?.onClicked.addListener((id) => {
   // Clicking a background notification opens the takeover; the notification
-  // is dismissed either way.
-  chrome.notifications.clear(id).catch?.(() => {});
+  // is dismissed either way. Optional-chained like the registration above:
+  // the permission can be withdrawn (EXT2-H6) between this listener being
+  // registered and a card being clicked, and an unguarded `.clear` would
+  // then throw inside the handler instead of quietly skipping the dismissal.
+  chrome.notifications?.clear(id).catch?.(() => {});
   void openGmailTab().catch((err) => {
     console.error('[BMM] could not open notification target:', err);
   });
@@ -801,4 +832,19 @@ chrome.runtime.onInstalled?.addListener(() => {
     console.error('[BMM] install wake scheduling failed:', err);
   });
   scheduleBackgroundSync();
+});
+
+/*
+ * ONE MORE FLUSH, ON THE WAY DOWN (audit EXT2-L3).
+ *
+ * The counters live in module memory and MV3 kills this worker aggressively,
+ * so everything since the last alarm dies with it. `onSuspend` is Chrome's
+ * warning shot before termination and is the only chance to write. It is
+ * best-effort by construction — the suspend budget is short and the write may
+ * not land — which is exactly diag.js's stated doctrine, not a new
+ * compromise. Optional-chained like every other capability here so a context
+ * without the hook costs the flush, not the worker.
+ */
+chrome.runtime.onSuspend?.addListener(() => {
+  void persistDiag();
 });

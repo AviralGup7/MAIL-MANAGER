@@ -13,7 +13,6 @@
   "permissions": [
     "alarms",
     "identity",
-    "notifications",
     "scripting",
     "storage"
   ],

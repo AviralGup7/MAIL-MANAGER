@@ -182,6 +182,23 @@ test('every chrome.* API the code uses is actually permitted', () => {
     sidePanel: 'sidePanel',
   };
 
+  /*
+   * A DORMANT CALL SITE IS NOT A USE (audit EXT2-H6).
+   *
+   * The notification sweep is switched off at source
+   * (BACKGROUND_SYNC_ENABLED = false), so chrome.notifications is
+   * unreachable and the permission was withdrawn — but the code that WOULD
+   * call it still exists, ready for the commit that re-enables the sweep.
+   * A bare `chrome.X appears in src/` scan cannot tell "granted capability
+   * with no caller" from "guarded caller with no grant", and both directions
+   * of this file's permission law depend on that distinction.
+   *
+   * So a call site may declare itself dormant with an inline marker. It must
+   * still be optional-chained (`chrome.notifications?.`) or explicitly
+   * guarded, because the API is undefined without the permission.
+   */
+  const DORMANT = new Set(['notifications']);
+
   const used = new Set();
   for (const f of jsFiles()) {
     for (const m of read(f).matchAll(/chrome\.([a-zA-Z]+)/g)) used.add(m[1]);
@@ -190,9 +207,35 @@ test('every chrome.* API the code uses is actually permitted', () => {
   const granted = new Set(manifest.permissions);
   const missing = [...used]
     .filter((api) => NEEDS_PERMISSION[api] && !granted.has(NEEDS_PERMISSION[api]))
+    .filter((api) => !DORMANT.has(api))
     .sort();
 
   assert.deepEqual(missing, [], `code calls chrome.${missing.join(', chrome.')} without permission`);
+
+  // A dormant API must be UNREACHABLE, not merely unpermitted: every one of
+  // its call sites is optional-chained or stands behind an explicit guard,
+  // so a worker that reaches the code path gets a no-op instead of a
+  // TypeError that would take the whole service worker down.
+  for (const api of DORMANT) {
+    assert.ok(!granted.has(api), `"${api}" is marked dormant but still granted — pick one`);
+    for (const f of jsFiles()) {
+      const src = read(f);
+      // Strip comments first: prose ABOUT the API is not a call site, and
+      // this file's comments name it constantly.
+      const code = src
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .split('\n')
+        .filter((l) => !l.trimStart().startsWith('//'))
+        .join('\n');
+      for (const line of code.split('\n')) {
+        if (!line.includes(`chrome.${api}`)) continue;
+        assert.ok(
+          line.includes(`chrome.${api}?.`) || line.includes(`if (!chrome.${api})`),
+          `${f}: chrome.${api} is dormant and must be optional-chained or guarded:\n  ${line.trim()}`
+        );
+      }
+    }
+  }
 });
 
 test('no permission is granted that the code never uses', () => {
