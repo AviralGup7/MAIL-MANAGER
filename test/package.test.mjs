@@ -250,7 +250,7 @@ test('scopes stayed minimal', () => {
   const auth = read('src/background/auth.js');
   const scopes = auth.match(/const SCOPES = \[([\s\S]*?)\]/)[1];
   assert.ok(scopes.includes('gmail.modify'));
-  // gmail.send is INTENTIONAL since compose shipped (see parity.test.mjs,
+  // gmail.send is INTENTIONAL since compose shipped (see worker-fallback-parity.test.mjs,
   // which is the canonical scope assertion); only scopes the product never
   // uses may be banned here.
   for (const banned of ['gmail.labels', 'userinfo']) {
@@ -1179,7 +1179,7 @@ const LAYER = {
     'src/app/mail/undo-actions.js', 'src/app/academic/radar.js',
     'src/app/overlays/palette.js', 'src/app/compose/compose.js', 'src/app/compose/autocomplete.js'],
   domain: ['src/app/mail/store.js', 'src/app/search/query.js', 'src/app/academic/deadlines.js',
-    'src/app/mail/rules.js', 'src/app/system/snooze.js', 'src/app/core/contacts.js',
+    'src/app/mail/rules.js', 'src/features/snooze/model.js', 'src/app/core/contacts.js',
     'src/app/mail/selection.js', 'src/app/mail/undo.js', 'src/app/mail/mailboxes.js'],
   platform: ['src/app/system/cache.js', 'src/app/system/settings.js', 'src/app/system/view-store.js',
     'src/app/compose/draft-store.js', 'src/app/core/sanitize.js'],

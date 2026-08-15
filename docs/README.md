@@ -4,11 +4,12 @@ Newcomer order: this file → ARCHITECTURE.md → THREADING.md → the audits.
 
 | File | What it answers |
 |---|---|
-| ARCHITECTURE.md | The layering, the data flow, and why app.js must not be rewritten yet |
+| ARCHITECTURE.md | The layering, data flow, and extraction-first rules for the main.js composition root |
 | THREADING.md | Worker/app message contract, verbs, timeouts, degradation states |
 | SERVICE-WORKER.md | Why the worker owns the token; eviction behaviour |
 | TIMETABLE.md | Provenance and precedence of timetable truth |
 | CLASSIFICATION_DATA_PACK.md | The single source the category rules are generated from |
+| CLASSIFIER-CORRECTION.md | Retracted classifier claims and the verified rules that prevent their reintroduction |
 | EXTENSION-KEY.md | What the pinned extension key protects |
 | UX-AUDIT-V4.md | The active interaction-overhaul campaign (round 65) — plan, findings, per-round record |
 | OVERHAUL-V3.md | The v3 overhaul plan and record — the redesign the current shell grew out of |

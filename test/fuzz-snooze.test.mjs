@@ -17,7 +17,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { due, pending, wakeLabel } from '../src/app/system/snooze.js';
+import { due, pending, wakeLabel } from '../src/features/snooze/model.js';
 import { mulberry32, hostileValue, hostileEpoch } from './helpers/fuzz.mjs';
 
 test('due/pending abstain on every non-finite wake time', () => {

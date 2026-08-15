@@ -18,7 +18,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { nextWakeAt } from '../src/app/system/snooze.js';
+import { nextWakeAt } from '../src/features/snooze/model.js';
 import { mergeNotified, cardText, NOTIFIED_CAP } from '../src/background/notify.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');

@@ -316,7 +316,7 @@ function isRealDate(y, m, d) {
 /*
  * THE deadline axis. Every deadline this system names — extracted, labelled,
  * or set by hand from the deadline menu — is an end-of-day on the UTC wall
- * clock, and the contract is pinned in features.test.mjs as Date.UTC epochs.
+ * clock, and the contract is pinned in feature-contracts.test.mjs as Date.UTC epochs.
  *
  * Exported since 2026-08-14: main.js's deadline menu forked this helper in
  * LOCAL time while claiming this module's convention in its comment. For an

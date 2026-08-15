@@ -1,0 +1,600 @@
+/* ------------------------------------------------------ saved views -- */
+
+#views {
+  padding: var(--s-1) var(--s-2) var(--s-2);
+  border-bottom: 1px solid var(--line);
+  margin-bottom: var(--s-1);
+}
+/*
+ * ONE SPEC FOR EVERY SIDEBAR SECTION LABEL.
+ *
+ * `.rail-heading` is injected at runtime by buildSidebar(); #views-title and
+ * #radar-title are static in app.html. They were styled independently and had
+ * drifted: the runtime one was w600 at --fg-dim (contrast 7.87) while the
+ * static pair were w700 at --fg-faint (5.88). So "Categories" -- the middle,
+ * least-prioritised group -- rendered at 34% MORE contrast than its peers
+ * while being 100 weight units lighter. Two errors pointing in opposite
+ * directions, which is exactly why nobody caught it by eye: they partly
+ * cancelled. It only showed up when the values were measured.
+ *
+ * These are peer labels whose only job is to separate groups. They must be
+ * identical and they must all recede. Merged into one selector list rather
+ * than harmonised by hand, so a third heading cannot drift again.
+ */
+#views-title,
+#radar-title,
+.rail-heading {
+  font-size: var(--t-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--track-wide);
+  color: var(--fg-faint);
+  margin: 2px 0 var(--s-1) var(--s-3);
+  font-weight: var(--w-bold);
+}
+#views-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.view-item {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-1) var(--s-3);
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: var(--t-sm);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    background-color var(--dur-instant) linear,
+    color var(--dur-instant) linear,
+    transform var(--dur-fast) var(--ease-spring);
+}
+.view-item:hover {
+  background: var(--bg-raised);
+  color: var(--fg);
+  transform: translateX(2px);
+}
+.view-item[aria-current='true'] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: var(--w-semi);
+}
+
+.view-icon {
+  display: flex;
+  color: var(--fg-faint);
+  flex: none;
+}
+.view-item[aria-current='true'] .view-icon {
+  color: var(--accent);
+}
+.view-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/*
+ * The count and the remove button share one slot -- the count is swapped out
+ * on hover. Enlarging the remove button's target to 24px therefore widened
+ * that slot only while hovering, so the row twitched under the cursor.
+ *
+ * Both now reserve the same 24px, so the swap is invisible and the row holds
+ * still. A fix that introduces a jitter is not a fix.
+ */
+.view-count {
+  font-size: var(--t-xs);
+  color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
+  min-width: 24px;
+  min-height: 24px;
+  display: grid;
+  place-items: center;
+}
+
+/*
+ * Remove appears on hover, in place of the count.
+ *
+ * A delete affordance visible on every row invites misclicks on a list people
+ * use constantly; swapping it in where the count sits means no layout shift
+ * and no extra column of chrome.
+ */
+/*
+ * Same rule as .r-check: 1px of padding around a small glyph is a target you
+ * have to aim at. The icon keeps its size; the button grows under it.
+ */
+.view-remove {
+  display: none;
+  place-items: center;
+  color: var(--fg-faint);
+  border-radius: var(--r-full);
+  padding: 1px;
+  min-width: 24px;
+  min-height: 24px;
+}
+.view-item:hover .view-count {
+  display: none;
+}
+.view-item:hover .view-remove {
+  display: grid;
+}
+.view-remove:hover {
+  color: var(--danger);
+  background: var(--bg-sunken);
+}
+
+#btn-save-view {
+  position: absolute;
+  right: var(--s-2);
+  animation: bulk-in var(--dur-fast) var(--ease-spring) both;
+}
+
+/*
+ * REMOTE IMAGE BAR.
+ *
+ * Sits between the attachment chips and the body, because it describes the
+ * body. Uses the warning tone rather than the danger tone: nothing has gone
+ * wrong, a choice is being offered.
+ */
+#r-images {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  padding: var(--s-3) var(--s-6);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-raised);
+  font-size: var(--t-sm);
+  color: var(--fg-dim);
+}
+
+#r-images-actions {
+  display: flex;
+  gap: var(--s-2);
+  margin-left: auto;
+}
+
+/*
+ * OFFLINE COPY STRIP (M1).
+ *
+ * Same geometry as the remote-image bar — both are claims ABOUT the body
+ * below them — but sunken instead of raised: that bar offers a choice, this
+ * one states a fact, so there is no flex row and no action cluster.
+ */
+#r-offline {
+  padding: var(--s-3) var(--s-6);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-sunken);
+  font-size: var(--t-sm);
+  color: var(--fg-dim);
+}
+
+/*
+ * Search provenance note.
+ *
+ * Floats beneath the field rather than occupying layout, so the toolbar does
+ * not jump by a line the moment the user types the third character. Movement
+ * in the chrome while typing is one of the most distracting things an
+ * interface can do.
+ */
+#search-note {
+  position: absolute;
+  top: calc(100% + var(--s-2));
+  left: 0;
+  right: 0;
+  z-index: var(--z-sticky);
+  margin: 0;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-sm);
+  color: var(--fg-dim);
+  font-size: var(--t-xs);
+  animation: note-in var(--dur-fast) var(--ease-out) both;
+}
+
+@keyframes note-in {
+  from { opacity: 0; transform: translate3d(0, -3px, 0); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ------------------------------------------------- contact autocomplete --- */
+
+.ac-list {
+  list-style: none;
+  margin: calc(var(--s-1) * -1) 0 var(--s-2);
+  padding: var(--s-1);
+  max-height: 208px;
+  overflow-y: auto;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-lg);
+  overscroll-behavior: contain;
+}
+
+.ac-opt {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  font-size: var(--t-sm);
+}
+
+/*
+ * `aria-selected`, not `:hover`, is the source of truth for the highlight:
+ * the keyboard and the mouse must agree on which option is active, and
+ * driving them from two different states is how they drift apart.
+ */
+.ac-opt[aria-selected='true'],
+.ac-opt:hover {
+  background: var(--accent-soft);
+}
+
+.ac-name {
+  font-weight: var(--w-medium);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ac-addr {
+  margin-left: auto;
+  color: var(--fg-dim);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+}
+
+/* -------------------------------------------------------------- toast ---- */
+
+/*
+ * The toast carries meaning through a 2px edge, not through colour-washing the
+ * whole pill. Four coloured backgrounds would shout; an edge is read
+ * peripherally and leaves the surface calm.
+ */
+#toast {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  overflow: hidden;
+  border-left: 2px solid transparent;
+}
+
+#toast[data-kind='success'] {
+  border-left-color: var(--success);
+}
+#toast[data-kind='error'] {
+  border-left-color: var(--danger);
+}
+#toast[data-kind='undo'] {
+  border-left-color: var(--accent);
+}
+
+/*
+ * The action button sits ON the toast surface, which is `--fg` — so it takes
+ * the inverted palette rather than the page one.
+ */
+#toast-action {
+  flex: none;
+  padding: var(--s-1) var(--s-3);
+  border: 1px solid color-mix(in srgb, var(--bg-raised) 40%, transparent);
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--bg-raised);
+  font: inherit;
+  font-size: var(--t-xs);
+  font-weight: var(--w-semi);
+  cursor: pointer;
+  transition: background-color var(--dur-instant) linear;
+}
+#toast-action:hover,
+#toast-action:focus-visible {
+  background: color-mix(in srgb, var(--bg-raised) 18%, transparent);
+}
+#toast-action:active {
+  transform: scale(0.96);
+}
+
+/*
+ * The drain line. Makes the undo window VISIBLE instead of guessed at — the
+ * detail that silently says "you have time". Animates transform only, and the
+ * global reduced-motion block zeroes it like everything else.
+ */
+#toast-drain {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 100%;
+  transform-origin: left;
+  background: color-mix(in srgb, var(--bg-raised) 45%, transparent);
+  transform: scaleX(0);
+}
+
+@keyframes toast-drain {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
+}
+
+/* --------------------------------------------------------------- rail ---- */
+
+/*
+ * The rail carries two different kinds of navigation: system mailboxes and
+ * BITS categories. Without a visible boundary "Sent" reads as though it were
+ * another category of inbox mail, which is a category error the user then has
+ * to hold in their head.
+ */
+.rail-group + .rail-group {
+  margin-top: var(--s-4);
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--line);
+}
+
+
+
+/*
+ * Mailboxes get an icon where categories get a colour dot. The dot encodes a
+ * classifier bucket; a mailbox is a place, and an icon reads as a place.
+ * Sizing matches the dot's column so both lists share one left edge.
+ */
+.mb-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  color: var(--fg-dim);
+}
+
+.cat.mailbox[aria-current='true'] .mb-icon {
+  color: var(--accent);
+}
+
+/*
+ * A muted category. Dimmed, with a struck-through name -- the count stays
+ * legible because knowing HOW MUCH you are ignoring is the point.
+ */
+.cat.is-muted .cat-name {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+
+.cat.is-muted .dot {
+  opacity: 0.4;
+}
+
+.cat-menu {
+  top: calc(100% + var(--s-1));
+  left: var(--s-2);
+  min-width: 268px;
+}
+
+/* -------------------------------------------------------------- snooze --- */
+
+/*
+ * Anchored to the reader's action bar rather than to the pointer. A menu that
+ * appears under the cursor is fine for a right-click, but this opens from a
+ * button AND from the `z` key, and the keyboard case has no cursor position.
+ */
+.snooze-menu {
+  position: absolute;
+  z-index: var(--z-menu);
+  top: calc(100% + var(--s-2));
+  left: 0;
+  min-width: 248px;
+  padding: var(--s-2);
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-rim), var(--shadow-lg);
+  animation: menu-in var(--dur-fast) var(--ease-out) both;
+}
+
+.snooze-opt {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-4);
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  font-size: var(--t-sm);
+  text-align: left;
+  cursor: pointer;
+  /*
+   * Menu rows had NO transition: the highlight snapped on and off, while every
+   * other list surface (rail, saved views, radar, autocomplete) eased. Menus
+   * were the one place the hover felt like a different product.
+   */
+  transition:
+    background-color var(--dur-instant) linear,
+    color var(--dur-instant) linear;
+}
+
+.snooze-opt:hover,
+.snooze-opt:focus-visible {
+  background: var(--accent-soft);
+  color: var(--fg);
+}
+
+.snooze-when {
+  color: var(--fg-dim);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+}
+
+/* The action bar is the positioning context for the menu above. */
+#r-actions {
+  position: relative;
+}
+
+/* ------------------------------------------------------- keyboard help --- */
+
+#help {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+  display: grid;
+  place-items: center;
+  padding: var(--s-6);
+  background: rgba(0, 0, 0, 0.42);
+}
+
+#help-box {
+  /*
+   * `gate-in`, not `palette-in`.
+   *
+   * Audit 23 fixed this overlay popping in by reaching for the nearest
+   * animation, and reached for the wrong one: `palette-in` starts at
+   * translate3d(0, -8px, 0) and settles DOWNWARD, which is right for the
+   * palette because it hangs from `padding-top: 14vh`. #help is
+   * `place-items: center` -- a centred dialog sliding down is anchored to
+   * nothing.
+   *
+   * `gate-in` is opacity-only and is what the app's other centred surface
+   * already uses. A centred modal should materialise in place.
+   */
+  animation: gate-in var(--dur-base) var(--ease-out) both;
+  width: min(760px, 100%);
+  max-height: 84vh;
+  overflow: auto;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-lg);
+  /* Reuses the palette's entrance: same interaction class, same motion. */
+  animation: palette-in var(--dur-base) var(--ease-out) both;
+  overscroll-behavior: contain;
+}
+
+#help-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  padding: var(--s-5) var(--s-6);
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  background: var(--bg-raised);
+}
+
+#help-title {
+  margin: 0;
+  font-size: var(--t-xl);
+  font-weight: var(--w-semi);
+}
+
+#help-body {
+  padding: var(--s-5) var(--s-6);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--s-6) var(--s-8);
+  align-items: start;
+}
+
+.sc-group h3 {
+  margin: 0 0 var(--s-3);
+  font-size: var(--t-xs);
+  font-weight: var(--w-semi);
+  text-transform: uppercase;
+  letter-spacing: var(--track-wide);
+  color: var(--fg-dim);
+}
+
+/*
+ * A definition list, laid out as two columns. `dt` carries the keys and `dd`
+ * the description, which is the correct semantic pairing and means a screen
+ * reader announces "j, next message" rather than reading two disconnected
+ * lists.
+ */
+.sc-group dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--s-2) var(--s-4);
+  align-items: baseline;
+}
+
+.sc-group dt {
+  display: flex;
+  gap: var(--s-1);
+  justify-content: flex-end;
+}
+
+.sc-group dd {
+  margin: 0;
+  font-size: var(--t-sm);
+  color: var(--fg);
+}
+
+.sc-when {
+  display: block;
+  font-size: var(--t-xs);
+  color: var(--fg-dim);
+}
+
+#help-foot {
+  padding: var(--s-4) var(--s-6);
+  border-top: 1px solid var(--line);
+  font-size: var(--t-sm);
+  color: var(--fg-dim);
+}
+
+kbd {
+  display: inline-block;
+  min-width: 20px;
+  padding: var(--s-1) var(--s-2);
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  font: var(--w-medium) var(--t-xs) / 1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--fg);
+  text-align: center;
+}
+
+/*
+ * `hidden` must actually hide.
+ *
+ * THIS WAS A REAL BUG: sign-in completed, the token was stored, and the user
+ * sat looking at the sign-in gate anyway.
+ *
+ * The `hidden` attribute works via a UA rule, `[hidden] { display: none }`,
+ * which sits at the LOWEST author-overridable precedence. So any explicit
+ * `display` in this file beats it. `#gate { display: grid }` kept the gate
+ * on screen no matter what `el.gate.hidden = true` did, and the same applied
+ * to `#reader` (flex) and `#r-loading` (grid) -- a stale "Loading…" could sit
+ * on top of a rendered message.
+ *
+ * `!important` is load-bearing here, not lazy: this must outrank every layout
+ * rule in the file, including ones nobody has written yet.
+ *
+ * Placed near the END on purpose. It is correct anywhere in a real browser --
+ * !important wins regardless of source order (CSS Cascade 4 §6) -- but jsdom
+ * resolves this pair by source order and ignores !important across differing
+ * specificity, so a rule declared early silently fails in the test harness.
+ * Putting it last makes it behave identically in both.
+ */
+[hidden] {
+  display: none !important;
+}
+
+

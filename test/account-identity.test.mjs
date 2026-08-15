@@ -231,7 +231,7 @@ test('sign-out drops the identity stamp with the rest of the session', async () 
 
 // ================================================================== AUD-C2 ==
 
-const outboxMod = await import('../src/app/compose/outbox.js');
+const outboxMod = await import('../src/features/outbox/model.js');
 const { enqueue, dispatchable, clearOutbox, normaliseOutbox, flushOutbox, saveOutbox, loadOutbox, _resetOutbox } =
   outboxMod;
 

@@ -2,8 +2,7 @@
 
 **Status:** living document. Steps 1–7 of the migration are complete; the
 layering rules below are now enforced by tests rather than described. Written
-at `c04eadb`, after audit
-[`09-ARCHITECTURE-POST-CHANGE.md`](../audits/09-ARCHITECTURE-POST-CHANGE.md);
+at `c04eadb`, after the now-retired post-change architecture audit;
 refreshed in round 59 (roadmap Phase 3) to match the workspace extractions of
 rounds 51–58.
 

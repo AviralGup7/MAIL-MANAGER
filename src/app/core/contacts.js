@@ -25,7 +25,7 @@
  * The bare address out of a `Name <addr>` header, lowercased.
  *
  * THE SINGLE DEFINITION. This exact three-line function was duplicated
- * verbatim in app.js (`addressOf`), rules.js (`addressOf`) and query.js
+ * verbatim in main.js (`addressOf`), rules.js (`addressOf`) and query.js
  * (`addr`) — three copies of one domain rule, each free to drift.
  *
  * It is deliberately LENIENT: it never returns null, and it does not require

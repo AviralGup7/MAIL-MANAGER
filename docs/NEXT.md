@@ -33,7 +33,7 @@ the day reading and triage survive a dead network.
 
 **Evidence.** `system/cache.js` persists headers-only by explicit design
 ("bodies…are far too large to cache" — a capacity argument from the 10MB
-quota days, not a law). `compose/outbox.js` already proves the queue-shaped
+quota days, not a law). `features/outbox/model.js` already proves the queue-shaped
 primitive (hold window, settle claim across tabs, retry discipline). The
 settings schema refuses to carry `autoSyncMinutes` because the sync epic is
 *specified but unbuilt* (audit 08 remains the spec home for exactly this

@@ -179,7 +179,7 @@ test('help delegates its lifecycle to the layer stack', () => {
    *
    * The behaviour itself is covered where it belongs, by driving the real DOM:
    * "HELP: ? opens the overlay and Escape restores focus to where it was" in
-   * app.integration.test.mjs. What is worth asserting HERE is the structural
+   * app.mail.integration.test.mjs. What is worth asserting HERE is the structural
    * rule: help must not hand-roll a lifecycle again.
    */
   assert.match(helpSrc, /helpLayer = openLayer\(/, 'help must use the layer primitive');

@@ -13,6 +13,7 @@
     "test:ci": "node tools/ci-test.mjs",
     "coverage": "node tools/coverage-gate.mjs",
     "a11y": "node --test test/a11y.test.mjs",
+    "ui:census": "node tools/ui-census.mjs",
     "vr": "node tools/visual-regression.mjs",
     "contrast": "node tools/check-contrast.mjs",
     "docs:check": "node tools/check-docs.mjs",

@@ -14,7 +14,7 @@
  * The debounce is a timer rather than a frame: this one costs a network round
  * trip, so it waits until the user has actually stopped typing.
  *
- * Extracted from app.js as the first and least-coupled tenant identified by
+ * Extracted from main.js as the first and least-coupled tenant identified by
  * the complexity audit: three functions, one entry point, and the only shell
  * state it needs is the current query and mailbox. It talks through an
  * explicit `ctx` rather than reaching into the shell, like every other

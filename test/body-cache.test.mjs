@@ -225,7 +225,7 @@ test('the provenance strip is app chrome, dated, and styled', () => {
   assert.match(reader, /el\.rOffline\.hidden = false;/, 'the fallback reveals it');
   assert.match(reader, /el\.rOffline\.hidden = true;/, 'a new open clears it');
 
-  const css = read('src/styles/68-depth.css');
+  const css = read('src/styles/70-overlays-and-rails.css');
   assert.match(css, /#r-offline \{/, 'it is styled, or the marker is invisible');
 });
 

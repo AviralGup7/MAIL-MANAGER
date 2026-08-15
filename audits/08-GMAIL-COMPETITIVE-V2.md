@@ -1,8 +1,8 @@
 # 08 · Gmail Competitive Audit, second pass
 
 **Subject:** BITS Mail Manager **v1.0** (`46c11c8`) vs. Gmail web.
-**Supersedes:** [`07-GMAIL-COMPETITIVE.md`](07-GMAIL-COMPETITIVE.md), which
-audited v0.9. Most of that document has been implemented; this one is measured
+**Supersedes:** the retired `07-GMAIL-COMPETITIVE.md` audit of v0.9, which
+remains available in Git history. Most of that document has been implemented; this one is measured
 against the code as it now stands, not against the previous report.
 **Method:** every claim carries the command or line that produced it. Where I
 could not verify something, I say so.

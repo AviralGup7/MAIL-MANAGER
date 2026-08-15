@@ -22,7 +22,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 const R = new URL('../src/app/', import.meta.url);
+const F = new URL('../src/features/', import.meta.url);
 const load = (m) => import(new URL(m, R).href);
+const loadFeature = (m) => import(new URL(m, F).href);
 
 /** Storage that rejects every operation. */
 const hostile = () => ({
@@ -69,7 +71,7 @@ const working = () => {
  */
 async function entryPoints(storage) {
   const rules = await load('mail/rules.js');
-  const snooze = await load('system/snooze.js');
+  const snooze = await loadFeature('snooze/model.js');
   const draft = await load('compose/draft-store.js');
   const settings = await load('system/settings.js');
   const cache = await load('system/cache.js');
@@ -203,7 +205,7 @@ test('the caller surfaces a failed view removal instead of assuming success', as
 test('corrupt stored values never crash a loader', async () => {
   const junk = [null, 0, 'string', [], { nested: { deep: true } }, true, NaN];
   const rules = await load('mail/rules.js');
-  const snooze = await load('system/snooze.js');
+  const snooze = await loadFeature('snooze/model.js');
   const draft = await load('compose/draft-store.js');
   const views = await load('system/view-store.js');
   const cache = await load('system/cache.js');

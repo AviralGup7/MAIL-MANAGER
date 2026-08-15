@@ -19,8 +19,8 @@
  * asks for when the lanes setting is on.
  */
 
-import { loadSnoozed, pending as pendingSnoozes, wakeLabel } from '../system/snooze.js';
-import * as outbox from '../compose/outbox.js';
+import { loadSnoozed, pending as pendingSnoozes, wakeLabel } from '../../features/snooze/model.js';
+import * as outbox from '../../features/outbox/model.js';
 import * as lanes from '../academic/lanes.js';
 import * as deadlineStore from '../academic/deadline-store.js';
 import * as activity from '../academic/activity.js';

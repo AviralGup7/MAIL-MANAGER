@@ -20,14 +20,14 @@ const FLOORS = {
   // an arbitrary target. Raise them whenever a module climbs.
   'src/app/mail/store.js': [90, 80],
   'src/app/search/query.js': [80, 70],
-  'src/app/compose/outbox.js': [80, 70],
+  'src/features/outbox/model.js': [80, 70],
   'src/background/sync.js': [55, 85],
   'src/background/gmail.js': [70, 60],
   'src/app/academic/timetable-mail.js': [80, 70],
 };
 
 const SUITES = [
-  'test/store.test.mjs', 'test/query-grouping.test.mjs', 'test/features.test.mjs',
+  'test/store.test.mjs', 'test/query-grouping.test.mjs', 'test/feature-contracts.test.mjs',
   'test/outbox.test.mjs', 'test/sync.test.mjs', 'test/gmail.test.mjs',
   'test/timetable.test.mjs', 'test/academic-pipeline.test.mjs',
 ];

@@ -13,7 +13,7 @@ import { middleTruncate } from '../core/icons.js';
 import { closeWithMotion, cancelExit } from '../overlays/layers.js';
 import { popFrom } from '../motion/morph.js';
 import { burst as fxBurst } from '../motion/particles.js';
-import * as outbox from './outbox.js';
+import * as outbox from '../../features/outbox/model.js';
 import * as templates from './templates.js';
 import { createDraftSaver, loadDraft, isMeaningful } from './draft-store.js';
 import { confirmDialog } from '../overlays/dialog.js';
@@ -812,7 +812,7 @@ async function doDraft(ctx) {
 /**
  * Test seam: drop this module's state (compose context, meta, draft saver and chosen files).
  *
- * Module state outlives a jsdom boot -- only app.js is re-imported with a
+ * Module state outlives a jsdom boot -- only main.js is re-imported with a
  * cache-busting URL -- so it would otherwise point at a torn-down document.
  * Each module resets its OWN state rather than one function reaching into
  * four files' internals.

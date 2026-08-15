@@ -4,7 +4,7 @@ Status: **Phase 1 audit + prioritized plan**. Implementation checkpoints land as
 separate commits named `Round 65/x`. This file is the map they follow.
 
 Method: full interactive-surface inventory of the extension (66 modules in
-`src/app`, shell in `app.html`, 6300-line design system in `app.css`),
+`src/app`, shell in `app.html`, 6300-line design system in `src/styles/`),
 cross-checked against the interaction-intelligence brief received 2026-08-12
 ("Maximum UX & Interaction Intelligence Overhaul"). The brief's sixty sections
 are distilled to nine friction themes below; each finding cites the code that
@@ -19,9 +19,9 @@ The codebase is stronger than the brief assumes. Existing primitives:
 
 - **Command palette** (`palette.js`, Ctrl/Cmd+K): commands, themes, settings,
   contacts search, category jumps, shortcuts listed, recent-style "open last".
-- **Keyboard layer** (`shortcuts.js` + `app.js` keydown): j/k navigation, e/s/u
+- **Keyboard layer** (`shortcuts.js` + `main.js` keydown): j/k navigation, e/s/u
   verbs, `/` search, `?` help, Esc hierarchy, listbox aria-activedescendant.
-- **Undo**: verb-level undo after every removal action via toast (`app.js`,
+- **Undo**: verb-level undo after every removal action via toast (`main.js`,
   `bulk.js`, `outbox.js`); optimistic updates with in-flight row marks.
 - **Bulk selection** (`bulk.js`, `bulkbar.js`, `autocomplete.js`): checkbox
   column, bulk bar with verbs, select-all-in-view.
@@ -49,7 +49,7 @@ The codebase is stronger than the brief assumes. Existing primitives:
 reader, but triaging *while* reading still bounces the eye between reader
 header pills and list verbs; there is no "archive + next" flow. Gmail's most
 used power move (archive-and-advance) is absent. *Fix scope: reader.js +
-app.js verb path. A8.*
+main.js verb path. A8.*
 
 **F2 — Selection is binary.** Single row OR the view-level select-all.
 Ctrl+click additive and Shift+click range selection do not exist on rows (the
@@ -78,7 +78,7 @@ scope: listbar + list.js + saved-views.js. Brief §15/16.*
 **F7 — No deep-linking.** State (view, category, query, open message) is
 in-memory only; reload loses context. It's an extension page (chrome-extension
 URL) but `location.hash` deep links would give Back/Forward and refresh-safety
-cheaply. Brief §20/21. *Fix scope: small router in app.js; conservative:
+cheaply. Brief §20/21. *Fix scope: small router in main.js; conservative:
 hash mirror, NO history pollution on j/k.*
 
 **F8 — Reader "Open in Gmail" is the only escape to the source.** Copy-link /
@@ -211,7 +211,7 @@ redo-with-history (verb-level undo covers the actual risk surface).
   screenshot proof where visual, commit + push.
 - Overlay/motion/z rules from OVERHAUL-V3 R1–R8 remain law; new primitives
   mount under `#overlay-root`, use `--z-*` tokens, finite animations only.
-- app.js is 3.5k lines; NEW interaction modules go in their own files
+- main.js is 3.5k lines; NEW interaction modules go in their own files
   (`row-actions.js`, `deep-link.js`, …) with wiring imports — modularity rule
   from the brief's closing note.
 - Tests that pin retired behavior are updated deliberately, with comments

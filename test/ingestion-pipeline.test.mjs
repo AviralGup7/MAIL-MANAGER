@@ -7,7 +7,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalise } from '../src/background/gmail.js';
-import { audienceOf } from '../src/app/system/direct.js';
+import { audienceOf } from '../src/app/system/audience.js';
 import { Store } from '../src/app/mail/store.js';
 
 const gmailRecord = (over = {}) => ({

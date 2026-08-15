@@ -42,7 +42,7 @@ test('the integration harnesses consume the registry, not hand captures', () => 
    * A return to seven hand-maintained captures is how the round-54 class of
    * bug comes back.
    */
-  for (const f of ['app.integration.test.mjs', 'app.integration2.test.mjs']) {
+  for (const f of ['app.mail.integration.test.mjs', 'app.features.integration.test.mjs']) {
     const src = readFileSync(new URL(`./${f}`, import.meta.url), 'utf8');
     assert.match(src, /resetAll: resetRegistered/, `${f} captures resetAll`);
     assert.match(src, /resetRegistered\?\.\(\)/, `${f} runs the registered resets`);

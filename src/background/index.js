@@ -21,10 +21,10 @@ import { classify } from '../classify/index.js';
 import { selectNotifiable, mergeNotified, cardText } from './notify.js';
 import { SNOOZE_LABEL } from '../shared/labels.js';
 import { MAX_INLINE_BYTES, MAX_INLINE_PARTS, BULK_CHUNK } from '../shared/limits.js';
-import { loadSnoozed, removeSnooze, due, nextWakeAt } from '../app/system/snooze.js';
+import { loadSnoozed, removeSnooze, due, nextWakeAt } from '../features/snooze/model.js';
 // Pure queue helpers (state machine, backoff, normalisation). The RUNNER
 // lives here in the worker now: one dispatcher for every tab (bug-hunt P1).
-import { loadOutbox, saveOutbox, dueItems, markFailed, markUncertain, prioritizeDue, dispatchable } from '../app/compose/outbox.js';
+import { loadOutbox, saveOutbox, dueItems, markFailed, markUncertain, prioritizeDue, dispatchable } from '../features/outbox/model.js';
 import { syncPage, syncDelta, commitHistoryId } from './sync.js';
 import { api } from './gmail.js';
 // The MIME parser lives in its own module so the in-page fallback can reuse

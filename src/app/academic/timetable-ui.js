@@ -66,7 +66,7 @@ export function getTimetableState() { return state; }
  * What did this message do to the timetable?
  *
  * The reader asks this; the model answers it. Kept here rather than imported
- * straight into app.js so the shell needs to know about one timetable module
+ * straight into main.js so the shell needs to know about one timetable module
  * instead of three, and so `state` stays private to this file.
  *
  * @returns {{entry:object, fields:string[], current:string, previous:string}[]}
@@ -1430,5 +1430,5 @@ function fieldset(legend, children, hint) {
 }
 
 // Self-registered test seam (reset-registry.js, roadmap M-2): cached module
-// state must not outlive a cache-busted app.js re-import in the harness.
+// state must not outlive a cache-busted main.js re-import in the harness.
 registerReset('timetable-ui', _resetTimetableUI);

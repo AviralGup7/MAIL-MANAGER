@@ -1,0 +1,139 @@
+/* ---- V3 LIST ROW ANATOMY -------------------------------------------------- */
+/* Two stacked lines: (sender ····· date) over (subject — snippet). The
+   right column is the metadata cluster. DOM is unchanged; the restyle is
+   grid-area placement. */
+.r-mid {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  overflow: hidden;
+}
+.r-line1 {
+  display: flex;
+  min-width: 0;
+}
+/* Line 2 is a real flex row so three pieces can share one baseline: the
+   subject (capped, ellipsised), the snippet (takes what is left), and the
+   category tag pinned to the right end. */
+.r-line2 {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  min-width: 0;
+}
+.r-subj {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 58%;
+}
+.r-snip {
+  /* The snippet yields three times as fast as the subject: when the line is
+     short of space the deficit should come out of the preview you were
+     probably not going to read, not out of the title you scan by. The tag
+     stays flex: none, so the order of sacrifice is snippet → subject → tag. */
+  flex: 0 3 auto;
+  min-width: 0;
+}
+.r-snip::before {
+  content: '— ';
+  color: var(--fg-faint);
+}
+.r-line2 > .tag {
+  flex: none;
+  margin-left: auto;
+  /* PRACTICE SCHOOL and ADMINISTRATION are real labels on this campus; an
+     uncapped pill plus a capped subject leaves the snippet zero pixels on a
+     narrow list. The tag ellipsises past 42% of the line instead. */
+  max-width: 42%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* With the hover verbs parked over the right column, the tag's right edge
+     is the new collision point; they sit just past it together. */
+  margin-right: var(--s-2);
+}
+
+/* ---- V3 ROW HOVER VERBS (round 65/b) — see row-actions.js ---------------- */
+
+/*
+ * The date is a FACT you read once; the verbs are what you do NEXT. On an
+ * attended row (pointer hover, keyboard selection via aria-selected, or
+ * focus within -- all three, so pointer and keyboard users see the same
+ * capability) the fact yields and the verbs take its place, Gmail-style.
+ *
+ * The cluster has its own plate: row backgrounds change on hover/selection
+ * and the verbs must not inherit a moving wash behind them.
+ */
+.r-actions {
+  position: absolute;
+  right: var(--s-2);
+  top: 50%;
+  transform: translateY(-50%) scale(0.96);
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--r-md);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+.r-act {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--fg-dim);
+  cursor: pointer;
+}
+.r-act:hover {
+  background: var(--bg-sunken);
+  color: var(--fg);
+}
+/* Touch rows keep their targets honest instead: hovering never happens, so
+   the verbs stay hidden and the row keeps its full-width tap. The context
+   menu remains on long-pressable right-click equivalents of each platform. */
+@media (hover: hover) {
+  .row:hover .r-actions,
+  .row:focus-within .r-actions,
+  .row[aria-selected='true'] .r-actions {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(-50%) scale(1);
+  }
+  .row:hover .r-date,
+  .row:focus-within .r-date,
+  .row[aria-selected='true'] .r-date,
+  .row:hover .r-star:not([aria-pressed='true']),
+  .row:focus-within .r-star:not([aria-pressed='true']),
+  .row[aria-selected='true'] .r-star:not([aria-pressed='true']) {
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+.r-date,
+.r-star {
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+/* The row's right-click menu is one of the shared primitive's tenants; only
+   its width is new. */
+.row-menu {
+  min-width: 268px;
+}
+/* Date and star now share the right column's single line, so the tallest
+   thing in the column is the 24px star target and the grid track always
+   lives inside the row box. */
+.r-right {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+}
+

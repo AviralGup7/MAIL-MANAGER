@@ -145,7 +145,7 @@ export function wireAutocomplete(inputId, listId) {
 /**
  * Test seam: drop the cached address book.
  *
- * Module state outlives a jsdom boot -- only app.js is re-imported with a
+ * Module state outlives a jsdom boot -- only main.js is re-imported with a
  * cache-busting URL -- so a book built from one test's messages would leak
  * into the next. Self-registered below (S2 dissolved the barrel's composite
  * 'features' entry into per-module registrations, the list/bulk pattern).

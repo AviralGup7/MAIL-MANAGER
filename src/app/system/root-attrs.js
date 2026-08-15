@@ -23,7 +23,7 @@ import * as settings from './settings.js';
 /**
  * Push the density setting onto the root element.  (Feature 28.)
  *
- * One attribute. `app.css` redefines four spacing tokens and the row height
+ * One attribute. `the style bundle` redefines four spacing tokens and the row height
  * under `:root[data-density=...]`, so every surface follows without a single
  * component knowing the setting exists.
  *

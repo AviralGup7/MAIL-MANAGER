@@ -12,7 +12,7 @@ through a shared object, a shared module instance, or a message-passed
 reference that is then retained.
 
 ```
-WORKER (background/index.js)          APP PAGE (app.html → app.js)
+WORKER (background/index.js)          APP PAGE (app.html → app/main.js)
 ├── history cursor    → storage       ├── Store per mailbox (memory)
 ├── notify dedupe     → storage       ├── UI state (state{}, body classes)
 ├── auth token        → storage       ├── cache snapshot (memory + disk)
@@ -35,7 +35,7 @@ WORKER (background/index.js)          APP PAGE (app.html → app.js)
    selection, in-flight, layers) is reconstructed from cache + storage at
    boot. Nothing the worker holds is needed to rebuild it, and nothing the
    app holds is needed by the worker between verbs.
-3. **Two contexts means two module instances.** `outbox.js` imported by the
+3. **Two contexts means two module instances.** `features/outbox/model.js` imported by the
    worker and by the page are DIFFERENT instances with different `TAB_ID`s —
    which is exactly what the cross-tab claim protocol relies on (round 62
    M3). Unifying them would destroy the coordination, not improve it.

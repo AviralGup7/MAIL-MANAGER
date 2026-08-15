@@ -16,7 +16,7 @@ import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 
 const rails = await import('../src/app/workspace/rails.js');
-const outbox = await import('../src/app/compose/outbox.js');
+const outbox = await import('../src/features/outbox/model.js');
 const { initToast } = await import('../src/app/overlays/toast.js');
 const { fakeStorage } = await import('./helpers/storage.mjs');
 

@@ -49,7 +49,7 @@ Statuses: ✅ landed · ◻ planned.
 2. `src/background/index.js` — `onMessage` wrapper: on `ACCOUNT_CHANGED`
    from any verb, `_clearLabelCache()` before responding. Label ids are
    account-scoped; the in-page fallback does the same in its wrapper.
-3. `src/app/compose/outbox.js`
+3. `src/features/outbox/model.js`
    - `enqueue(draft, { accountEmail })` stamps the record; `normaliseOutbox`
      preserves it (string-only).
    - `dispatchable(item, accountEmail)` — pure: unmarked legacy rows pass,
@@ -91,7 +91,7 @@ checkboxes) and `options.test` coverage (key has a control).
    (`notify.js: mergeNotified`) and pinned: two overlapping sweeps over one
    delta notify ≤ once per id by construction of the flag, and the merge
    keeps order + 100-cap.
-3. **L1** the wake-time selection moves into `src/app/system/snooze.js` as
+3. **L1** the wake-time selection moves into `src/features/snooze/model.js` as
    pure `nextWakeAt(all, now)` (finite filter, `max(next, now+5000)`);
    index.js delegates. Non-finite entries can no longer reach
    `alarms.create`.

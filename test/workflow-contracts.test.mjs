@@ -1,5 +1,5 @@
 /**
- * Round 45 Phase 3 pins — the correctness-UX cluster:
+ * Workflow contract pins — mailbox, thread, compose and bulk boundaries:
  * mailbox-aware deep links, live thread strip, compose budget & identity,
  * and the chunked bulk contract.
  */

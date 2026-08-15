@@ -10,7 +10,7 @@
  * optimistic snooze verb stay owned by the shell.
  */
 import { openMenu, closeMenu } from './menu.js';
-import { presets as snoozePresets } from '../system/snooze.js';
+import { presets as snoozePresets } from '../../features/snooze/model.js';
 import { extractDeadline } from '../academic/deadlines.js';
 
 let ctx = null;

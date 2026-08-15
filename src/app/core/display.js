@@ -7,7 +7,7 @@
  * OWNS            nothing mutable. Every export is a pure function or a
  *                 frozen-by-use constant; there is no state to reset.
  * DOES NOT OWN    the Gmail deep link (it depends on the shell's account
- *                 index and stays in app.js), any DOM, any store access.
+ *                 index and stays in main.js), any DOM, any store access.
  * DEPENDS ON      nothing. Deliberately import-free: both the shell and
  *                 reader.js need these, so this module must never grow an
  *                 edge back into either of them.
@@ -18,7 +18,7 @@
  * six bindings and the alternative was injecting them one by one through
  * ctx. They are not the shell's contract with a tenant -- they are shared
  * primitives with zero dependencies, which is exactly the "shared layer
- * owns utilities" slot. Keeping them in app.js would have made reader.js
+ * owns utilities" slot. Keeping them in main.js would have made reader.js
  * depend on the shell for pure functions, the wrong direction for a leaf.
  */
 

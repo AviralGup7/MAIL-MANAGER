@@ -6,7 +6,7 @@
  * DOES NOT OWN: any element, any state.
  * DEPENDS ON: nothing.
  *
- * WHY THIS EXISTS: toast.js was extracted from app.js (round 46 modular
+ * WHY THIS EXISTS: toast.js was extracted from main.js (round 46 modular
  * strategy), and both it and the list write text/attributes through the
  * same guarded helpers. Two copies of "only write when changed" would drift;
  * the guard is what keeps an unchanged row/toast at zero DOM writes.

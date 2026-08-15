@@ -63,8 +63,8 @@ async function buildHandler() {
       import('../../background/auth.js'),
       import('../../background/gmail.js'),
       import('../../background/sync.js'),
-      import('./snooze.js'),
-      import('../compose/outbox.js'),
+      import('../../features/snooze/model.js'),
+      import('../../features/outbox/model.js'),
       import('../../background/mime.js'),
     ]);
     handler = makeHandler({ auth, gmail, sync, snooze, outbox, mime });

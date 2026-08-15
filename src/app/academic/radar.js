@@ -7,7 +7,7 @@
  * used in and found ZERO crossing a boundary, so these were five independent
  * modules sharing a filename rather than one cohesive layer.
  *
- * Reads the store through `ctx` and never reaches into app.js.
+ * Reads the store through `ctx` and never reaches into main.js.
  */
 
 import { relativeLabel, urgency } from './deadlines.js';

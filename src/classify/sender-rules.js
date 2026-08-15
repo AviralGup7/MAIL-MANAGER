@@ -304,7 +304,7 @@ export const SENDER_RULES = [
       'advisory and monitoring',
       // Redundant, kept for fidelity with the source list: `internship` is
       // rule 7 and this is rule 11, so 'placement unit' can never match here.
-      // See notes/CLASSIFIER_CORRECTION.md.
+      // See docs/CLASSIFIER-CORRECTION.md.
       'placement unit',
       'students union',
     ],
@@ -338,7 +338,7 @@ export const SENDER_RULES = [
  *
  * An earlier pass through this file made four changes on the strength of bug
  * reports that were all wrong. They are recorded in
- * notes/CLASSIFIER_CORRECTION.md and have been reverted. In brief:
+ * docs/CLASSIFIER-CORRECTION.md and have been reverted. In brief:
  *
  *   - `'placement unit'` appears in both `clubs` and `internship`. This is
  *     redundant, NOT a bug: `internship` is rule 7 and `clubs` is rule 11, so

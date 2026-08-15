@@ -1,5 +1,5 @@
 /**
- * Round 46 Phase A pins — the cheap/high-value fixes stay fixed.
+ * UI regression guards — the cheap/high-value fixes stay fixed.
  *
  * Each pin exists because the fix is small and the regression would be
  * silent: a missing aria-label, a hidden mute state, a coach toast on the

@@ -165,7 +165,7 @@ test('OUTBOX_PUMP is batched and answers sentIds on both paths (bug-hunt #32/#27
   // The fallback delegates to the shared runner, which is where its sentIds
   // come from -- pin both halves of that chain.
   assert.match(f, /outbox\.flushOutbox/, 'fallback runs the shared runner');
-  const o = read('src/app/compose/outbox.js');
+  const o = read('src/features/outbox/model.js');
   assert.match(o, /sentIds/, 'the shared runner collects what left');
   // The pump records those ids, not an empty array. The pump moved to
   // rails.js in the round-52 workspace extraction.
@@ -220,7 +220,7 @@ test('the pump batch cap fits inside the verb timeout with margin (bug-hunt 43 #
 test('OUTBOX_PUMP answers the ONE canonical PumpResult shape (bug-hunt 43 #50)', () => {
   // Four producers speak this shape; the typedef in outbox.js is the single
   // definition. Pin the contract's existence and every producer's conformance.
-  const o = read('src/app/compose/outbox.js');
+  const o = read('src/features/outbox/model.js');
   const w = read('src/background/index.js');
   const f = read('src/app/system/fallback.js');
   const h = read('test/helpers/worker-contract.mjs');

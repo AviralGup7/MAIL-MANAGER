@@ -67,7 +67,7 @@ export function wireBulk(c) {
 }
 
 /**
- * Test seam: drop per-boot selection state. app.js is re-imported per boot
+ * Test seam: drop per-boot selection state. main.js is re-imported per boot
  * with a cache-busting URL, but THIS module is cached, so a selection left
  * ticking by one test would otherwise hand the next boot a live bulk mode.
  */
@@ -364,5 +364,5 @@ export function reconcileBulk(res, snapshots) {
 }
 
 // Self-registered test seam (reset-registry.js, roadmap M-2): cached module
-// state must not outlive a cache-busted app.js re-import in the harness.
+// state must not outlive a cache-busted main.js re-import in the harness.
 registerReset('bulk', _resetBulk);

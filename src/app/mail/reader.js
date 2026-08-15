@@ -14,7 +14,7 @@
  * Extracted per the round-46 modularity map's move #1 and the round-51
  * workspace architecture map: an agent editing the reader now holds this
  * file and a contract instead of the whole shell. Everything shared with
- * the shell crosses the ctx seam; nothing here imports app.js.
+ * the shell crosses the ctx seam; nothing here imports main.js.
  */
 
 import { Store } from './store.js';
@@ -46,7 +46,7 @@ const $ = (id) => document.getElementById(id);
 /*
  * Set by wireReader at boot. `storeOf` is a GETTER — the shell rebinds its
  * active store on every mailbox switch, so capturing the store by value here
- * would repeat the exact ctx bug documented in app.js.
+ * would repeat the exact ctx bug documented in main.js.
  */
 let ctx = null;
 let el = null;

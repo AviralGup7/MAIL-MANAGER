@@ -396,7 +396,7 @@ function buildCheck(key, value, now, ctx = {}) {
          *
          * A record without the stamp -- anything ingested before this shipped,
          * or by a path that does not classify -- is treated as DIRECT. Same
-         * asymmetry as direct.js itself: never hide mail because a field is
+         * asymmetry as audience.js itself: never hide mail because a field is
          * missing.
          */
         case 'direct': return (m) => m.audience !== 'broadcast';

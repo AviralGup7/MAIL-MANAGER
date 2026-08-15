@@ -7,7 +7,7 @@
  * about the product; this module knows nothing about physics.
  *
  * DELIBERATE EXCLUSIONS (pin-enforced — test/motion-micro.test.mjs):
- *  - .row            the roster owns a no-transform doctrine (app.css:1097)
+ *  - .row            the roster owns a no-transform doctrine (the style bundle:1097)
  *                    and single-stop keyboard truth; nothing moves there
  *  - menus           snooze-opt/views-pop items: menu.js owns pointer and
  *                    roving focus; their choreography is P4's job

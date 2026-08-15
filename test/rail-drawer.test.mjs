@@ -31,7 +31,7 @@ import { readFileSync } from 'node:fs';
 const read = (rel) => readFileSync(new URL('../' + rel, import.meta.url), 'utf8');
 const shell = read('src/app/main.js');
 const rail = read('src/app/workspace/rail-visibility.js');
-const skin = read('src/styles/86-v3-skin.css');
+const skin = read('src/styles/86-v3b-motion-responsive.css');
 
 test('the shell pays one wiring line for rail visibility', () => {
   assert.match(shell, /import \{ wireRailVisibility \} from '\.\/workspace\/rail-visibility\.js'/);

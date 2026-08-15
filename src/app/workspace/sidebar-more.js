@@ -22,7 +22,7 @@
  * ------------------------------------
  * Each item re-fires the button the rail hid rather than re-implementing its
  * action. Sign-out is not a one-liner: it invalidates the saver, clears the
- * cache, resets every mailbox and stops polling (app.js) — duplicating even
+ * cache, resets every mailbox and stops polling (main.js) — duplicating even
  * one line of that here would create the second, subtly-different sign-out
  * the next edit forgets to update. The buttons are display:none, but a
  * programmatic click still invokes their handlers, so the menu is a pure

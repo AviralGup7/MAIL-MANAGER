@@ -197,7 +197,7 @@ let knownLabels = [];
  *
  * Search suggestions offer `label:` values and must draw them from what the
  * mailbox actually has -- a suggestion that returns nothing reads as the
- * search being broken. Exposed as a reader rather than copied into app.js so
+ * search being broken. Exposed as a reader rather than copied into main.js so
  * there stays one owner of the cache.
  */
 export function labelNames() {
@@ -476,7 +476,7 @@ export function wirePalette(ctx) {
 /**
  * Test seam: drop this module's state (palette command list, filter and layer).
  *
- * Module state outlives a jsdom boot -- only app.js is re-imported with a
+ * Module state outlives a jsdom boot -- only main.js is re-imported with a
  * cache-busting URL -- so it would otherwise point at a torn-down document.
  * Each module resets its OWN state rather than one function reaching into
  * four files' internals.

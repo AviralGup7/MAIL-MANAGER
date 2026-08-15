@@ -1,0 +1,284 @@
+/* --------------------------------------------------------- scroll edge -- */
+
+/*
+ * A fade at the top of the list, so content dissolves under the toolbar
+ * instead of being guillotined by it.
+ *
+ * `pointer-events: none` is essential -- without it this strip would eat
+ * clicks on the first row, which is exactly the class of bug that made the
+ * takeover unclickable.
+ */
+#listpane::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: var(--s-5);
+  background: linear-gradient(to bottom, var(--bg), transparent);
+  pointer-events: none;
+  z-index: var(--z-raised);
+  opacity: 0;
+  transition: opacity var(--dur-base) linear;
+}
+#listpane.scrolled::before {
+  opacity: 1;
+}
+#listpane {
+  position: relative;
+}
+
+/* ------------------------------------------------------ multi-select -- */
+
+/*
+ * The checkbox occupies the SAME grid column as the category dot, so engaging
+ * selection mode does not shift the layout. The dot fades out as the box fades
+ * in — one is the resting state of that column, the other its active state.
+ */
+.r-pick {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--s-1);
+  height: 100%;
+}
+
+/*
+ * THE TARGET IS BIGGER THAN THE CONTROL.
+ *
+ * This was 15x15 -- well under the 24px minimum, sitting beside other
+ * controls, and it does something consequential. But drawing a 24px checkbox
+ * in a mail row would put a heavy dot in competition with the subject line.
+ *
+ * So the box stays 15px and the TARGET grows to 24px around it: min-width
+ * and min-height enlarge the hit area while the native control keeps its
+ * painted size. What it looks like and what it catches are different things.
+ */
+.r-check {
+  position: absolute;
+  width: 15px;
+  height: 15px;
+  min-width: 24px;
+  min-height: 24px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--accent);
+  opacity: 0;
+  transform: scale(0.8);
+  transition:
+    opacity var(--dur-fast) linear,
+    transform var(--dur-fast) var(--ease-spring);
+}
+
+/* Revealed on row hover, on keyboard focus, and always while selection is
+   active — so a half-finished selection never hides its own controls. */
+.row:hover .r-check,
+.row:focus-within .r-check,
+.row.picked .r-check,
+#list.selecting .r-check {
+  opacity: 1;
+  transform: scale(1);
+}
+.row:hover .r-bar,
+.row.picked .r-bar,
+#list.selecting .r-bar {
+  opacity: 0;
+}
+
+.row.picked {
+  background: var(--accent-soft);
+}
+.row.picked::before {
+  transform: scaleX(1);
+  opacity: 0.5;
+}
+
+/* --------------------------------------------------------- bulk bar -- */
+
+/*
+ * Replaces the list header in place rather than stacking above it. A bar that
+ * appears IN ADDITION pushes every row down by its own height at the exact
+ * moment the user is aiming at one.
+ */
+#bulkbar {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border-bottom: 1px solid var(--line);
+  background: var(--accent-soft);
+}
+
+/*
+ * THE MORPH — "the header takes over" (audit 33).
+ *
+ * The centre label is the pivot: it never fades and never moves, so the eye
+ * stays locked on one point while the two ends of the bar populate around
+ * it. The checkbox arrives first (scale .6 -> 1, spring) and the actions
+ * follow 40ms later (slide 8px -> 0), because the tick is the CAUSE of the
+ * actions; simultaneous arrival reads as a panel, the stagger reads as a
+ * consequence. Transform, opacity and colour only — nothing here is in the
+ * forbidden layout-property list enforced by test/package.test.mjs.
+ *
+ * The outgoing bar hides synchronously (see #listhead note), so only these
+ * entrance animations exist; exits are the stylesheet's doctrine: fast,
+ * ease-in, not the entrance reversed.
+ */
+#bulkbar:not([hidden]) #bulk-all-wrap {
+  animation: bar-check-in var(--dur-fast) var(--ease-spring) both;
+}
+#bulkbar:not([hidden]) #bulk-actions {
+  animation: bar-actions-in var(--dur-fast) var(--ease-out) 40ms both;
+}
+@keyframes bar-check-in {
+  from { opacity: 0; transform: scale(0.6); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes bar-actions-in {
+  from { opacity: 0; transform: translate3d(8px, 0, 0); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes bulk-in {
+  from { opacity: 0; transform: translate3d(0, -6px, 0); }
+  to   { opacity: 1; transform: none; }
+}
+
+#bulk-all-wrap {
+  display: grid;
+  place-items: center;
+  width: var(--s-6);
+  height: var(--s-6);
+  cursor: pointer;
+}
+#bulk-all {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
+#bulk-count {
+  font-size: var(--t-sm);
+  font-weight: var(--w-semi);
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  /* the morph's pivot: same sentence, new tense; a colour move, never a blink */
+  transition: color var(--dur-fast) linear;
+}
+
+#bulk-actions {
+  display: flex;
+  gap: var(--s-1);
+  margin-left: auto;
+}
+#bulk-actions .ghost {
+  background: var(--bg-raised);
+}
+#bulk-trash:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+/* ------------------------------------------------------- attachments -- */
+
+#r-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-6);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-raised);
+}
+
+/*
+ * A chip, not a list row. Attachments are usually one or two and are
+ * secondary to the message, so they should read as objects you can pick up
+ * rather than as another list competing with the body.
+ */
+.att-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  max-width: 260px;
+  padding: var(--s-1) var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-full);
+  background: var(--bg);
+  color: var(--fg-dim);
+  font: inherit;
+  font-size: var(--t-sm);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-instant) linear,
+    background-color var(--dur-instant) linear,
+    color var(--dur-instant) linear,
+    transform var(--dur-instant) var(--ease-out);
+}
+.att-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.att-chip:active {
+  transform: translateY(1px);
+}
+.att-chip:disabled {
+  /* Downloading: `progress` is more specific than `not-allowed` here, because
+     the control is busy rather than unavailable. */
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/*
+ * ONE DISABLED STATE FOR EVERY BUTTON.
+ *
+ * Measured: an enabled and a disabled .primary computed to the same opacity,
+ * the same background and `cursor: pointer` for both. Four controls get
+ * disabled at runtime -- Sign in, Send, Load more, the finalise button -- and
+ * every one went on looking fully clickable. During a slow send the user
+ * clicks Send again, sees nothing happen, and concludes the app is broken.
+ *
+ * `pointer` on something unpressable is the specific lie: the cursor is the
+ * fastest affordance signal there is, and it was pointing the wrong way.
+ *
+ * Hover and press feedback are suppressed too, or the button still lifts
+ * under the cursor while refusing to do anything.
+ */
+.primary:disabled,
+.ghost:disabled,
+.tt-section:disabled,
+.snooze-opt:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.primary:disabled:hover,
+.ghost:disabled:hover,
+.primary:disabled:active,
+.ghost:disabled:active {
+  background: inherit;
+  box-shadow: none;
+  transform: none;
+}
+
+.att-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--w-medium);
+}
+.att-size {
+  color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+/* A pulse while fetching. Bounded by the disabled state, so it stops. */
+.att-chip.loading .att-name {
+  opacity: 0.6;
+}
+

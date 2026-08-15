@@ -55,7 +55,7 @@ export async function performUndo(ctx) {
 /**
  * Test seam: empty the stack between jsdom boots.
  *
- * `undoStack` is module-level, and app.js is the only module re-imported with
+ * `undoStack` is module-level, and main.js is the only module re-imported with
  * a cache-busting URL -- its imports keep their state. So without this every
  * test inherits the undo entries of every test before it, and a Ctrl+Z pops
  * a NEIGHBOUR'S entry and fires that test's verb.
@@ -68,5 +68,5 @@ function _resetUndo() {
 }
 
 // Self-registered test seam (reset-registry.js, roadmap M-2): cached module
-// state must not outlive a cache-busted app.js re-import in the harness.
+// state must not outlive a cache-busted main.js re-import in the harness.
 registerReset('undo', _resetUndo);

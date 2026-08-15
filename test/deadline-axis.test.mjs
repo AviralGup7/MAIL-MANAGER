@@ -2,7 +2,7 @@
  * The all-code sweep, finding #3 (2026-08-14): the deadline menu ran on a
  * forked clock.
  *
- * deadlines.js's contract — pinned in features.test.mjs as Date.UTC
+ * deadlines.js's contract — pinned in feature-contracts.test.mjs as Date.UTC
  * epochs — is that every deadline is an end-of-day on the UTC wall clock.
  * But main.js kept a private endOfDay() that called d.setHours(23, 59) —
  * end-of-day in LOCAL time — under a comment claiming "the same convention

@@ -11,7 +11,7 @@
  * `lib/pattern-classifier/rules/*.js`, carried over exactly. An earlier
  * hand-written port rewrote all of them onto a 40/25/15/8 scale and dropped
  * 802 keys while claiming to be a faithful copy. See
- * notes/CLASSIFIER_CORRECTION.md. Generating the file removes the opportunity
+ * docs/CLASSIFIER-CORRECTION.md. Generating the file removes the opportunity
  * to make that mistake again.
  *
  * SHAPE

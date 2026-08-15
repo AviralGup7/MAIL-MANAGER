@@ -56,7 +56,7 @@ export const CACHE_MAX = 500;
  *
  *   - `dueAt` was neither stored nor recomputed, so a warm start showed no
  *     deadline radar at all until the delta returned. That one really is
- *     derivable -- from the subject and snippet, both cached -- so `app.js`
+ *     derivable -- from the subject and snippet, both cached -- so `main.js`
  *     re-derives it on hydrate (see `withDeadline`).
  *   - `hasAttachment` was neither stored nor recomputed, so `has:attachment`
  *     silently matched nothing for every cached message. This one CANNOT be
@@ -107,7 +107,7 @@ const AUD_NAME = { d: 'direct', c: 'cc', b: 'broadcast' };
  * Headers are slimmed to the keys audience decisions actually read
  * (LIST_HEADERS); a full header dump would bloat 500 rows for nothing.
  */
-import { LIST_HEADERS } from './direct.js';
+import { LIST_HEADERS } from './audience.js';
 import { STORAGE } from '../../platform/storage.js';
 
 function pack(m) {

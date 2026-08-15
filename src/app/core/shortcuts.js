@@ -9,7 +9,7 @@
  * is worse than no help, because the user stops trusting all of it.
  *
  * So the bindings live here as data, the overlay renders from that data, and
- * a test asserts every documented key is actually handled in `app.js`. Adding
+ * a test asserts every documented key is actually handled in `main.js`. Adding
  * a shortcut without documenting it fails the build.
  *
  * DISCOVERABILITY WAS THE ACTUAL PROBLEM. Thirteen shortcuts existed and

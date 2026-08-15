@@ -3,7 +3,7 @@
  *
  * The shell's render paths (list, counts, bulk, j/k) all read from ONE choke
  * point: "what should the list show right now". That logic lived inline in
- * app.js, where it could only be exercised by booting the whole app — which
+ * main.js, where it could only be exercised by booting the whole app — which
  * is how a slightly-different predicate gets inlined into a new view and
  * silently diverges. Moved here as pure functions of (store, ctx) with every
  * impure dependency injected:

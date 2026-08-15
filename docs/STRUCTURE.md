@@ -30,6 +30,7 @@ src/
   takeover/                   the content script Gmail sees (zero imports)
   options/                    options page logic
   timetable/                  academic data (data.json + source documents)
+  features/                   cross-context feature models (outbox, snooze)
   app/
     main.js                   THE SHELL — render loop, routing, ctx (was app.js)
     core/                     shared vocabulary: dom, icons, display, sanitize,
@@ -37,9 +38,8 @@ src/
     motion/                   every animation primitive (springs, camera, light,
                               particles, morphs); imports nothing app-side
     system/                   settings, themes, cache, body-cache (reader's
-                              offline floor), identity (direct),
-                              snooze/outbox persistence, backup, fallback,
-                              deep-links, storage/view stores,
+                              offline floor), audience classification,
+                              backup, fallback, deep-links, storage/view stores,
                               root-attrs (settings -> :root stamps)
     overlays/                 the overlay stack: layers, menu, dialog, toast,
                               help, settings-panel, snooze-menu, category-menu,
@@ -49,7 +49,7 @@ src/
                               mailboxes, rules, snippet, undo-actions
     search/                   query language, suggestions, saved views,
                               server-search fallback, chips
-    compose/                  compose, autocomplete, templates, drafts, outbox
+    compose/                  compose, autocomplete, templates and drafts
     academic/                 timetable suite, deadlines, radar, notices,
                               activity log, lanes, rule-engine
     workspace/                sidebar chrome, rail visibility postures, the

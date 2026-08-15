@@ -37,7 +37,7 @@
  * BITS mail in it, which is the test the identity filter applies.
  */
 
-import { audienceOf } from '../system/direct.js';
+import { audienceOf } from '../system/audience.js';
 
 /** Lane ids, in display order. The order is the priority cascade. */
 export const LANES = /** @type {const} */ ([

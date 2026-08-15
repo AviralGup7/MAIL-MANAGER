@@ -255,7 +255,7 @@ const $ = (id) => document.getElementById(id);
 // ------------------------------------------------------------- accessors --
 
 /**
- * Test seam: drop every piece of per-boot list state. app.js is re-imported
+ * Test seam: drop every piece of per-boot list state. main.js is re-imported
  * per boot with a cache-busting URL, but THIS module is cached, so its row
  * index and scroll memory would otherwise leak rows from a discarded document
  * into the next test's boot.
@@ -1159,5 +1159,5 @@ export function patchRow(id) {
 }
 
 // Self-registered test seam (reset-registry.js, roadmap M-2): cached module
-// state must not outlive a cache-busted app.js re-import in the harness.
+// state must not outlive a cache-busted main.js re-import in the harness.
 registerReset('list', _resetList);

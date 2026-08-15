@@ -1,7 +1,7 @@
 /*
  * PART TWO OF THE INTEGRATION SUITE.
  *
- * Split from app.integration.test.mjs for MEMORY, not for organisation.
+ * Split from app.mail.integration.test.mjs for MEMORY, not for organisation.
  *
  * Every boot() builds a full JSDOM document -- DOM tree, CSSOM, timers,
  * listeners, an ES module graph. The harness calls win.close() so each becomes

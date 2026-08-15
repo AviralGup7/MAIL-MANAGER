@@ -10,7 +10,7 @@
  *
  * WHY THIS EXISTS
  * ---------------
- * app.js is re-imported per test boot with a cache-busting URL, but every
+ * main.js is re-imported per test boot with a cache-busting URL, but every
  * other module is CACHED — so module-level state outlives a boot. The
  * integration harness used to capture each module's `_reset*` by hand and
  * call each one in restore(). That worked until it didn't: round 54's

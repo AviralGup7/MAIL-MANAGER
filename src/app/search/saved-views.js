@@ -1,7 +1,7 @@
 /**
  * Saved views: the searches the user chose to keep.
  *
- * Extracted from app.js as the second tenant. Less loosely coupled than server
+ * Extracted from main.js as the second tenant. Less loosely coupled than server
  * search -- `renderViews()` is called from inside the rAF render loop, beside
  * renderList and renderSidebar -- so the split keeps that call in the shell
  * and moves only the rendering, the counting and the persistence handling.

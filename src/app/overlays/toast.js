@@ -8,7 +8,7 @@
  *   (cancelExit / closeWithMotion).
  *
  * WHY EXTRACTED (round 46 modular strategy): toast was the lowest-risk
- * cluster in app.js — one timer, one surface, called everywhere — so it
+ * cluster in main.js — one timer, one surface, called everywhere — so it
  * proves the extraction pattern (inject nodes, move the timer, keep the
  * callers' signature) before the bigger reader extraction.
  */

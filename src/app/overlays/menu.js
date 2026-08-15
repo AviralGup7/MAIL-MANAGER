@@ -3,7 +3,7 @@
  *
  * WHY THIS EXISTS
  * ---------------
- * Three menus in app.js — category rules, recategorise, snooze — each built
+ * Three menus in main.js — category rules, recategorise, snooze — each built
  * the same container, wired the same `role="menu"`, and carried a byte-identical
  * arrow-key/Escape handler. The complexity audit counted three copies of
  * `items[(i + 1) % items.length]`.
@@ -300,5 +300,5 @@ export function openMenu({
 }
 
 // Self-registered test seam (reset-registry.js, roadmap M-2): cached module
-// state must not outlive a cache-busted app.js re-import in the harness.
+// state must not outlive a cache-busted main.js re-import in the harness.
 registerReset('menu', _resetMenu);

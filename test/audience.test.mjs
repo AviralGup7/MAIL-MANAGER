@@ -9,7 +9,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 const { audienceOf, isDirect, filterDirect, splitRecipients, looksLikeListAddress } =
-  await import('../src/app/system/direct.js');
+  await import('../src/app/system/audience.js');
 
 const ME = 'f20240294@pilani.bits-pilani.ac.in';
 

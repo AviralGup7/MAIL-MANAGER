@@ -1,5 +1,5 @@
 /**
- * Round 47 — extraction integrity pins.
+ * Extraction integrity pins.
  *
  * This round's failures were all of one class: a pin or a guard that assumed
  * a fixed shape and went stale or silent when code moved. These pins make
@@ -46,7 +46,7 @@ test('every module path a pin suite reads actually exists', () => {
   // it no longer lives in. This guard fails if any pin suite references a
   // src path that does not exist, so a future move cannot strand a pin.
   const suites = ['layout-contract.test.mjs', 'reader-security.test.mjs',
-    'round45-phase3.test.mjs', 'round46-phaseA.test.mjs', 'package.test.mjs'];
+    'workflow-contracts.test.mjs', 'ui-regression-guards.test.mjs', 'package.test.mjs'];
   for (const suite of suites) {
     const src = readFileSync(join(ROOT, 'test', suite), 'utf8');
     const rel = [...src.matchAll(/'\.\.\/(src\/[^']+\.js)'/g)].map((m) => m[1]);

@@ -71,47 +71,33 @@ test('shared imports nothing (leaf)', () => {
   }
 });
 
-test('background never imports app statically — except the declared store helpers', () => {
-  /*
-   * TWO declared edges, both storage-only modules with no DOM: snooze.js for
-   * the wake alarm, outbox.js for the due-send pump. Declaring them here —
-   * named, symbol-limited, tested — is the doctrine; anything else from app
-   * is a layering violation.
-   */
-  const ALLOWED = new Set(['../app/system/snooze.js', '../app/compose/outbox.js']);
+test('background never imports the app presentation layer', () => {
   for (const f of allFiles(join(SRC, 'background'))) {
     for (const imp of staticImports(f)) {
-      if (!imp.startsWith('../app/')) continue;
-      assert.ok(
-        ALLOWED.has(imp),
-        `${rel(f)} imports from the app layer: ${imp} (declared edges: ${[...ALLOWED].join(', ')})`
-      );
+      assert.ok(!imp.startsWith('../app/'), `${rel(f)} imports presentation code: ${imp}`);
     }
   }
-  // And even those edges are limited to their storage helpers, not the label
-  // (which lives in shared/labels.js) or any UI code.
-  /* 2026-08-15 (audit, AUD-L1/C2): two symbols joined their own edges —
-     nextWakeAt is the wake alarm's arithmetic (the reason the snooze edge
-     exists), pure and DOM-free; dispatchable is the pump's owner gate (the
-     reason the outbox edge exists). Declared, not smuggled. */
+});
+
+test('cross-context jobs live in feature-owned models with explicit worker APIs', () => {
   const idx = readFileSync(join(SRC, 'background', 'index.js'), 'utf8');
   const declared = [
-    ['system/snooze.js', ['loadSnoozed', 'removeSnooze', 'due', 'nextWakeAt']],
-    ['compose/outbox.js', ['loadOutbox', 'saveOutbox', 'dueItems', 'markFailed', 'markUncertain', 'prioritizeDue', 'dispatchable']],
+    ['snooze/model.js', ['loadSnoozed', 'removeSnooze', 'due', 'nextWakeAt']],
+    ['outbox/model.js', ['loadOutbox', 'saveOutbox', 'dueItems', 'markFailed', 'markUncertain', 'prioritizeDue', 'dispatchable']],
   ];
   for (const [file, symbols] of declared) {
-    const marker = `from '../app/${file}'`;
+    const marker = `from '../features/${file}'`;
     const at = idx.indexOf(marker);
-    assert.ok(at !== -1, `the declared ${file} import must exist and be explicit`);
+    assert.ok(at !== -1, `the declared ${file} feature import must exist`);
     const open = idx.lastIndexOf('import {', at);
     const names = idx.slice(open + 'import {'.length, idx.indexOf('}', open))
       .split(',').map((s) => s.trim()).filter(Boolean);
-    assert.ok(names.length > 0, `the declared ${file} import must name its symbols`);
-    for (const name of names) {
-      assert.ok(
-        symbols.includes(name),
-        `worker imports undeclared app symbol: ${name}`
-      );
+    for (const name of names) assert.ok(symbols.includes(name), `worker imports undeclared feature symbol: ${name}`);
+  }
+  for (const f of allFiles(join(SRC, 'features'))) {
+    for (const imp of staticImports(f)) {
+      assert.ok(!imp.includes('/app/') && !imp.includes('/background/'),
+        `${rel(f)} reaches a context-specific layer: ${imp}`);
     }
   }
 });

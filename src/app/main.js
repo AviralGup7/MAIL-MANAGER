@@ -27,18 +27,19 @@
 import { Store } from './mail/store.js';
 import { loadCache, saveCache, clearCache, createSaver, CACHE_MAX } from './system/cache.js';
 import { clearBodyCache } from './system/body-cache.js';
-import { clearOutbox } from './compose/outbox.js';
+import { clearOutbox } from '../features/outbox/model.js';
 import {
   enqueueIntent, cancelIntent, drainIntents, queuedIntentCount, clearIntents,
   INTENT_MAX_ATTEMPTS,
 } from './mail/intents.js';
-import { THEMES, applyTheme, getTheme, DEFAULT_THEME } from './system/themes.js';
+import { THEMES } from './system/themes.js';
+import { applyInitialTheme, chooseTheme } from './system/theme-controller.js';
 import { icon, setIcon } from './core/icons.js';
 import { setAttr } from './core/dom.js';
 import { toast, hideToast, initToast } from './overlays/toast.js';
 import { loadViews, saveView, removeView } from './system/view-store.js';
 import { extractDeadline, endOfDay } from './academic/deadlines.js';
-import { initCyberpunkFx, cyberpunkEnterFx } from './system/cyberpunk-fx.js';
+import { initCyberpunkFx } from './system/cyberpunk-fx.js';
 import { runInPage, probeWorker } from './system/fallback.js';
 import { closeHelp, toggleHelp, helpOpen } from './overlays/help.js';
 import { openSettings } from './overlays/settings-panel.js';
@@ -49,7 +50,7 @@ import { wireBulkbar } from './mail/bulkbar.js';
 import { buildReply } from './search/query.js';
 import * as settings from './system/settings.js';
 import { applyDensity, applyVisualPrefs } from './system/root-attrs.js';
-import { audienceOf } from './system/direct.js';
+import { audienceOf } from './system/audience.js';
 import * as activity from './academic/activity.js';
 import * as engine from './academic/rule-engine.js';
 import * as followups from './academic/followups.js';
@@ -109,7 +110,7 @@ import {
   isAutoArchived, applyCorrection,
   mutedCount,
 } from './mail/rules.js';
-import { addSnooze, removeSnooze } from './system/snooze.js';
+import { addSnooze, removeSnooze } from '../features/snooze/model.js';
 /*
  * THE BARREL IS DISSOLVED (structure S2). features.js re-exported these five
  * families so no importer had to know where anything lived — which is exactly
@@ -1773,7 +1774,7 @@ async function refresh({ silent = false } = {}) {
     // `added` and `removed` are guaranteed disjoint by reduceHistory(), so
     // the order of these three loops does not affect the result. The first
     // draft did not guarantee that, and an archive-then-unarchive silently
-    // lost the message. See notes/SYNC_BUGS.md.
+    // lost the message. See docs/THREADING.md.
     store.batch(() => {
       ingest(res.added);
       for (const id of res.removed) store.remove(id);
@@ -2585,39 +2586,8 @@ function openDeadlineMenu(id, anchor) {
 
 
 function setTheme(id) {
-  const theme = applyTheme(id);
-  state.theme = theme.id;
-  /* Cyberpunk is the one theme that MARKS its arrival: a CRT flicker and a
-     rising sting. Gated here by id, not by the module, so the effect fires
-     on CHOICE — a saved cyberpunk booting up stays silent. */
-  if (theme.id === 'cyberpunk') cyberpunkEnterFx();
-  /*
-   * Through the settings module, not straight to storage.
-   *
-   * `theme` is declared in the settings schema, but this wrote it directly
-   * and `start()` read it directly — so the schema entry was decorative and
-   * there were two writers for one concept. Coercion, defaults and the
-   * subscriber notification all lived in a module nothing was calling for
-   * this key.
-   */
-  // The success half of the settings-failure toast (round 46 #3): applying
-  // a theme now speaks, so success and failure share one language.
-  toast(theme.name, { ms: 1200 });
-  settings.set('theme', theme.id).catch(() => {
-    // A theme that cannot persist reverts at next boot; say so once, here,
-    // instead of letting the failure disappear (bug-hunt 43 #17).
-    toast('Could not save the theme choice', { kind: 'error' });
-  });
-  /*
-   * No loop over menu children to re-tick. The menu is rebuilt from
-   * `state.theme` on every open and destroyed on every close, so there is no
-   * stale DOM to keep in sync -- one of the four things the hand-rolled
-   * version had to remember and this one cannot forget.
-   */
-  // Re-render the open message. The body iframe is a separate document with
-  // its own colours baked into srcdoc, so it cannot follow a variable change.
-  // Cheap: the body is already in memory, no refetch. The repaint lives with
-  // the reader now (round 51 workspace extraction).
+  chooseTheme(id, { state, toast });
+  // The body iframe is a separate document with colours baked into srcdoc.
   repaintBody();
 }
 
@@ -3560,7 +3530,7 @@ async function boot() {
   // sign-in screen where no list exists is first-run noise (round 46 #44).
 
   // Theme next, before anything paints, so there is no flash of the wrong
-  // palette. `applyTheme` falls back to the default for an unknown id, which
+  // palette. The theme controller falls back for an unknown id, which
   // covers the old binary 'light'/'dark' values from before the picker.
   const theme = settings.get('theme');
   /*
@@ -3569,7 +3539,7 @@ async function boot() {
    * wins, so this only ever decides the FIRST impression.
    */
   const osDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  state.theme = applyTheme(theme || (osDark ? 'midnight' : DEFAULT_THEME)).id;
+  applyInitialTheme(theme, osDark, state);
   applyDensity();
   /* Ambience + snippets: same one-attribute promise as density — boot
      stamps the root and moves on. */
