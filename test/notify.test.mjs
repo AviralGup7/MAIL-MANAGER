@@ -76,8 +76,8 @@ test('notification titles scrub control chars and truncate the sender', () => {
      name-or-fallback rule. The behavioural pins (chars out, ellipsis
      inside the cap) live in audit-hardening.test.mjs. */
   const fn = readFileSync(new URL('../src/background/notify.js', import.meta.url), 'utf8');
-  // String.raw keeps the literal backslashes unambiguous through every escaping layer.
-  assert.match(fn, new RegExp(String.raw`replace\(/\[\\x00-\\x1f\\x7f\]`), 'control chars scrubbed');
+  assert.match(fn, /\\x00-\\x1f/, 'C0 control chars scrubbed');
+  assert.match(fn, /\\u202a-\\u202e/, 'bidi overrides scrubbed too');
   assert.match(fn, /slice\(0, max - 1\)/, 'truncated with an ellipsis');
   assert.match(INDEX_SRC, /cardText\(from, max\) \|\| 'BITS mail'/, 'empty sender falls back');
 });

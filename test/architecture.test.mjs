@@ -97,7 +97,7 @@ test('background never imports app statically — except the declared store help
   const idx = readFileSync(join(SRC, 'background', 'index.js'), 'utf8');
   const declared = [
     ['system/snooze.js', ['loadSnoozed', 'removeSnooze', 'due', 'nextWakeAt']],
-    ['compose/outbox.js', ['loadOutbox', 'saveOutbox', 'dueItems', 'markFailed', 'prioritizeDue', 'dispatchable']],
+    ['compose/outbox.js', ['loadOutbox', 'saveOutbox', 'dueItems', 'markFailed', 'markUncertain', 'prioritizeDue', 'dispatchable']],
   ];
   for (const [file, symbols] of declared) {
     const marker = `from '../app/${file}'`;

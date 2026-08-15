@@ -72,7 +72,7 @@ const hydrate = (draft) => {
       case 'PROFILE': return { ok: true, data: { emailAddress: 'f20240294@pilani.bits-pilani.ac.in' } };
       case 'SYNC_PAGE': {
         if (msg.opts?.pageToken) return { ok: true, data: { messages: [], nextPageToken: '' } };
-        if (!perLabel) return { ok: true, data: { messages, nextPageToken: '' } };
+        if (!perLabel) return { ok: true, data: { messages, nextPageToken: '', anchorHistoryId: 'h1' } };
         // Distinct messages per mailbox, so a cross-mailbox leak is visible.
         const label = (msg.opts?.labelIds || [])[0] || msg.opts?.labelName || 'INBOX';
         // Some tests need a mailbox that is genuinely empty rather than one
@@ -92,7 +92,10 @@ const hydrate = (draft) => {
         return { ok: true, data: { messages: out, nextPageToken: '' } };
       }
       case 'SYNC_DELTA':
-        return { ok: true, data: { kind: 'delta', added: [], removed: [], patched: [] } };
+        return { ok: true, data: { kind: 'delta', added: [], removed: [], patched: [], nextHistoryId: 'h2' } };
+      case 'SYNC_COMMIT':
+        storage.historyId = msg.historyId;
+        return { ok: true, data: { historyId: msg.historyId } };
       case 'GET_BODY':
         return {
           ok: true,

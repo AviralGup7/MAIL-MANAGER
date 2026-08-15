@@ -158,7 +158,8 @@ test('OUTBOX_PUMP is batched and answers sentIds on both paths (bug-hunt #32/#27
   const f = read('src/app/system/fallback.js');
   const w = read('src/background/index.js');
   assert.match(w, /MAX_PUMP_BATCH/, 'the worker caps one pump run');
-  assert.match(w, /allDue\.slice\(0, MAX_PUMP_BATCH\)/, 'the cap is applied to the due set');
+  assert.match(w, /eligible\.slice\(0, MAX_PUMP_BATCH\)/,
+    'the cap is applied after account eligibility so foreign rows cannot starve it');
   assert.match(w, /more/, 'and reports leftover work for the re-arm');
   assert.match(w, /sentIds/, 'the worker must report which messages left');
   // The fallback delegates to the shared runner, which is where its sentIds
@@ -233,8 +234,8 @@ test('OUTBOX_PUMP answers the ONE canonical PumpResult shape (bug-hunt 43 #50)',
      receipt — rows refused for this session's account stay armed for their
      owner, and a pump that refuses silently would be lying by omission. It
      is conditional (absent at zero), so the base shape below is a prefix. */
-  assert.match(w, /return \{ sent, failed, skipped: false, sentIds, more,\s*\n?\s*\.\.\.\(wrongAccount \? \{ wrongAccount \} : \{\}\) \};/,
-    'the worker answers the contract plus the AUD-C2 receipt');
+  assert.match(w, /return \{ sent, failed, skipped: false, sentIds, more,\s*\n?\s*\.\.\.\(wrongAccount \? \{ wrongAccount, blockedIds \} : \{\}\) \};/,
+    'the worker answers the contract plus visible account-refusal details');
   assert.match(o, /@property \{number\}\s+\[wrongAccount\]/, 'the contract names the receipt');
   assert.match(w, /`g:\$\{res\.id\}`/, 'worker ids carry the g: namespace');
   assert.match(o, /`g:\$\{res\.id\}` : `q:\$\{item\.id\}`/, 'runner ids are namespaced');
