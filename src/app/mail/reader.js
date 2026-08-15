@@ -813,6 +813,19 @@ function tagNode(text, color) {
  */
 let imageAllowList = new Set();
 
+/**
+ * Drop the in-memory allow-list (audit R3-04).
+ *
+ * The stored `imageAllow` key is swept on an account change, but this Set is
+ * the copy the reader actually consults — and `allowSenderImages` writes the
+ * whole Set back on the next "load images" click. Clearing storage alone
+ * would therefore resurrect account A's trusted senders under account B the
+ * first time B trusted anyone. Storage and mirror must die together.
+ */
+export function resetImageAllowList() {
+  imageAllowList = new Set();
+}
+
 export async function loadImageAllowList(storage = STORAGE) {
   try {
     const { imageAllow } = (await storage.get('imageAllow')) || {};

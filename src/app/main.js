@@ -38,6 +38,9 @@ import { icon, setIcon } from './core/icons.js';
 import { setAttr } from './core/dom.js';
 import { toast, hideToast, initToast } from './overlays/toast.js';
 import { loadViews, saveView, removeView } from './system/view-store.js';
+/* The account-scope law, derived from the storage registry rather than
+   remembered in the teardown below (audit R3-04). */
+import { ACCOUNT_SCOPED_KEYS } from './system/storage-registry.js';
 import { extractDeadline, endOfDay } from './academic/deadlines.js';
 import { initCyberpunkFx } from './system/cyberpunk-fx.js';
 import { runInPage, probeWorker } from './system/fallback.js';
@@ -60,7 +63,7 @@ import { detectNotice, shouldPromote, summarise } from './academic/notices.js';
 import {
   wireReader, openMessage as openMessageRaw, closeReader as closeReaderRaw,
   renderThreadStrip, syncReaderActions,
-  repaintBody, cancelMarkRead, loadImageAllowList, openPartId, renderReaderTags,
+  repaintBody, cancelMarkRead, loadImageAllowList, resetImageAllowList, openPartId, renderReaderTags,
 } from './mail/reader.js';
 import { wireSuggestUI, renderSuggestions, cancelSuggestBlur } from './search/suggest-ui.js';
 import { wireMicroInteractions } from './motion/wire-micro.js';
@@ -2348,6 +2351,38 @@ async function endAccountSession(gateMessage) {
      for a different account at the pump — keeping is safe, sending is
      scoped. */
   if (settings.get('clearOutboxOnSignOut')) await clearOutbox();
+  /*
+   * EVERY REMAINING ACCOUNT-SCOPED KEY (audit R3-04).
+   *
+   * The named clears above handle the stores that also need their in-memory
+   * caches dropped. This sweep is the backstop for the rest — followups,
+   * imageAllow, queryHistory, activityLog, categoryRules, deadlineOverrides,
+   * activeAuthUser — which previously survived an account change and handed
+   * account B the search terms, image-trust decisions and thread notes of
+   * account A.
+   *
+   * Driven by the registry, so a NEW account-scoped key is cleared the day
+   * it is declared and the registry test fails the build if it declares
+   * nothing. The outbox is honoured separately above because the user can
+   * opt to keep it (and every row is account-stamped at the pump anyway),
+   * so it is excluded here rather than clearing what the setting preserved.
+   */
+  const keepOutbox = !settings.get('clearOutboxOnSignOut');
+  const sweep = ACCOUNT_SCOPED_KEYS.filter(
+    (k) => !(keepOutbox && (k === 'outbox' || k === 'outboxClaims'))
+  );
+  try {
+    await chrome.storage.local.remove(sweep);
+  } catch {
+    // A storage failure must not strand the user in a half-signed-out state:
+    // the gate still shows, and the next sign-out retries the sweep.
+  }
+  // In-memory mirrors of the swept keys must go too, or the next render
+  // repaints the previous account's data from RAM and writes it back.
+  try { resetImageAllowList(); } catch { /* best-effort */ }
+  // followupList is the live mirror of `followups`: leaving it populated
+  // would let a later prune/save write account A's threads straight back.
+  followupList = [];
   resetView({ allMailboxes: true });
   saver.invalidate();
   state.signedIn = false;

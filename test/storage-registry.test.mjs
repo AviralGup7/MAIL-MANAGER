@@ -15,7 +15,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const { STORAGE_REGISTRY, BACKUP_KEYS, keyEntry } = await import('../src/app/system/storage-registry.js');
+const { STORAGE_REGISTRY, BACKUP_KEYS, ACCOUNT_SCOPED_KEYS, keyEntry } = await import('../src/app/system/storage-registry.js');
 const { SCHEMA } = await import('../src/app/system/settings.js');
 const backup = await import('../src/app/system/backup.js');
 
@@ -29,6 +29,14 @@ test('every entry is well-formed and keys are unique', () => {
     assert.ok(e.purpose, `${e.key} has a purpose`);
     assert.equal(typeof e.backup, 'boolean', `${e.key} backup is a decision`);
     if (!e.backup) assert.ok(e.reason, `${e.key} explains why it does not travel`);
+    /* Audit R3-04: account scope is a DECISION, never an omission. The
+       teardown iterates ACCOUNT_SCOPED_KEYS, so a key that declares nothing
+       would silently survive an account change -- which is exactly how
+       followups, imageAllow, queryHistory, activityLog, categoryRules and
+       deadlineOverrides leaked account A's data into account B's session. */
+    assert.equal(typeof e.accountScoped, 'boolean',
+      `${e.key} must declare accountScoped (audit R3-04)`);
+    assert.ok(e.scopeReason, `${e.key} explains its account-scope decision`);
   }
 });
 
@@ -99,4 +107,53 @@ test('backup consumes the registry and never touches the forbidden', () => {
   for (const k of BACKUP_KEYS) {
     assert.ok(!backup.NEVER_EXPORT.includes(k), `${k} cannot be both exported and forbidden`);
   }
+});
+
+test('account teardown clears every account-scoped key (audit R3-04)', () => {
+  /*
+   * The tripwire (AUD-C1) was built correctly and still leaked, because the
+   * LIST of what to clear lived in the teardown and was kept by memory.
+   * This pins the inverse: the teardown must consume the registry, and the
+   * six keys the audit found must be in it.
+   */
+  const main = readFileSync(join(ROOT, 'src/app/main.js'), 'utf8');
+  assert.match(main, /ACCOUNT_SCOPED_KEYS/,
+    'endAccountSession must derive its sweep from the registry, not a hand list');
+
+  for (const k of ['followups', 'imageAllow', 'queryHistory', 'activityLog',
+                   'categoryRules', 'deadlineOverrides', 'msgCache', 'bodyCache',
+                   'intents', 'historyId', 'accountEmail', 'activeAuthUser']) {
+    assert.ok(ACCOUNT_SCOPED_KEYS.includes(k), `${k} must be account-scoped`);
+  }
+
+  // Deliberate exclusions: these belong to the PERSON, and wiping them on an
+  // account change would be a hostile surprise rather than a privacy win.
+  for (const k of ['theme', 'density', 'templates', 'savedViews', 'myCourses',
+                   'timetable', 'automationRules', 'clientId']) {
+    assert.ok(!ACCOUNT_SCOPED_KEYS.includes(k),
+      `${k} belongs to the person, not the mailbox`);
+  }
+
+  // outboxPumpLock is a TTL-bounded cross-tab mutex: yanking it mid-window
+  // would admit a second writer.
+  assert.ok(!ACCOUNT_SCOPED_KEYS.includes('outboxPumpLock'),
+    'the pump mutex must not be swept mid-window');
+});
+
+test('in-memory mirrors of swept keys are reset too (audit R3-04)', () => {
+  /*
+   * Clearing storage alone is not enough: `imageAllowList` and
+   * `followupList` are the copies the app actually reads, and both are
+   * written back wholesale on the next user action -- so account A's
+   * trusted senders and thread notes would be resurrected under account B.
+   */
+  const main = readFileSync(join(ROOT, 'src/app/main.js'), 'utf8');
+  assert.match(main, /resetImageAllowList\(\)/,
+    'the reader image allow-list mirror must be reset on account end');
+  assert.match(main, /followupList = \[\];/,
+    'the follow-up mirror must be reset on account end');
+
+  const reader = readFileSync(join(ROOT, 'src/app/mail/reader.js'), 'utf8');
+  assert.match(reader, /export function resetImageAllowList/,
+    'reader must expose the mirror reset it owns');
 });
