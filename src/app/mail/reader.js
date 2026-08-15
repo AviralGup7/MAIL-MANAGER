@@ -262,19 +262,20 @@ export function renderReaderTags(m) {
   );
 
   if (el.rIntel) {
+    const conversation = storeOf().thread(Store.threadOf(m));
     const facts = [
       ['STATE', m.unread ? 'UNREAD' : 'READ'],
-      ['THREAD', String(m.threadId || m.id || '').slice(0, 12) || '—'],
+      ['THREAD', `${conversation?.count || 1} MESSAGE${conversation?.count === 1 ? '' : 'S'}`],
       ['SOURCE', String(m._provenance || 'gmail').toUpperCase()],
-      ['CONFIDENCE', `${Math.round((m.confidence ?? 1) * 100)}%`],
+      ...(!confident ? [['CONFIDENCE', `${Math.round((m.confidence ?? 1) * 100)}%`]] : []),
     ];
     const frag = document.createDocumentFragment();
     for (const [key, value] of facts) {
-      const fact = document.createElement('span');
+      const fact = document.createElement('div');
       fact.className = 'r-fact';
-      const k = document.createElement('small');
+      const k = document.createElement('dt');
       k.textContent = key;
-      const v = document.createElement('b');
+      const v = document.createElement('dd');
       v.textContent = value;
       fact.append(k, v);
       frag.appendChild(fact);

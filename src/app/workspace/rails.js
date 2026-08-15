@@ -323,7 +323,9 @@ export async function renderOutbox(known) {
 
     const track = document.createElement('span');
     track.className = 'outbox-track';
-    track.dataset.state = it.state;
+    track.dataset.state = it.state === 'failed'
+      ? (outbox.isStuck(it) ? 'stuck' : 'retrying')
+      : it.state;
     track.setAttribute('aria-hidden', 'true');
     for (const phase of ['queued', 'held', 'dispatch', 'settled']) {
       const mark = document.createElement('i');

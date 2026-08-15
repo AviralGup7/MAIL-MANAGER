@@ -18,7 +18,7 @@ function active() {
   return d.theme === 'cyberpunk';
 }
 
-const VOICED = 'button, [role="button"], [role="menuitem"], [role="option"], [role="tab"], a, input, select';
+const VOICED = 'button, [role="button"], [role="menuitem"], [role="option"], [role="tab"], a, input[type="checkbox"], input[type="radio"], input[type="range"], select';
 
 function targetOf(e) {
   const target = e.target;
@@ -32,7 +32,9 @@ function targetOf(e) {
 function cueFor(control) {
   if (control.classList?.contains('danger') || control.dataset?.act === 'trash') return 'warning';
   if (/close|cancel|back/.test(control.id || '') || control.dataset?.act === 'close') return 'close';
-  if (control.getAttribute?.('aria-haspopup') || control.getAttribute?.('aria-expanded') === 'false') return 'open';
+  const expanded = control.getAttribute?.('aria-expanded');
+  if (expanded === 'true') return 'close';
+  if (expanded === 'false' || control.getAttribute?.('aria-haspopup')) return 'open';
   return 'activate';
 }
 
@@ -72,12 +74,16 @@ function onChange(e) {
   } else if (control.tagName === 'SELECT' || control.type === 'range') {
     cue = 'valueUp';
   }
-  playCyberpunkCue(cue, { gesture: true, minGap: 45 });
+  playCyberpunkCue(cue, { gesture: e.isTrusted === true, minGap: 45 });
   cyberpunkSignal('activate', 260);
 }
 
 function onHover(e) {
-  if (!active() || !targetOf(e)) return;
+  if (!active()) return;
+  const control = targetOf(e);
+  if (!control) return;
+  const previous = e.relatedTarget?.closest?.(VOICED);
+  if (previous === control) return;
   const now = Date.now();
   if (now - lastHover < 110) return;
   lastHover = now;

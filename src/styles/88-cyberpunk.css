@@ -347,7 +347,7 @@ html[data-theme='cyberpunk'][data-textures='off'] #toast {
 /* ---- generation 2: information system, not more neon ------------------- */
 
 /* Structural red frames the shell; active cyan remains scarce. */
-html[data-theme='cyberpunk'] #system-strip {
+html[data-theme='cyberpunk'][data-ui-profile='modern'] #system-strip {
   border-color: var(--cp-structural);
   background:
     linear-gradient(90deg, color-mix(in srgb, var(--danger) 8%, transparent), transparent 38%),
@@ -355,79 +355,79 @@ html[data-theme='cyberpunk'] #system-strip {
   color: var(--cp-telemetry);
   text-transform: uppercase;
 }
-html[data-theme='cyberpunk'] #system-strip .sys-key {
+html[data-theme='cyberpunk'][data-ui-profile='modern'] #system-strip .sys-key {
   color: var(--danger);
 }
-html[data-theme='cyberpunk'] #system-strip .sys-cell b {
+html[data-theme='cyberpunk'][data-ui-profile='modern'] #system-strip .sys-cell b {
   color: var(--accent);
 }
-html[data-theme='cyberpunk'] #system-strip .sys-action {
+html[data-theme='cyberpunk'][data-ui-profile='modern'] #system-strip .sys-action {
   border-color: var(--cp-structural);
   clip-path: polygon(var(--s-1) 0, 100% 0, 100% calc(100% - var(--s-1)), calc(100% - var(--s-1)) 100%, 0 100%, 0 var(--s-1));
 }
-html:is(.cp-signal-activate, .cp-signal-success, .cp-signal-warning, .cp-signal-error)[data-theme='cyberpunk'] #system-strip {
+html:is(.cp-signal-activate, .cp-signal-success, .cp-signal-warning, .cp-signal-error)[data-theme='cyberpunk'][data-ui-profile='modern'] #system-strip {
   animation: cp-signal-kick var(--dur-base) var(--ease-out) 1;
 }
-html.cp-signal-success[data-theme='cyberpunk'] #system-strip {
+html.cp-signal-success[data-theme='cyberpunk'][data-ui-profile='modern'] #system-strip {
   border-color: var(--success);
 }
-html.cp-signal-warning[data-theme='cyberpunk'] #system-strip {
+html.cp-signal-warning[data-theme='cyberpunk'][data-ui-profile='modern'] #system-strip {
   border-color: var(--warning);
 }
-html.cp-signal-error[data-theme='cyberpunk'] #system-strip {
+html.cp-signal-error[data-theme='cyberpunk'][data-ui-profile='modern'] #system-strip {
   border-color: var(--danger);
 }
 
 /* One active slab; passive rows stay dark and do not compete. */
-html[data-theme='cyberpunk'] .cat[aria-current='page'],
-html[data-theme='cyberpunk'] .row[aria-selected='true'] {
+html[data-theme='cyberpunk'][data-ui-profile='modern'] .cat[aria-current='page'],
+html[data-theme='cyberpunk'][data-ui-profile='modern'] .row[aria-selected='true'] {
   background: var(--cp-slab);
 }
-html[data-theme='cyberpunk'] .cat[aria-current='page'] {
+html[data-theme='cyberpunk'][data-ui-profile='modern'] .cat[aria-current='page'] {
   color: var(--accent);
   box-shadow: inset 3px 0 0 var(--cp-line-active);
 }
-html[data-theme='cyberpunk'] .row[aria-selected='true']::after {
+html[data-theme='cyberpunk'][data-ui-profile='modern'] .row[aria-selected='true'] .r-cursor {
   border-color: var(--cp-line-active);
   box-shadow: 0 0 8px var(--cp-glow-calm);
 }
 
 /* Dossier and query console: red structure, cyan current data. */
-html[data-theme='cyberpunk'] #reader-head {
+html[data-theme='cyberpunk'][data-ui-profile='modern'] #reader-head {
   border-color: var(--cp-structural);
 }
-html[data-theme='cyberpunk'] #r-subject::before {
+html[data-theme='cyberpunk'][data-ui-profile='modern'] #r-subject::before {
   background: var(--cp-line-active);
   box-shadow: 0 0 7px var(--cp-glow-calm);
 }
-html[data-theme='cyberpunk'] .r-fact {
+html[data-theme='cyberpunk'][data-ui-profile='modern'] .r-fact {
   border-color: var(--cp-line-passive);
   clip-path: polygon(var(--s-1) 0, 100% 0, 100% calc(100% - var(--s-1)), calc(100% - var(--s-1)) 100%, 0 100%, 0 var(--s-1));
 }
-html[data-theme='cyberpunk'] .r-fact small {
+html[data-theme='cyberpunk'][data-ui-profile='modern'] .r-fact dt {
   color: var(--danger);
 }
-html[data-theme='cyberpunk'] .r-fact b {
+html[data-theme='cyberpunk'][data-ui-profile='modern'] .r-fact dd {
   color: var(--accent);
 }
-html[data-theme='cyberpunk'] #r-thread {
+html[data-theme='cyberpunk'][data-ui-profile='modern'] #r-thread {
   border-color: var(--cp-line-passive);
 }
-html[data-theme='cyberpunk'] #listquery {
+html[data-theme='cyberpunk'][data-ui-profile='modern'] #listquery {
   border-color: var(--cp-structural);
   clip-path: polygon(var(--s-1) 0, 100% 0, 100% calc(100% - var(--s-1)), calc(100% - var(--s-1)) 100%, 0 100%, 0 var(--s-1));
 }
-html[data-theme='cyberpunk'] #listquery::before {
+html[data-theme='cyberpunk'][data-ui-profile='modern'] #listquery::before {
   color: var(--danger);
   border-color: var(--cp-structural);
 }
 
 /* Timetable is the bounded terminal subsystem: lime lives here, never across
    ordinary mail. */
-html[data-theme='cyberpunk'][data-tt-terminal='on'] #tt-workspace {
+html[data-theme='cyberpunk'][data-ui-profile='modern'][data-tt-terminal='on'] #tt-workspace {
   color: var(--cp-terminal);
 }
-html[data-theme='cyberpunk'][data-tt-terminal='on'] #tt-panel {
+html[data-theme='cyberpunk'][data-ui-profile='modern'][data-tt-terminal='on'] #tt-panel {
   border-color: color-mix(in srgb, var(--cp-terminal) 58%, var(--line));
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cp-terminal) 12%, transparent);
 }
@@ -436,6 +436,12 @@ html[data-theme='cyberpunk'][data-tt-terminal='on'] #tt-panel {
    maximum raises only active targets, never email content. */
 html[data-theme='cyberpunk'][data-cp-intensity='calm'] body::after {
   display: none;
+}
+html[data-theme='cyberpunk'][data-cp-intensity='calm'] .snooze-menu,
+html[data-theme='cyberpunk'][data-cp-intensity='calm'] [role='dialog'],
+html[data-theme='cyberpunk'][data-cp-intensity='calm'] #compose,
+html[data-theme='cyberpunk'][data-cp-intensity='calm'] #toast {
+  background-image: none;
 }
 html[data-theme='cyberpunk'][data-cp-intensity='calm'] button:hover,
 html[data-theme='cyberpunk'][data-cp-intensity='calm'] input:focus-visible,
@@ -446,6 +452,14 @@ html[data-theme='cyberpunk'][data-cp-intensity='calm'] textarea:focus-visible {
 html[data-theme='cyberpunk'][data-cp-intensity='maximum'] .row[aria-selected='true'],
 html[data-theme='cyberpunk'][data-cp-intensity='maximum'] .cat[aria-current='page'] {
   box-shadow: inset 3px 0 0 var(--accent), 0 0 14px var(--glow);
+}
+html[data-theme='cyberpunk'][data-calm-content='on'] body::after {
+  display: none;
+}
+html[data-theme='cyberpunk'][data-calm-content='on'] #sidebar,
+html[data-theme='cyberpunk'][data-calm-content='on'] #topbar,
+html[data-theme='cyberpunk'][data-calm-content='on'] #system-strip {
+  background-image: var(--cp-scan);
 }
 html[data-theme='cyberpunk'][data-calm-content='on'] #reader-body,
 html[data-theme='cyberpunk'][data-calm-content='on'] #r-frame,

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="light">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -438,7 +438,7 @@
                   <span id="r-date"></span>
                 </div>
                 <div id="r-tags"></div>
-                <div id="r-intel" aria-label="Message facts"></div>
+                <dl id="r-intel" aria-label="Message facts"></dl>
                 <!--
                   POLISH 10: j/k work everywhere, but a visible affordance is
                   how a mouse-first user DISCOVERS j/k. The titles carry the
@@ -725,7 +725,7 @@
           <span class="sys-cell"><span class="sys-key">MAILBOX</span><b id="sys-mailbox">INBOX</b></span>
           <span class="sys-cell"><span class="sys-key">RECORDS</span><b id="sys-records">0000</b></span>
           <span class="sys-cell"><span class="sys-key">SYNC</span><b id="sys-sync">WAITING</b></span>
-          <button id="sys-operations" class="sys-action" type="button">OPERATIONS</button>
+          <button id="sys-operations" class="sys-action" type="button">ACTIVITY</button>
         </footer>
       </main>
 
@@ -764,8 +764,8 @@
           <h2 id="gate-title">Connect your BITS mail</h2>
           <p>Sign in with Google to let BITS Mail Manager read and sort your inbox.</p>
           <p class="fine">
-            One scope, <code>gmail.modify</code>, and no client secret anywhere
-            in this build.
+            Two scopes: <code>gmail.modify</code> for reading and triage, and
+            <code>gmail.send</code> for compose/outbox. No client secret ships.
           </p>
           <button id="btn-signin" class="primary" type="button">Sign in with Google</button>
           <!--

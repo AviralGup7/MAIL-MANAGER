@@ -213,7 +213,7 @@ export const SCHEMA = {
   // P-3: notify on augsd/academics mail when it arrives while the app is
   // closed. The worker reads this key directly from storage; the schema is
   // where the default lives so options and app agree.
-  bgNotify: { type: 'bool', def: true },
+  bgNotify: { type: 'bool', def: false },
 
   // ---- composing ----
   signature: { type: 'string', def: '' },

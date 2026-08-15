@@ -130,7 +130,7 @@ const SECTIONS = [
       { kind: 'check', key: 'threadTimeline', label: 'Show thread trajectory', hint: 'Keeps the conversation timeline visible for multi-message threads.' },
       { kind: 'check', key: 'queryConsole', label: 'Use the visual query console', hint: 'Shows operators, values, grouping and local/remote execution as an inspectable query chain.' },
       { kind: 'check', key: 'timetableTerminal', label: 'Use timetable operations mode', hint: 'Adds selected-course and validation telemetry; Cyberpunk uses a bounded terminal-lime subsystem palette.' },
-      { kind: 'check', key: 'operationCenter', label: 'Show operation-center entry', hint: 'Makes sync, outbox, account and storage outcomes reachable from the system strip.' },
+      { kind: 'check', key: 'operationCenter', label: 'Show activity entry', hint: 'Opens the existing activity log from the system strip. Sync and storage diagnostics remain separate.' },
       { kind: 'check', key: 'calmContent', label: 'Keep message content calm', hint: 'Prevents scanlines, chromatic fringing and decorative texture from crossing into email bodies and writing surfaces.' },
     ],
   },
@@ -200,8 +200,8 @@ const SECTIONS = [
         hint: 'A delta check is one small request against a stored historyId, not a reload. Applies as soon as you let go of the slider.',
       },
       {
-        kind: 'check', key: 'bgNotify', label: 'Notify me about AUGSD and academics mail when it arrives',
-        hint: 'While the app is closed, every ~15 minutes. No other category ever notifies.',
+        kind: 'check', key: 'bgNotify', label: 'Background priority notifications — temporarily unavailable', disabled: true,
+        hint: 'Disabled while background sync is being rebuilt with a cursor independent from the inbox cache. Gmail notifications are unaffected.',
       },
     ],
   },
@@ -279,6 +279,7 @@ function buildCheck(doc, item) {
   const input = doc.createElement('input');
   input.type = 'checkbox';
   input.checked = settings.get(item.key) === true;
+  input.disabled = item.disabled === true;
   input.setAttribute('aria-label', item.label);
   input.addEventListener('change', () => commit(item.key, input.checked));
   track(item.key, input, (v) => { input.checked = v === true; });

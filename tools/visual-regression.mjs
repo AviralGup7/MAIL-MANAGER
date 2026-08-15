@@ -41,7 +41,7 @@ const server = createServer((req, res) => {
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const APP_URL = `http://127.0.0.1:${server.address().port}/app.html`;
 
-const THEMES = ['daylight', 'midnight', 'pilani-dusk', 'solarised', 'nord', 'high-contrast'];
+const THEMES = THEMES_DATA.map((theme) => theme.id);
 const DENSITIES = ['comfortable', 'cosy', 'compact'];
 const WIDTHS = [1280, 860, 600, 480]; // the layout-contract ladder
 

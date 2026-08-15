@@ -214,10 +214,8 @@ function fmtHold(sec) {
     autoLabel.textContent = fmtEvery(Number(auto.value));
   }
   if (bgNotify) {
-    bgNotify.checked = settings.get('bgNotify');
-    bgNotify.addEventListener('change', async () => {
-      await persist(settings.set('bgNotify', bgNotify.checked));
-    });
+    bgNotify.checked = false;
+    bgNotify.disabled = true;
   }
   if (undoSend) {
     undoSend.value = String(settings.get('undoSendSeconds'));

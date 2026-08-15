@@ -6,18 +6,24 @@
  * coordinates, random numerals or infrastructure details enter the strip.
  */
 
+import { registerReset } from '../core/reset-registry.js';
+
 let ctx = null;
+let operationsButton = null;
 const $ = (id) => document.getElementById(id);
+const openOperations = () => ctx?.openOperations?.();
 
 /** @param {{state:object, store:()=>any, openOperations?:()=>void}} c */
 export function wireSystemTelemetry(c) {
+  if (operationsButton) operationsButton.removeEventListener('click', openOperations);
   ctx = c;
-  $('sys-operations')?.addEventListener('click', () => ctx?.openOperations?.());
+  operationsButton = $('sys-operations');
+  operationsButton?.addEventListener('click', openOperations);
   renderSystemTelemetry();
 }
 
 function syncLabel(state) {
-  if (!state?.signedIn) return 'OFFLINE';
+  if (!state?.signedIn) return 'SIGNED OUT';
   if (state.loading) return 'PREPARING';
   if (!state.lastSync) return 'WAITING';
   return 'COMMITTED';
@@ -45,5 +51,9 @@ export function renderSystemTelemetry() {
 }
 
 export function _resetSystemTelemetry() {
+  operationsButton?.removeEventListener('click', openOperations);
+  operationsButton = null;
   ctx = null;
 }
+
+registerReset('system-telemetry', _resetSystemTelemetry);

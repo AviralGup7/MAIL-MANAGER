@@ -84,9 +84,10 @@ test('visibility: hidden in the stylesheet, revealed ONLY by the 860px step', ()
   assert.ok(base, 'hidden by default, outside every media query');
   // The reveal must live in the LADDER's 860px block -- the same block that
   // hides the verbs, so the two halves of the trade cannot separate.
-  const ladderAt = css.lastIndexOf('@media (max-width: 860px)');
-  assert.ok(ladderAt > 0, 'the ladder 860px block exists');
-  const block = css.slice(ladderAt, css.indexOf('\n}', ladderAt));
+  const revealAt = css.indexOf('#btn-side-more { display: flex');
+  const ladderAt = css.lastIndexOf('@media (max-width: 860px)', revealAt);
+  assert.ok(revealAt > 0 && ladderAt > 0, 'the reveal belongs to an 860px ladder block');
+  const block = css.slice(ladderAt, revealAt + 500);
   assert.match(block, /#btn-side-more \{ display: flex/, 'the icon-rail step reveals the kebab');
   assert.match(block, /#side-foot \{ align-items: center/, 'and centres it in the 64px column');
   // No OTHER breakpoint may reveal it: a mid-width kebab would duplicate

@@ -48,6 +48,11 @@ let el = null;
 let state = null;
 let storeOf = null;
 
+/** Canonical read across durable mailbox state and ephemeral search overlay. */
+function messageOf(id) {
+  return storeOf?.().get(id) || overlayGet(id) || null;
+}
+
 // ------------------------------------------------------------------ state --
 
 let renderedIds = [];
@@ -453,7 +458,7 @@ export function renderList() {
       node = buildRow(id);
       nodeById.set(id, node);
     } else {
-      fillRow(node, storeOf().get(id));
+      fillRow(node, messageOf(id));
     }
     frag.appendChild(node); // appendChild moves an existing node — no re-create
   }
@@ -493,7 +498,7 @@ export function renderList() {
      * The distinction is whether the store still holds the message. If it
      * does, this is a filter and the row goes immediately.
      */
-    if (storeOf().get(id)) {
+    if (storeOf().get(id) || node.dataset.source === 'REMOTE') {
       node.remove();
       continue;
     }
@@ -823,6 +828,7 @@ function buildRow(id) {
   li.innerHTML =
     '<span class="r-pick">' +
     '<span class="r-bar"></span>' +
+    '<span class="r-cursor" aria-hidden="true"></span>' +
     '<input class="r-check" type="checkbox" tabindex="-1" aria-label="Select message" />' +
     '</span>' +
     '<span class="r-mid">' +
@@ -840,6 +846,7 @@ function buildRow(id) {
     '<span class="tag"></span></span>' +
     '</span>' +
     '<span class="r-right">' +
+    '<span class="r-origin" hidden></span>' +
     '<span class="r-course" hidden></span>' +
     '<span class="r-date"></span>' +
     '<button class="r-star" type="button" tabindex="-1" aria-label="Star"></button>' +
@@ -852,7 +859,7 @@ function buildRow(id) {
   // beside it and is never quite centred in its button.
   setIcon(li.querySelector('.r-star'), 'star', { size: 15 });
 
-  fillRow(li, storeOf().get(id));
+  fillRow(li, messageOf(id));
   return li;
 }
 
@@ -868,6 +875,13 @@ function fillRow(li, m) {
   const q = (s) => li.querySelector(s);
   const provenance = String(m._provenance || (m.fromSearch ? 'remote' : 'gmail')).toUpperCase();
   if (li.dataset.source !== provenance) li.dataset.source = provenance;
+  const origin = q('.r-origin');
+  if (origin) {
+    setText(origin, provenance);
+    setAttr(origin, 'title', provenance === 'LOCAL' ? 'Loaded from the local cache' :
+      provenance === 'REMOTE' ? 'Found by searching Gmail' : 'Loaded from Gmail');
+    origin.hidden = false;
+  }
   const operation = ctx.isInFlight?.(m.id) ? 'pending' : '';
   if (operation) li.dataset.operation = operation;
   else delete li.dataset.operation;
@@ -1141,7 +1155,7 @@ export function reorientTo(id) {
 
 export function patchRow(id) {
   const node = nodeById.get(id);
-  if (node) fillRow(node, storeOf().get(id));
+  if (node) fillRow(node, messageOf(id));
 }
 
 // Self-registered test seam (reset-registry.js, roadmap M-2): cached module

@@ -173,9 +173,10 @@
         </li>
       </ol>
       <p class="hint">
-        Scope requested: <code>gmail.modify</code> only. Version 1 asked for six scopes including
-        <code>gmail.send</code>; this build cannot send mail, so it does not ask.
+        Scopes requested: <code>gmail.modify</code> for reading, labels and triage, plus
+        <code>gmail.send</code> for the shipped compose and outbox features. No broader Gmail scope is requested.
       </p>
+    </fieldset>
 
     <fieldset>
       <legend>Appearance</legend>
@@ -303,9 +304,9 @@
       </p>
 
       <label class="check">
-        <input id="bgNotify" type="checkbox" />
-        Notify me about AUGSD and academics mail when it arrives
-        <span class="hint-inline">While the app is closed, every ~15 minutes. No other category ever notifies.</span>
+        <input id="bgNotify" type="checkbox" disabled />
+        Background priority notifications — temporarily unavailable
+        <span class="hint-inline">Disabled until background sync has an independent, crash-safe cursor.</span>
       </label>
 
       <label for="autoRefreshMs">
@@ -341,8 +342,6 @@
         standard <code>-- </code> marker that mail clients use to detect a
         signature.
       </p>
-    </fieldset>
-
     </fieldset>
 
     <script src="src/options/options.js" type="module"></script>

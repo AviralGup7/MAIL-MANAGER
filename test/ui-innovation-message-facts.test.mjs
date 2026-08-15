@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 
 test('reader contains an accessible message-facts region', () => {
-  assert.match(read('app.html'), /id="r-intel" aria-label="Message facts"/);
+  assert.match(read('app.html'), /<dl id="r-intel" aria-label="Message facts"/);
 });
 
 test('message facts are derived from real record state', () => {

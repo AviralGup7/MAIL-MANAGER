@@ -2,6 +2,9 @@
 
 let activeClass = '';
 let timer = 0;
+let generation = 0;
+let animationRoot = null;
+let animationHandler = null;
 
 function allowed() {
   if (typeof document === 'undefined') return false;
@@ -14,34 +17,44 @@ function allowed() {
 function clear(root = document.documentElement) {
   clearTimeout(timer);
   timer = 0;
+  if (animationRoot && animationHandler) {
+    animationRoot.removeEventListener('animationend', animationHandler);
+  }
+  animationRoot = null;
+  animationHandler = null;
   if (activeClass) root.classList.remove(activeClass);
   activeClass = '';
 }
 
+function arm(root, className, duration) {
+  clear(root);
+  const mine = ++generation;
+  activeClass = className;
+  root.classList.add(activeClass);
+  const done = (event) => {
+    if (event && event.target !== root) return;
+    if (mine !== generation) return;
+    clear(root);
+  };
+  animationRoot = root;
+  animationHandler = done;
+  root.addEventListener('animationend', done);
+  timer = setTimeout(done, duration);
+}
+
 export function cyberpunkSignal(kind, duration = 420) {
   if (!allowed()) return false;
-  const root = document.documentElement;
-  clear(root);
-  activeClass = `cp-signal-${kind}`;
-  root.classList.add(activeClass);
-  const done = () => clear(root);
-  root.addEventListener('animationend', done, { once: true });
-  timer = setTimeout(done, duration);
+  arm(document.documentElement, `cp-signal-${kind}`, duration);
   return true;
 }
 
 export function cyberpunkArrival() {
   if (typeof document === 'undefined') return false;
-  const root = document.documentElement;
-  clear(root);
-  activeClass = 'cp-enter';
-  root.classList.add(activeClass);
-  const done = () => clear(root);
-  root.addEventListener('animationend', done, { once: true });
-  timer = setTimeout(done, 500);
+  arm(document.documentElement, 'cp-enter', 500);
   return true;
 }
 
 export function disposeCyberpunkMotion() {
+  generation++;
   if (typeof document !== 'undefined') clear(document.documentElement);
 }

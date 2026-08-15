@@ -8,6 +8,7 @@
 
 let ctx = null;
 let master = null;
+let limiter = null;
 let lastCueAt = 0;
 const voices = new Set();
 const MAX_VOICES = 12;
@@ -37,10 +38,18 @@ function audio(allowCreate) {
     if (!allowCreate || typeof AudioCtor !== 'function') return null;
     ctx = new AudioCtor();
     master = ctx.createGain();
+    limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -10;
+    limiter.knee.value = 8;
+    limiter.ratio.value = 6;
+    limiter.attack.value = 0.003;
+    limiter.release.value = 0.12;
     master.gain.value = level();
-    master.connect(ctx.destination);
+    master.connect(limiter).connect(ctx.destination);
   }
-  master.gain.value = level();
+  const now = ctx.currentTime;
+  master.gain.cancelScheduledValues(now);
+  master.gain.setTargetAtTime(level(), now, 0.015);
   if (ctx.state === 'suspended' && allowCreate) void ctx.resume();
   return { ctx, out: master };
 }
@@ -77,7 +86,8 @@ function noiseLayer(a, spec, start, seconds) {
 function tone(spec, allowCreate) {
   const a = audio(allowCreate);
   if (!a) return;
-  if (voices.size >= MAX_VOICES) return;
+  const needed = spec.noise ? 2 : 1;
+  if (voices.size + needed > MAX_VOICES) return;
   const start = a.ctx.currentTime + (spec.delay || 0) / 1000;
   const seconds = spec.ms / 1000;
   const osc = a.ctx.createOscillator();
@@ -171,6 +181,7 @@ export async function disposeCyberpunkAudio() {
   const old = ctx;
   ctx = null;
   master = null;
+  limiter = null;
   lastCueAt = 0;
   for (const voice of voices) {
     try { voice.stop(); voice.disconnect(); } catch { /* already ended */ }
