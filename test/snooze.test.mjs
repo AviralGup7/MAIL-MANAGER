@@ -158,15 +158,14 @@ test('waking restores the message AND marks it unread', () => {
   assert.match(bg, /modify\(id, \['INBOX', 'UNREAD'\], \[labelId\]\)/);
 });
 
-test('a failed wake keeps the entry for the next sweep', () => {
-  // The catch block must NOT remove the snooze record; that is how mail is
-  // lost forever.
+test('wake failures distinguish terminal resources from transient failures', () => {
   const fn = bg.slice(bg.indexOf('async function wakeDue'), bg.indexOf('async function scheduleWake'));
-  const catchBlock = fn.slice(fn.lastIndexOf('} catch {'));
-  assert.ok(
-    !catchBlock.includes('removeSnooze'),
-    'a failed wake must not discard the record'
-  );
+  assert.match(fn, /Gmail \(404\|410\)/,
+    'permanently missing resources must not re-arm the alarm forever');
+  assert.match(fn, /await removeSnooze\(id, chrome\.storage\.local\)/,
+    'terminal rows are retired');
+  assert.match(fn, /Transient\/auth\/network failures stay queued/,
+    'ordinary failures retain the retry contract');
 });
 
 test('a wake with no label available aborts without dropping records', () => {
