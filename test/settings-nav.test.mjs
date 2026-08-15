@@ -60,8 +60,8 @@ test('consumers: one attr-stamp, one CSS guard per effect; compose gates the cho
     'one stamper owns both attributes, the way applyDensity owns density');
   assert.match(shell, /applyVisualPrefs\(\);\n\s*\n?\s*initToast\(/,
     'boot stamps the root before first paint');
-  assert.match(shell, /key === 'ambience' \|\| key === 'snippets' \|\| key === 'textures' \|\| key === 'sounds'\) applyVisualPrefs\(\)/,
-    'a panel toggle takes effect without reload — all four visual-pref keys ride one subscriber');
+  assert.match(shell, /\[[\s\S]*?'ambience'[\s\S]*?'calmContent'[\s\S]*?\]\.includes\(key\)\) applyVisualPrefs\(\)/,
+    'every visual preference rides one live subscriber');
   assert.match(motionCss, /:root\[data-ambience='off'\] \.lit::before \{\n  display: none;/,
     'the sheen dies at the root, next to the rule it guards');
   assert.match(listCss, /:root\[data-snippets='off'\] \.r-snip \{\n  display: none;/,

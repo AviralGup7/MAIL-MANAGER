@@ -259,7 +259,7 @@
 }
 
 /* ---- responsive demotion ------------------------------------------------ */
-@media (max-width: 860px) {
+@media (max-width: 840px) {
   #system-strip {
     gap: var(--s-2);
     padding-inline: var(--s-2);

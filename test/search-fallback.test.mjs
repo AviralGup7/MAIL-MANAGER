@@ -145,7 +145,8 @@ test('results already on screen are not duplicated', () => {
 
 test('server results live in an ephemeral overlay, never the Store (V2 P0-4)', () => {
   const fn = serverSearchFn();
-  assert.match(fn, /overlay\.set\(m\.id, m\)/, 'results go to the overlay');
+  assert.match(fn, /overlay\.set\(m\.id, \{ \.\.\.m, _provenance: 'remote' \}\)/,
+    'results go to the overlay with explicit remote provenance');
   assert.ok(!fn.includes('ctx.ingest'), 'the Store must never receive search-only records');
 });
 

@@ -221,7 +221,7 @@ const set1 = await page.evaluate(() => ({
   tabs: document.querySelectorAll('#settings-nav [role="tab"]').length,
   visible: [...document.querySelectorAll('.set-section')].filter((s) => !s.hidden).map((s) => s.id),
 }));
-check('settings/one-tab-one-panel', set1.tabs === 5 && set1.visible.length === 1 && set1.visible[0] === 'set-p-appearance',
+check('settings/one-tab-one-panel', set1.tabs === 6 && set1.visible.length === 1 && set1.visible[0] === 'set-p-appearance',
   JSON.stringify(set1));
 await page.keyboard.press('Escape');
 await page.waitForTimeout(400);
