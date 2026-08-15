@@ -40,6 +40,8 @@
  *                 `onOnline` callback), or any mail state.
  */
 
+import { registerReset } from '../core/reset-registry.js';
+
 /** The live banner node, or null. Module-scoped: there is only ever one. */
 let offlineBar = null;
 
@@ -117,8 +119,26 @@ export function wireOfflineBanner({ onOnline } = /** @type {any} */ ({})) {
   });
 }
 
-/** Test seam: forget the bound window and drop any live banner. */
+/**
+ * Test seam: forget the bound window and drop any live banner.
+ *
+ * REGISTERED, NOT MERELY EXPORTED — and this cost a red CI shard.
+ *
+ * The harness re-imports main.js with a cache-busting query per boot, but
+ * THIS module is cached like every other. So after boot #1, `boundWindow`
+ * held a window that had since been closed: boot #2 saw a different window,
+ * wired nothing... except the guard compared against the stale handle and
+ * short-circuited, leaving the second boot with NO offline listeners at all.
+ * The test passed alone and failed in sequence, which is the signature of
+ * exactly this class of leak.
+ *
+ * The registry exists for this. Every cached stateful module registers its
+ * reset here and the harness runs them all between boots, so the fix is to
+ * join the convention rather than invent a private one.
+ */
 export function _resetOfflineBanner() {
   hideOfflineBanner();
   boundWindow = null;
 }
+
+registerReset('offline-banner', _resetOfflineBanner);
