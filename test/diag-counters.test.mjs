@@ -15,11 +15,25 @@ import { fakeStorage } from './helpers/storage.mjs';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 
-test('the counter surface is exactly the declared five', async () => {
+test('the counter surface is exactly the declared set', async () => {
+  /*
+   * The set is CLOSED on purpose (a typo must not mint a counter), so
+   * widening it is a deliberate edit here as well as in diag.js.
+   *
+   * Widened by audit R3-10: the original five counted a feature that is
+   * currently disabled (notifications) and nothing that leaves a user in a
+   * wrong state. The four added are the classes that actually strand
+   * someone, each previously invisible even to the developer:
+   *   batchShortfall   sub-requests silently dropped from a batch (R3-03)
+   *   resyncs          full resyncs forced
+   *   historyExhausted MAX_HISTORY_PAGES hit -- NOT cursor expiry (R3-07)
+   *   cursorWithheld   deltas that refused to advance the cursor (R3-03)
+   */
   const diag = await import(`../src/background/diag.js?t=${Math.random()}`);
   assert.deepEqual(
     Object.keys(diag.diagSnapshot()).sort(),
-    ['mismatchClears', 'notifications', 'renewals', 'requests', 'retries']
+    ['batchShortfall', 'cursorWithheld', 'historyExhausted', 'mismatchClears',
+     'notifications', 'renewals', 'requests', 'resyncs', 'retries']
   );
 });
 
