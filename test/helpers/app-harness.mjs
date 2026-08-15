@@ -261,9 +261,9 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
   // hand-maintained captures. layers.js is special: close WITH teardown
   // FIRST — tenants null their cached handles inside onClose — then the
   // registered raw wipe runs with the rest.
-  ({ resetAll: resetRegistered } = await import('../src/app/core/reset-registry.js'));
-  ({ closeAllLayers: layersCloseAll } = await import('../src/app/overlays/layers.js'));
-  const ttStore = await import('../src/app/academic/timetable-store.js');
+  ({ resetAll: resetRegistered } = await import('../../src/app/core/reset-registry.js'));
+  ({ closeAllLayers: layersCloseAll } = await import('../../src/app/overlays/layers.js'));
+  const ttStore = await import('../../src/app/academic/timetable-store.js');
   ttStore._resetSourceData(); // the catalogue is memoised per module, not per boot
 
   const settle = async (frames = 4) => {
