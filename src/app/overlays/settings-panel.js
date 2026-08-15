@@ -68,6 +68,23 @@ const SECTIONS = [
          menu takes — so state, storage and the success toast cannot fork. */
       { kind: 'themes', key: 'theme', label: 'Theme' },
       {
+        kind: 'select', key: 'uiProfile', label: 'Interface generation',
+        options: [
+          ['modern', 'Modern — information-rich default'],
+          ['legacy', 'Legacy — previous chrome and layout'],
+        ],
+        hint: 'Modern adds truthful telemetry, dossier structure and richer state cues. Legacy keeps the previous presentation without deleting it.',
+      },
+      {
+        kind: 'select', key: 'cyberpunkIntensity', label: 'Cyberpunk intensity',
+        options: [
+          ['calm', 'Calm — geometry and colour only'],
+          ['balanced', 'Balanced — recommended'],
+          ['maximum', 'Maximum — full telemetry and glow'],
+        ],
+        hint: 'Only affects the Cyberpunk theme. Reduced motion, textures and sounds still outrank this choice.',
+      },
+      {
         kind: 'select', key: 'density', label: 'Row density',
         options: [
           ['comfortable', 'Comfortable — the default'],
@@ -92,6 +109,20 @@ const SECTIONS = [
         kind: 'check', key: 'railOpen', label: 'Show the For-you rail',
         hint: 'Due soon, needs you, snoozed and the outbox, parked on the right. Below 1240px it is a slide-in drawer that only opens when you ask for it.',
       },
+    ],
+  },
+  {
+    id: 'interface',
+    title: 'Interface intelligence',
+    items: [
+      { kind: 'check', key: 'showTelemetry', label: 'Show system telemetry', hint: 'A compact footer with account, mailbox, record count and committed sync state. Every value is real; no decorative random data.' },
+      { kind: 'check', key: 'showProvenance', label: 'Show data provenance', hint: 'Marks local cache, Gmail, remote-search and pending-operation states when the distinction matters.' },
+      { kind: 'check', key: 'readerDossier', label: 'Use the message dossier reader', hint: 'Structures sender, thread, deadline, labels and attachments around a calm message body.' },
+      { kind: 'check', key: 'threadTimeline', label: 'Show thread trajectory', hint: 'Keeps the conversation timeline visible for multi-message threads.' },
+      { kind: 'check', key: 'queryConsole', label: 'Use the visual query console', hint: 'Shows operators, values, grouping and local/remote execution as an inspectable query chain.' },
+      { kind: 'check', key: 'timetableTerminal', label: 'Use timetable operations mode', hint: 'Adds selected-course and validation telemetry; Cyberpunk uses a bounded terminal-lime subsystem palette.' },
+      { kind: 'check', key: 'operationCenter', label: 'Show operation-center entry', hint: 'Makes sync, outbox, account and storage outcomes reachable from the system strip.' },
+      { kind: 'check', key: 'calmContent', label: 'Keep message content calm', hint: 'Prevents scanlines, chromatic fringing and decorative texture from crossing into email bodies and writing surfaces.' },
     ],
   },
   {
@@ -360,7 +391,15 @@ function buildThemes(doc, item, ctx) {
     scheme.className = 'set-theme-scheme';
     scheme.textContent = t.scheme === 'dark' ? 'Dark' : 'Light';
 
-    tile.append(radio, dot, name, scheme);
+    const preview = doc.createElement('span');
+    preview.className = 'set-theme-preview';
+    preview.setAttribute('aria-hidden', 'true');
+    preview.style.setProperty('--preview-bg', t.bgRaised);
+    preview.style.setProperty('--preview-sunken', t.bgSunken);
+    preview.style.setProperty('--preview-line', t.lineStrong);
+    preview.style.setProperty('--preview-accent', t.accent);
+
+    tile.append(radio, dot, name, scheme, preview);
     grid.appendChild(tile);
     track(item.key, radio, (v) => { radio.checked = v === t.id; });
   }

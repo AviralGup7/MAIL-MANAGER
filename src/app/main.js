@@ -75,7 +75,8 @@ import {
   clearRows, resetScrollState, capturePreSearchScroll, applySearchScroll,
   saveScroll, recallScroll, announceNew, renderedIdsOf, nodeByIdOf,
 } from './mail/list.js';
-import { wireSidebar, buildSidebar, renderSidebar } from './workspace/sidebar.js';
+import { wireSidebar, buildSidebar, renderSidebar as renderSidebarBase } from './workspace/sidebar.js';
+import { wireSystemTelemetry, renderSystemTelemetry } from './workspace/system-telemetry.js';
 import {
   wireBulk, selection, move, renderSelection, bulkAct, reconcileBulk, BULK_ACTIONS,
 } from './mail/bulk.js';
@@ -333,6 +334,12 @@ const el = {
   toastAction: $('toast-action'),
   toastDrain: $('toast-drain'),
 };
+
+/** One render call keeps navigation and truthful perimeter telemetry in step. */
+function renderSidebar() {
+  renderSidebarBase();
+  renderSystemTelemetry();
+}
 
 // ------------------------------------------------------------------ plumbing --
 
@@ -1698,6 +1705,7 @@ async function loadPage(pageToken = '') {
 function syncBusy() {
   state.loading = [...mailboxState.values()].some((v) => v.loading);
   setBusy(state.loading);
+  renderSystemTelemetry();
 }
 
 /** Delta refresh. Cheap; safe to call on demand. Never on a timer. */
@@ -3529,7 +3537,12 @@ async function boot() {
     if (key === 'autoRefreshMs') scheduleAutoRefresh();
     /* Ambience + snippets are attr-driven like density: re-stamp the root,
        no re-render owed. */
-    if (key === 'ambience' || key === 'snippets' || key === 'textures' || key === 'sounds') applyVisualPrefs();
+    if ([
+      'ambience', 'snippets', 'textures', 'sounds', 'uiProfile',
+      'cyberpunkIntensity', 'showTelemetry', 'showProvenance',
+      'readerDossier', 'threadTimeline', 'queryConsole',
+      'timetableTerminal', 'operationCenter', 'calmContent',
+    ].includes(key)) applyVisualPrefs();
   });
 
   /*
@@ -3601,6 +3614,11 @@ async function boot() {
     selectMailbox,
     selectCategory,
     openCategoryMenu,
+  });
+  wireSystemTelemetry({
+    state,
+    store: () => store,
+    openOperations: () => $('btn-activity')?.click(),
   });
   buildSidebar();
   renderSidebar();

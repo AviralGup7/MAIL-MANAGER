@@ -34,6 +34,7 @@
     <link rel="stylesheet" href="src/styles/86-v3-skin.css" />
     <link rel="stylesheet" href="src/styles/87-settings.css" />
     <link rel="stylesheet" href="src/styles/88-cyberpunk.css" />
+    <link rel="stylesheet" href="src/styles/89-ui-innovation.css" />
     <link rel="stylesheet" href="src/styles/90-motion-system.css" />
     <link rel="stylesheet" href="src/styles/99-reduced-motion.css" />
   </head>
@@ -712,6 +713,19 @@
         <section id="tt-workspace" hidden>
           <div id="tt-panel" class="tt-panel" role="region" aria-label="Timetable"></div>
         </section>
+
+        <!--
+          SYSTEM TELEMETRY. Additive and truthful: every value is projected
+          from live application state by system-telemetry.js. The legacy UI
+          profile and the Show telemetry preference remove it completely.
+        -->
+        <footer id="system-strip" aria-label="System status">
+          <span class="sys-cell"><span class="sys-key">ACCOUNT</span><b id="sys-account">UNVERIFIED</b></span>
+          <span class="sys-cell"><span class="sys-key">MAILBOX</span><b id="sys-mailbox">INBOX</b></span>
+          <span class="sys-cell"><span class="sys-key">RECORDS</span><b id="sys-records">0000</b></span>
+          <span class="sys-cell"><span class="sys-key">SYNC</span><b id="sys-sync">WAITING</b></span>
+          <button id="sys-operations" class="sys-action" type="button">OPERATIONS</button>
+        </footer>
       </main>
 
       <!--

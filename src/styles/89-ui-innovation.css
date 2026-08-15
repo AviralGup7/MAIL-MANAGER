@@ -1,0 +1,225 @@
+/* ==========================================================================
+ * UI INNOVATION — additive modern profile
+ *
+ * New structure is default and reversible. data-ui-profile='legacy' removes
+ * every additive layer while preserving the pre-campaign DOM and behavior.
+ * ========================================================================== */
+
+/* ---- truthful system strip --------------------------------------------- */
+#system-strip {
+  flex: none;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  padding: var(--s-1) var(--s-4);
+  border-top: 1px solid var(--line);
+  background: var(--bg-sunken);
+  color: var(--fg-dim);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--track-tiny);
+  overflow: hidden;
+}
+.sys-cell {
+  min-width: 0;
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--s-1);
+  white-space: nowrap;
+}
+.sys-key {
+  color: var(--fg-faint);
+  font-weight: var(--w-medium);
+}
+.sys-cell b {
+  color: var(--fg);
+  font-weight: var(--w-semi);
+}
+.sys-action {
+  min-height: 24px;
+  margin-left: auto;
+  padding: 0 var(--s-2);
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: var(--t-xs);
+}
+.sys-action:hover,
+.sys-action:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+:root[data-telemetry='off'] #system-strip,
+:root[data-ui-profile='legacy'] #system-strip {
+  display: none;
+}
+:root[data-operation-center='off'] #sys-operations {
+  display: none;
+}
+
+/* ---- selected-target cursor -------------------------------------------- */
+:root[data-ui-profile='modern'] .row[aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  left: var(--s-1);
+  top: 50%;
+  width: var(--s-2);
+  height: var(--s-2);
+  border: 1px solid var(--accent);
+  background: var(--bg-sunken);
+  transform: translate3d(0, -50%, 0) rotate(45deg);
+  pointer-events: none;
+}
+:root[data-ui-profile='modern'] .cat[aria-current='page'] {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+/* ---- provenance and operation-state vocabulary ------------------------- */
+:root[data-provenance='on'] .row[data-source]::before {
+  content: attr(data-source);
+  flex: none;
+  color: var(--fg-faint);
+  font-size: var(--t-xs);
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+}
+:root[data-provenance='on'] .row[data-operation='pending'] {
+  border-inline-end: 2px solid var(--warning);
+}
+:root[data-provenance='on'] .row[data-operation='uncertain'] {
+  border-inline-end: 2px dashed var(--warning);
+}
+:root[data-provenance='on'] .row[data-operation='failed'] {
+  border-inline-end: 2px solid var(--danger);
+}
+
+/* ---- reader dossier ----------------------------------------------------- */
+:root[data-reader-dossier='on'] #reader-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: var(--s-4);
+  border-bottom: 1px solid var(--line);
+}
+:root[data-reader-dossier='on'] #r-subject {
+  position: relative;
+  padding-inline-start: var(--s-3);
+}
+:root[data-reader-dossier='on'] #r-subject::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: 0;
+  top: 0.2em;
+  bottom: 0.2em;
+  width: 2px;
+  background: var(--accent);
+}
+:root[data-reader-dossier='on'] #r-meta {
+  font-variant-numeric: tabular-nums;
+}
+:root[data-reader-dossier='on'] #r-tags {
+  grid-column: 1 / -1;
+}
+:root[data-thread-timeline='on'] #thread-strip:not([hidden]) {
+  position: relative;
+  border-inline-start: 1px solid var(--line-strong);
+  padding-inline-start: var(--s-3);
+}
+:root[data-thread-timeline='on'] #thread-strip button[aria-current='true'] {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+/* Email content stays a calm document even when the surrounding theme is
+   theatrical. This also provides an explicit user override. */
+:root[data-calm-content='on'] #r-frame,
+:root[data-calm-content='on'] #c-text {
+  filter: none;
+  text-shadow: none;
+  background-image: none;
+}
+
+/* ---- query console ------------------------------------------------------ */
+:root[data-query-console='on'] #listquery {
+  position: relative;
+  align-items: stretch;
+  gap: 0;
+  border: 1px solid var(--line);
+  background: var(--bg-sunken);
+}
+:root[data-query-console='on'] #listquery::before {
+  content: 'QUERY';
+  display: inline-flex;
+  align-items: center;
+  padding-inline: var(--s-2);
+  color: var(--fg-faint);
+  border-inline-end: 1px solid var(--line);
+  font-size: var(--t-xs);
+  letter-spacing: var(--track-wide);
+}
+:root[data-query-console='on'] .q-chip {
+  border-radius: 0;
+  border-width: 0 1px 0 0;
+}
+:root[data-query-console='on'] .q-chip .q-key {
+  color: var(--accent);
+}
+:root[data-query-console='on'] .q-chip[data-negated='true'] {
+  box-shadow: inset 0 -2px 0 var(--danger);
+}
+
+/* ---- theme preview tiles ------------------------------------------------ */
+.set-theme-preview {
+  grid-column: 1 / -1;
+  height: 42px;
+  display: grid;
+  grid-template-columns: 28% 1fr;
+  border: 1px solid var(--line);
+  background: var(--preview-bg, var(--bg-sunken));
+  overflow: hidden;
+}
+.set-theme-preview::before {
+  content: '';
+  border-inline-end: 1px solid var(--preview-line, var(--line));
+  background: var(--preview-sunken, var(--bg-sunken));
+}
+.set-theme-preview::after {
+  content: '';
+  align-self: center;
+  justify-self: center;
+  width: 58%;
+  height: 8px;
+  border: 1px solid var(--preview-accent, var(--accent));
+  box-shadow: inset 16px 0 0 var(--preview-accent, var(--accent));
+}
+
+/* ---- modern/legacy compatibility --------------------------------------- */
+:root[data-ui-profile='legacy'] .set-theme-preview {
+  display: none;
+}
+:root[data-ui-profile='legacy'] .row[aria-selected='true']::after {
+  content: none;
+}
+
+/* ---- responsive demotion ------------------------------------------------ */
+@media (max-width: 860px) {
+  #system-strip {
+    gap: var(--s-2);
+    padding-inline: var(--s-2);
+  }
+  #system-strip .sys-cell:nth-of-type(2),
+  #system-strip .sys-cell:nth-of-type(3) {
+    display: none;
+  }
+  :root[data-reader-dossier='on'] #reader-head {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 600px) {
+  #system-strip .sys-key {
+    display: none;
+  }
+  #system-strip {
+    justify-content: space-between;
+  }
+}

@@ -96,6 +96,24 @@ export const SCHEMA = {
    */
   textures: { type: 'bool', def: true },
   sounds: { type: 'bool', def: true },
+  /*
+   * UI INNOVATION PROFILE (2026-08-15).
+   *
+   * The new information architecture is the default; `legacy` preserves the
+   * previous chrome and hides additive telemetry/dossier/query layers. This is
+   * one explicit compatibility switch instead of dozens of abandoned DOM
+   * fragments. Every subordinate feature remains independently controllable.
+   */
+  uiProfile: { type: 'enum', def: 'modern', values: ['modern', 'legacy'] },
+  cyberpunkIntensity: { type: 'enum', def: 'balanced', values: ['calm', 'balanced', 'maximum'] },
+  showTelemetry: { type: 'bool', def: true },
+  showProvenance: { type: 'bool', def: true },
+  readerDossier: { type: 'bool', def: true },
+  threadTimeline: { type: 'bool', def: true },
+  queryConsole: { type: 'bool', def: true },
+  timetableTerminal: { type: 'bool', def: true },
+  operationCenter: { type: 'bool', def: true },
+  calmContent: { type: 'bool', def: true },
 
   // ---- sending ----
   /*

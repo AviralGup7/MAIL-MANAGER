@@ -55,4 +55,14 @@ export function applyVisualPrefs() {
      believed, and a missing attribute would read as "default" not "off". */
   root.setAttribute('data-textures', settings.get('textures') !== false ? 'on' : 'off');
   root.setAttribute('data-sounds', settings.get('sounds') !== false ? 'on' : 'off');
+  root.setAttribute('data-ui-profile', settings.get('uiProfile') || 'modern');
+  root.setAttribute('data-cp-intensity', settings.get('cyberpunkIntensity') || 'balanced');
+  root.setAttribute('data-telemetry', settings.get('showTelemetry') !== false ? 'on' : 'off');
+  root.setAttribute('data-provenance', settings.get('showProvenance') !== false ? 'on' : 'off');
+  root.setAttribute('data-reader-dossier', settings.get('readerDossier') !== false ? 'on' : 'off');
+  root.setAttribute('data-thread-timeline', settings.get('threadTimeline') !== false ? 'on' : 'off');
+  root.setAttribute('data-query-console', settings.get('queryConsole') !== false ? 'on' : 'off');
+  root.setAttribute('data-tt-terminal', settings.get('timetableTerminal') !== false ? 'on' : 'off');
+  root.setAttribute('data-operation-center', settings.get('operationCenter') !== false ? 'on' : 'off');
+  root.setAttribute('data-calm-content', settings.get('calmContent') !== false ? 'on' : 'off');
 }
