@@ -110,6 +110,55 @@ function unknownOutcome(label, cause) {
   return err;
 }
 
+/**
+ * THE STATUS IS A NUMBER, NOT A SUBSTRING (audit EXT2-C2/EXT2-H4).
+ *
+ * Every transport error used to be a bare `Error` whose only machine-readable
+ * content was its own message text, and callers matched that text:
+ *
+ *   gmail.js  `if (String(err).includes('404')) return { tooOld: true }`
+ *   main.js   `else if (/401|invalid_grant/i.test(msg))  -> sign the user out`
+ *
+ * Both are reachable by accident, because the message embeds the request
+ * PATH, and Gmail paths carry ids:
+ *
+ *   "Gmail 503 /history?startHistoryId=4045678&maxResults=500 ..."
+ *      -> includes('404') === true -> the local mailbox is thrown away
+ *   "Gmail 500 /messages/18f401ab77cd0e12/modify ..."
+ *      -> /401/ matches the MESSAGE ID -> the user is signed out
+ *
+ * Both reproduced before this change. The fix is to carry the status as a
+ * field, so a decision about "what kind of failure was this" never has to
+ * read prose. The message text is unchanged — it is for humans and for the
+ * existing tests that pin it; `status`/`code` are for control flow.
+ *
+ * `kind` is the coarse class every layer actually branches on, so a caller
+ * never has to memorise status numbers either.
+ */
+export function apiError(status, label, body = '') {
+  /** @type {Error & {status?:number, code?:string, kind?:string}} */
+  const err = new Error(`Gmail ${status} ${label} ${String(body).slice(0, 200)}`);
+  err.status = status;
+  err.code = `GMAIL_${status}`;
+  err.kind = status === 401 ? 'auth'
+    : status === 403 ? 'permission'
+      : status === 404 || status === 410 ? 'gone'
+        : status === 429 ? 'rate'
+          : status >= 500 ? 'server'
+            : 'client';
+  return err;
+}
+
+/** A transport-level failure with no HTTP status at all (offline, DNS, abort). */
+export function networkError(label, cause) {
+  /** @type {Error & {status?:number, code?:string, kind?:string}} */
+  const err = new Error(`Network error on ${label}: ${cause}`);
+  err.status = 0;
+  err.code = 'NETWORK';
+  err.kind = 'network';
+  return err;
+}
+
 async function fetchRetrying(url, init, label, { retry = true } = {}) {
   let lastErr;
   const attempts = retry ? MAX_ATTEMPTS : 1;
@@ -125,7 +174,7 @@ async function fetchRetrying(url, init, label, { retry = true } = {}) {
       // Network-level failure (offline, DNS, connection reset, our own
       // abort). Retryable.
       if (!retry) throw unknownOutcome(label, err.message);
-      lastErr = new Error(`Network error on ${label}: ${err.message}`);
+      lastErr = networkError(label, err.message);
       if (attempt === attempts) break;
       await sleep(backoffMs(attempt, null));
       continue;
@@ -143,7 +192,7 @@ async function fetchRetrying(url, init, label, { retry = true } = {}) {
 
     const body = await res.text().catch(() => '');
     const retryable = RETRYABLE.has(res.status) || (res.status === 403 && isQuota403(body));
-    lastErr = new Error(`Gmail ${res.status} ${label} ${body.slice(0, 200)}`);
+    lastErr = apiError(res.status, label, body);
 
     if (!retry && res.status >= 500) throw unknownOutcome(label, `Gmail ${res.status}`);
     if (!retryable || attempt === attempts) break;
@@ -335,12 +384,33 @@ export function parseBatch(text) {
   for (const raw of text.split(delimiter)) {
     const part = raw.trim();
     if (!part || part === '--') continue;
-    // part = <mime headers>\n\n<HTTP status + headers>\n\n<body>
-    const chunks = part.split(/\r?\n\r?\n/);
-    if (chunks.length < 3) continue;
-    const status = chunks[1].split(/\r?\n/)[0] || '';
+    /*
+     * SPLIT THE ENVELOPE OFF, DO NOT SHRED THE BODY (audit EXT2-M1).
+     *
+     * This used to `split(/\r?\n\r?\n/)` the WHOLE part and rejoin
+     * `chunks.slice(2)` with a hardcoded '\n\n'. Two defects fell out of it:
+     *
+     *   1. A JSON body containing a blank line was rejoined with '\n\n'
+     *      regardless of the CRLF the wire actually used, and any part whose
+     *      body began after an extra blank line lost a chunk to the envelope
+     *      count. Reproduced: a part whose snippet contained "a\n\nb" parsed
+     *      to NOTHING and vanished from the batch with no error — a mixed
+     *      batch silently lost that message.
+     *   2. `chunks.length < 3` rejected a well-formed part that simply had no
+     *      MIME preamble.
+     *
+     * Splitting exactly twice — once for the part headers, once for the HTTP
+     * headers — leaves the body byte-identical to the wire, which is what a
+     * JSON parser needs. Gmail's snippets are sender-controlled, so a blank
+     * line in one is ordinary traffic, not an exotic case.
+     */
+    const afterPartHeaders = splitOnce(part);
+    if (afterPartHeaders === null) continue;
+    const httpSection = splitOnce(afterPartHeaders);
+    if (httpSection === null) continue;
+    const status = afterPartHeaders.split(/\r?\n/)[0] || '';
     if (!/\s2\d\d\s/.test(` ${status} `)) continue; // drop failed sub-requests
-    const bodyText = chunks.slice(2).join('\n\n').trim();
+    const bodyText = httpSection.trim();
     if (!bodyText.startsWith('{')) continue;
     try {
       out.push(JSON.parse(bodyText));
@@ -349,6 +419,21 @@ export function parseBatch(text) {
     }
   }
   return out;
+}
+
+/**
+ * Everything after the FIRST blank line, or null when there is none.
+ *
+ * The blank line is MIME's one unambiguous header/body separator, and taking
+ * only the first occurrence is what keeps a body containing blank lines
+ * intact (EXT2-M1). Accepts either line ending, because Google has changed
+ * that in this response before.
+ */
+function splitOnce(text) {
+  const at = text.search(/\r?\n\r?\n/);
+  if (at === -1) return null;
+  const sep = text.slice(at).match(/^\r?\n\r?\n/)[0];
+  return text.slice(at + sep.length);
 }
 
 /**
@@ -585,7 +670,28 @@ export async function history(startHistoryId) {
       data = await api(`/history?${params}`);
     } catch (err) {
       // 404 = the cursor is older than Gmail's retention window.
-      if (String(err).includes('404')) return { tooOld: true };
+      /*
+       * THE CURSOR IS EXPIRED ONLY IF GMAIL SAID 404 (audit EXT2-C2).
+       *
+       * This read `String(err).includes('404')`, and the error text contains
+       * the request path — which contains `startHistoryId=<digits>`. A
+       * transient 503 on a cursor whose digits happen to contain "404" took
+       * the DESTRUCTIVE branch: `{tooOld:true}` makes syncDelta answer
+       * `resync`, which clears the store, clears the cache and refetches from
+       * zero. Reproduced with
+       *   "Gmail 503 /history?startHistoryId=4045678&maxResults=500".
+       *
+       * A 410 Gone is the same class as 404 here (the range is unavailable),
+       * so it is named explicitly rather than left to fall through to the
+       * rethrow, which would surface as a generic sync error.
+       *
+       * Anything else — 5xx, network, rate limit — RETHROWS. The caller keeps
+       * its cursor and its data, and the next refresh replays an idempotent
+       * delta. Losing a sync is recoverable; throwing away the mailbox on a
+       * blip is not.
+       */
+      const status = /** @type {any} */ (err)?.status;
+      if (status === 404 || status === 410) return { tooOld: true };
       throw err;
     }
 
@@ -938,8 +1044,13 @@ export async function hydrateDraftAttachments(draft) {
        * class, which the outbox takes straight to stuck. A network or 5xx
        * error stays retryable by re-throwing unchanged.
        */
-      const msg = String(err?.message || err);
-      if (/Gmail 4\d\d/.test(msg)) {
+      /* The status is a field now (EXT2-C2's taxonomy), so this no longer
+         depends on the prose. A 429 is a 4xx that is emphatically NOT
+         permanent, and the old regex swallowed it into the lost-attachment
+         class — a rate-limited send became "Gmail refused it", permanently
+         stuck, instead of a retry. */
+      const status = /** @type {any} */ (err)?.status;
+      if (typeof status === 'number' && status >= 400 && status < 500 && status !== 429) {
         throw new Error(`Could not read attachment \u201c${f.filename}\u201d: Gmail refused it`);
       }
       throw err;

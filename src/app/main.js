@@ -468,7 +468,15 @@ function send(type, extra = {}) {
         } else {
           // The worker already cleared ITS side; the surface clears its own.
           if (String(res.error).includes('ACCOUNT_CHANGED')) void onAccountChanged();
-          reject(new Error(res.error));
+          /* Carry the worker's CLASSIFICATION back onto the Error (EXT2-H4).
+             Structured clone drops Error fields, so the worker sends them as
+             plain response keys and they are reattached here — reportError
+             then branches on a number instead of pattern-matching prose. */
+          const err = new Error(res.error);
+          if (Number.isFinite(res.status)) /** @type {any} */ (err).status = res.status;
+          if (typeof res.code === 'string') /** @type {any} */ (err).code = res.code;
+          if (typeof res.kind === 'string') /** @type {any} */ (err).kind = res.kind;
+          reject(err);
         }
       });
     } catch (err) {
@@ -1866,15 +1874,37 @@ function setBusy(on) {
 
 function reportError(err, { retry } = {}) {
   const msg = String(err?.message || err);
+  /*
+   * THE STATUS DECIDES, NOT THE PROSE (audit EXT2-H4).
+   *
+   * This branch read `/401|invalid_grant|No refresh token/i` against the
+   * message text, and Gmail message ids are hex: a plain backend failure on
+   * "Gmail 500 /messages/18f401ab77cd0e12/modify" matched `401` inside the
+   * ID and ejected the user to the sign-in gate. Reproduced before the fix.
+   *
+   * `status`/`kind` now ride the response (see send()), so the auth branch
+   * asks the only question that matters. The text patterns are KEPT as a
+   * fallback for the errors that genuinely have no status: the auth layer's
+   * own vocabulary ("invalid_grant", "No refresh token") and anything thrown
+   * in-page by the fallback path. They are matched only when no status was
+   * supplied, so a classified error can never be re-classified by accident.
+   */
+  const status = Number.isFinite(err?.status) ? err.status : null;
+  const kind = typeof err?.kind === 'string' ? err.kind : '';
+  const isAuthFailure = status !== null
+    ? status === 401
+    : /invalid_grant|No refresh token|AUTH_REVOKED|NOT_SIGNED_IN/i.test(msg);
+
   if (/client ID/i.test(msg)) {
     showGate(msg);
   } else if (/AUTH_RENEW_TRANSIENT/.test(msg)) {
     toast('Sign-in renewal paused — it will retry when your connection returns.');
-  } else if (/401|invalid_grant|No refresh token/i.test(msg)) {
+  } else if (isAuthFailure) {
     state.signedIn = false;
-  opEpoch++; // late responses from this session are now stale
+    opEpoch++; // late responses from this session are now stale
     showGate('Session expired. Sign in again.');
-  } else if (isOffline() || /failed to fetch|networkerror|load failed|fetch failed/i.test(msg)) {
+  } else if (isOffline() || kind === 'network'
+    || (status === null && /failed to fetch|networkerror|load failed|fetch failed/i.test(msg))) {
     /*
      * A NETWORK FAILURE IS NOT AN ERROR MESSAGE, IT IS A STATE.
      *

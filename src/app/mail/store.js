@@ -526,6 +526,22 @@ export class Store {
     // slice() of at most a few thousand strings is a few microseconds and is
     // not worth the aliasing hazard.
     if (!category || category === 'all') return this.order.slice();
+    /*
+     * THE CATEGORY PATH SLICES TOO (audit EXT2-H3).
+     *
+     * The 'all' path above has sliced since the renderedIds aliasing bug, and
+     * the reason is written out right there — but the category path handed
+     * back `_memoGet`'s OWN array, so the memo was the caller's to mutate.
+     * Reproduced: `const a = idsFor('augsd'); a.push('POISON')` made every
+     * later read of that category return the poisoned list until the next
+     * flush; `a.length = 0` made the category read as permanently empty.
+     *
+     * No shipping caller mutates it today — all 19 call sites were checked —
+     * but this file's own history is the argument: "no caller does X" is a
+     * coincidence, not an invariant, and the same assumption has already cost
+     * this project once. The memo still does the O(n) work once per version;
+     * the slice is a few microseconds over a few thousand strings.
+     */
     return this._memoGet(`ids:${category}`, () => {
       const set = this.byCategory.get(category);
       if (!set || set.size === 0) return [];
@@ -533,7 +549,7 @@ export class Store {
       const out = [];
       for (const id of this.order) if (set.has(id)) out.push(id);
       return out;
-    });
+    }).slice();
   }
 
   /* ------------------------------------------------------------ threading -- */

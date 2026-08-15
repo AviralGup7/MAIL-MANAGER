@@ -211,7 +211,27 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
          cache is this module's piece of account-scoped state, dropped here
          so ACCOUNT_CHANGED is never followed by a stale id. */
       if (String(err?.message || err).includes('ACCOUNT_CHANGED')) _clearLabelCache();
-      sendResponse({ ok: false, error: String(err?.message || err) });
+      /*
+       * THE CLASSIFICATION CROSSES THE WIRE (audit EXT2-H4).
+       *
+       * chrome.runtime.sendMessage structured-clones the response, and an
+       * Error's own properties do not survive that — so the app used to
+       * receive nothing but `error` text and had to re-derive the failure
+       * class with `/401|invalid_grant/i`, which matches the hex MESSAGE ID
+       * in "Gmail 500 /messages/18f401ab77cd0e12/modify" and signed the user
+       * out on an unrelated backend blip.
+       *
+       * Sending status/code/kind alongside the text lets the surface branch
+       * on the same facts the worker had. The `error` string is unchanged, so
+       * every existing caller and pinned test still reads what it always did.
+       */
+      sendResponse({
+        ok: false,
+        error: String(err?.message || err),
+        ...(Number.isFinite(err?.status) ? { status: err.status } : {}),
+        ...(typeof err?.code === 'string' ? { code: err.code } : {}),
+        ...(typeof err?.kind === 'string' ? { kind: err.kind } : {}),
+      });
     });
   return true; // keep the channel open for the async reply
 });
