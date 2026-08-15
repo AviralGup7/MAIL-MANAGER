@@ -417,7 +417,7 @@ html[data-theme='cyberpunk'][data-ui-profile='modern'] #listquery {
   border-color: var(--cp-structural);
   clip-path: polygon(var(--s-1) 0, 100% 0, 100% calc(100% - var(--s-1)), calc(100% - var(--s-1)) 100%, 0 100%, 0 var(--s-1));
 }
-html[data-theme='cyberpunk'][data-ui-profile='modern'] #listquery::before {
+html[data-theme='cyberpunk'][data-ui-profile='modern'] #listquery .q-label {
   color: var(--danger);
   border-color: var(--cp-structural);
 }

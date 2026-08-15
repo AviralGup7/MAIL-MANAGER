@@ -9,10 +9,12 @@ test('query chips publish negation and scope as inspectable state', () => {
   assert.match(src, /dataset\.scope/);
 });
 
-test('query console has a named execution frame', () => {
+test('query console has one real named execution label', () => {
+  const chips = read('src/app/search/search-chips.js');
   const css = read('src/styles/89-ui-innovation.css');
-  assert.match(css, /content: 'QUERY'/);
-  assert.match(css, /data-query-console='on'/);
+  assert.match(chips, /label\.textContent = 'Query'/);
+  assert.match(css, /data-query-console='on'[^}]*\.q-label/s);
+  assert.doesNotMatch(css, /content: 'QUERY'/);
 });
 
 test('negation is visible without relying only on text', () => {

@@ -672,7 +672,7 @@ async function backgroundSyncRun() {
   }
   if (!res || res.kind !== 'delta' || !res.added?.length) return;
 
-  const { bgNotify = true, bgNotifiedIds = [] } = await chrome.storage.local.get([
+  const { bgNotify = false, bgNotifiedIds = [] } = await chrome.storage.local.get([
     'bgNotify', 'bgNotifiedIds',
   ]);
 
@@ -690,7 +690,7 @@ async function backgroundSyncRun() {
   const merged = mergeNotified(fresh.map((m) => m.id), bgNotifiedIds);
   await chrome.storage.local.set({ bgNotifiedIds: merged }).catch(() => {});
 
-  if (bgNotify === false) return;
+  if (bgNotify !== true) return;
   // A Gmail tab is already on screen: the user is looking at mail. A
   // notification on top of that is noise, not service.
   const open = await chrome.tabs.query({ url: 'https://mail.google.com/*' }).catch(() => []);

@@ -102,7 +102,7 @@ export function renderSearchChips(container, query) {
 
   const label = document.createElement('span');
   label.className = 'q-label';
-  label.textContent = 'Searching:';
+  label.textContent = 'Query';
   container.appendChild(label);
 
   for (const chip of chipModel(query)) {

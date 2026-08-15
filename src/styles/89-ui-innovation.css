@@ -19,7 +19,12 @@
   font-size: var(--t-xs);
   font-variant-numeric: tabular-nums;
   letter-spacing: var(--track-tiny);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+#system-strip::-webkit-scrollbar {
+  display: none;
 }
 .sys-cell {
   min-width: 0;
@@ -105,11 +110,17 @@
 :root[data-ui-profile='modern'][data-reader-dossier='on'] #reader-head {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'subject nav'
+    'meta nav'
+    'tags tags'
+    'intel intel';
   align-items: start;
   column-gap: var(--s-4);
   border-bottom: 1px solid var(--line);
 }
 :root[data-ui-profile='modern'][data-reader-dossier='on'] #r-subject {
+  grid-area: subject;
   position: relative;
   padding-inline-start: var(--s-3);
 }
@@ -123,13 +134,23 @@
   background: var(--accent);
 }
 :root[data-ui-profile='modern'][data-reader-dossier='on'] #r-meta {
+  grid-area: meta;
   font-variant-numeric: tabular-nums;
 }
+:root[data-ui-profile='modern'][data-reader-dossier='on'] #r-nav {
+  grid-area: nav;
+}
 :root[data-ui-profile='modern'][data-reader-dossier='on'] #r-tags {
+  grid-area: tags;
+}
+:root[data-ui-profile='modern'][data-reader-dossier='on'] #r-due,
+:root[data-ui-profile='modern'][data-reader-dossier='on'] #r-timetable,
+:root[data-ui-profile='modern'][data-reader-dossier='on'] #r-unfold,
+:root[data-ui-profile='modern'][data-reader-dossier='on'] #r-actions {
   grid-column: 1 / -1;
 }
 #r-intel {
-  grid-column: 1 / -1;
+  grid-area: intel;
   display: flex;
   flex-wrap: wrap;
   gap: var(--s-2);
@@ -186,8 +207,7 @@
   border: 1px solid var(--line);
   background: var(--bg-sunken);
 }
-:root[data-ui-profile='modern'][data-query-console='on'] #listquery::before {
-  content: 'QUERY';
+:root[data-ui-profile='modern'][data-query-console='on'] .q-label {
   display: inline-flex;
   align-items: center;
   padding-inline: var(--s-2);
@@ -195,6 +215,7 @@
   border-inline-end: 1px solid var(--line);
   font-size: var(--t-xs);
   letter-spacing: var(--track-wide);
+  text-transform: uppercase;
 }
 :root[data-ui-profile='modern'][data-query-console='on'] .q-chip {
   border-radius: 0;
@@ -284,6 +305,7 @@
   }
   :root[data-ui-profile='modern'][data-reader-dossier='on'] #reader-head {
     grid-template-columns: 1fr;
+    grid-template-areas: 'subject' 'meta' 'nav' 'tags' 'intel';
   }
 }
 @media (max-width: 600px) {

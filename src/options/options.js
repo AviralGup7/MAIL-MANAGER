@@ -239,8 +239,7 @@ function fmtHold(sec) {
   const syncEnabled = () => {
     const on = markRead.checked;
     delay.disabled = !on;
-    delay.closest('fieldset').querySelector('label[for="markReadDelayMs"]').style.opacity =
-      on ? '1' : '0.5';
+    delay.closest('fieldset')?.classList.toggle('delay-disabled', !on);
   };
   syncEnabled();
 

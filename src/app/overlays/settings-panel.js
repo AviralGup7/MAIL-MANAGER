@@ -278,11 +278,11 @@ async function commit(key, value) {
 function buildCheck(doc, item) {
   const input = doc.createElement('input');
   input.type = 'checkbox';
-  input.checked = settings.get(item.key) === true;
   input.disabled = item.disabled === true;
+  input.checked = input.disabled ? false : settings.get(item.key) === true;
   input.setAttribute('aria-label', item.label);
   input.addEventListener('change', () => commit(item.key, input.checked));
-  track(item.key, input, (v) => { input.checked = v === true; });
+  track(item.key, input, (v) => { input.checked = input.disabled ? false : v === true; });
   return input;
 }
 
