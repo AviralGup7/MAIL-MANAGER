@@ -110,17 +110,36 @@ export function normaliseOutbox(raw) {
     out.push({
       id: typeof it.id === 'string' && it.id ? it.id : makeId(),
       /*
-       * A record found in `sending` state at load time was interrupted -- the
-       * tab closed, or the browser was killed, mid-dispatch. It is demoted to
-       * `failed` rather than left as `sending`, because a `sending` record is
+       * A record found in `sending` at load time was interrupted -- the tab
+       * closed, or (far more likely under MV3) the service worker was killed
+       * mid-dispatch. It must not stay `sending`, because that state is
        * invisible to the flush loop and would sit in the queue forever.
        *
-       * The risk is a double send if the request actually succeeded before the
-       * crash. Judged the lesser harm: a duplicate is embarrassing, a mail
-       * that silently never went is worse, and the user can see and cancel a
-       * failed record.
+       * IT MUST NOT BECOME `failed` EITHER (audit EXT2-H5).
+       *
+       * `failed` with attempts:0 and nextAttempt:0 is IMMEDIATELY DUE, so the
+       * very next pump re-sent it -- and the request may well have reached
+       * Gmail before the worker died. That is the duplicate-mail failure the
+       * rest of this module is built to prevent: the cross-tab claim, the
+       * pump lock and the settle-and-verify all exist for it, and the crash
+       * path walked straight past them. The old comment reasoned the trade
+       * as "a duplicate is embarrassing, a lost mail is worse" and then took
+       * the automatic option, silently, with no third choice.
+       *
+       * The third choice already exists. `uncertain` is precisely "we do not
+       * know whether this was delivered": it is NOT due (dueItems ignores
+       * it), it renders as "Delivery status unknown -- check Sent before
+       * retrying", and `retryNow` lets the user send it deliberately once
+       * they have looked. Nothing is lost, nothing is auto-duplicated, and
+       * the judgement lands with the only party who can actually check.
+       *
+       * This is the same conclusion `markUncertain` reached for
+       * OUTCOME_UNKNOWN on the live path; a worker death mid-flight is the
+       * same epistemic state arriving by a different door.
        */
-      state: it.state === 'held' ? 'held' : (it.state === 'uncertain' ? 'uncertain' : 'failed'),
+      state: it.state === 'held' ? 'held'
+        : (it.state === 'uncertain' || it.state === 'sending') ? 'uncertain'
+          : 'failed',
       draft: it.draft,
       queuedAt: Number.isFinite(it.queuedAt) ? it.queuedAt : Date.now(),
       // A held item with a corrupt or missing releaseAt used to default to 0
@@ -139,6 +158,13 @@ export function normaliseOutbox(raw) {
       ...(typeof it.error === 'string' ? { error: it.error.slice(0, 200) } : {}),
       ...(typeof it.threadId === 'string' ? { threadId: it.threadId } : {}),
       ...(unknownState ? { error: 'unrecognised persisted state; held back from sending' } : {}),
+      /* A crash-interrupted row explains ITSELF (EXT2-H5). Without this the
+         outbox showed "Delivery status unknown" with no cause, which reads
+         as a glitch rather than as the honest answer it is. Only set when
+         the record does not already carry a more specific error. */
+      ...(it.state === 'sending' && typeof it.error !== 'string'
+        ? { error: 'Interrupted while sending — it may already have gone' }
+        : {}),
     });
   }
   return out;

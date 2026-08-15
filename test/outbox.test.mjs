@@ -210,17 +210,32 @@ test('nextWakeIn ignores permanently stuck items', () => {
 
 // ------------------------------------------------------------- durability --
 
-test('AN INTERRUPTED SEND IS RECOVERED, NOT ORPHANED', async () => {
+test('AN INTERRUPTED SEND IS RECOVERED, NEVER SILENTLY RE-SENT', async () => {
   /*
-   * A record left in `sending` by a crashed tab is invisible to the flush loop
-   * and would sit in the queue forever. It must be demoted on load.
+   * A record left in `sending` by a crashed tab — or, far more likely under
+   * MV3, by a service worker killed mid-dispatch — is invisible to the flush
+   * loop and must not sit in the queue forever.
+   *
+   * This test used to demand `failed`, which with attempts:0/nextAttempt:0 is
+   * IMMEDIATELY DUE: the next pump re-sent a message that may already have
+   * reached Gmail. It pinned the duplicate-mail bug as the contract (audit
+   * EXT2-H5), which is why the cross-tab claim, the pump lock and the
+   * settle-and-verify all existed while the crash path walked past them.
+   *
+   * The honest state is `uncertain` — the same one markUncertain assigns to
+   * OUTCOME_UNKNOWN on the live path, because a worker death mid-flight is
+   * the same epistemic state by a different door. Visible, never auto-due,
+   * and retryable ON PURPOSE by the only party who can check Sent.
    */
   const s = fakeStorage({
     outbox: [{ id: 'x', state: 'sending', draft, queuedAt: NOW, releaseAt: NOW, attempts: 0, nextAttempt: 0 }],
   });
   const [it] = await loadOutbox(s);
-  assert.equal(it.state, 'failed', 'demoted so the loop can see it again');
-  assert.equal(dueItems([it], NOW).length, 1);
+  assert.equal(it.state, 'uncertain', 'delivery is unknown, and the record says so');
+  assert.equal(dueItems([it], NOW).length, 0, 'it must NEVER be picked up automatically');
+  assert.ok(isStuck(it), 'but it must surface to the user, not hide');
+  assert.match(statusOf(it, NOW), /check Sent/, 'and tell them how to resolve it');
+  assert.match(it.error, /Interrupted while sending/, 'with the cause, not a bare "unknown"');
 });
 
 test('a corrupt queue degrades to empty rather than throwing', async () => {
