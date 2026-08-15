@@ -344,7 +344,16 @@ test('every setting in the schema has a control on this page', async (t) => {
        joins them (2026-08-15, AUD-C2): its control is a send-semantics
        choice, so it lives on the panel's Composing sheet beside the undo
        window it governs, and settings-panel.test.mjs counts it there. */
-    const ELSEWHERE = new Set(['clientId', 'theme', 'coachDone', 'railOpen', 'paletteRecents', 'ambience', 'snippets', 'ctrlEnterSend', 'textures', 'sounds', 'clearOutboxOnSignOut']);
+    const ELSEWHERE = new Set([
+      'clientId', 'theme', 'coachDone', 'railOpen', 'paletteRecents',
+      'ambience', 'snippets', 'ctrlEnterSend', 'textures', 'sounds',
+      'clearOutboxOnSignOut',
+      // UI generation controls live in the in-app Interface intelligence
+      // sheet, where their result is visible immediately.
+      'uiProfile', 'cyberpunkIntensity', 'showTelemetry', 'showProvenance',
+      'readerDossier', 'threadTimeline', 'queryConsole', 'timetableTerminal',
+      'operationCenter', 'calmContent',
+    ]);
     const missing = declared
       .filter((k) => !ELSEWHERE.has(k))
       .filter((k) => !doc.getElementById(k));
