@@ -14,7 +14,8 @@ import { fakeStorage } from './helpers/storage.mjs';
 
 const {
   enqueue, dueItems, nextWakeIn, canUndo, markFailed, markUncertain, isStuck, statusOf,
-  flushOutbox, cancel, retryNow, loadOutbox, saveOutbox, normaliseOutbox,
+  flushOutbox, cancel, retryNow, loadOutbox, saveOutbox, clearOutbox, normaliseOutbox,
+  dispatchable,
   _resetOutbox, isDispatching, DEFAULT_HOLD_MS, MAX_ATTEMPTS, BACKOFF_MS,
   prioritizeDue,
 } = await import('../src/app/compose/outbox.js');
@@ -338,6 +339,17 @@ test('flushOutbox reports NAMESPACED ids of what actually left (bug-hunt #27)', 
   });
   assert.equal(res.sent, 1);
   assert.deepEqual(res.sentIds, ['g:gmail-123'], 'g:-prefixed wire id, never a bare mixed-space value');
+});
+
+test('owned rows fail closed without a proved current account', () => {
+  assert.equal(dispatchable({ accountEmail: 'a@example.com' }, ''), false);
+  assert.equal(dispatchable({ accountEmail: 'a@example.com' }, 'a@example.com'), true);
+  assert.equal(dispatchable({}, ''), true, 'legacy unowned rows remain migratable');
+});
+
+test('clearOutbox reports a failed removal', async () => {
+  const broken = { remove: async () => { throw new Error('denied'); } };
+  assert.equal(await clearOutbox(broken), false);
 });
 
 test('an unknown delivery outcome never enters automatic retry', () => {
