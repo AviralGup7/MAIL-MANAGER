@@ -92,6 +92,34 @@ jobs:
       - name: Theme contrast (WCAG AA)
         run: npm run contrast
 
+      # THE DRIFT DETECTORS (2026-08-15 CI audit).
+      #
+      # Both existed, both were runnable by hand, and NEITHER was wired in —
+      # so the only thing standing between the codebase and the drift they
+      # detect was somebody remembering to type the command. `operators` was
+      # in fact reporting drift at the moment this was added (a false positive
+      # of its own, fixed in the same commit); nobody had run it in long
+      # enough for that to matter, which is the whole argument for the gate.
+      #
+      #   operators   — the parser and the suggestion list must agree, or the
+      #                 app teaches a syntax it cannot execute.
+      #   departments — timetable-mail.js hard-codes the department vocabulary
+      #                 to avoid loading a 652KB JSON on the ingest path; the
+      #                 day the timetable is regenerated with a new one,
+      #                 course detection silently stops seeing it.
+      - name: Search operators and the teaching surface agree
+        run: npm run operators
+
+      - name: Department vocabulary matches the timetable
+        run: npm run departments
+
+      # The load-time doctor: the worker's module graph resolves, the manifest
+      # names files that exist, match patterns are valid. It is the check that
+      # catches "Service worker registration failed" BEFORE a browser does,
+      # and it is cheap enough that there is no reason it was ever manual.
+      - name: Extension loads (worker graph, manifest, key)
+        run: npm run doctor
+
       # M5 (2026-08-13): the contract surfaces typecheck — ctx, the settings
       # schema, the store, the storage seam. Regex pins stay as the runtime
       # census; this is the compiler's say over the same ground.
@@ -135,8 +163,21 @@ jobs:
           # O(n^2) render path, a reflow per keystroke, a surviving rAF
           # loop) move medians by multiples, not by 50%, so the gate keeps
           # its teeth. Tighten when CI hardware moves.
-          RENDER_BENCH_PAGE_MS: '5000'
-          RENDER_BENCH_SEARCH_MS: '9000'
+          # MEASURED 2026-08-15 on this runner class: page avg 3380ms,
+          # search 5869ms. Both are INSIDE these ceilings and both are well
+          # OUTSIDE the tool's own defaults (2500/2500) — that gap is the
+          # honest state of rendering performance on a 2-core SwiftShader
+          # box, not a claim that 3.4s is fine.
+          #
+          # Tightened from 5000/9000 to sit ~1.35x over the measurement
+          # rather than ~1.5x. The regressions this bench exists to catch (an
+          # O(n^2) render path, a reflow per keystroke, a surviving rAF loop)
+          # move medians by multiples, so the gate keeps its teeth while
+          # leaving less room for a slow drift to hide. Retighten whenever a
+          # run comes in materially lower; raising these needs a measurement
+          # in the commit message, never a red build waved through.
+          RENDER_BENCH_PAGE_MS: '4600'
+          RENDER_BENCH_SEARCH_MS: '8000'
         run: |
           timeout 600 npm run render:bench || code=$?; case "${code:-0}" in
             0) ;;
@@ -162,7 +203,7 @@ jobs:
       # nothing, which is exactly right).
       - name: Failure evidence (smoke)
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: smoke-failure
           path: |
@@ -181,7 +222,7 @@ jobs:
       # above; small enough that retention is free.
       - name: Shard manifest (always)
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: shard-manifest
           path: .ci-manifest.json

@@ -47,7 +47,31 @@ for (const { op, example } of OPERATORS) {
 // And the reverse: an operator the parser knows but nobody advertises.
 const source = readFileSync(new URL('../src/app/search/query.js', import.meta.url), 'utf8');
 const implemented = new Set();
-for (const m of source.matchAll(/^\s*case '([a-z_]+)':/gm)) implemented.add(m[1]);
+/*
+ * SCRAPE THE OPERATOR SWITCH, NOT EVERY `case` IN THE FILE.
+ *
+ * This matched `case '<word>':` anywhere in query.js and therefore swept up
+ * `spanCutoff`'s time-span UNITS -- d, w, y, m -- reporting all four as
+ * "implemented but never suggested". They are not operators at all: they are
+ * the suffixes inside `older_than:7d`, whose operator (`older_than:`) IS
+ * advertised. Four permanent false positives, which is exactly the failure
+ * this tool's own header warns about ("a validator that fabricates its own
+ * input tests the fabrication") arriving through the other door.
+ *
+ * It went unnoticed because `npm run operators` is not wired into CI. The
+ * moment it is -- which is the point of this commit -- a false positive is a
+ * red build on every commit, so the scrape has to be exact.
+ *
+ * The operator switch is the one in `buildCheck`, whose cases are matched
+ * against a parsed `key`. Bound the scan to that function rather than the
+ * file, so a future helper with its own switch cannot leak into the census.
+ */
+const fnStart = source.indexOf('function buildCheck');
+if (fnStart === -1) {
+  problems.push('check-operators can no longer find buildCheck() -- the scrape is stale');
+}
+const fnBody = fnStart === -1 ? '' : source.slice(fnStart, source.indexOf('\n}', fnStart));
+for (const m of fnBody.matchAll(/^\s*case '([a-z_]+)':/gm)) implemented.add(m[1]);
 const KNOWN_STRUCTURAL = new Set(['direct', 'broadcast', 'unread', 'read', 'starred', 'unstarred',
   'due', 'overdue', 'important', 'attachment', 'deadline']);
 const advertised = new Set(OPERATORS.map((o) => o.op.replace(/:.*$/, '').replace(':', '')));

@@ -83,8 +83,24 @@ writeFileSync('.ci-manifest.json', JSON.stringify({
 
 /* ---- 2 · the scripts the workflow names must exist ---------------------- */
 
-for (const s of ['test:ci', 'ci:smoke', 'render:bench', 'types', 'contrast', 'bench', 'preview', 'docs:check']) {
+for (const s of ['test:ci', 'ci:smoke', 'render:bench', 'types', 'contrast', 'bench', 'preview',
+  'docs:check', 'operators', 'departments', 'doctor']) {
   check(`script/${s}`, typeof pkg.scripts?.[s] === 'string', pkg.scripts?.[s] ?? 'missing');
+}
+
+/*
+ * A GATE THAT EXISTS BUT IS NOT WIRED IN IS NOT A GATE (2026-08-15 CI audit).
+ *
+ * `operators`, `departments` and `doctor` were all runnable, all meaningful,
+ * and none of them ran in CI — the only thing standing between the repo and
+ * the drift they detect was somebody remembering the command. `operators` was
+ * in fact failing at the moment it was wired in, and had been for long enough
+ * that nobody noticed. Naming them here means removing one from the workflow
+ * is a failing build rather than a silent loss of coverage.
+ */
+for (const s of ['operators', 'departments', 'doctor']) {
+  check(`workflow/runs-${s}`, wf.includes(`npm run ${s}`),
+    `the ${s} gate is wired into the workflow, not merely available`);
 }
 
 /* ---- 3 · the workflow keeps its own teeth -------------------------------- */
