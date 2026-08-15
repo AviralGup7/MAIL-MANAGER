@@ -89,6 +89,18 @@ jobs:
       - name: Docs are true
         run: node tools/check-docs.mjs
 
+      # LINT (2026-08-15). 35,000 lines of JS had no linter, and the first
+      # run found three LIVE bugs in one pass: `startReply` and
+      # `CATEGORY_LABELS` used without being imported (a ReferenceError on
+      # every palette Reply/Reply-all/Forward, and on any saved view filtering
+      # by category), plus a duplicate key in the ctx object. None of the
+      # 2,059 tests could see any of them.
+      #
+      # The config is correctness-only — no stylistic rules — so a red build
+      # here means a defect, never a formatting opinion. Hard gate.
+      - name: Lint (correctness rules; no style)
+        run: npm run lint
+
       - name: Theme contrast (WCAG AA)
         run: npm run contrast
 
@@ -119,6 +131,20 @@ jobs:
       # and it is cheap enough that there is no reason it was ever manual.
       - name: Extension loads (worker graph, manifest, key)
         run: npm run doctor
+
+      # The Python surface is one 85-line icon generator, so the value is
+      # small — but ruff is a single fast binary and an ungated language in
+      # the tree is how the next Python file arrives unlinted. Pinned so a
+      # new ruff release cannot redden a build that did not change.
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.13'
+
+      - name: Lint Python (ruff)
+        run: |
+          pip install --quiet ruff==0.16.3
+          ruff check tools/
 
       # M5 (2026-08-13): the contract surfaces typecheck — ctx, the settings
       # schema, the store, the storage seam. Regex pins stay as the runtime

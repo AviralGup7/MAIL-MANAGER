@@ -84,7 +84,7 @@ writeFileSync('.ci-manifest.json', JSON.stringify({
 /* ---- 2 · the scripts the workflow names must exist ---------------------- */
 
 for (const s of ['test:ci', 'ci:smoke', 'render:bench', 'types', 'contrast', 'bench', 'preview',
-  'docs:check', 'operators', 'departments', 'doctor']) {
+  'docs:check', 'operators', 'departments', 'doctor', 'lint', 'lint:py']) {
   check(`script/${s}`, typeof pkg.scripts?.[s] === 'string', pkg.scripts?.[s] ?? 'missing');
 }
 
@@ -98,9 +98,33 @@ for (const s of ['test:ci', 'ci:smoke', 'render:bench', 'types', 'contrast', 'be
  * that nobody noticed. Naming them here means removing one from the workflow
  * is a failing build rather than a silent loss of coverage.
  */
-for (const s of ['operators', 'departments', 'doctor']) {
+for (const s of ['operators', 'departments', 'doctor', 'lint']) {
   check(`workflow/runs-${s}`, wf.includes(`npm run ${s}`),
     `the ${s} gate is wired into the workflow, not merely available`);
+}
+
+/*
+ * The Python linter runs as a pinned pip install rather than an npm script,
+ * so it needs its own two checks: that it runs at all, and that the version
+ * is PINNED. An unpinned linter turns "a new ruff shipped a new rule" into a
+ * red build on a commit that changed nothing — the same moving-target problem
+ * that keeps `npm audit` off the push path in security.yml.
+ */
+check('workflow/runs-ruff', /ruff check/.test(wf), 'the Python linter runs in CI');
+check('workflow/ruff-pinned', /ruff==\d+\.\d+\.\d+/.test(wf),
+  'ruff is pinned to an exact version');
+
+/* ESLint's config must stay correctness-only. A stylistic rule here would
+   start reformatting a deliberately comment-dense codebase, and the first
+   red build over an indent is when a team stops believing the lint gate. */
+try {
+  const eslintCfg = readFileSync('eslint.config.mjs', 'utf8');
+  const styleRules = ['quotes', 'semi', 'indent', 'max-len', 'comma-dangle', 'space-before'];
+  const found = styleRules.filter((r) => new RegExp(`['\"]${r}['\"]\\s*:`).test(eslintCfg));
+  check('lint/no-style-rules', found.length === 0,
+    found.length ? `stylistic rules crept in: ${found.join(', ')}` : 'correctness rules only');
+} catch {
+  check('lint/config-exists', false, 'eslint.config.mjs is missing');
 }
 
 /* ---- 3 · the workflow keeps its own teeth -------------------------------- */
