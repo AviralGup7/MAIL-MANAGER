@@ -203,10 +203,25 @@ export async function listIds({ q = '', labelIds = ['INBOX'], max = 100, pageTok
 }
 
 /**
+ * A batch result: the records that arrived, plus the ids that did not.
+ *
+ * `missingIds` is non-enumerable at runtime (the array shape is unchanged for
+ * every existing caller) but it IS part of the contract, so it is typed here
+ * rather than left for a caller to discover -- the whole point of R3-03 is
+ * that a shortfall must be impossible to miss.
+ *
+ * @typedef {Array<any> & {missingIds?: string[]}} BatchResult
+ */
+
+/**
  * Metadata for up to BATCH_SIZE ids in ONE request.
  * Returns an array of normalised message records (see `normalise`).
  * Sub-requests that fail are dropped, not thrown -- one dead message must not
- * kill a sync of a hundred good ones.
+ * kill a sync of a hundred good ones -- but the ids they lost are reported on
+ * `missingIds` so the caller can refuse to advance a durable cursor (R3-03).
+ *
+ * @param {string[]} ids
+ * @returns {Promise<BatchResult>}
  */
 export async function batchMetadata(ids) {
   if (ids.length === 0) return [];
@@ -253,6 +268,7 @@ export async function batchMetadata(ids) {
      exact request asked for may proceed. Valid traffic is identical
      (Google echoes the id requested, by definition of the sub-URL). */
   const requested = new Set(ids);
+  /** @type {BatchResult} */
   const out = parseBatch(text)
     .filter((raw) => raw && requested.has(raw.id))
     .map(normalise)
