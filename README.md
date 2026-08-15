@@ -399,7 +399,7 @@ src/
 timetable/data.json         GENERATED. 688 courses, 119 change rows.
 timetable/sources/          The two official documents, verbatim.
 tools/parse-timetable.mjs   Offline parser. Never runs in the extension.
-test/                       2,011 declared tests. `npm test` · `npm run test:ci` (fails on skips)
+test/                       2,019 declared tests. `npm test` · `npm run test:ci` (fails on skips)
   app.mail.integration.test.mjs      Core mail-shell integration journeys.
   app.features.integration.test.mjs  Feature/workspace integration journeys.
   resilience.test.mjs       Failure injection across every persistence module.
@@ -418,9 +418,11 @@ tools/gen-address-map.mjs   Regenerates address-map.js from the data pack.
 
 No build step and no runtime dependencies. `npm test` runs `node --test test/`.
 
-`jsdom` is an optional devDependency used only by the integration tests. Without
-it they skip and the suite still passes; with it, `npm install && npm test`
-runs all 1339.
+`jsdom` is a devDependency the integration tests require. `npm test` runs the
+whole suite; `npm run test:ci` additionally **fails on any skip**, so a missing
+install can never quietly reduce the suite to the headless subset. The declared
+count above is recomputed by `npm run docs:check`, which fails the build when
+this sentence and the suite disagree.
 
 ### Seeing it without installing it
 
@@ -443,9 +445,17 @@ mis-file something the preview mis-files it too.
   not need one. Google blocks the textbook answer (PKCE) for extensions, so
   this uses the implicit flow instead; see above. **That secret is in git
   history and must be rotated.** See `SECURITY.md`.
-- The access token lives **only in the service worker**. The app document,
-  which renders untrusted mail, never sees it and asks the worker to make calls
-  on its behalf.
+- The access token lives **in the service worker** in normal operation. The app
+  document, which renders untrusted mail, never sees it and asks the worker to
+  make calls on its behalf.
+  **The one exception, stated because it is real:** when the worker will not
+  register, `src/app/system/fallback.js` runs the same Gmail modules in the app
+  document, and the token lives there for that session. It is still the
+  extension origin — never Gmail's — and the mail body still renders in a
+  sandboxed iframe with no `allow-scripts`, so the boundary that stops a
+  message reading the token holds. But "only in the service worker" was not
+  true in degraded mode, and the degraded path exists precisely because worker
+  registration has failed in practice.
 - Message bodies render in an iframe with **no `allow-scripts` and no
   `allow-same-origin`**, under a CSP of `default-src 'none'; img-src data:`.
   Remote images are blocked, so opening a mail does not confirm your address to
@@ -459,7 +469,7 @@ mis-file something the preview mis-files it too.
 
 ## Status
 
-**2,011 declared tests, 0 skipped.** Many of them boot the real `app.html` in a real
+**2,019 declared tests, 0 skipped.** Many of them boot the real `app.html` in a real
 DOM and drive it as a user would — click a row, type in search, press `j`/`k`,
 archive, snooze, sign out. All seven themes pass WCAG AA in CI.
 
