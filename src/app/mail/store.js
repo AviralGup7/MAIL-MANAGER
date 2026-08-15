@@ -38,7 +38,14 @@
 /* (Optional above: hydrate-stamped and search-stamped respectively — the
    M5 gate caught both missing; pinned present now.) */
 
-const MAX_MESSAGES = 2000;
+/**
+ * The local store cap.
+ *
+ * Exported so the UI can NAME it (audit R3-08): "as far back as this view
+ * goes (2000 messages)" must not hardcode a second copy of this number,
+ * because two copies of a limit are how a message becomes wrong.
+ */
+export const MAX_MESSAGES = 2000;
 
 /**
  * Scripts written without spaces between words (R3-02).
@@ -388,11 +395,22 @@ export class Store {
     this._evictIfNeeded();
   }
 
-  /** Add many. Automatically batched, so subscribers fire once. */
+  /**
+   * Add many. Automatically batched, so subscribers fire once.
+   *
+   * Returns how many of them actually SURVIVED (audit R3-08). Eviction drops
+   * the oldest, so paging backwards into a full store inserts messages that
+   * are immediately evicted: the store reports success and the user sees
+   * "Load more" do nothing, for ever. Callers that page can compare this
+   * against what they sent and say so honestly.
+   */
   upsertMany(msgs) {
     this.batch(() => {
       for (const m of msgs) this.upsert(m);
     });
+    let kept = 0;
+    for (const m of msgs) if (m && this.byId.has(m.id)) kept++;
+    return kept;
   }
 
   remove(id) {

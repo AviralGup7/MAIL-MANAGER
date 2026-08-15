@@ -302,7 +302,21 @@ export function parseBatch(text) {
   if (!m) return [];
   const boundary = m[1].replace(/--$/, '');
   const out = [];
-  for (const raw of text.split(`--${boundary}`)) {
+  /*
+   * SPLIT ON THE DELIMITER AT A LINE START, not on the bare token
+   * (audit R3-14). MIME boundaries are defined as a CRLF followed by "--";
+   * splitting on the token alone also cuts inside a BODY that happens to
+   * contain it, and the two halves then parse as neither. The metadata
+   * headers this request asks for (Subject, From) are sender-controlled
+   * strings that land in that JSON, so the input is attacker-influenced
+   * even though the random per-request boundary makes a deliberate hit
+   * impractical. Anchoring costs nothing and removes the class.
+   *
+   * The leading (?:^|\r?\n) keeps the first delimiter matchable, and the
+   * parser stays deliberately tolerant about what follows it.
+   */
+  const delimiter = new RegExp(`(?:^|\\r?\\n)--${boundary.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`);
+  for (const raw of text.split(delimiter)) {
     const part = raw.trim();
     if (!part || part === '--') continue;
     // part = <mime headers>\n\n<HTTP status + headers>\n\n<body>
@@ -364,7 +378,14 @@ function payloadHasAttachment(payload) {
  */
 export function toEpoch(internalDate, dateHeader) {
   const ms = Number(internalDate);
-  if (ms && Number.isFinite(ms)) return ms;
+  /*
+   * `> 0`, not merely finite (audit R3-13). A negative internalDate --
+   * '-5' coerces to -5, which is finite and truthy -- became a pre-1970
+   * date, sorting the message below everything and hiding it exactly the
+   * way the 1970 case this function already guards against does. The
+   * comment above reasoned carefully about '1e999' and never about sign.
+   */
+  if (ms > 0 && Number.isFinite(ms)) return ms;
   // Date.parse returns NaN or a finite number -- never a non-finite one --
   // so the `|| 0` floor is the whole second half of the contract.
   return Date.parse(dateHeader) || 0;

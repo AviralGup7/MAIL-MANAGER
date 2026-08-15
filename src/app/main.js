@@ -24,7 +24,7 @@
  *     MutationObserver (observer.js:54) plus a 300ms silentRefresh timer.
  */
 
-import { Store } from './mail/store.js';
+import { Store, MAX_MESSAGES } from './mail/store.js';
 import { loadCache, saveCache, clearCache, createSaver, CACHE_MAX } from './system/cache.js';
 import { clearBodyCache } from './system/body-cache.js';
 import { clearOutbox } from '../features/outbox/model.js';
@@ -1473,11 +1473,13 @@ function ingestInto(mailboxId, messages, classified) {
 }
 
 function ingest(messages) {
-  if (!messages.length) return;
+  if (!messages.length) return 0;
   // The inbox arrival pipeline: same canonical shaper as every other path,
   // then the arrival-only consequences (auto-archive, user rules).
   const records = shapeRecords(messages, true);
-  store.upsertMany(records); // one batch -> one notification -> one frame
+  // How many survived eviction (R3-08): the pager needs the truth, not the
+  // count it hoped for.
+  const kept = store.upsertMany(records); // one batch -> one notification -> one frame
   /*
    * ACADEMIC INTELLIGENCE SCANS AT INGEST (bug-hunt 44 #46/#47), BEFORE
    * auto-archive and rules can move a message out of sight. The contract:
@@ -1494,6 +1496,7 @@ function ingest(messages) {
   // User rules run after the category auto-archive, so a hand-written rule can
   // act on anything the category sweep left behind.
   applyRules(records);
+  return kept;
 }
 
 /**
@@ -1671,7 +1674,7 @@ async function fetchPage(pageToken) {
     opts: { pageToken, max: PAGE },
   });
   if (epoch !== opEpoch) return; // signed out / switched while in flight
-  ingest(messages);
+  const lastKept = ingest(messages);
   await persistBeforeCursor();
   if (epoch !== opEpoch) return;
   if (anchorHistoryId) await send('SYNC_COMMIT', { historyId: anchorHistoryId });
@@ -1694,6 +1697,23 @@ async function fetchPage(pageToken) {
    */
   const more = $('btn-more');
   if (more) more.disabled = !nextPageToken;
+
+  /*
+   * "LOAD MORE" MUST NOT LIE (audit R3-08).
+   *
+   * The store evicts the OLDEST message when it is full, and paging
+   * backwards appends progressively older mail -- so past the cap every
+   * fetched page is inserted and immediately evicted. The old code reported
+   * success either way, and the button simply stopped doing anything with
+   * no explanation. `isFull` already existed; nothing consulted it here.
+   *
+   * Say it once, plainly, and stop offering the action that cannot work.
+   */
+  if (messages.length && lastKept === 0 && store.isFull) {
+    if (more) more.disabled = true;
+    state.nextPageToken = '';
+    toast(`That is as far back as this view goes (${MAX_MESSAGES} messages). Use search to find older mail.`);
+  }
 }
 
 async function loadPage(pageToken = '') {

@@ -181,7 +181,19 @@ export function sanitizeHtml(html, doc = globalThis.document, opts = {}) {
    * quotes are part of the conversation and stay open.
    */
   if (opts.foldQuotes !== false) {
+    /*
+     * BOUNDED (audit R3-15). This post-pass walks every blockquote and calls
+     * closest() on each, so a deeply-quoted 200-message reply chain is
+     * O(n x depth) on a document that is already the largest thing the
+     * reader handles. Folding is a readability nicety; past a few dozen
+     * quotes the message is a thread dump and the fold has stopped helping
+     * anyone. Cap it and leave the rest unfolded rather than pay unbounded
+     * cost for diminishing returns.
+     */
+    const MAX_FOLDS = 40;
+    let folded = 0;
     for (const bq of [...out.querySelectorAll('blockquote')]) {
+      if (folded >= MAX_FOLDS) break;
       if ((bq.textContent || '').trim().length <= 480) continue;
       if (bq.closest('details')) continue;
       const det = doc.createElement('details');
@@ -191,6 +203,7 @@ export function sanitizeHtml(html, doc = globalThis.document, opts = {}) {
       det.appendChild(sum);
       bq.parentNode.insertBefore(det, bq);
       det.appendChild(bq);
+      folded++;
     }
   }
 
