@@ -49,7 +49,7 @@ export async function commitHistoryId(id) {
  * One page of the inbox, fully hydrated.
  *
  * @param {{pageToken?:string, max?:number, q?:string, labelIds?:string[], anchorHistory?:boolean}} opts
- * @returns {Promise<{messages:object[], nextPageToken:string}>}
+ * @returns {Promise<{messages:object[], nextPageToken:string, anchorHistoryId:string|null}>}
  */
 export async function syncPage({ pageToken = '', max = BATCH_SIZE, q = '', labelIds, anchorHistory = true } = {}) {
   // Read the cursor BEFORE listing, on the first page of a fresh sync.

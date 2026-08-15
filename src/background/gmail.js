@@ -104,6 +104,7 @@ function isQuota403(body) {
  */
 const FETCH_BUDGET_MS = 30000;
 function unknownOutcome(label, cause) {
+  /** @type {Error & {code?:string}} */
   const err = new Error(`Delivery outcome unknown for ${label}: ${cause}`);
   err.code = 'OUTCOME_UNKNOWN';
   return err;
@@ -156,7 +157,9 @@ export async function api(path, init = {}) {
   // `retry` is transport policy, not a Fetch option. Non-idempotent callers
   // disable it so a lost acknowledgement becomes OUTCOME_UNKNOWN instead of a
   // second external side effect.
-  const { retry = true, ...fetchInit } = init;
+  const { retry = true, ...rest } = init;
+  /** @type {any} */
+  const fetchInit = rest;
   const headers = await authHeaders(fetchInit.headers || {});
   const res = await fetchRetrying(
     `${BASE}${path}`, { ...fetchInit, headers }, path, { retry }
