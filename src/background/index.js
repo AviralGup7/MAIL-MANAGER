@@ -25,7 +25,7 @@ import { loadSnoozed, removeSnooze, due, nextWakeAt } from '../app/system/snooze
 // Pure queue helpers (state machine, backoff, normalisation). The RUNNER
 // lives here in the worker now: one dispatcher for every tab (bug-hunt P1).
 import { loadOutbox, saveOutbox, dueItems, markFailed, prioritizeDue, dispatchable } from '../app/compose/outbox.js';
-import { syncPage, syncDelta } from './sync.js';
+import { syncPage, syncDelta, commitHistoryId } from './sync.js';
 import { api } from './gmail.js';
 // The MIME parser lives in its own module so the in-page fallback can reuse
 // it without importing this file, which registers listeners at load.
@@ -259,6 +259,8 @@ async function handle(msg) {
     }
     case 'SYNC_DELTA':
       return syncDelta();
+    case 'SYNC_COMMIT':
+      return { historyId: await commitHistoryId(msg.historyId) };
 
     // ---- reading -------------------------------------------------------
     case 'GET_BODY':

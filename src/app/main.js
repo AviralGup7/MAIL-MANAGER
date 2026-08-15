@@ -405,7 +405,7 @@ const DEFAULT_TIMEOUT_MS = 10000;
  */
 const SAFE_FALLBACK_REPLAY = new Set([
   'AUTH_STATUS', 'PROFILE', 'GET_BODY', 'GET_INLINE', 'GET_ATTACHMENT',
-  'LIST_LABELS',
+  'LIST_LABELS', 'SYNC_COMMIT',
 ]);
 
 function uncertainWorkerOutcome(type) {
@@ -1645,16 +1645,24 @@ function withDeadline(m) {
   return d ? { ...m, dueAt: d.at, dueKind: d.kind, dueText: d.text } : m;
 }
 
+/** Persist inbox state before acknowledging a Gmail history cursor. */
+async function persistBeforeCursor() {
+  const ok = await saver.flush();
+  if (ok === false) throw new Error('SYNC_NOT_DURABLE: local cache write failed');
+}
+
 /** Fetch and ingest one page. Throws; callers own the error reporting. */
 async function fetchPage(pageToken) {
   const epoch = opEpoch;
-  const { messages, nextPageToken } = await send('SYNC_PAGE', {
+  const { messages, nextPageToken, anchorHistoryId } = await send('SYNC_PAGE', {
     opts: { pageToken, max: PAGE },
   });
   if (epoch !== opEpoch) return; // signed out / switched while in flight
   ingest(messages);
+  await persistBeforeCursor();
+  if (anchorHistoryId) await send('SYNC_COMMIT', { historyId: anchorHistoryId });
   state.nextPageToken = nextPageToken;
-  // Reached only if send() resolved, so this genuinely means "Gmail answered".
+  // Reached only if data is durable and the cursor acknowledgement settled.
   state.lastSync = Date.now();
   $('btn-more').disabled = !nextPageToken;
 }
@@ -1758,6 +1766,13 @@ async function refresh({ silent = false } = {}) {
       for (const id of res.removed) store.remove(id);
       for (const { id, ...fields } of res.patched) store.patch(id, fields);
     });
+    // Cursor is a commit record, not a read-progress marker. If persistence or
+    // acknowledgement fails, the old cursor remains and this idempotent delta
+    // is replayed on the next refresh.
+    await persistBeforeCursor();
+    if (res.nextHistoryId) {
+      await send('SYNC_COMMIT', { historyId: res.nextHistoryId });
+    }
 
     // If the open message was archived or deleted elsewhere, the reading pane
     // is now showing something that is no longer in the list.

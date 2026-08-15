@@ -30,6 +30,22 @@ export async function setHistoryId(id) {
 }
 
 /**
+ * Commit a cursor only after the caller has durably applied its corresponding
+ * snapshot/delta. Numeric Gmail history IDs are monotonic; a late commit from
+ * an older concurrent prepare must not move the shared cursor backwards.
+ */
+export async function commitHistoryId(id) {
+  const next = String(id || '');
+  if (!next) return null;
+  const current = await getHistoryId();
+  if (/^\d+$/.test(current || '') && /^\d+$/.test(next) && BigInt(current) > BigInt(next)) {
+    return current;
+  }
+  await setHistoryId(next);
+  return next;
+}
+
+/**
  * One page of the inbox, fully hydrated.
  *
  * @param {{pageToken?:string, max?:number, q?:string, labelIds?:string[], anchorHistory?:boolean}} opts
@@ -77,13 +93,13 @@ export async function syncPage({ pageToken = '', max = BATCH_SIZE, q = '', label
     labelIds: labelIds || (q ? [] : ['INBOX']),
   });
   if (ids.length === 0) {
-    if (anchor) await setHistoryId(anchor);
-    return { messages: [], nextPageToken: '' };
+    return { messages: [], nextPageToken: '', anchorHistoryId: anchor || null };
   }
 
   const messages = await batchMetadata(ids);
-  if (anchor) await setHistoryId(anchor);
-  return { messages, nextPageToken };
+  // PREPARE only. The app commits anchorHistoryId after the page is present in
+  // its durable cache; writing it here creates a crash window that skips mail.
+  return { messages, nextPageToken, anchorHistoryId: anchor || null };
 }
 
 /**
@@ -124,10 +140,13 @@ export async function syncDelta() {
     added.push(...(await batchMetadata(addIds.slice(i, i + BATCH_SIZE))));
   }
 
-  // Only now, after every page was read and every add was fetched.
-  await setHistoryId(res.historyId);
-
-  return { kind: 'delta', added, removed: removeIds, patched };
+  // PREPARE only. Fetching every change is necessary but not sufficient for a
+  // commit: the app still has to apply and persist this delta. The caller sends
+  // SYNC_COMMIT with nextHistoryId only after that durable boundary.
+  return {
+    kind: 'delta', added, removed: removeIds, patched,
+    nextHistoryId: res.historyId || start,
+  };
 }
 
 /**

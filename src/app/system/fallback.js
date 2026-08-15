@@ -130,6 +130,7 @@ function makeHandler({ auth, gmail, sync, snooze, outbox, mime }) {
       // Passing one suggested a contract the function does not have
       // (bug-hunt #23).
       case 'SYNC_DELTA': return sync.syncDelta();
+      case 'SYNC_COMMIT': return { historyId: await sync.commitHistoryId(msg.historyId) };
 
       /*
        * SIGNATURES MATTER, AND I GOT THEM WRONG FIRST TIME.
