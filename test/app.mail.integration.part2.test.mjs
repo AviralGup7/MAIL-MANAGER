@@ -1,5 +1,5 @@
 /**
- * End-to-end app tests in a real DOM — part 2 of 3: keyboard, selection, bulk actions and reader.
+ * End-to-end app tests in a real DOM — part 2 of 4: keyboard, selection, bulk actions and reader.
  *
  * WHY THIS IS THREE FILES AND NOT ONE (audit R3-01)
  * -------------------------------------------------

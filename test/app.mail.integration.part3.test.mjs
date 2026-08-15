@@ -1,5 +1,5 @@
 /**
- * End-to-end app tests in a real DOM — part 3 of 3: compose, mailboxes, settings and cross-cutting flows.
+ * End-to-end app tests in a real DOM — part 3 of 4: compose, mailboxes, settings and cross-cutting flows.
  *
  * WHY THIS IS THREE FILES AND NOT ONE (audit R3-01)
  * -------------------------------------------------
