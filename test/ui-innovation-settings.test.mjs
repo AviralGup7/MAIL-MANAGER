@@ -10,7 +10,9 @@ test('settings exposes modern/legacy and cyberpunk intensity choices', () => {
   assert.match(src, /Modern — information-rich default/);
   assert.match(src, /Legacy — previous chrome and layout/);
   assert.match(src, /key: 'cyberpunkIntensity'/);
-  for (const value of ['calm', 'balanced', 'maximum']) assert.match(src, new RegExp(`\['${value}'`));
+  for (const value of ['calm', 'balanced', 'maximum']) {
+    assert.ok(src.includes(`['${value}'`), `${value} intensity is offered`);
+  }
 });
 
 test('interface intelligence has one surfaced control per feature', () => {

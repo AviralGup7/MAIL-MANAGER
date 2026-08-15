@@ -397,11 +397,11 @@ html[data-theme='cyberpunk'] #listquery::before {
 /* Timetable is the bounded terminal subsystem: lime lives here, never across
    ordinary mail. */
 html[data-theme='cyberpunk'][data-tt-terminal='on'] #tt-workspace {
-  --accent: var(--cp-terminal);
-  --glow: color-mix(in srgb, var(--cp-terminal) 24%, transparent);
+  color: var(--cp-terminal);
 }
 html[data-theme='cyberpunk'][data-tt-terminal='on'] #tt-panel {
   border-color: color-mix(in srgb, var(--cp-terminal) 58%, var(--line));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cp-terminal) 12%, transparent);
 }
 
 /* Intensity is a user preference. Calm keeps geometry and semantic colour;
