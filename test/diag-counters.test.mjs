@@ -51,6 +51,21 @@ test('persistDiag writes under its key with a flush stamp, and never throws', as
   await diag.persistDiag(broken); // must not throw: doctrine over drama
 });
 
+test('separate worker incarnations merge totals instead of regressing them', async () => {
+  const s = fakeStorage({
+    diagCounters: { requests: 100, retries: 4, notifications: 2, renewals: 3, mismatchClears: 1 },
+  });
+  const diag = await import(`../src/background/diag.js?t=${Math.random()}`);
+  diag.bump('requests');
+  await diag.persistDiag(s);
+  const got = (await s.get('diagCounters')).diagCounters;
+  assert.equal(got.requests, 101);
+  assert.equal(got.mismatchClears, 1, 'a quiet incarnation never erases the tripwire count');
+  await diag.persistDiag(s);
+  assert.equal((await s.get('diagCounters')).diagCounters.requests, 101,
+    'flushing twice does not add the same in-memory delta twice');
+});
+
 test('the bumps live at the seams the audit named (wiring)', () => {
   const gmail = read('src/background/gmail.js');
   assert.match(gmail, /for \(let attempt = 1;[^]*?bump\('requests'\)/, 'every attempt counted');

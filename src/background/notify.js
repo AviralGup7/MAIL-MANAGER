@@ -83,6 +83,10 @@ export function mergeNotified(freshIds, prev = []) {
  * sentence).
  */
 export function cardText(s, max = 160) {
-  const clean = String(s || '').replace(/[\x00-\x1f\x7f]/g, '').trim();
+  const clean = String(s || '')
+    // C0/C1 controls plus bidi embedding/override/isolate marks: none belongs
+    // in an OS card where it can visually reorder trusted surrounding text.
+    .replace(/[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g, '')
+    .trim();
   return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
 }

@@ -202,7 +202,7 @@ async function toggleIn(tabId) {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // Cross-audit hardening: only first-party extension contexts may reach the
   // verb router. Anything else gets silence, not an error surface.
-  if (sender?.id && sender.id !== chrome.runtime.id) return false;
+  if (sender?.id !== chrome.runtime.id) return false;
   handle(msg)
     .then((data) => sendResponse({ ok: true, data }))
     .catch((err) => {

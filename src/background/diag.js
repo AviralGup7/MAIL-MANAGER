@@ -48,7 +48,15 @@ export function diagSnapshot() {
  */
 export async function persistDiag(storage = chrome.storage.local) {
   try {
-    await storage.set({ [KEY]: { ...counters, flushedAt: Date.now() } });
+    const previous = (await storage.get(KEY))?.[KEY] || {};
+    const merged = {};
+    for (const name of Object.keys(counters)) {
+      merged[name] = (Number.isFinite(previous[name]) ? previous[name] : 0) + counters[name];
+    }
+    await storage.set({ [KEY]: { ...merged, flushedAt: Date.now() } });
+    // Counters now represent the unflushed delta. Reset only after the merged
+    // write lands, so worker reincarnations never regress persisted totals.
+    for (const name of Object.keys(counters)) counters[name] = 0;
   } catch {
     /* best-effort by doctrine — see the header */
   }

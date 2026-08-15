@@ -112,6 +112,10 @@ test('cardText: control characters never reach the OS notification', () => {
   assert.equal(cardText('\t\t'), '', 'nothing left is the empty string');
 });
 
+test('cardText: bidi overrides cannot spoof OS notification text', () => {
+  assert.equal(cardText('safe\u202Egpj.exe\u2066'), 'safegpj.exe');
+});
+
 test('cardText: bounded, with the ellipsis INSIDE the cap', () => {
   const huge = 'x'.repeat(5000);
   const out = cardText(huge);
