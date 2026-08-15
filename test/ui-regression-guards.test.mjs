@@ -12,6 +12,7 @@ import { readFileSync } from 'node:fs';
 import { readBundle } from './helpers/css.mjs';
 
 const app = readFileSync(new URL('../src/app/main.js', import.meta.url), 'utf8');
+const themeController = readFileSync(new URL('../src/app/system/theme-controller.js', import.meta.url), 'utf8');
 // The reader cluster moved out of app.js in the round-51 workspace extraction.
 const reader = readFileSync(new URL('../src/app/mail/reader.js', import.meta.url), 'utf8');
 // The list cluster moved out in round 52 (workspace sequence step 2).
@@ -40,7 +41,7 @@ test('the coach toast waits for a signed-in session (round 46 #44)', () => {
 });
 
 test('theme changes announce themselves (round 46 #3)', () => {
-  assert.match(app, /toast\(theme\.name, \{ ms: 1200 \}\)/,
+  assert.match(themeController, /toast\(theme\.name, \{ ms: 1200 \}\)/,
     'applying a theme speaks, so success and failure share one language');
 });
 

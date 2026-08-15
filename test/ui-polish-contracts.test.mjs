@@ -16,6 +16,7 @@ const js = read('src/app/main.js')
   + read('src/app/workspace/sidebar.js');
 // The list cluster moved out of app.js in the round-52 workspace extraction.
 const list = read('src/app/mail/list.js');
+const themeController = read('src/app/system/theme-controller.js');
 const css = readBundle();
 const html = read('app.html');
 
@@ -52,7 +53,8 @@ test('menus flip inside the viewport for all four menus at once', () => {
 
 test('first run honours the OS colour scheme; a saved choice wins', () => {
   assert.match(js, /prefers-color-scheme: dark/);
-  assert.match(js, /applyTheme\(theme \|\| \(osDark \? 'midnight' : DEFAULT_THEME\)\)\.id/);
+  assert.match(js, /applyInitialTheme\(theme, osDark, state\)/);
+  assert.match(themeController, /savedTheme \|\| \(osDark \? 'midnight' : DEFAULT_THEME\)/);
 });
 
 test('freshness is a real sync control', () => {

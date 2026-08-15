@@ -32,7 +32,7 @@ import {
   enqueueIntent, cancelIntent, drainIntents, queuedIntentCount, clearIntents,
   INTENT_MAX_ATTEMPTS,
 } from './mail/intents.js';
-import { THEMES } from './system/themes.js';
+import { THEMES, DEFAULT_THEME } from './system/themes.js';
 import { applyInitialTheme, chooseTheme } from './system/theme-controller.js';
 import { icon, setIcon } from './core/icons.js';
 import { setAttr } from './core/dom.js';
