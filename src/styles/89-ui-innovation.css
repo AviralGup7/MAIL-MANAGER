@@ -242,9 +242,6 @@
 }
 
 /* ---- theme preview tiles ------------------------------------------------ */
-.set-theme {
-  flex-wrap: wrap;
-}
 .set-theme-preview {
   flex: 1 0 100%;
   width: 100%;
@@ -273,9 +270,6 @@
 /* ---- modern/legacy compatibility --------------------------------------- */
 :root[data-ui-profile='legacy'] .set-theme-preview {
   display: none;
-}
-:root[data-ui-profile='legacy'] .row[aria-selected='true']::after {
-  content: none;
 }
 
 /* ---- responsive demotion ------------------------------------------------ */

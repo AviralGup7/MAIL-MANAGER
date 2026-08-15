@@ -252,6 +252,7 @@
 }
 .set-theme {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--s-2);
   padding: var(--s-2) var(--s-3);
