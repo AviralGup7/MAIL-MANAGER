@@ -61,8 +61,8 @@ test('the modular FX system gates at play time and builds no audio eagerly', () 
   const audio = read('src/app/system/cyberpunk-audio.js').replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, '');
   assert.ok(fx.includes("theme === 'cyberpunk'"), 'controller gates on the active theme');
   assert.ok(audio.includes("d.sounds !== 'off'"), 'audio gates on the live sound preference');
-  assert.ok(audio.indexOf('new AudioContext') > audio.indexOf('function audio('),
-    'AudioContext exists only behind the lazy gesture constructor');
+  assert.ok(audio.indexOf('new AudioCtor') > audio.indexOf('function audio('),
+    'the resolved AudioContext constructor exists only behind the lazy gesture gate');
   assert.ok(!/^initCyberpunkFx\(\);?\s*$/m.test(fx), 'no self-wiring; main.js owns the call');
   assert.ok(!/\.(mp3|ogg|wav|m4a)\b/i.test(fx + audio), 'sounds are synthesized, never files');
 });

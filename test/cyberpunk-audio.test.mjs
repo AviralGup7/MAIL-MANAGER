@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 const src = readFileSync(new URL('../src/app/system/cyberpunk-audio.js', import.meta.url), 'utf8');
 
 test('audio context is lazy and gesture-owned', () => {
-  assert.ok(src.indexOf('new AudioContext') > src.indexOf('function audio('));
+  assert.ok(src.indexOf('new AudioCtor') > src.indexOf('function audio('));
   assert.match(src, /if \(!allowCreate/);
 });
 
