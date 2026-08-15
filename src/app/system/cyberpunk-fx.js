@@ -28,6 +28,7 @@ function targetOf(e) {
   return control;
 }
 
+/** @returns {'activate'|'warning'|'open'|'close'} */
 function cueFor(control) {
   if (control.classList?.contains('danger') || control.dataset?.act === 'trash') return 'warning';
   if (/close|cancel|back/.test(control.id || '') || control.dataset?.act === 'close') return 'close';
@@ -65,7 +66,7 @@ function onChange(e) {
   if (!active()) return;
   const control = targetOf(e);
   if (!control) return;
-  let cue = 'data';
+  /** @type {'data'|'valueUp'|'valueDown'} */ let cue = 'data';
   if (control.type === 'checkbox' || control.type === 'radio') {
     cue = control.checked ? 'valueUp' : 'valueDown';
   } else if (control.tagName === 'SELECT' || control.type === 'range') {
