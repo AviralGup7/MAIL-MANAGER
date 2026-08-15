@@ -55,6 +55,13 @@
   --cp-slab: color-mix(in srgb, var(--accent) 18%, var(--bg-raised));
   --cp-glow-calm: color-mix(in srgb, var(--glow) 36%, transparent);
 
+  /* Live theme-tile preview fallbacks. settings-panel.js overrides these on
+     each tile from theme data; defaults keep the component valid before JS. */
+  --preview-bg: var(--bg-raised);
+  --preview-sunken: var(--bg-sunken);
+  --preview-line: var(--line-strong);
+  --preview-accent: var(--accent);
+
   /* New row scale: scannable without becoming cramped. Compact drops the
      snippet line entirely (rule earlier in the file, kept deliberately).
      The values obey the density invariant the token remap established --

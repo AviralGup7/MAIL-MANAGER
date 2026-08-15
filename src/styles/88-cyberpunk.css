@@ -383,7 +383,7 @@ html[data-theme='cyberpunk'] #r-subject::before {
   box-shadow: 0 0 7px var(--cp-glow-calm);
 }
 html[data-theme='cyberpunk'] #r-thread {
-  border-color: var(--cp-structural);
+  border-color: var(--cp-line-passive);
 }
 html[data-theme='cyberpunk'] #listquery {
   border-color: var(--cp-structural);
