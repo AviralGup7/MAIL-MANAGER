@@ -53,6 +53,9 @@ import { wireBulkbar } from './mail/bulkbar.js';
 import { buildReply } from './search/query.js';
 import * as settings from './system/settings.js';
 import { applyDensity, applyVisualPrefs } from './system/root-attrs.js';
+import {
+  isOffline, showOfflineBanner, wireOfflineBanner,
+} from './system/offline-banner.js';
 import { audienceOf } from './system/audience.js';
 import * as activity from './academic/activity.js';
 import * as engine from './academic/rule-engine.js';
@@ -1975,85 +1978,6 @@ function showWorkerWarning(why) {
 }
 
 
-/* ========================================================================== *
- * OFFLINE
- * ========================================================================== *
- *
- * `navigator.onLine` appeared nowhere in this codebase, so a dropped
- * connection fell to the last branch of reportError() and surfaced as
- * `toast("Failed to fetch")` -- browser jargon, styled as INFORMATION rather
- * than a problem, gone in 2200ms.
- *
- * Three things wrong with that, and the third is the one that matters: offline
- * is not an event, it is a CONDITION. It lasts until the network returns, and
- * a transient toast is the wrong shape for something that is still true thirty
- * seconds later.
- *
- * The right idiom already existed. showWorkerWarning() renders a persistent
- * strip for degraded mode, and its own comment explains why: "a toast is for
- * something that just happened and then stops mattering, and this condition
- * lasts for the whole session." Offline is that condition and never got the
- * treatment.
- *
- * WHAT THE BANNER SAYS IS THE POINT. Not "you are offline" -- the user knows.
- * What they do not know is what still works, and on a campus network that
- * drops several times an hour that is the difference between waiting and
- * retrying by hand until they conclude the app is broken.
- */
-let offlineBar = null;
-
-function showOfflineBanner() {
-  if (offlineBar || document.getElementById('net-warn')) return;
-
-  const bar = document.createElement('div');
-  bar.id = 'net-warn';
-  // `alert`, not `status`: losing the connection is worth interrupting for.
-  bar.setAttribute('role', 'alert');
-
-  const text = document.createElement('span');
-  text.className = 'sw-warn-text';
-  text.textContent =
-    'No connection — showing mail already downloaded. '
-    + 'Anything you send is queued and goes out automatically when you are back.';
-
-  bar.append(text);
-  const main = document.getElementById('main');
-  const panes = document.getElementById('panes');
-  if (main && panes) main.insertBefore(bar, panes);
-  else document.body.prepend(bar);
-  offlineBar = bar;
-}
-
-function hideOfflineBanner() {
-  offlineBar?.remove();
-  offlineBar = null;
-}
-
-/*
- * No Dismiss button, deliberately, unlike the worker banner.
- *
- * That one describes a condition the user can do nothing about and may last
- * the whole session, so dismissing it is reasonable. This one clears itself
- * the moment the network returns -- a dismiss control would only let the user
- * hide a fact that is still true.
- */
-window.addEventListener('offline', () => {
-  showOfflineBanner();
-});
-
-window.addEventListener('online', () => {
-  hideOfflineBanner();
-  // Catch up immediately rather than waiting for the next scheduled poll, and
-  // drain anything the outbox has been holding.
-  refresh({ silent: true });
-  pumpOutbox();
-});
-
-/** True when the browser knows it is offline. Feature-detected: jsdom has no navigator.onLine. */
-function isOffline() {
-  return typeof navigator !== 'undefined' && navigator.onLine === false;
-}
-
 let gateFocusFrom = null;
 function showGate(message) {
   // Remember where focus was so hideGate() can hand it back (modal dialog
@@ -3713,6 +3637,16 @@ async function boot() {
   // Its items re-fire the real buttons at click time, so wiring order is
   // irrelevant here -- delegation never captures a handler, it dispatches.
   wireSidebarMore();
+  /* Connectivity banner (extracted module). The catch-up work stays the
+     shell's: refresh the inbox and drain anything the outbox held while the
+     network was gone. wireOfflineBanner is idempotent per window, so the
+     harness's repeated boots cannot stack listeners. */
+  wireOfflineBanner({
+    onOnline: () => {
+      refresh({ silent: true });
+      pumpOutbox();
+    },
+  });
   decorate('compose-min', 'minimise');
   decorate('compose-close', 'close');
 
