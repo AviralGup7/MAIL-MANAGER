@@ -53,7 +53,7 @@ const WIDTHS = [1280, 860, 600, 480]; // the layout-contract ladder
 const chromeStub = `
 (() => {
   const store = new Map(Object.entries(${JSON.stringify({})}));
-  const seed = ${JSON.stringify({ theme: '__THEME__', density: '__DENSITY__' })};
+  const seed = ${JSON.stringify({ theme: '__THEME__', density: '__DENSITY__', cyberpunkIntensity: '__INTENSITY__', textures: '__TEXTURES__' })};
   for (const [k, v] of Object.entries(seed)) store.set(k, v);
   const listeners = [];
   window.chrome = {
@@ -94,10 +94,25 @@ let taken = 0;
 const tokenFailures = [];
 try {
   for (const theme of THEMES) {
-    for (const density of DENSITIES) {
-      for (const width of WIDTHS) {
-        const page = await browser.newPage({ viewport: { width, height: 800 } });
-        await page.addInitScript(chromeStub.replaceAll('__THEME__', theme).replaceAll('__DENSITY__', density));
+    const variants = theme === 'cyberpunk'
+      ? [
+          { intensity: 'calm', textures: false },
+          { intensity: 'balanced', textures: true },
+          { intensity: 'maximum', textures: true },
+          { intensity: 'balanced', textures: false },
+        ]
+      : [{ intensity: 'balanced', textures: true }];
+    for (const variant of variants) {
+      for (const density of DENSITIES) {
+        for (const width of WIDTHS) {
+          const page = await browser.newPage({ viewport: { width, height: 800 } });
+          await page.addInitScript(
+            chromeStub
+              .replaceAll('__THEME__', theme)
+              .replaceAll('__DENSITY__', density)
+              .replaceAll('__INTENSITY__', variant.intensity)
+              .replaceAll('__TEXTURES__', String(variant.textures))
+          );
         await page.goto(APP_URL);
         // Wait for the theme to actually stamp data-theme rather than a fixed
         // delay, so a slow CI never captures a pre-paint frame (round 48).
@@ -108,7 +123,10 @@ try {
           );
         } catch { /* fall through to the fixed settle below */ }
         await page.waitForTimeout(150);
-        const file = join(OUT, `${theme}.${density}.${width}.png`);
+        const variantTag = theme === 'cyberpunk'
+          ? `.${variant.intensity}.${variant.textures ? 'textures' : 'plain'}`
+          : '';
+        const file = join(OUT, `${theme}${variantTag}.${density}.${width}.png`);
         await page.screenshot({ path: file });
         taken++;
 
@@ -119,7 +137,8 @@ try {
          * density-in-reader and white-frame gaps were exactly "the token
          * exists but never lands", found by audit instead of by tool.
          */
-        if (density === 'comfortable' && width === 1280) {
+        if (density === 'comfortable' && width === 1280 &&
+            (theme !== 'cyberpunk' || (variant.intensity === 'balanced' && variant.textures))) {
           const rendered = await page.evaluate(
             () => getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()
           );
@@ -128,7 +147,8 @@ try {
             tokenFailures.push(`${theme}: declared ${declared}, rendered ${rendered}`);
           }
         }
-        await page.close();
+          await page.close();
+        }
       }
     }
   }

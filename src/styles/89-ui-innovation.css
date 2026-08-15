@@ -316,3 +316,27 @@
     justify-content: space-between;
   }
 }
+
+@media (forced-colors: active) {
+  .r-cursor {
+    border-color: Highlight;
+    background: Canvas;
+    forced-color-adjust: none;
+  }
+  :root[data-ui-profile='modern'] .row[aria-selected='true'] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+  .r-origin,
+  .r-fact dt,
+  .r-fact dd {
+    color: CanvasText;
+  }
+  .outbox-track i {
+    background: CanvasText;
+  }
+  .outbox-track[data-state='retrying'] i:nth-child(3),
+  .outbox-track[data-state='stuck'] i:nth-child(3) {
+    background: Mark;
+  }
+}
