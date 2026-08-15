@@ -1680,7 +1680,20 @@ async function fetchPage(pageToken) {
   // Reached only if data is durable and the cursor acknowledgement settled.
   state.lastSync = Date.now();
   renderSidebar();
-  $('btn-more').disabled = !nextPageToken;
+  /*
+   * The DOM may be gone by now (audit R3-01 follow-up).
+   *
+   * This runs after three awaits. In an extension page the document can be
+   * torn down at any of them -- the popup closes, the takeover is released,
+   * the tab navigates -- and `$('btn-more')` then returns null, so the
+   * assignment throws "Cannot set properties of null" as an unhandled
+   * rejection. It surfaced as a test-file failure attributed to whichever
+   * test was running, which is exactly how a real teardown crash would hide.
+   * Guarding the node is honest: the button not existing means nobody is
+   * looking at it.
+   */
+  const more = $('btn-more');
+  if (more) more.disabled = !nextPageToken;
 }
 
 async function loadPage(pageToken = '') {
@@ -1827,7 +1840,8 @@ async function refresh({ silent = false } = {}) {
 
 function setBusy(on) {
   el.shell.setAttribute('aria-busy', String(on));
-  $('btn-refresh').disabled = on;
+  const refreshBtn = $('btn-refresh');
+  if (refreshBtn) refreshBtn.disabled = on;
 }
 
 function reportError(err, { retry } = {}) {
@@ -2191,7 +2205,11 @@ async function loadMailboxPage(id, pageToken = '') {
     }
     if (state.mailbox === id) {
       state.nextPageToken = mbState(id).nextPageToken;
-      $('btn-more').disabled = !mbState(id).nextPageToken;
+      {
+        // Same post-await liveness rule as fetchPage.
+        const moreBtn = $('btn-more');
+        if (moreBtn) moreBtn.disabled = !mbState(id).nextPageToken;
+      }
       renderList();
       renderSidebar();
     }
