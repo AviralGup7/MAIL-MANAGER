@@ -314,6 +314,7 @@ const el = {
   rFrom: $('r-from'),
   rDate: $('r-date'),
   rTags: $('r-tags'),
+  rIntel: $('r-intel'),
   rBody: $('r-body'),
   rAttachments: $('r-attachments'),
   help: $('help'),

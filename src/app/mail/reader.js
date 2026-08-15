@@ -260,6 +260,27 @@ export function renderReaderTags(m) {
     ...(m.reason && !confident ? [tagNode(m.reason)] : []),
     recat
   );
+
+  if (el.rIntel) {
+    const facts = [
+      ['STATE', m.unread ? 'UNREAD' : 'READ'],
+      ['THREAD', String(m.threadId || m.id || '').slice(0, 12) || '—'],
+      ['SOURCE', String(m._provenance || 'gmail').toUpperCase()],
+      ['CONFIDENCE', `${Math.round((m.confidence ?? 1) * 100)}%`],
+    ];
+    const frag = document.createDocumentFragment();
+    for (const [key, value] of facts) {
+      const fact = document.createElement('span');
+      fact.className = 'r-fact';
+      const k = document.createElement('small');
+      k.textContent = key;
+      const v = document.createElement('b');
+      v.textContent = value;
+      fact.append(k, v);
+      frag.appendChild(fact);
+    }
+    el.rIntel.replaceChildren(frag);
+  }
 }
 
 function renderMessageDeadline(m) {

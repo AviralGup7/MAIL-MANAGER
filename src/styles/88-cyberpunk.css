@@ -382,6 +382,16 @@ html[data-theme='cyberpunk'] #r-subject::before {
   background: var(--cp-line-active);
   box-shadow: 0 0 7px var(--cp-glow-calm);
 }
+html[data-theme='cyberpunk'] .r-fact {
+  border-color: var(--cp-line-passive);
+  clip-path: polygon(var(--s-1) 0, 100% 0, 100% calc(100% - var(--s-1)), calc(100% - var(--s-1)) 100%, 0 100%, 0 var(--s-1));
+}
+html[data-theme='cyberpunk'] .r-fact small {
+  color: var(--danger);
+}
+html[data-theme='cyberpunk'] .r-fact b {
+  color: var(--accent);
+}
 html[data-theme='cyberpunk'] #r-thread {
   border-color: var(--cp-line-passive);
 }

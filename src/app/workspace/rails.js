@@ -321,7 +321,17 @@ export async function renderOutbox(known) {
       ? 'Waiting for the account that queued this message'
       : outbox.statusOf(it);
 
-    li.append(who, status);
+    const track = document.createElement('span');
+    track.className = 'outbox-track';
+    track.dataset.state = it.state;
+    track.setAttribute('aria-hidden', 'true');
+    for (const phase of ['queued', 'held', 'dispatch', 'settled']) {
+      const mark = document.createElement('i');
+      mark.dataset.phase = phase;
+      track.appendChild(mark);
+    }
+
+    li.append(who, status, track);
 
     /*
      * A stuck message needs a way out that is not "wait". Both actions are
