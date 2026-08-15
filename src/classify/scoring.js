@@ -1,9 +1,40 @@
 /**
  * Stage 2: weighted keyword scoring.
  *
- * All constants CARRIED OVER VERBATIM from the old
- * `lib/pattern-classifier/scoring-engine.js`. They were clearly tuned against
- * real mail and I have no better numbers, so they are reproduced exactly.
+ * ============================================================================
+ * PROVENANCE OF EVERY CONSTANT IN THIS FILE — READ BEFORE CHANGING ONE
+ * ============================================================================
+ *
+ * These are **inherited, not measured** (under-engineering audit P6). Every
+ * number below was copied verbatim from v1's
+ * `lib/pattern-classifier/scoring-engine.js`. The original note said they
+ * "were clearly tuned against real mail and I have no better numbers", and
+ * that is still the whole basis: nobody in v2 has re-derived them against a
+ * labelled corpus.
+ *
+ * WHY THAT MATTERS. This subsystem decides which category every message lands
+ * in — the product's central claim — and it is the thinnest-documented
+ * subsystem in a codebase whose defining habit is explaining itself (measured
+ * comment density 0.20 against a tree median of ~0.73). "Carried over
+ * verbatim" reads like a decision; it is actually an absence of one.
+ *
+ * WHAT IS AND IS NOT VERIFIED:
+ *   - VERIFIED: the scoring ALGORITHM. `test/classify.test.mjs`,
+ *     `test/fuzz-classify.test.mjs` and `test/eval-classifier.test.mjs` pin
+ *     determinism, idempotence, totality over malformed input, and precedence
+ *     (address > sender > pattern > fallback).
+ *   - NOT VERIFIED: that these particular WEIGHTS are the right weights.
+ *     `tools/eval-classifier.mjs` can measure accuracy against a labelled set;
+ *     no such set is committed, so no accuracy figure exists for them.
+ *
+ * HOW TO CHANGE ONE HONESTLY: build a labelled corpus, run
+ * `npm run -s eval-classifier` before and after, and record both numbers in
+ * the commit. Changing a weight because a single message filed wrongly is how
+ * a tuned system becomes an untuned one.
+ *
+ * Stage 0 (exact address) and stage 1 (sender substring) are FACTS and
+ * outrank all of this, which is why an inherited weight has never yet caused
+ * a visible misfiling: the decisive paths do not reach here.
  */
 
 /** Which field a keyword hit was in, and how much that is worth. */

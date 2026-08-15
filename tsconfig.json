@@ -16,6 +16,7 @@
   "include": [
     "src/globals.d.ts",
     "src/app/system/**/*.js",
-    "src/app/mail/store.js"
+    "src/app/mail/store.js",
+    "src/background/**/*.js"
   ]
 }
