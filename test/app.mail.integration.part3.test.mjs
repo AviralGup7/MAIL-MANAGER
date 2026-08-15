@@ -35,6 +35,7 @@ import {
   MESSAGES,
   rows, rowText, settled, countParts,
   bulk, pick, press,
+  NOON_TODAY, DUE_MESSAGES, cacheBlob, seedLabels, openPaletteWith, paletteLabels,
 } from './helpers/app-harness.mjs';
 
 test('MODE: modeOf aggregates the distributed mode truth (M1)', async (t) => {
@@ -835,43 +836,6 @@ test('ESCAPE: unwinds one layer at a time, innermost first', async (t) => {
     restore();
   }
 });
-
-/*
- * Open the palette and type `q`.
- *
- * Typing matters: filterPalette caps the list at 12, and label commands are
- * appended after the categories and themes, so on an EMPTY query they are
- * legitimately off the end of the list. Reaching them by typing is how a user
- * reaches them too.
- */
-/*
- * Seed the label cache directly.
- *
- * refreshLabels() is fire-and-forget, and features.js is NOT re-imported per
- * boot -- only app.js gets a cache-busting URL -- so the cache both survives
- * between tests and lands at a nondeterministic moment within one. Setting it
- * explicitly after boot makes these tests about the palette, not about race
- * timing. `boot({labels})` still exercises the real fetch path in the first
- * test of the group.
- */
-const seedLabels = async (list) => {
-  const { _setLabels } = await import('../src/app/overlays/palette.js');
-  _setLabels(list);
-};
-
-const openPaletteWith = async (doc, win, settle, q) => {
-  press(doc, win, 'k', { ctrlKey: true });
-  await settle(4);
-  const input = doc.getElementById('palette-input');
-  input.value = q;
-  input.dispatchEvent(new win.Event('input', { bubbles: true }));
-  await settle(4);
-};
-
-const paletteLabels = (doc) =>
-  [...doc.querySelectorAll('#palette-list .palette-item')]
-    .map((li) => li.textContent)
-    .filter((t) => t.includes('Go to label:'));
 
 test('LABELS: the palette offers the user\'s own Gmail labels', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');

@@ -35,6 +35,7 @@ import {
   MESSAGES,
   rows, rowText, settled, countParts,
   bulk, pick, press,
+  NOON_TODAY, DUE_MESSAGES, cacheBlob, seedLabels, openPaletteWith, paletteLabels,
 } from './helpers/app-harness.mjs';
 
 test('CACHE: a corrupt cache falls back to a full sync, not a blank inbox', async (t) => {

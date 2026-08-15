@@ -459,6 +459,113 @@ const press = (doc, win, key, opts = {}) =>
 
 
 
+
+/* ---- fixtures and helpers shared across the parts ------------------------
+ * These were declared in the middle of the original single file, beside
+ * their first caller. The three-way split (audit R3-01) severed them from
+ * later callers -- `cacheBlob is not defined` -- which is precisely the
+ * failure the file's own history warned about when it was split in two.
+ * They live here now so there is ONE definition and no part can drift.
+ * -------------------------------------------------------------------------- */
+
+/*
+ * Mail with real deadline prose, for the radar. `tomorrow` and `today` are
+ * relative, so these stay in the right urgency band whenever the suite runs --
+ * a fixed date would silently drift into "overdue" and the test would start
+ * asserting something different from what it was written to check.
+ */
+/*
+ * A TIME-DEPENDENT TEST THAT FAILED WHEN THE CLOCK CROSSED MIDNIGHT.
+ *
+ * These messages said "by today" and "is tomorrow", anchored -- correctly, by
+ * design -- to the message's SEND date rather than to now, so that opening a
+ * three-day-old mail does not shift its deadline forward.
+ *
+ * The seed used `Date.now() - 7200_000`. Run at 01:34 UTC that is 23:34 on the
+ * PREVIOUS day, so "today" resolved to that previous day and the radar
+ * correctly reported it overdue -- while the assertion demanded "today". The
+ * product was right and the test was wrong, and it had been silently wrong for
+ * however long the suite happened to run outside the 02:00-24:00 window.
+ *
+ * Fixed by anchoring the seed to local NOON, so the two-hour offset cannot
+ * cross a day boundary in any timezone. The clock is pinned, not the
+ * behaviour: the extractor, the urgency bands and the radar are all still
+ * exercised for real.
+ */
+const NOON_TODAY = (() => {
+  const d = new Date();
+  d.setHours(12, 0, 0, 0);
+  return d.getTime();
+})();
+
+const DUE_MESSAGES = [
+  {
+    id: 'd1', threadId: 'td1',
+    from: 'AUGSD <augsd@pilani.bits-pilani.ac.in>',
+    subject: 'Fee payment',
+    snippet: 'The last date for fee payment is tomorrow.',
+    date: NOON_TODAY, unread: true, starred: false, labels: ['INBOX', 'UNREAD'],
+  },
+  {
+    id: 'd2', threadId: 'td2',
+    from: 'Practice School Division <psd@pilani.bits-pilani.ac.in>',
+    subject: 'PS report',
+    snippet: 'Please submit the PS report by today.',
+    date: NOON_TODAY, unread: true, starred: false, labels: ['INBOX', 'UNREAD'],
+  },
+];
+
+/** Build the on-disk blob shape that cache.js writes. */
+function cacheBlob(msgs) {
+  return {
+    v: 1,
+    t: Date.now(),
+    m: msgs.map((m) => [
+      m.id, m.threadId, m.from, m.subject, m.snippet, m.date,
+      // Must mirror pack() in cache.js, including bit 4 for hasAttachment.
+      (m.unread ? 1 : 0) | (m.starred ? 2 : 0) | (m.hasAttachment ? 4 : 0),
+      m.category || 'augsd', m.confidence ?? 0.9, m.source || 'sender', m.reason || '',
+    ]),
+  };
+}
+
+/*
+ * Open the palette and type `q`.
+ *
+ * Typing matters: filterPalette caps the list at 12, and label commands are
+ * appended after the categories and themes, so on an EMPTY query they are
+ * legitimately off the end of the list. Reaching them by typing is how a user
+ * reaches them too.
+ */
+/*
+ * Seed the label cache directly.
+ *
+ * refreshLabels() is fire-and-forget, and features.js is NOT re-imported per
+ * boot -- only app.js gets a cache-busting URL -- so the cache both survives
+ * between tests and lands at a nondeterministic moment within one. Setting it
+ * explicitly after boot makes these tests about the palette, not about race
+ * timing. `boot({labels})` still exercises the real fetch path in the first
+ * test of the group.
+ */
+const seedLabels = async (list) => {
+  const { _setLabels } = await import('../src/app/overlays/palette.js');
+  _setLabels(list);
+};
+
+const openPaletteWith = async (doc, win, settle, q) => {
+  press(doc, win, 'k', { ctrlKey: true });
+  await settle(4);
+  const input = doc.getElementById('palette-input');
+  input.value = q;
+  input.dispatchEvent(new win.Event('input', { bubbles: true }));
+  await settle(4);
+};
+
+const paletteLabels = (doc) =>
+  [...doc.querySelectorAll('#palette-list .palette-item')]
+    .map((li) => li.textContent)
+    .filter((t) => t.includes('Go to label:'));
+
 /* ---- exports ------------------------------------------------------------
  * Everything the parts need. Kept explicit rather than `export *` so an
  * accidental new global in one part cannot silently become shared state.
@@ -469,4 +576,5 @@ export {
   MESSAGES,
   rows, rowText, settled, countParts,
   bulk, pick, press,
+  NOON_TODAY, DUE_MESSAGES, cacheBlob, seedLabels, openPaletteWith, paletteLabels,
 };
