@@ -331,12 +331,39 @@ async function boot({ signedIn = true, messages = MESSAGES, storageSeed = {}, bo
      * cannot be un-queued, and in a browser `chrome` never disappears
      * mid-flight the way it does between two tests in one process.
      */
+    const noop = () => {};
     if (globalThis.chrome === undefined) {
-      const noop = () => {};
       const area = { get: async () => ({}), set: async () => {}, remove: async () => {} };
       globalThis.chrome = {
         runtime: { sendMessage: noop, lastError: null, getURL: (p) => p, id: 'test' },
         storage: { local: area, session: area, onChanged: { addListener: noop, removeListener: noop } },
+      };
+    }
+    /*
+     * `window` and `document` go the same way. A late callback that reaches
+     * `window.addEventListener` (the online/offline re-arm) or reads
+     * `document` finds `undefined` between tests, because the previous
+     * globals were restored above and node:test has no DOM of its own.
+     * These stubs absorb the call and DROP it — deliberately inert, so a
+     * leftover cannot mutate anything or resurrect a listener on the next
+     * boot's document.
+     */
+    if (globalThis.window === undefined) {
+      globalThis.window = {
+        addEventListener: noop, removeEventListener: noop,
+        matchMedia: () => ({ matches: false, addEventListener: noop, removeEventListener: noop }),
+        requestAnimationFrame: () => 0, cancelAnimationFrame: noop,
+        postMessage: noop, location: { href: '', search: '' },
+      };
+    }
+    if (globalThis.document === undefined) {
+      globalThis.document = {
+        addEventListener: noop, removeEventListener: noop,
+        querySelector: () => null, querySelectorAll: () => [],
+        getElementById: () => null,
+        documentElement: { style: { setProperty: noop }, setAttribute: noop, classList: { add: noop, remove: noop, toggle: noop } },
+        body: { classList: { add: noop, remove: noop, toggle: noop } },
+        hidden: true,
       };
     }
 
