@@ -127,16 +127,14 @@ test('sign-in stamps the account, canonicalised (lowercase + trim)', async () =>
   assert.equal(h.store.accessToken, 'tok-interactive');
 });
 
-test('sign-in still succeeds when the profile read fails (best-effort stamp)', async () => {
-  /* Blocking a proven consent on a failed DOUBLE-CHECK would lock users out
-     over a blip. The unstamped session is handled by the legacy rule on the
-     first successful renewal (pinned below). */
+test('sign-in fails closed when the account identity cannot be proved', async () => {
   const h = await load({
     profiles: new Map([['tok-interactive', new Error('offline')]]),
   });
-  await h.mod.signIn();
-  assert.equal(h.store.accessToken, 'tok-interactive', 'consent landed');
-  assert.equal(h.store.accountEmail, undefined, 'no stamp — yet');
+  await assert.rejects(() => h.mod.signIn(), /offline/);
+  assert.equal(h.store.accessToken, undefined, 'an unowned token never activates');
+  assert.equal(h.store.authorized, undefined, 'consent is not an active session without identity');
+  assert.equal(h.store.accountEmail, undefined, 'no owner was guessed');
 });
 
 test('a renewal for the SAME account persists and keeps every session key', async () => {
@@ -249,8 +247,8 @@ test('dispatchable: legacy passes, the owner passes, a stranger is refused', () 
     'the compare canonicalises both sides');
   assert.equal(dispatchable({ draft, accountEmail: ` ${A} ` }, A), true, 'whitespace tolerated');
   assert.equal(dispatchable({ draft, accountEmail: A }, B), false, 'never under a stranger');
-  assert.equal(dispatchable({ draft, accountEmail: A }, ''), true,
-    'an unproven session does not strand stamped mail — the destructive paths live in auth');
+  assert.equal(dispatchable({ draft, accountEmail: A }, ''), false,
+    'an owned row requires a proved current account');
 });
 
 test('enqueue stamps when told, omits otherwise; normalise round-trips the stamp', () => {
