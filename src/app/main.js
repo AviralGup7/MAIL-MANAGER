@@ -1660,7 +1660,9 @@ async function fetchPage(pageToken) {
   if (epoch !== opEpoch) return; // signed out / switched while in flight
   ingest(messages);
   await persistBeforeCursor();
+  if (epoch !== opEpoch) return;
   if (anchorHistoryId) await send('SYNC_COMMIT', { historyId: anchorHistoryId });
+  if (epoch !== opEpoch) return;
   state.nextPageToken = nextPageToken;
   // Reached only if data is durable and the cursor acknowledgement settled.
   state.lastSync = Date.now();
@@ -1771,9 +1773,11 @@ async function refresh({ silent = false } = {}) {
     // acknowledgement fails, the old cursor remains and this idempotent delta
     // is replayed on the next refresh.
     await persistBeforeCursor();
+    if (epoch !== opEpoch) return 'stale';
     if (res.nextHistoryId) {
       await send('SYNC_COMMIT', { historyId: res.nextHistoryId });
     }
+    if (epoch !== opEpoch) return 'stale';
 
     // If the open message was archived or deleted elsewhere, the reading pane
     // is now showing something that is no longer in the list.
