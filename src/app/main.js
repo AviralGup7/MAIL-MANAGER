@@ -1664,6 +1664,7 @@ async function fetchPage(pageToken) {
   state.nextPageToken = nextPageToken;
   // Reached only if data is durable and the cursor acknowledgement settled.
   state.lastSync = Date.now();
+  renderSidebar();
   $('btn-more').disabled = !nextPageToken;
 }
 
@@ -1789,6 +1790,7 @@ async function refresh({ silent = false } = {}) {
     }
 
     state.lastSync = Date.now();
+    renderSidebar();
     const n = res.added.length;
     // R3: the pill takes the announcement when the user is scrolled deep;
     // the toast covers what the pill did not (list extraction, round 52).
