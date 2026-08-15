@@ -333,10 +333,12 @@ function buildCheck(key, value, now, ctx = {}) {
     case 'from':
       return (m) => asText(m.from).toLowerCase().includes(value);
     case 'to':
-      // We only ever hold the signed-in mailbox, so `to:me` is a tautology and
-      // anything else cannot be answered from stored headers. Honest: match
-      // everything for `me`, nothing otherwise, rather than pretend.
-      return value === 'me' ? () => true : () => false;
+      // To/Cc are part of the canonical metadata record. Specific-recipient
+      // search is therefore answerable locally (especially useful in Sent).
+      // `to:me` keeps its established mailbox shorthand until every caller
+      // supplies the proved account identity through ctx.
+      if (value === 'me') return () => true;
+      return (m) => `${asText(m.to)} ${asText(m.cc)}`.toLowerCase().includes(value);
     case 'subject':
       return (m) => asText(m.subject).toLowerCase().includes(value);
     case 'category':

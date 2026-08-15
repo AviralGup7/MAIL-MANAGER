@@ -597,9 +597,14 @@ async function wakeDue(now = Date.now()) {
       await modify(id, ['INBOX', 'UNREAD'], [labelId]);
       await removeSnooze(id, chrome.storage.local);
       woke++;
-    } catch {
-      // One failure must not stop the rest, and the entry stays put so the
-      // next sweep tries again.
+    } catch (err) {
+      const message = String(err?.message || err);
+      if (/Gmail (404|410)\b/.test(message)) {
+        // The resource is permanently gone (or belongs to a different
+        // account). Keeping it due would re-arm this alarm forever.
+        await removeSnooze(id, chrome.storage.local);
+      }
+      // Transient/auth/network failures stay queued for the next real wake.
     }
   }
   return woke;
@@ -758,16 +763,22 @@ chrome.notifications?.onClicked.addListener((id) => {
   // Clicking a background notification opens the takeover; the notification
   // is dismissed either way.
   chrome.notifications.clear(id).catch?.(() => {});
-  openGmailTab();
+  void openGmailTab().catch((err) => {
+    console.error('[BMM] could not open notification target:', err);
+  });
 });
 
 // The catch-up sweep. Both hooks, because onStartup does not fire when the
 // extension is enabled mid-session or reloaded during development.
 chrome.runtime.onStartup?.addListener(() => {
-  wakeDue().then(scheduleWake);
+  void wakeDue().then(scheduleWake).catch((err) => {
+    console.error('[BMM] startup wake scheduling failed:', err);
+  });
   scheduleBackgroundSync();
 });
 chrome.runtime.onInstalled?.addListener(() => {
-  wakeDue().then(scheduleWake);
+  void wakeDue().then(scheduleWake).catch((err) => {
+    console.error('[BMM] install wake scheduling failed:', err);
+  });
   scheduleBackgroundSync();
 });

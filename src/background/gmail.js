@@ -227,15 +227,20 @@ export async function batchMetadata(ids) {
 
   // Same retry policy as api(). The batch endpoint is the single most likely
   // request to be rate-limited, because it is 100 sub-requests at once.
-  const res = await fetchRetrying(
-    BATCH_URL,
-    {
-      method: 'POST',
-      headers: await authHeaders({ 'Content-Type': `multipart/mixed; boundary=${boundary}` }),
-      body,
-    },
-    '/batch'
-  );
+  const makeInit = async () => ({
+    method: 'POST',
+    headers: await authHeaders({ 'Content-Type': `multipart/mixed; boundary=${boundary}` }),
+    body,
+  });
+  let res = await fetchRetrying(BATCH_URL, await makeInit(), '/batch');
+  // fetchRetrying deliberately returns 401 so the owner can renew once. The
+  // batch path used to parse that auth body as multipart and misreport an
+  // empty batch instead.
+  if (res.status === 401) {
+    await forceRenew();
+    res = await fetchRetrying(BATCH_URL, await makeInit(), '/batch');
+    if (res.status === 401) throw new Error('AUTH_REVOKED: Gmail batch rejected a fresh token');
+  }
   const text = await res.text();
   /* AUD-Q2 (audit 2026-08-15): parseBatch answers whatever ids the WIRE
      claims, and identity in a batch response is carried in-band — a
