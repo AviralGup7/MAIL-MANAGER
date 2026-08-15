@@ -18,11 +18,28 @@ test('test filenames describe contracts rather than chronology or numbered copie
   const bad = names.filter((n) => /(^round\d|integration2|^(features|parity|pipeline|polish)\.test)/.test(n));
   assert.deepEqual(bad, []);
   for (const expected of [
-    'app.mail.integration.test.mjs', 'app.features.integration.test.mjs',
     'workflow-contracts.test.mjs', 'ui-regression-guards.test.mjs',
     'extraction-integrity.test.mjs', 'worker-fallback-parity.test.mjs',
     'ingestion-pipeline.test.mjs', 'ui-polish-contracts.test.mjs',
   ]) assert.ok(names.includes(expected), expected);
+
+  /*
+   * The two integration suites are SPLIT INTO PARTS (audit R3-01): 108 and
+   * 115 jsdom boots in one process each exhausted the V8 heap and aborted
+   * with SIGABRT, which made `npm test` red on a clean clone. node --test
+   * gives each FILE its own process, so parts bound peak heap by
+   * construction. This gate therefore requires the parts to exist rather
+   * than the monoliths -- and requires the monoliths to be GONE, so nobody
+   * silently reassembles one.
+   */
+  for (const family of ['app.mail.integration', 'app.features.integration']) {
+    const parts = names.filter((n) => n.startsWith(`${family}.part`) && n.endsWith('.test.mjs'));
+    assert.ok(parts.length >= 3, `${family} must stay split into parts, found ${parts.length}`);
+    assert.equal(names.includes(`${family}.test.mjs`), false,
+      `${family}.test.mjs must not come back as a monolith`);
+  }
+  assert.ok(existsSync(join(ROOT, 'test/helpers/app-harness.mjs')),
+    'the split parts share one harness so they cannot drift');
 });
 
 test('active documentation has no broken relative Markdown links', () => {

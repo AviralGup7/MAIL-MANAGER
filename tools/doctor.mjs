@@ -197,9 +197,31 @@ if (manifest) {
         seen.add(file);
         count += 1;
         const src = readFileSync(file, 'utf8');
-        const specs = [...src.matchAll(
-          /^\s*(?:import|export)(?:[\s\S]*?from)?\s*['"]([^'"]+)['"]/gm
+        /*
+         * COMMENTS ARE NOT IMPORTS.
+         *
+         * The old pattern allowed [\s\S]*? between the keyword and `from`,
+         * so it happily spanned newlines: a doc comment whose line began
+         * with " * ... export ..." and which later contained the word
+         * `from` followed by ANY quoted string was reported as a bare
+         * import. It fired on the phrase "cursor expired" in a sync.js
+         * comment and named a dependency that does not exist -- a load-time
+         * gate whose failure message sends you looking for the wrong thing
+         * is worse than no gate.
+         *
+         * Comments are stripped first, and the specifier match no longer
+         * crosses a line break.
+         */
+        const code = src
+          .replace(/\/\*[\s\S]*?\*\//g, '')   // block comments
+          .replace(/^\s*\/\/.*$/gm, '');       // line comments
+        const specs = [...code.matchAll(
+          /^\s*(?:import|export)\b[^\n]*?\bfrom\s*['"]([^'"]+)['"]/gm
         )].map((m) => m[1]);
+        // Side-effect imports (`import './x.js'`) have no `from`.
+        specs.push(...[...code.matchAll(
+          /^\s*import\s*['"]([^'"]+)['"]/gm
+        )].map((m) => m[1]));
 
         for (const spec of specs) {
           if (!spec.startsWith('.') && !spec.startsWith('/')) {
