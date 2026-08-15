@@ -32,7 +32,8 @@ function level() {
 function audio(allowCreate) {
   if (!cyberpunkAudioActive()) return null;
   if (ctx === null) {
-    const AudioCtor = globalThis.AudioContext || globalThis.webkitAudioContext;
+    /** @type {any} */ const browser = globalThis;
+    const AudioCtor = browser.AudioContext || browser.webkitAudioContext;
     if (!allowCreate || typeof AudioCtor !== 'function') return null;
     ctx = new AudioCtor();
     master = ctx.createGain();
@@ -42,6 +43,35 @@ function audio(allowCreate) {
   master.gain.value = level();
   if (ctx.state === 'suspended' && allowCreate) void ctx.resume();
   return { ctx, out: master };
+}
+
+function noiseLayer(a, spec, start, seconds) {
+  if (!spec.noise || voices.size >= MAX_VOICES) return;
+  const frames = Math.max(1, Math.floor(a.ctx.sampleRate * seconds));
+  const buffer = a.ctx.createBuffer(1, frames, a.ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  // Short generated electrical texture: no sample asset and no persistent
+  // random loop. Its own bandpass/envelope makes it a tactile transient rather
+  // than broadband hiss.
+  for (let i = 0; i < frames; i++) data[i] = Math.random() * 2 - 1;
+  const source = a.ctx.createBufferSource();
+  const filter = a.ctx.createBiquadFilter();
+  const amp = a.ctx.createGain();
+  source.buffer = buffer;
+  filter.type = 'bandpass';
+  filter.frequency.value = spec.noiseCenter || 1400;
+  filter.Q.value = 1.4;
+  amp.gain.setValueAtTime(0.0001, start);
+  amp.gain.linearRampToValueAtTime(spec.noise, start + Math.min(0.003, seconds / 3));
+  amp.gain.exponentialRampToValueAtTime(0.0001, start + seconds);
+  source.connect(filter).connect(amp).connect(a.out);
+  voices.add(source);
+  source.onended = () => {
+    voices.delete(source);
+    try { source.disconnect(); filter.disconnect(); amp.disconnect(); } catch { /* already detached */ }
+  };
+  source.start(start);
+  source.stop(start + seconds);
 }
 
 function tone(spec, allowCreate) {
@@ -62,6 +92,7 @@ function tone(spec, allowCreate) {
   amp.gain.linearRampToValueAtTime(spec.peak ?? 0.7, start + Math.min(0.006, seconds / 3));
   amp.gain.exponentialRampToValueAtTime(0.0001, start + seconds);
   osc.connect(filter).connect(amp).connect(a.out);
+  noiseLayer(a, spec, start, seconds);
   voices.add(osc);
   osc.onended = () => {
     voices.delete(osc);
@@ -73,10 +104,25 @@ function tone(spec, allowCreate) {
 
 const CUES = {
   navigate: [
-    { from: 2200, to: 1740, ms: 24, type: 'sine', peak: 0.28 },
+    { from: 2200, to: 1740, ms: 24, type: 'sine', peak: 0.22, noise: 0.035, noiseCenter: 2300 },
   ],
   activate: [
-    { from: 980, to: 1380, ms: 48, type: 'square', peak: 0.52 },
+    { from: 980, to: 1380, ms: 48, type: 'square', peak: 0.42, noise: 0.055, noiseCenter: 1700 },
+  ],
+  open: [
+    { from: 610, to: 1040, ms: 72, type: 'triangle', peak: 0.38, noise: 0.05, noiseCenter: 1200 },
+  ],
+  close: [
+    { from: 980, to: 410, ms: 78, type: 'triangle', peak: 0.34, noise: 0.045, noiseCenter: 900 },
+  ],
+  valueUp: [
+    { from: 820, to: 1120, ms: 34, type: 'square', peak: 0.3 },
+  ],
+  valueDown: [
+    { from: 1120, to: 790, ms: 34, type: 'square', peak: 0.28 },
+  ],
+  data: [
+    { from: 1450, to: 2380, ms: 58, type: 'sine', peak: 0.3, noise: 0.04, noiseCenter: 2600 },
   ],
   success: [
     { from: 520, to: 720, ms: 55, type: 'sine', peak: 0.42 },
@@ -86,7 +132,7 @@ const CUES = {
     { from: 880, to: 620, ms: 85, type: 'triangle', peak: 0.48, cutoff: 1700 },
   ],
   error: [
-    { from: 210, to: 145, ms: 115, type: 'sawtooth', peak: 0.42, cutoff: 900 },
+    { from: 210, to: 145, ms: 115, type: 'sawtooth', peak: 0.42, cutoff: 900, noise: 0.08, noiseCenter: 520 },
     { from: 155, to: 120, ms: 90, delay: 75, type: 'square', peak: 0.22, cutoff: 700 },
   ],
   arrival: [
@@ -104,7 +150,7 @@ function profileAllows(cue) {
 }
 
 /**
- * @param {'navigate'|'activate'|'success'|'warning'|'error'|'arrival'} cue
+ * @param {'navigate'|'activate'|'open'|'close'|'valueUp'|'valueDown'|'data'|'success'|'warning'|'error'|'arrival'} cue
  * @param {{gesture?:boolean, minGap?:number}} opts
  */
 export function playCyberpunkCue(cue, { gesture = false, minGap = 35 } = {}) {

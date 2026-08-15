@@ -3579,7 +3579,7 @@ async function boot() {
     toast: el.toast, toastText: el.toastText, toastAction: el.toastAction,
     toastDrain: el.toastDrain, toastIcon: el.toastIcon, toastKbd: el.toastKbd,
   });
-  /* The cyberpunk skin's ears: delegated pointer + keyboard listeners gate on
+  /* The cyberpunk skin's ears: delegated pointer, keyboard and value listeners gate on
      data-theme AT PLAY TIME, so they cost nothing in every other theme and
      never need unwiring when the theme changes. */
   initCyberpunkFx();

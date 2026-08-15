@@ -18,6 +18,7 @@ Newcomer order: this file → ARCHITECTURE.md → THREADING.md → the audits.
 | STRUCTURE.md | The growth playbook: CSS volumes and folder law, pinned not remembered |
 | IMPLEMENTATION-2026-08-15.md | The plan landing the 2026-08-15 system audit's findings — every AUD-ID mapped to files, settings, and pins (P0–P3) |
 | STATE-BOUNDARY.md | Worker≠app runtime state — the law against "helpfully" unifying them |
+| CYBERPUNK-AUDIO-STUDY.md | Public sound-design research translated into an original, asset-free UI synthesis grammar and safety limits |
 
 Audits live in `../audits/`. The per-wave audit series was retired after its
 fixes shipped (round 65 cleanup); the two load-bearing survivors and the
