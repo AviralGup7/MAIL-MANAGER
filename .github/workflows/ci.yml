@@ -98,6 +98,11 @@ jobs:
       - name: Contract typecheck (checkJs)
         run: npm run types
 
+      # A declared gate must have teeth. This selected critical-module run is
+      # bounded and independent of the eight full-suite shards.
+      - name: Critical-module coverage floors
+        run: npm run coverage
+
       - name: Benchmark (data layer)
         run: npm run bench
 

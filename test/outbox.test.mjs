@@ -13,7 +13,7 @@ import assert from 'node:assert/strict';
 import { fakeStorage } from './helpers/storage.mjs';
 
 const {
-  enqueue, dueItems, nextWakeIn, canUndo, markFailed, isStuck, statusOf,
+  enqueue, dueItems, nextWakeIn, canUndo, markFailed, markUncertain, isStuck, statusOf,
   flushOutbox, cancel, retryNow, loadOutbox, saveOutbox, normaliseOutbox,
   _resetOutbox, isDispatching, DEFAULT_HOLD_MS, MAX_ATTEMPTS, BACKOFF_MS,
   prioritizeDue,
@@ -338,6 +338,17 @@ test('flushOutbox reports NAMESPACED ids of what actually left (bug-hunt #27)', 
   });
   assert.equal(res.sent, 1);
   assert.deepEqual(res.sentIds, ['g:gmail-123'], 'g:-prefixed wire id, never a bare mixed-space value');
+});
+
+test('an unknown delivery outcome never enters automatic retry', () => {
+  const item = { id: 'u1', state: 'sending', draft, queuedAt: NOW, releaseAt: 0, attempts: 0, nextAttempt: 0 };
+  const uncertain = markUncertain(item, Object.assign(new Error('connection reset'), { code: 'OUTCOME_UNKNOWN' }));
+  assert.equal(uncertain.state, 'uncertain');
+  assert.deepEqual(dueItems([uncertain], NOW + 1_000_000), [], 'no automatic second send');
+  assert.equal(nextWakeIn([uncertain], NOW), null, 'uncertainty does not hot-loop the pump');
+  assert.equal(isStuck(uncertain), true, 'the rail offers explicit Retry/Discard');
+  assert.match(statusOf(uncertain), /check Sent/i, 'the UI explains the safe recovery action');
+  assert.equal(normaliseOutbox([uncertain])[0].state, 'uncertain', 'the state survives restart');
 });
 
 test('a fresh send outranks a backlog of retries (bug-hunt 43 #1)', () => {
