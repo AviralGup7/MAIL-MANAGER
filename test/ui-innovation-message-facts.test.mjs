@@ -8,16 +8,17 @@ test('reader contains an accessible message-facts region', () => {
 });
 
 test('message facts are derived from real record state', () => {
-  const src = read('src/app/mail/reader.js');
+  const src = read('src/app/mail/reader-facts.js');
   for (const key of ['STATE', 'THREAD', 'SOURCE', 'CONFIDENCE']) assert.match(src, new RegExp(`'${key}'`));
   assert.doesNotMatch(src, /Math\.random/);
 });
 
 test('facts use textContent and never HTML interpolation', () => {
-  const src = read('src/app/mail/reader.js');
-  const block = src.slice(src.indexOf("const facts = ["), src.indexOf('el.rIntel.replaceChildren'));
-  assert.match(block, /textContent/);
-  assert.doesNotMatch(block, /innerHTML|insertAdjacentHTML/);
+  const src = read('src/app/mail/reader-facts.js');
+  assert.match(src, /textContent/);
+  assert.match(src, /createElement\('dt'\)/);
+  assert.match(src, /createElement\('dd'\)/);
+  assert.doesNotMatch(src, /innerHTML|insertAdjacentHTML/);
 });
 
 test('legacy and dossier-off modes remove the additive facts', () => {

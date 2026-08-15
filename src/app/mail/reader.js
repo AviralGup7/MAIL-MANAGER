@@ -18,6 +18,7 @@
  */
 
 import { Store } from './store.js';
+import { renderMessageFacts } from './reader-facts.js';
 import { sanitizeHtml, escapeHtml } from '../core/sanitize.js';
 import { flyRowIdentity, abortRowIdentity } from '../motion/reader-morph.js';
 import { getTheme } from '../system/themes.js';
@@ -261,27 +262,7 @@ export function renderReaderTags(m) {
     recat
   );
 
-  if (el.rIntel) {
-    const conversation = storeOf().thread(Store.threadOf(m));
-    const facts = [
-      ['STATE', m.unread ? 'UNREAD' : 'READ'],
-      ['THREAD', `${conversation?.count || 1} MESSAGE${conversation?.count === 1 ? '' : 'S'}`],
-      ['SOURCE', String(m._provenance || 'gmail').toUpperCase()],
-      ...(!confident ? [['CONFIDENCE', `${Math.round((m.confidence ?? 1) * 100)}%`]] : []),
-    ];
-    const frag = document.createDocumentFragment();
-    for (const [key, value] of facts) {
-      const fact = document.createElement('div');
-      fact.className = 'r-fact';
-      const k = document.createElement('dt');
-      k.textContent = key;
-      const v = document.createElement('dd');
-      v.textContent = value;
-      fact.append(k, v);
-      frag.appendChild(fact);
-    }
-    el.rIntel.replaceChildren(frag);
-  }
+  renderMessageFacts(el.rIntel, m, storeOf(), LOW_CONFIDENCE);
 }
 
 function renderMessageDeadline(m) {
