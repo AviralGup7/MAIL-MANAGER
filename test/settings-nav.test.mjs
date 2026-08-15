@@ -156,29 +156,29 @@ test('one visible panel, roving selection, arrows move focus; Escape untouched',
     sp.openSettings({});
     const tabs = [...doc.querySelectorAll('#settings-nav [role="tab"]')];
     assert.deepEqual(tabs.map((b) => b.textContent),
-      ['Appearance', 'Reading', 'Composing', 'Sync & notifications', 'General'],
+      ['Appearance', 'Interface intelligence', 'Reading', 'Composing', 'Sync & notifications', 'General'],
       'one tab per section, in descriptor order');
     const visible = () => [...doc.querySelectorAll('.set-section')].filter((s) => !s.hidden);
     assert.equal(visible().length, 1, 'exactly one panel painted');
     assert.equal(visible()[0].id, 'set-p-appearance', 'first section by default');
-    assert.deepEqual(tabs.map((b) => b.tabIndex), [0, -1, -1, -1, -1], 'roving tabindex');
+    assert.deepEqual(tabs.map((b) => b.tabIndex), [0, -1, -1, -1, -1, -1], 'roving tabindex');
     assert.equal(tabs[0].getAttribute('aria-controls'), 'set-p-appearance');
     assert.equal(doc.getElementById('set-p-appearance').getAttribute('aria-labelledby'), 'set-t-appearance');
 
     /* Click moves selection and the panel; the roving stop follows. */
-    tabs[1].click();
+    tabs[2].click();
     assert.equal(visible()[0].id, 'set-p-reading');
-    assert.deepEqual(tabs.map((b) => b.tabIndex), [-1, 0, -1, -1, -1]);
-    assert.equal(tabs[1].getAttribute('aria-selected'), 'true');
+    assert.deepEqual(tabs.map((b) => b.tabIndex), [-1, -1, 0, -1, -1, -1]);
+    assert.equal(tabs[2].getAttribute('aria-selected'), 'true');
 
     /* Arrow keys move selection WITH focus (auto-activation), wrapping. */
-    tabs[1].dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    tabs[2].dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
     assert.equal(visible()[0].id, 'set-p-composing');
-    assert.equal(doc.activeElement, tabs[2], 'focus follows the arrow');
-    tabs[2].dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+    assert.equal(doc.activeElement, tabs[3], 'focus follows the arrow');
+    tabs[3].dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'End', bubbles: true }));
     assert.equal(visible()[0].id, 'set-p-general');
-    assert.equal(doc.activeElement, tabs[4]);
-    tabs[4].dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    assert.equal(doc.activeElement, tabs[5]);
+    tabs[5].dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
     assert.equal(visible()[0].id, 'set-p-appearance', 'wraps at the end');
 
     /* Escape is NOT the rail's: if the rail swallowed it, layers.js could
