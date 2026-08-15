@@ -687,11 +687,28 @@ test('derived reads are memoised per version and invalidated by mutation (arch A
   const c2 = s.counts();
   assert.notEqual(c2, c1, 'a mutation bumps the version and busts the memo');
   assert.equal(c2.augsd, 2);
-  // category slices memoise too
+  /*
+   * Category slices memoise too — but the CALLER never receives the memo
+   * itself (audit EXT2-H3). This assertion used to be reference-equality,
+   * which pinned exactly the aliasing hazard the 'all' path had already been
+   * fixed for: `idsFor('augsd').push(x)` corrupted every later read of that
+   * category until the next flush, and `.length = 0` made it read empty.
+   *
+   * So the contract under test is now the right one: equal CONTENTS from the
+   * memo, a fresh array each call, and mutation of a handed-out copy leaving
+   * the store untouched. The memo is still proven to exist by the version
+   * cache below — a recompute would have to walk `order` again.
+   */
   const ids1 = s.idsFor('augsd');
-  assert.equal(s.idsFor('augsd'), ids1);
+  const ids2 = s.idsFor('augsd');
+  assert.deepEqual(ids2, ids1, 'same version, same contents');
+  assert.notEqual(ids2, ids1, 'but never the same array — the memo is not the callers');
+  assert.ok(s._memo.has('ids:augsd'), 'the slice is genuinely memoised, not recomputed blind');
+  ids1.push('POISON');
+  ids1.sort();
+  assert.deepEqual(s.idsFor('augsd'), ['b', 'a'], 'mutating a handed-out copy cannot reach the store');
   s.remove('b');
-  assert.notEqual(s.idsFor('augsd'), ids1, 'removal busts the slice memo');
+  assert.deepEqual(s.idsFor('augsd'), ['a'], 'removal busts the slice memo');
 });
 
 /* ==========================================================================
