@@ -203,10 +203,27 @@ export function dispatchable(item, accountEmail) {
     ? item.accountEmail.trim().toLowerCase() : '';
   const current = typeof accountEmail === 'string'
     ? accountEmail.trim().toLowerCase() : '';
-  // Legacy UNOWNED rows cannot be assigned safely, so they remain visible and
-  // dispatchable for migration compatibility. An OWNED row is different: an
-  // unproved current session is not permission to send it. Fail closed until
-  // identity activation succeeds.
+  /*
+   * Legacy UNOWNED rows cannot be assigned safely, so they remain visible and
+   * dispatchable for migration compatibility. An OWNED row is different: an
+   * unproved current session is not permission to send it. Fail closed until
+   * identity activation succeeds.
+   *
+   * EXT2-M6 WITHDRAWN (audit round 4). I proposed also refusing an unstamped
+   * row under an unproved session — "neither sends into the dark". Tested,
+   * and it is wrong: `accountEmail` is absent for an ordinary single-account
+   * install until identity activation completes, and for every caller that
+   * does not thread it through. The change stranded queued mail in seven
+   * existing scenarios, which is the precise harm the legacy fail-open exists
+   * to prevent, in exchange for a cross-account send that the STAMP already
+   * prevents on every row written since AUD-C2.
+   *
+   * The residual exposure is narrow and bounded: a row queued before the
+   * stamp existed, still queued now, sent under a different account. Closing
+   * it properly means backfilling stamps at migration, not refusing mail at
+   * dispatch. Left as-is deliberately, with the reasoning recorded so it is
+   * not re-attempted.
+   */
   if (!mine) return true;
   if (!current) return false;
   return mine === current;

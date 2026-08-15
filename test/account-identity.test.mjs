@@ -241,6 +241,15 @@ const draft = { to: 'prof@bits.example', subject: 'Lab', body: 'text' };
 test('dispatchable: legacy passes, the owner passes, a stranger is refused', () => {
   // Unstamped rows predate identity: refusing them would strand real mail.
   assert.equal(dispatchable({ draft }, A), true, 'legacy under a known session');
+  /*
+   * Including under an unproven session, and that is LOAD-BEARING (audit
+   * EXT2-M6, withdrawn). Refusing here was tried and reverted: accountEmail
+   * is absent for an ordinary single-account install until identity
+   * activation completes, so the stricter rule stranded queued mail in seven
+   * existing scenarios — the exact harm the legacy fail-open prevents. The
+   * cross-account send it was meant to stop is already prevented by the
+   * STAMP on every row written since AUD-C2.
+   */
   assert.equal(dispatchable({ draft }, ''), true, 'legacy under an unproven session');
   // A stamped row is a promise BY someone — asymmetric on purpose.
   assert.equal(dispatchable({ draft, accountEmail: A }, A.toUpperCase()), true,
