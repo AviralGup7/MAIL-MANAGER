@@ -56,18 +56,15 @@ test('skin motion stays finite and skin keyframes stay namespaced', () => {
   }
 });
 
-test('the fx module gates on the theme and builds nothing eagerly', () => {
+test('the modular FX system gates at play time and builds no audio eagerly', () => {
   const fx = read('src/app/system/cyberpunk-fx.js').replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, '');
-  /* 2026-08-14: the gate gained the settings override and now reads
-     `d.theme` off a dataset alias — the pin follows the refactor; the
-     authority twin (settings-authority.test) pins the exact new shape. */
-  assert.ok(fx.includes("theme === 'cyberpunk'"), 'play-time gate on the theme attribute');
-  assert.ok(fx.indexOf('AudioContext') > fx.indexOf('function audio()'),
-    'AudioContext may only be reached through the lazy constructor — creating one at import trips the console-clean smoke gate');
+  const audio = read('src/app/system/cyberpunk-audio.js').replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, '');
+  assert.ok(fx.includes("theme === 'cyberpunk'"), 'controller gates on the active theme');
+  assert.ok(audio.includes("d.sounds !== 'off'"), 'audio gates on the live sound preference');
+  assert.ok(audio.indexOf('new AudioContext') > audio.indexOf('function audio('),
+    'AudioContext exists only behind the lazy gesture constructor');
   assert.ok(!/^initCyberpunkFx\(\);?\s*$/m.test(fx), 'no self-wiring; main.js owns the call');
-  /* No audio ASSETS anywhere: the kit is oscillator arithmetic by policy, so
-     the repo ships no sampled or downloaded game audio. */
-  assert.ok(!/\.(mp3|ogg|wav|m4a)\b/i.test(fx), 'sounds are synthesized, never files');
+  assert.ok(!/\.(mp3|ogg|wav|m4a)\b/i.test(fx + audio), 'sounds are synthesized, never files');
 });
 
 test('one owner: only the skin volume and the fx module speak cyberpunk', () => {

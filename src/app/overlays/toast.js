@@ -43,6 +43,14 @@ export function toast(text, opts = {}) {
 
   setText(el.toastText, text);
   el.toast.dataset.kind = kind;
+  // One semantic feedback channel for optional theme voices/visual signals.
+  // The toast remains the accessible source of truth; this event carries no
+  // message content and no listener is required for correctness.
+  const doc = el.toast.ownerDocument;
+  const EventCtor = doc?.defaultView?.CustomEvent || globalThis.CustomEvent;
+  if (doc && EventCtor) {
+    doc.dispatchEvent(new EventCtor('bmm:feedback', { detail: { kind } }));
+  }
   /*
    * ERRORS ARE ANNOUNCED, NOT MERELY SHOWN (round 45 Phase 2). role=alert is
    * assertive: an interruption the user must hear about, where 'polite'

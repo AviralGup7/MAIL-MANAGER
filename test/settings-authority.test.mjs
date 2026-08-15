@@ -46,8 +46,8 @@ test('each sense has exactly one consumer, attribute-fed', () => {
   assert.ok(skin.includes("[data-textures='off']"),
     'the texture guard lives in the skin volume, next to what it guards');
   const fx = read('src/app/system/cyberpunk-fx.js').replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, '');
-  assert.ok(fx.includes("d.sounds !== 'off'"), 'the sound gate reads the attribute at play time');
-  assert.ok(!/import/.test(fx), 'the fx module imports nothing — attributes, never the store');
-  /* And the property both ways: the theme check survived the refactor. */
-  assert.ok(fx.includes("d.theme === 'cyberpunk'"), 'the theme still grants the voice first');
+  const audio = read('src/app/system/cyberpunk-audio.js').replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, '');
+  assert.ok(audio.includes("d.sounds !== 'off'"), 'the synthesizer reads the attribute at play time');
+  assert.ok(!/settings\.js/.test(fx + audio), 'FX modules consume root attributes, never the settings store');
+  assert.ok(fx.includes("d.theme === 'cyberpunk'"), 'the controller still gates on the theme');
 });

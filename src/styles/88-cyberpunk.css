@@ -56,6 +56,12 @@
   to { opacity: 0; transform: translate3d(0, 108vh, 0); }
 }
 
+@keyframes cp-signal-kick {
+  0% { opacity: 0.55; transform: translate3d(-3px, 0, 0); }
+  45% { opacity: 1; transform: translate3d(2px, 0, 0); }
+  100% { opacity: 1; transform: none; }
+}
+
 /* ---- GATE SENTINEL: every selector below carries [data-theme='cyberpunk']. */
 
 /* The skin's own tokens (--cp-cut, --cp-scan, --track-caps) are DEFINED in
@@ -358,6 +364,21 @@ html[data-theme='cyberpunk'] #system-strip .sys-cell b {
 html[data-theme='cyberpunk'] #system-strip .sys-action {
   border-color: var(--cp-structural);
   clip-path: polygon(var(--s-1) 0, 100% 0, 100% calc(100% - var(--s-1)), calc(100% - var(--s-1)) 100%, 0 100%, 0 var(--s-1));
+}
+html.cp-signal-activate[data-theme='cyberpunk'] #system-strip,
+html.cp-signal-success[data-theme='cyberpunk'] #system-strip,
+html.cp-signal-warning[data-theme='cyberpunk'] #system-strip,
+html.cp-signal-error[data-theme='cyberpunk'] #system-strip {
+  animation: cp-signal-kick var(--dur-base) var(--ease-out) 1;
+}
+html.cp-signal-success[data-theme='cyberpunk'] #system-strip {
+  border-color: var(--success);
+}
+html.cp-signal-warning[data-theme='cyberpunk'] #system-strip {
+  border-color: var(--warning);
+}
+html.cp-signal-error[data-theme='cyberpunk'] #system-strip {
+  border-color: var(--danger);
 }
 
 /* One active slab; passive rows stay dark and do not compete. */

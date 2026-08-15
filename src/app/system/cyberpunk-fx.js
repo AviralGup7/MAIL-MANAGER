@@ -1,153 +1,94 @@
 /**
- * CYBERPUNK FX — the theme's voice and its arrival blink.
+ * Cyberpunk interaction controller.
  *
- * The brief for the Cyberpunk theme was that it should control more than
- * colour: buttons, animation, textures AND SOUND. This module is the sound.
- * Everything is SYNTHESIZED in code — oscillator chirps shaped by envelopes —
- * an original composition in the spirit of neon-terminal UI audio. No
- * sampled or downloaded game audio ships in this repo, and no asset files
- * ship at all: the whole kit is arithmetic.
- *
- * THE GATE. Silence unless documentElement.dataset.theme === 'cyberpunk',
- * checked AT PLAY TIME (not at init), so switching themes mid-session
- * silences the next interaction and re-arming is instant. There is no
- * separate setting: the theme IS the switch, which is exactly the isolation
- * the brief asked for — leave the theme and it is as if this module never
- * existed. The skin side (classes, textures) lives in 88-cyberpunk.css.
- *
- * LAZY CONTEXT. An AudioContext created before a user gesture starts
- * 'suspended' and warns in the console — and boot/console-clean is a smoke
- * gate — so the context is born inside the first qualifying pointer event.
- * The integration harness has no AudioContext at all; every entry point
- * tolerates that and quietly does nothing, because in tests there is also
- * no cyberpunk theme.
- *
- * MASTER GAIN sits at 0.05: these are UI textures felt more than heard, not
- * notifications. If a user ever asks for quieter, turn the one number.
+ * Policy lives here; synthesis and finite visual state live in dedicated
+ * modules. Two delegated listeners cover the whole app, semantic feedback
+ * arrives through one custom event, and every path gates at play time.
  */
 
-let _ctx = null;
-let _master = null;
-let _lastHover = 0;
+import { playCyberpunkCue, disposeCyberpunkAudio } from './cyberpunk-audio.js';
+import { cyberpunkArrival, cyberpunkSignal, disposeCyberpunkMotion } from './cyberpunk-motion.js';
 
-/** Double duty: play-time gate. Everything asks this first.
- *
- * Two conditions, one attribute each:
- *   data-theme === 'cyberpunk'  — the theme grants the voice;
- *   data-sounds !== 'off'       — SETTINGS OUTRANK IT. The root attribute is
- * the published truth (applyVisualPrefs stamps it at boot and on every
- * write), so this module never imports the settings store and never caches
- * a value that could go stale. Flip the setting and the very next click is
- * silent, theme unchanged.
- */
+let wiredRoot = null;
+let lastHover = 0;
+
 function active() {
   if (typeof document === 'undefined') return false;
   const d = document.documentElement.dataset;
-  return d.theme === 'cyberpunk' && d.sounds !== 'off';
+  return d.theme === 'cyberpunk';
 }
 
-/** The context, created inside a gesture or not at all. Null when absent. */
-function audio() {
-  if (!active()) return null;
-  if (_ctx === null) {
-    if (typeof AudioContext === 'undefined') return null; // jsdom, old shells
-    _ctx = new AudioContext();
-    _master = _ctx.createGain();
-    _master.gain.value = 0.05;
-    _master.connect(_ctx.destination);
-  }
-  // A context parked by the autoplay policy wakes inside a real gesture —
-  // every call here rides one (click / pointerover), so resume is legal now.
-  if (_ctx.state === 'suspended') _ctx.resume();
-  return { ctx: _ctx, out: _master };
-}
+const VOICED = 'button, [role="button"], [role="menuitem"], [role="option"], [role="tab"], a, input, select';
 
-/**
- * One shaped chirp. `from -> to` is the pitch glide in Hz over `ms`, through
- * a lowpass so the square/saw edges read as "terminal" rather than "alarm".
- * The envelope is a 4ms attack and an exponential decay to avoid clicks.
- */
-function chirp({ from, to, ms, type, peak = 1 }) {
-  const a = audio();
-  if (!a) return;
-  const t = a.ctx.currentTime;
-  const osc = a.ctx.createOscillator();
-  const amp = a.ctx.createGain();
-  const lp = a.ctx.createBiquadFilter();
-  lp.type = 'lowpass';
-  lp.frequency.value = 2200;
-  osc.type = type;
-  osc.frequency.setValueAtTime(from, t);
-  osc.frequency.exponentialRampToValueAtTime(to, t + ms / 1000);
-  amp.gain.setValueAtTime(0, t);
-  amp.gain.linearRampToValueAtTime(peak, t + 0.004);
-  amp.gain.exponentialRampToValueAtTime(0.0001, t + ms / 1000);
-  osc.connect(lp).connect(amp).connect(a.out);
-  osc.start(t);
-  osc.stop(t + ms / 1000 + 0.02);
+function targetOf(e) {
+  const target = e.target;
+  if (!target || typeof target.closest !== 'function') return null;
+  const control = target.closest(VOICED);
+  if (!control || control.disabled || control.getAttribute?.('aria-disabled') === 'true') return null;
+  return control;
 }
-
-/** Controls worth a voice. Rows are excluded on purpose: pointer wandering
-    a long list would read as static, and the game's own lists are quiet. */
-const VOICED = 'button, [role="button"], [role="menuitem"], [role="option"], [role="tab"], a, input, select, label';
 
 function onClick(e) {
-  const t = e.target;
-  /* No bare `Element` (fuzz-campaign CI debt, 2026-08-14): the jsdom
-     harness has no DOM globals, so `instanceof Element` threw
-     ReferenceError inside this capture listener on EVERY app click in
-     the integration shards -- the click died before chirp() could
-     gate itself. It stayed latent until defect #7's repair let the
-     jsdom boot reach initCyberpunkFx. Duck-typing is also the
-     honest shape here: the only thing this handler truly needs is a
-     target that can closest(). */
-  if (!t || typeof t.closest !== 'function' || !t.closest(VOICED)) return;
-  chirp({ from: 1180, to: 1560, ms: 45, type: 'square' });
+  if (!active()) return;
+  const control = targetOf(e);
+  if (!control) return;
+  const warning = control.classList?.contains('danger') || control.dataset?.act === 'trash';
+  playCyberpunkCue(warning ? 'warning' : 'activate', { gesture: true, minGap: 28 });
+  cyberpunkSignal(warning ? 'warning' : 'activate', 300);
 }
 
 function onHover(e) {
-  const t = e.target;
-  /* No bare `Element` (fuzz-campaign CI debt, 2026-08-14): the jsdom
-     harness has no DOM globals, so `instanceof Element` threw
-     ReferenceError inside this capture listener on EVERY app click in
-     the integration shards -- the click died before chirp() could
-     gate itself. It stayed latent until defect #7's repair let the
-     jsdom boot reach initCyberpunkFx. Duck-typing is also the
-     honest shape here: the only thing this handler truly needs is a
-     target that can closest(). */
-  if (!t || typeof t.closest !== 'function' || !t.closest(VOICED)) return;
+  if (!active() || !targetOf(e)) return;
   const now = Date.now();
-  if (now - _lastHover < 90) return; // pointer sweep is one tick, not twenty
-  _lastHover = now;
-  chirp({ from: 2350, to: 1800, ms: 25, type: 'sine', peak: 0.5 });
+  if (now - lastHover < 110) return;
+  lastHover = now;
+  playCyberpunkCue('navigate', { gesture: true, minGap: 90 });
 }
 
-/**
- * Wire the delegation. Called once at boot; every sound still gates on the
- * theme at play time, so this costs two listeners and nothing else until —
- * and unless — Cyberpunk is chosen.
- */
+function onFeedback(e) {
+  if (!active()) return;
+  const kind = e.detail?.kind;
+  const cue = kind === 'success' ? 'success' : kind === 'error' ? 'error' :
+    kind === 'undo' ? 'warning' : null;
+  if (!cue) return;
+  playCyberpunkCue(cue, { gesture: false, minGap: 80 });
+  cyberpunkSignal(cue, cue === 'error' ? 500 : 380);
+}
+
+function onPageHide() {
+  disposeCyberpunkMotion();
+  void disposeCyberpunkAudio();
+}
+
 export function initCyberpunkFx(root = document) {
+  if (wiredRoot === root) return;
+  disposeCyberpunkFx();
+  wiredRoot = root;
   root.addEventListener('click', onClick, true);
   root.addEventListener('pointerover', onHover, true);
+  root.addEventListener('bmm:feedback', onFeedback);
+  globalThis.addEventListener?.('pagehide', onPageHide, { once: true });
 }
 
-/**
- * THE ARRIVAL. Called by setTheme when the theme lands on cyberpunk: a CRT
- * blink on the shell (the .cp-enter class; 88-cyberpunk.css owns the look)
- * plus a three-note rising sting. Both are bounded: the class comes off on
- * animationend or a timeout — jsdom never fires animationend, and a stale
- * class is inert anyway because the CSS rule also gates on data-theme.
- */
 export function cyberpunkEnterFx() {
-  if (typeof document !== 'undefined') {
-    const root = document.documentElement;
-    root.classList.add('cp-enter');
-    const drop = () => root.classList.remove('cp-enter');
-    root.addEventListener('animationend', drop, { once: true });
-    setTimeout(drop, 500);
+  if (!active()) return;
+  cyberpunkArrival();
+  // Called from the theme-picker click path, so context creation is legal.
+  playCyberpunkCue('arrival', { gesture: true, minGap: 0 });
+}
+
+export function disposeCyberpunkFx() {
+  if (wiredRoot) {
+    wiredRoot.removeEventListener('click', onClick, true);
+    wiredRoot.removeEventListener('pointerover', onHover, true);
+    wiredRoot.removeEventListener('bmm:feedback', onFeedback);
   }
-  chirp({ from: 440, to: 660, ms: 60, type: 'sawtooth', peak: 0.8 });
-  setTimeout(() => chirp({ from: 660, to: 880, ms: 60, type: 'sawtooth', peak: 0.8 }), 70);
-  setTimeout(() => chirp({ from: 880, to: 1320, ms: 90, type: 'sawtooth' }), 140);
+  wiredRoot = null;
+  lastHover = 0;
+  disposeCyberpunkMotion();
+}
+
+export function _resetCyberpunkFx() {
+  disposeCyberpunkFx();
+  void disposeCyberpunkAudio();
 }
