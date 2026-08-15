@@ -1604,10 +1604,11 @@ test('THEME: choosing one applies it and persists the choice', async (t) => {
 
 test('THEME: a saved theme is applied at boot', async (t) => {
   if (!JSDOM) return t.skip('jsdom not installed');
-  const { doc, restore } = await boot({ storageSeed: { theme: 'nord' } });
+  const { doc, settle, restore } = await boot({ storageSeed: { theme: 'nord' } });
   try {
     assert.equal(doc.documentElement.dataset.theme, 'nord');
     assert.equal(doc.documentElement.dataset.scheme, 'dark');
+    await settle(12);
   } finally {
     restore();
   }
@@ -1617,10 +1618,11 @@ test('THEME: a stored value from the old binary toggle falls back cleanly', asyn
   if (!JSDOM) return t.skip('jsdom not installed');
   // Before the picker existed, this key held 'light' or 'dark'. Those are not
   // theme ids, and an unknown id must not leave the app unstyled.
-  const { doc, restore } = await boot({ storageSeed: { theme: 'dark' } });
+  const { doc, settle, restore } = await boot({ storageSeed: { theme: 'dark' } });
   try {
     assert.equal(doc.documentElement.dataset.theme, 'daylight');
     assert.ok(doc.documentElement.style.getPropertyValue('--bg'));
+    await settle(12);
   } finally {
     restore();
   }
