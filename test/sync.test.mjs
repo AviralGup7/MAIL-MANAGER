@@ -214,11 +214,18 @@ test('anchorHistory defaults to true, so the inbox is never accidentally skipped
   assert.match(syncSrc, /anchorHistory = true/);
 });
 
-test('the cursor is written only when an anchor was actually captured', () => {
-  // `if (anchor)` — writing an undefined cursor would clear it entirely and
-  // force a full resync on every startup.
-  const writes = [...syncSrc.matchAll(/if \(anchor\) await setHistoryId\(anchor\)/g)];
-  assert.ok(writes.length >= 2, 'both the empty-page and normal paths must guard the write');
+test('sync preparation never commits its own cursor', () => {
+  const page = syncSrc.slice(
+    syncSrc.indexOf('export async function syncPage'),
+    syncSrc.indexOf('export async function syncDelta')
+  );
+  const delta = syncSrc.slice(syncSrc.indexOf('export async function syncDelta'));
+  assert.doesNotMatch(page, /await setHistoryId\(/,
+    'the page caller must persist before committing its returned anchor');
+  assert.doesNotMatch(delta, /await setHistoryId\(res\.historyId\)/,
+    'the delta caller must persist before committing nextHistoryId');
+  assert.match(syncSrc, /export async function commitHistoryId/,
+    'commit is an explicit second phase');
 });
 
 test('page 2 and beyond never re-anchor', () => {
