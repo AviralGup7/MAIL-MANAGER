@@ -399,7 +399,7 @@ src/
 timetable/data.json         GENERATED. 688 courses, 119 change rows.
 timetable/sources/          The two official documents, verbatim.
 tools/parse-timetable.mjs   Offline parser. Never runs in the extension.
-test/                       1,998 declared tests. `npm test` · `npm run test:ci` (fails on skips)
+test/                       2,011 declared tests. `npm test` · `npm run test:ci` (fails on skips)
   app.mail.integration.test.mjs      Core mail-shell integration journeys.
   app.features.integration.test.mjs  Feature/workspace integration journeys.
   resilience.test.mjs       Failure injection across every persistence module.
@@ -459,9 +459,16 @@ mis-file something the preview mis-files it too.
 
 ## Status
 
-**1,998+ declared tests pass, 0 skipped.** Many of them boot the real `app.html` in a real
+**2,011 declared tests, 0 skipped.** Many of them boot the real `app.html` in a real
 DOM and drive it as a user would — click a row, type in search, press `j`/`k`,
 archive, snooze, sign out. All seven themes pass WCAG AA in CI.
+
+This line used to claim the declared count "pass", and the doc gate that
+guards it only ever checked the *declared* count — so the claim stayed green
+while `npm test` was actually red on a clean clone: one integration file booted
+108 jsdom documents and died of heap exhaustion (audit R3-01). The suites are
+split now and the heap budget is a CI invariant, but the wording stays honest
+about what is being counted: declarations here, execution in CI.
 
 **Still not run in Chrome against a real inbox.** Everything the tests cannot
 reach is unverified: the OAuth consent screen, the takeover animation on a live
