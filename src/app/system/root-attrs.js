@@ -57,6 +57,7 @@ export function applyVisualPrefs() {
   root.setAttribute('data-sounds', settings.get('sounds') !== false ? 'on' : 'off');
   root.setAttribute('data-ui-profile', settings.get('uiProfile') || 'modern');
   root.setAttribute('data-cp-intensity', settings.get('cyberpunkIntensity') || 'balanced');
+  root.setAttribute('data-cp-audio', settings.get('cyberpunkAudioProfile') || 'semantic');
   root.setAttribute('data-telemetry', settings.get('showTelemetry') !== false ? 'on' : 'off');
   root.setAttribute('data-provenance', settings.get('showProvenance') !== false ? 'on' : 'off');
   root.setAttribute('data-reader-dossier', settings.get('readerDossier') !== false ? 'on' : 'off');

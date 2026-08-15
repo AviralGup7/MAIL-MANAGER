@@ -2,7 +2,7 @@
  * Cyberpunk interaction controller.
  *
  * Policy lives here; synthesis and finite visual state live in dedicated
- * modules. Two delegated listeners cover the whole app, semantic feedback
+ * modules. Three delegated listeners cover pointer and keyboard use across the whole app, semantic feedback
  * arrives through one custom event, and every path gates at play time.
  */
 
@@ -37,6 +37,19 @@ function onClick(e) {
   cyberpunkSignal(warning ? 'warning' : 'activate', 300);
 }
 
+function onKeydown(e) {
+  if (!active()) return;
+  const control = targetOf(e);
+  if (!control) return;
+  if (e.key === 'Enter' || e.key === ' ') {
+    const warning = control.classList?.contains('danger') || control.dataset?.act === 'trash';
+    playCyberpunkCue(warning ? 'warning' : 'activate', { gesture: true, minGap: 28 });
+    cyberpunkSignal(warning ? 'warning' : 'activate', 300);
+  } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
+    playCyberpunkCue('navigate', { gesture: true, minGap: 90 });
+  }
+}
+
 function onHover(e) {
   if (!active() || !targetOf(e)) return;
   const now = Date.now();
@@ -65,6 +78,7 @@ export function initCyberpunkFx(root = document) {
   disposeCyberpunkFx();
   wiredRoot = root;
   root.addEventListener('click', onClick, true);
+  root.addEventListener('keydown', onKeydown, true);
   root.addEventListener('pointerover', onHover, true);
   root.addEventListener('bmm:feedback', onFeedback);
   globalThis.addEventListener?.('pagehide', onPageHide, { once: true });
@@ -80,6 +94,7 @@ export function cyberpunkEnterFx() {
 export function disposeCyberpunkFx() {
   if (wiredRoot) {
     wiredRoot.removeEventListener('click', onClick, true);
+    wiredRoot.removeEventListener('keydown', onKeydown, true);
     wiredRoot.removeEventListener('pointerover', onHover, true);
     wiredRoot.removeEventListener('bmm:feedback', onFeedback);
   }

@@ -350,7 +350,7 @@ test('every setting in the schema has a control on this page', async (t) => {
       'clearOutboxOnSignOut',
       // UI generation controls live in the in-app Interface intelligence
       // sheet, where their result is visible immediately.
-      'uiProfile', 'cyberpunkIntensity', 'showTelemetry', 'showProvenance',
+      'uiProfile', 'cyberpunkIntensity', 'cyberpunkAudioProfile', 'showTelemetry', 'showProvenance',
       'readerDossier', 'threadTimeline', 'queryConsole', 'timetableTerminal',
       'operationCenter', 'calmContent',
     ]);

@@ -106,6 +106,10 @@ export const SCHEMA = {
    */
   uiProfile: { type: 'enum', def: 'modern', values: ['modern', 'legacy'] },
   cyberpunkIntensity: { type: 'enum', def: 'balanced', values: ['calm', 'balanced', 'maximum'] },
+  /* Audio density is independent of visual intensity. `semantic` voices
+     actions and outcomes but keeps pointer travel quiet; `full` adds hover
+     navigation, while `minimal` keeps only warnings and errors. */
+  cyberpunkAudioProfile: { type: 'enum', def: 'semantic', values: ['minimal', 'semantic', 'full'] },
   showTelemetry: { type: 'bool', def: true },
   showProvenance: { type: 'bool', def: true },
   readerDossier: { type: 'bool', def: true },

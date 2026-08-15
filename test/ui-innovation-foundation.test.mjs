@@ -23,7 +23,7 @@ test('every additive interface layer has an independent setting', async () => {
 test('root attributes publish every interface preference', () => {
   const src = read('src/app/system/root-attrs.js');
   for (const attr of [
-    'data-ui-profile', 'data-cp-intensity', 'data-telemetry', 'data-provenance',
+    'data-ui-profile', 'data-cp-intensity', 'data-cp-audio', 'data-telemetry', 'data-provenance',
     'data-reader-dossier', 'data-thread-timeline', 'data-query-console',
     'data-tt-terminal', 'data-operation-center', 'data-calm-content',
   ]) assert.match(src, new RegExp(attr));

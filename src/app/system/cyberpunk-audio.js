@@ -9,6 +9,8 @@
 let ctx = null;
 let master = null;
 let lastCueAt = 0;
+const voices = new Set();
+const MAX_VOICES = 12;
 
 function rootData() {
   return typeof document === 'undefined' ? {} : document.documentElement.dataset;
@@ -30,8 +32,9 @@ function level() {
 function audio(allowCreate) {
   if (!cyberpunkAudioActive()) return null;
   if (ctx === null) {
-    if (!allowCreate || typeof AudioContext === 'undefined') return null;
-    ctx = new AudioContext();
+    const AudioCtor = globalThis.AudioContext || globalThis.webkitAudioContext;
+    if (!allowCreate || typeof AudioCtor !== 'function') return null;
+    ctx = new AudioCtor();
     master = ctx.createGain();
     master.gain.value = level();
     master.connect(ctx.destination);
@@ -44,6 +47,7 @@ function audio(allowCreate) {
 function tone(spec, allowCreate) {
   const a = audio(allowCreate);
   if (!a) return;
+  if (voices.size >= MAX_VOICES) return;
   const start = a.ctx.currentTime + (spec.delay || 0) / 1000;
   const seconds = spec.ms / 1000;
   const osc = a.ctx.createOscillator();
@@ -58,6 +62,11 @@ function tone(spec, allowCreate) {
   amp.gain.linearRampToValueAtTime(spec.peak ?? 0.7, start + Math.min(0.006, seconds / 3));
   amp.gain.exponentialRampToValueAtTime(0.0001, start + seconds);
   osc.connect(filter).connect(amp).connect(a.out);
+  voices.add(osc);
+  osc.onended = () => {
+    voices.delete(osc);
+    try { osc.disconnect(); filter.disconnect(); amp.disconnect(); } catch { /* already detached */ }
+  };
   osc.start(start);
   osc.stop(start + seconds + 0.02);
 }
@@ -87,12 +96,19 @@ const CUES = {
   ],
 };
 
+function profileAllows(cue) {
+  const profile = rootData().cpAudio || 'semantic';
+  if (profile === 'minimal') return cue === 'warning' || cue === 'error';
+  if (profile === 'semantic') return cue !== 'navigate';
+  return true;
+}
+
 /**
  * @param {'navigate'|'activate'|'success'|'warning'|'error'|'arrival'} cue
  * @param {{gesture?:boolean, minGap?:number}} opts
  */
 export function playCyberpunkCue(cue, { gesture = false, minGap = 35 } = {}) {
-  if (!CUES[cue] || !cyberpunkAudioActive()) return false;
+  if (!CUES[cue] || !cyberpunkAudioActive() || !profileAllows(cue)) return false;
   if (cue === 'navigate' && rootData().cpIntensity === 'calm') return false;
   const now = Date.now();
   if (now - lastCueAt < minGap) return false;
@@ -110,11 +126,21 @@ export async function disposeCyberpunkAudio() {
   ctx = null;
   master = null;
   lastCueAt = 0;
+  for (const voice of voices) {
+    try { voice.stop(); voice.disconnect(); } catch { /* already ended */ }
+  }
+  voices.clear();
   if (old && old.state !== 'closed') {
     try { await old.close(); } catch { /* teardown is best-effort */ }
   }
 }
 
 export function _audioState() {
-  return { created: ctx !== null, active: cyberpunkAudioActive(), intensity: rootData().cpIntensity || 'balanced' };
+  return {
+    created: ctx !== null,
+    active: cyberpunkAudioActive(),
+    intensity: rootData().cpIntensity || 'balanced',
+    profile: rootData().cpAudio || 'semantic',
+    voices: voices.size,
+  };
 }

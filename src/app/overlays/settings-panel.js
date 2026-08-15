@@ -85,6 +85,15 @@ const SECTIONS = [
         hint: 'Only affects the Cyberpunk theme. Reduced motion, textures and sounds still outrank this choice.',
       },
       {
+        kind: 'select', key: 'cyberpunkAudioProfile', label: 'Cyberpunk sound detail',
+        options: [
+          ['minimal', 'Minimal — warnings and errors only'],
+          ['semantic', 'Semantic — actions and outcomes'],
+          ['full', 'Full — include navigation ticks'],
+        ],
+        hint: 'Independent of visual intensity. Interface sounds Off still silences every profile.',
+      },
+      {
         kind: 'select', key: 'density', label: 'Row density',
         options: [
           ['comfortable', 'Comfortable — the default'],

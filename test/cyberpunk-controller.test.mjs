@@ -5,6 +5,7 @@ const src = readFileSync(new URL('../src/app/system/cyberpunk-fx.js', import.met
 
 test('controller uses delegation instead of per-control listeners', () => {
   assert.match(src, /addEventListener\('click', onClick, true\)/);
+  assert.match(src, /addEventListener\('keydown', onKeydown, true\)/);
   assert.match(src, /addEventListener\('pointerover', onHover, true\)/);
   assert.doesNotMatch(src, /querySelectorAll/);
 });

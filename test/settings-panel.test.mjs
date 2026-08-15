@@ -204,7 +204,7 @@ test('open renders one control per descriptor item and closes through the layer'
        Cyberpunk intensity); legacy behavior remains one setting away. */
     assert.equal(node.querySelectorAll('input[type="checkbox"]').length, 19, 'checkboxes');
     assert.equal(node.querySelectorAll('#settings-body .set-row button').length, 4, 'actions + the rules editor pair');
-    assert.equal(node.querySelectorAll('select').length, 5, 'selects');
+    assert.equal(node.querySelectorAll('select').length, 7, 'selects');
     assert.equal(node.querySelectorAll('input[type="range"]').length, 3, 'sliders');
     assert.equal(node.querySelectorAll('textarea').length, 1, 'signature');
     assert.equal(node.querySelectorAll('input[name="set-theme"]').length, THEMES.length,

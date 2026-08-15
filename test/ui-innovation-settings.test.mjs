@@ -10,6 +10,7 @@ test('settings exposes modern/legacy and cyberpunk intensity choices', () => {
   assert.match(src, /Modern — information-rich default/);
   assert.match(src, /Legacy — previous chrome and layout/);
   assert.match(src, /key: 'cyberpunkIntensity'/);
+  assert.match(src, /key: 'cyberpunkAudioProfile'/);
   for (const value of ['calm', 'balanced', 'maximum']) {
     assert.ok(src.includes(`['${value}'`), `${value} intensity is offered`);
   }
