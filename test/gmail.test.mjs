@@ -893,3 +893,57 @@ test('an unrecoverable preserved attachment THROWS, it never sends without it (b
     globalThis.fetch = realFetch;
   }
 });
+
+/* ==========================================================================
+ * Audit R3 regressions (2026-08-15)
+ * ========================================================================== */
+test('toEpoch refuses a negative internalDate (audit R3-13)', async () => {
+  const { toEpoch } = await import('../src/background/gmail.js');
+  // '-5' is finite AND truthy, so it used to pass straight through and sort
+  // the message below everything -- the same hiding the 1970 fallback exists
+  // to prevent.
+  assert.equal(toEpoch('-5', undefined), 0);
+  assert.equal(toEpoch('1e999', undefined), 0, 'Infinity stays refused');
+  assert.equal(toEpoch('1700000000000', undefined), 1700000000000);
+  assert.ok(toEpoch('-5', 'Wed, 01 Jan 2025 10:00:00 GMT') > 0,
+    'a bad internalDate still falls back to the Date header');
+});
+
+test('parseBatch survives a body containing the boundary (audit R3-14)', async () => {
+  const { parseBatch } = await import('../src/background/gmail.js');
+  const b = 'bmm_test_1';
+  const text =
+    `--${b}\r\nContent-Type: application/http\r\n\r\nHTTP/1.1 200 OK\r\n\r\n` +
+    `{"id":"m1","snippet":"quoting --${b} in the text"}\r\n--${b}--\r\n`;
+  const out = parseBatch(text);
+  assert.equal(out.length, 1, 'the part must not be cut in half by its own text');
+  assert.equal(out[0].id, 'm1');
+});
+
+test('batchMetadata names the ids a partial batch lost (audit R3-03)', async () => {
+  const { batchMetadata } = await import('../src/background/gmail.js');
+  const b = 'bmm_test_2';
+  const ok = (id) =>
+    `--${b}\r\nContent-Type: application/http\r\n\r\nHTTP/1.1 200 OK\r\n\r\n` +
+    `${JSON.stringify({ id, threadId: `t${id}`, internalDate: '1700000000000',
+      labelIds: ['INBOX'], payload: { headers: [{ name: 'Subject', value: id }] } })}\r\n`;
+  const dead = (id) =>
+    `--${b}\r\nContent-Type: application/http\r\n\r\nHTTP/1.1 500 Internal Server Error\r\n\r\n` +
+    `{"error":{"code":500,"message":"${id}"}}\r\n`;
+
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true, status: 200,
+    text: async () => ok('a') + dead('b') + ok('c') + `--${b}--\r\n`,
+  });
+  try {
+    const out = await batchMetadata(['a', 'b', 'c']);
+    assert.deepEqual(out.map((m) => m.id), ['a', 'c']);
+    // The whole point: the shortfall is SAYABLE, so the cursor can be held.
+    assert.deepEqual(out.missingIds, ['b']);
+    assert.equal(Object.keys(out).includes('missingIds'), false,
+      'missingIds must stay non-enumerable so the array shape is unchanged');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});

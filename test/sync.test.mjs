@@ -238,3 +238,132 @@ test('page 2 and beyond never re-anchor', () => {
   const guard = fn.slice(0, fn.indexOf('const { ids, nextPageToken }'));
   assert.ok(guard.includes('!pageToken'), 'pagination must suppress anchoring');
 });
+
+/* ==========================================================================
+ * A SHORT BATCH MUST NOT MOVE THE CURSOR (audit R3-03)
+ *
+ * The most consequential defect the R3 audit found, and it belongs in this
+ * file because it is exactly the class the header names: silent mail loss.
+ *
+ * parseBatch drops sub-requests whose status is not 2xx, and only the
+ * ALL-fail case threw. So 40 failures out of 100 returned 60 messages inside
+ * a 200 OK envelope -- indistinguishable from a healthy batch of 60, and
+ * invisible to the whole-request retry. syncDelta then advanced historyId
+ * past ids that were never fetched, and since the cursor is the only record
+ * of what has been seen, that mail was gone until the cursor expired.
+ * ========================================================================== */
+test('a permanently-failing sub-request withholds the cursor (audit R3-03)', async () => {
+  const B = 'bmm_sync_r3';
+  const part = (id, status) =>
+    `--${B}\r\nContent-Type: application/http\r\n\r\nHTTP/1.1 ${status}\r\n\r\n` +
+    (status === 200
+      ? JSON.stringify({ id, threadId: `t${id}`, internalDate: '1700000000000',
+          labelIds: ['INBOX'], payload: { headers: [{ name: 'Subject', value: id }] } })
+      : '{"error":{"code":500}}') + '\r\n';
+
+  const store = { historyId: '1000' };
+  const realChrome = globalThis.chrome;
+  const realFetch = globalThis.fetch;
+  const area = {
+    get: async (k) => {
+      const keys = [].concat(k === null ? Object.keys(store) : k);
+      const out = {};
+      for (const key of keys) if (key in store) out[key] = store[key];
+      return out;
+    },
+    set: async (o) => { Object.assign(store, o); },
+    remove: async (k) => { for (const key of [].concat(k)) delete store[key]; },
+  };
+  globalThis.chrome = {
+    storage: { local: area, session: { ...area, get: async () => ({ accessToken: 'tok', expiresAt: Date.now() + 9e6 }) } },
+    runtime: { id: 'test' },
+  };
+
+  let batches = 0;
+  globalThis.fetch = async (url, init) => {
+    const u = String(url);
+    if (u.includes('/history')) {
+      return { ok: true, status: 200, json: async () => ({
+        historyId: '2000',
+        history: [{ messagesAdded: ['m1', 'm2', 'm3'].map((id) => ({ message: { id, labelIds: ['INBOX'] } })) }],
+      }) };
+    }
+    if (u.includes('/batch')) {
+      batches++;
+      const ids = [...String(init.body).matchAll(/messages\/([^?]+)\?/g)].map((m) => m[1]);
+      return { ok: true, status: 200,
+        text: async () => ids.map((id) => part(id, id === 'm2' ? 500 : 200)).join('') + `--${B}--\r\n` };
+    }
+    return { ok: true, status: 200, json: async () => ({ historyId: '2000' }) };
+  };
+
+  try {
+    const mod = await import('../src/background/sync.js?r3=' + Math.random());
+    const res = await mod.syncDelta();
+
+    assert.deepEqual(res.added.map((m) => m.id), ['m1', 'm3'], 'what arrived is still applied');
+    assert.equal(res.incomplete, true, 'the shortfall is reported, not hidden');
+    assert.deepEqual(res.missingIds, ['m2']);
+    assert.equal(res.nextHistoryId, '', 'the cursor must NOT advance past unfetched mail');
+    assert.ok(batches >= 2, 'the stragglers get one retry before giving up');
+
+    // And the commit path must honour it: an empty cursor is a no-op.
+    await mod.commitHistoryId(res.nextHistoryId);
+    assert.equal(store.historyId, '1000', 'the stored cursor is untouched, so the delta replays');
+  } finally {
+    globalThis.chrome = realChrome;
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('a fully successful batch still advances the cursor (audit R3-03)', async () => {
+  const B = 'bmm_sync_ok';
+  const okPart = (id) =>
+    `--${B}\r\nContent-Type: application/http\r\n\r\nHTTP/1.1 200 OK\r\n\r\n` +
+    JSON.stringify({ id, threadId: `t${id}`, internalDate: '1700000000000',
+      labelIds: ['INBOX'], payload: { headers: [{ name: 'Subject', value: id }] } }) + '\r\n';
+
+  const store = { historyId: '1000' };
+  const realChrome = globalThis.chrome;
+  const realFetch = globalThis.fetch;
+  const area = {
+    get: async (k) => {
+      const keys = [].concat(k === null ? Object.keys(store) : k);
+      const out = {};
+      for (const key of keys) if (key in store) out[key] = store[key];
+      return out;
+    },
+    set: async (o) => { Object.assign(store, o); },
+    remove: async (k) => { for (const key of [].concat(k)) delete store[key]; },
+  };
+  globalThis.chrome = {
+    storage: { local: area, session: { ...area, get: async () => ({ accessToken: 'tok', expiresAt: Date.now() + 9e6 }) } },
+    runtime: { id: 'test' },
+  };
+  globalThis.fetch = async (url, init) => {
+    const u = String(url);
+    if (u.includes('/history')) {
+      return { ok: true, status: 200, json: async () => ({
+        historyId: '2000',
+        history: [{ messagesAdded: [{ message: { id: 'm1', labelIds: ['INBOX'] } }] }],
+      }) };
+    }
+    if (u.includes('/batch')) {
+      const ids = [...String(init.body).matchAll(/messages\/([^?]+)\?/g)].map((m) => m[1]);
+      return { ok: true, status: 200, text: async () => ids.map(okPart).join('') + `--${B}--\r\n` };
+    }
+    return { ok: true, status: 200, json: async () => ({ historyId: '2000' }) };
+  };
+
+  try {
+    const mod = await import('../src/background/sync.js?ok=' + Math.random());
+    const res = await mod.syncDelta();
+    assert.equal(res.incomplete, undefined, 'a healthy delta carries no shortfall');
+    assert.equal(res.nextHistoryId, '2000', 'the happy path is unchanged');
+    await mod.commitHistoryId(res.nextHistoryId);
+    assert.equal(store.historyId, '2000');
+  } finally {
+    globalThis.chrome = realChrome;
+    globalThis.fetch = realFetch;
+  }
+});

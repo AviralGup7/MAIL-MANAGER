@@ -8,7 +8,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Store } from '../src/app/mail/store.js';
+import { Store, MAX_MESSAGES } from '../src/app/mail/store.js';
 
 function msg(i, over = {}) {
   return {
@@ -692,4 +692,93 @@ test('derived reads are memoised per version and invalidated by mutation (arch A
   assert.equal(s.idsFor('augsd'), ids1);
   s.remove('b');
   assert.notEqual(s.idsFor('augsd'), ids1, 'removal busts the slice memo');
+});
+
+/* ==========================================================================
+ * UNICODE SEARCH RECALL (audit R3-02)
+ *
+ * The tokeniser split on [^a-z0-9@.-], so every non-ASCII character was a
+ * SEPARATOR: "Café" indexed as `caf` and matched neither "café" nor "cafe",
+ * and a fully non-Latin subject indexed to NOTHING at all. Because tokenize
+ * is deliberately the one definition of searchable text, lane membership and
+ * the rail counts inherited the same blindness.
+ *
+ * The existing fuzz suite fed Unicode in and asserted TOTALITY -- that
+ * nothing threw. These assert RECALL, which is the property that was
+ * actually broken. That distinction is the lesson: a property test only
+ * defends the property it states.
+ * ========================================================================== */
+test('search recalls non-ASCII subjects (audit R3-02)', () => {
+  const s = new Store();
+  const rows = [
+    ['Café update', 'café'],
+    ['naïve résumé', 'naïve'],
+    ['Zürich trip', 'Zürich'],
+    ['señor garcía', 'señor'],
+    ['ÅÄÖ nordic', 'ÅÄÖ'],
+    ['Ελληνικά νέα', 'Ελληνικά'],
+    ['Привет мир', 'Привет'],
+    ['छात्रावास सूचना', 'छात्रावास'],
+    ['日本語 メール', '日本語'],
+  ];
+  rows.forEach(([subject], i) => s.upsert({
+    id: `u${i}`, threadId: `t${i}`, from: 'a@b.c',
+    subject, snippet: '', date: i, category: 'academics',
+  }));
+
+  for (const [subject, query] of rows) {
+    assert.equal(s.search(query).length, 1, `"${query}" must find "${subject}"`);
+  }
+});
+
+test('accent folding works in BOTH directions (audit R3-02)', () => {
+  const s = new Store();
+  s.upsert({ id: 'a', threadId: 't', from: 'Zoë <z@x.com>',
+    subject: 'Café résumé deadline', snippet: '', date: 1, category: 'academics' });
+
+  // Typed without the accent, stored with it -- and the reverse.
+  for (const q of ['cafe', 'café', 'resume', 'résumé', 'zoe', 'zoë']) {
+    assert.equal(s.search(q).length, 1, `"${q}" must fold to a hit`);
+  }
+});
+
+test('folding never rewrites Indic vowel signs (audit R3-02)', () => {
+  // A blanket \p{Diacritic} strip turned छात्रावास into छातरावास -- a
+  // different word nobody will ever type. Marks are dropped only when the
+  // base character is Latin.
+  assert.equal(Store.foldTerm('छात्रावास'), 'छात्रावास');
+  assert.equal(Store.foldTerm('Café'), 'cafe');
+});
+
+test('CJK is reachable by a two-character query (audit R3-02)', () => {
+  const s = new Store();
+  s.upsert({ id: 'j', threadId: 'tj', from: 'a@b.c',
+    subject: '日本語のメール', snippet: '', date: 1, category: 'academics' });
+  assert.equal(s.search('日本').length, 1, 'a bigram must hit a space-less script');
+});
+
+test('a partial token does not produce a spurious hit (audit R3-02)', () => {
+  // "Zürich" used to index as `rich`, so searching "rich" wrongly matched.
+  const s = new Store();
+  s.upsert({ id: 'z', threadId: 'tz', from: 'a@b.c',
+    subject: 'Zürich trip', snippet: '', date: 1, category: 'academics' });
+  assert.equal(s.search('rich').length, 0, 'the umlaut must not shatter the word');
+});
+
+test('upsertMany reports what survived eviction (audit R3-08)', () => {
+  const s = new Store();
+  // Fill to the cap with recent mail.
+  const recent = Array.from({ length: MAX_MESSAGES }, (_, i) => ({
+    id: `r${i}`, threadId: `tr${i}`, from: 'a@b.c', subject: 's', snippet: '',
+    date: 1_000_000 + i, category: 'academics',
+  }));
+  assert.equal(s.upsertMany(recent), MAX_MESSAGES);
+  assert.equal(s.isFull, true);
+
+  // Paging backwards appends OLDER mail, which eviction drops immediately.
+  // Reporting 0 is what lets the pager stop lying about "Load more".
+  const older = [{ id: 'ancient', threadId: 'ta', from: 'a@b.c', subject: 'old',
+    snippet: '', date: 1, category: 'academics' }];
+  assert.equal(s.upsertMany(older), 0, 'an evicted insert must not count as kept');
+  assert.equal(s.get('ancient'), undefined);
 });
