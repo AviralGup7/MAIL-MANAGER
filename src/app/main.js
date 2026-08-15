@@ -2336,6 +2336,7 @@ async function endAccountSession(gateMessage) {
   resetView({ allMailboxes: true });
   saver.invalidate();
   state.signedIn = false;
+  renderSidebar();
   // The address on the chrome identity belongs to the account that is
   // LEAVING. Keeping it would sign follow-ups, snoozes and audience marks
   // with the previous account's name.
