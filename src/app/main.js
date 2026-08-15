@@ -2307,6 +2307,10 @@ $('btn-gmail').addEventListener('click', release);
  * after the gate appeared.
  */
 async function endAccountSession(gateMessage) {
+  // Invalidate every in-flight response before the first teardown await. Doing
+  // this at the end leaves a window where a completing refresh can restore
+  // freshness/cache state while sign-out is clearing it.
+  opEpoch++;
   // The saver defers writes to idle; a save scheduled by the store
   // notifications below would otherwise resurrect an (empty) cache blob
   // AFTER clearCache() removed it. Invalidate before AND after resetView —
@@ -2336,7 +2340,6 @@ async function endAccountSession(gateMessage) {
   // LEAVING. Keeping it would sign follow-ups, snoozes and audience marks
   // with the previous account's name.
   state.selfEmail = '';
-  opEpoch++; // late responses from this session are now stale
   // A signed-out app that keeps polling is a privacy problem, not just a bug.
   stopAutoRefresh();
   clearHash(); // 65/g: the gate has no view state worth a URL.
