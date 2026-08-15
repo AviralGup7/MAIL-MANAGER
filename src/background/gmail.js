@@ -103,9 +103,16 @@ function isQuota403(body) {
  * blackhole proxy into an ordinary retryable network error.
  */
 const FETCH_BUDGET_MS = 30000;
-async function fetchRetrying(url, init, label) {
+function unknownOutcome(label, cause) {
+  const err = new Error(`Delivery outcome unknown for ${label}: ${cause}`);
+  err.code = 'OUTCOME_UNKNOWN';
+  return err;
+}
+
+async function fetchRetrying(url, init, label, { retry = true } = {}) {
   let lastErr;
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+  const attempts = retry ? MAX_ATTEMPTS : 1;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
     bump('requests');
     if (attempt > 1) bump('retries');
     let res;
@@ -116,8 +123,9 @@ async function fetchRetrying(url, init, label) {
     } catch (err) {
       // Network-level failure (offline, DNS, connection reset, our own
       // abort). Retryable.
+      if (!retry) throw unknownOutcome(label, err.message);
       lastErr = new Error(`Network error on ${label}: ${err.message}`);
-      if (attempt === MAX_ATTEMPTS) break;
+      if (attempt === attempts) break;
       await sleep(backoffMs(attempt, null));
       continue;
     }
@@ -136,7 +144,8 @@ async function fetchRetrying(url, init, label) {
     const retryable = RETRYABLE.has(res.status) || (res.status === 403 && isQuota403(body));
     lastErr = new Error(`Gmail ${res.status} ${label} ${body.slice(0, 200)}`);
 
-    if (!retryable || attempt === MAX_ATTEMPTS) break;
+    if (!retry && res.status >= 500) throw unknownOutcome(label, `Gmail ${res.status}`);
+    if (!retryable || attempt === attempts) break;
     await sleep(backoffMs(attempt, res));
   }
   throw lastErr;
@@ -144,17 +153,22 @@ async function fetchRetrying(url, init, label) {
 
 /** Single authenticated call. `path` is relative to /users/me. */
 export async function api(path, init = {}) {
-  // The token is resolved once, outside the retry loop: getToken() already
-  // single-flights refreshes, and an access token cannot expire inside the
-  // ~3.5s worst-case retry window (it is refreshed 60s early).
-  const headers = await authHeaders(init.headers || {});
-  const res = await fetchRetrying(`${BASE}${path}`, { ...init, headers }, path);
+  // `retry` is transport policy, not a Fetch option. Non-idempotent callers
+  // disable it so a lost acknowledgement becomes OUTCOME_UNKNOWN instead of a
+  // second external side effect.
+  const { retry = true, ...fetchInit } = init;
+  const headers = await authHeaders(fetchInit.headers || {});
+  const res = await fetchRetrying(
+    `${BASE}${path}`, { ...fetchInit, headers }, path, { retry }
+  );
   if (res.status === 401) {
     // Separated auth states (V2 P1-10): renew once and retry; the renewal's
     // own error taxonomy (revoked vs transient) propagates untouched.
     await forceRenew();
-    const h2 = await authHeaders(init.headers || {});
-    const r2 = await fetchRetrying(`${BASE}${path}`, { ...init, headers: h2 }, path);
+    const h2 = await authHeaders(fetchInit.headers || {});
+    const r2 = await fetchRetrying(
+      `${BASE}${path}`, { ...fetchInit, headers: h2 }, path, { retry }
+    );
     if (r2.status === 401) {
       // A fresh token that is ALSO rejected is not data -- it is the
       // canonical revoked state. Returning the error body as a value used to
@@ -862,6 +876,7 @@ export async function sendMessage(mime, threadId) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    retry: false,
   });
 }
 
@@ -918,6 +933,7 @@ export async function saveDraft(mime, threadId, draftId) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: payload,
+    retry: false,
   });
 }
 

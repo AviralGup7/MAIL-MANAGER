@@ -24,7 +24,7 @@ import { MAX_INLINE_BYTES, MAX_INLINE_PARTS, BULK_CHUNK } from '../shared/limits
 import { loadSnoozed, removeSnooze, due, nextWakeAt } from '../app/system/snooze.js';
 // Pure queue helpers (state machine, backoff, normalisation). The RUNNER
 // lives here in the worker now: one dispatcher for every tab (bug-hunt P1).
-import { loadOutbox, saveOutbox, dueItems, markFailed, prioritizeDue, dispatchable } from '../app/compose/outbox.js';
+import { loadOutbox, saveOutbox, dueItems, markFailed, markUncertain, prioritizeDue, dispatchable } from '../app/compose/outbox.js';
 import { syncPage, syncDelta, commitHistoryId } from './sync.js';
 import { api } from './gmail.js';
 // The MIME parser lives in its own module so the in-page fallback can reuse
@@ -448,8 +448,12 @@ async function handle(msg) {
             items = items.filter((x) => x.id !== item.id);
             sent++;
           } catch (err) {
-            items = items.map((x) =>
-              x.id === item.id ? markFailed(x, err?.message || err) : x);
+            items = items.map((x) => {
+              if (x.id !== item.id) return x;
+              return err?.code === 'OUTCOME_UNKNOWN'
+                ? markUncertain(x, err)
+                : markFailed(x, err?.message || err);
+            });
             failed++;
           }
           await saveOutbox(items, chrome.storage.local);

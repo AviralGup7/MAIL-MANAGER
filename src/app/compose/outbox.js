@@ -76,7 +76,7 @@ export const MAX_ATTEMPTS = BACKOFF_MS.length;
 /**
  * @typedef {Object} OutboxItem
  * @property {string} id
- * @property {'held'|'sending'|'failed'} state
+ * @property {'held'|'sending'|'failed'|'uncertain'} state
  * @property {object} draft         to/cc/subject/body/attachments
  * @property {number} queuedAt
  * @property {number} releaseAt     when the hold expires, or 0
@@ -105,7 +105,7 @@ export function normaliseOutbox(raw) {
     // `failed` -- visible and cancellable -- never to `held`.
     if (it.state === 'sent') continue;
     const unknownState = typeof it.state === 'string'
-      ? !['held', 'sending', 'failed'].includes(it.state)
+      ? !['held', 'sending', 'failed', 'uncertain'].includes(it.state)
       : !!it.state;
     out.push({
       id: typeof it.id === 'string' && it.id ? it.id : makeId(),
@@ -120,7 +120,7 @@ export function normaliseOutbox(raw) {
        * that silently never went is worse, and the user can see and cancel a
        * failed record.
        */
-      state: it.state === 'held' ? 'held' : 'failed',
+      state: it.state === 'held' ? 'held' : (it.state === 'uncertain' ? 'uncertain' : 'failed'),
       draft: it.draft,
       queuedAt: Number.isFinite(it.queuedAt) ? it.queuedAt : Date.now(),
       // A held item with a corrupt or missing releaseAt used to default to 0
@@ -340,8 +340,19 @@ export function markFailed(item, error, now = Date.now()) {
 }
 
 /** Has this message given up retrying and started waiting for the user? */
+export function markUncertain(item, error) {
+  const message = String(error?.message || error || 'Delivery status is unknown').slice(0, 200);
+  return {
+    ...item,
+    state: 'uncertain',
+    nextAttempt: 0,
+    error: message,
+  };
+}
+
 export function isStuck(item) {
-  return item.state === 'failed' && item.attempts >= MAX_ATTEMPTS;
+  return item.state === 'uncertain' ||
+    (item.state === 'failed' && item.attempts >= MAX_ATTEMPTS);
 }
 
 /**
@@ -356,6 +367,9 @@ export function statusOf(item, now = Date.now()) {
     return left > 0 ? `Sending in ${left}s` : 'Sending…';
   }
   if (item.state === 'sending') return 'Sending…';
+  if (item.state === 'uncertain') {
+    return 'Delivery status unknown — check Sent before retrying';
+  }
   if (isStuck(item)) return `Could not send — ${item.error || 'unknown error'}`;
 
   /*
@@ -573,7 +587,12 @@ export async function flushOutbox(/** @type {{send?:(item:any)=>Promise<any>, st
         await releaseClaim(storage, item.id);
         sent++;
       } catch (err) {
-        items = items.map((x) => (x.id === item.id ? markFailed(x, err?.message || err, now) : x));
+        items = items.map((x) => {
+          if (x.id !== item.id) return x;
+          return err?.code === 'OUTCOME_UNKNOWN'
+            ? markUncertain(x, err)
+            : markFailed(x, err?.message || err, now);
+        });
         failed++;
       } finally {
         dispatching.delete(item.id);
