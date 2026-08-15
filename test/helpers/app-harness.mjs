@@ -548,7 +548,7 @@ function cacheBlob(msgs) {
  * test of the group.
  */
 const seedLabels = async (list) => {
-  const { _setLabels } = await import('../src/app/overlays/palette.js');
+  const { _setLabels } = await import('../../src/app/overlays/palette.js');
   _setLabels(list);
 };
 
