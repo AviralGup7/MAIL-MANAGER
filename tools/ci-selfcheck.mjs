@@ -130,6 +130,38 @@ check('workflow/render-bench-hard', !/render:bench unavailable \(see tools/.test
   && /render:bench \|\| code=\$\?/.test(wf.replace(/\n/g, ' ')),
   'F2: no soft-echo blanket remains');
 
+/*
+ * HEAP HEADROOM IS A CI INVARIANT NOW (audit R3-01).
+ *
+ * `npm test` was red on a clean clone because one integration file booted
+ * 108 jsdom documents and OOMed. It had been reported once and answered by
+ * RAISING --max-old-space-size; the file then grew past the new ceiling too.
+ * Nothing in the pipeline noticed either time, because shard COMPLETENESS
+ * was proven while per-file resource cost was not measured at all.
+ *
+ * These checks make the structural fix load-bearing: the budget stays low
+ * enough to report a leak, the runner and package.json cannot drift apart,
+ * and no single integration file is allowed to grow back into a monolith.
+ * The bound is boots-per-file, because that is what actually consumes heap.
+ */
+const BOOT_CAP = 45;
+const pkgJson = JSON.parse(readFileSync('package.json', 'utf8'));
+const runnerBudget = /--max-old-space-size=(\d+)/.exec(readFileSync('tools/ci-test.mjs', 'utf8'))?.[1];
+const scriptBudget = /--max-old-space-size=(\d+)/.exec(pkgJson.scripts.test || '')?.[1];
+
+check('heap/budgets-agree', runnerBudget === scriptBudget,
+  `ci-test.mjs (${runnerBudget}) and npm test (${scriptBudget}) must share one budget`);
+check('heap/budget-stays-low', Number(runnerBudget) <= 1400,
+  `raising the ceiling hides leaks; split the file instead (currently ${runnerBudget}MB)`);
+
+for (const f of readdirSync('test').filter((n) => n.endsWith('.test.mjs'))) {
+  const src = readFileSync('test/' + f, 'utf8');
+  const boots = (src.match(/\bawait boot\w*\(/g) || []).length;
+  if (!boots) continue;
+  check(`heap/boots-bounded:${f}`, boots <= BOOT_CAP,
+    `${boots} jsdom boots in one file (cap ${BOOT_CAP}) — split it rather than raising the heap`);
+}
+
 let failed = 0;
 for (const r of results) {
   console.log(`${r.ok ? 'ok  ' : '✗ NOT OK'} ${r.name}${r.detail ? ' — ' + r.detail : ''}`);

@@ -92,7 +92,7 @@ if (process.argv.includes('--dry-run') && shard) {
   process.exit(files.length ? 0 : 3);
 }
 
-const args = ['--max-old-space-size=3072', '--test'].concat(files ?? ['test/']);
+const args = ['--max-old-space-size=1400', '--test'].concat(files ?? ['test/']);
 
 if (files) {
   console.log(`Shard ${shard.i}/${shard.n}: running ${files.length} of ${ALL_TEST_FILES.length} test files`);
@@ -105,16 +105,25 @@ if (files) {
 /*
  * --max-old-space-size mirrors `npm test`, and is not optional.
  *
- * MEASURED: jsdom retains ~2.2MB per document even after close() and an
- * explicit gc() -- 20 closed documents cost 40MB, 60 cost 129MB, linearly.
- * The integration suite boots 141 of them. Run ALONE that still fits in
- * Node's default ~950MB ceiling; run under `node --test test/`, where files
- * execute in parallel and share the budget, it does not -- and the file
- * aborts with SIGABRT. That surfaces as a test failure with no assertion
- * attached, which sends you hunting a logic bug that does not exist.
+ * MEASURED: jsdom retains memory per document even after close() and an
+ * explicit gc(). The integration suite used to boot 108 documents in ONE
+ * file, which crossed the ceiling and aborted with SIGABRT -- a failure
+ * with no assertion attached, which sends you hunting a logic bug that does
+ * not exist.
+ *
+ * THE CEILING CAME BACK DOWN (audit R3-01). It had been raised to 3072 to
+ * make that file fit; the file then grew past 3072 too. Raising a ceiling
+ * buys time and hides the trend, so the fix was structural instead: the
+ * integration suite is split into four parts, and `node --test` runs each
+ * FILE in its own process. Every part now passes at 700MB -- half of this
+ * budget -- so 1400 is headroom, not a wall being scraped.
+ *
+ * KEEP IT LOW ON PURPOSE. A budget that a leak can quietly consume is a
+ * budget that stops reporting leaks. If a part starts failing here, split
+ * it (the parts are ~18 boots each); do not raise this number.
  *
  * Sharding reduces how many files share one ceiling at once, which is one
- * more reason it exists; the raised ceiling stays anyway.
+ * more reason it exists.
  */
 const res = spawnSync('node', args, {
   encoding: 'utf8',
