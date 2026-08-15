@@ -40,6 +40,17 @@
 
 const MAX_MESSAGES = 2000;
 
+/**
+ * Scripts written without spaces between words (R3-02).
+ *
+ * Han, Hiragana, Katakana and Hangul do not delimit words, so whitespace
+ * tokenisation yields one long run per phrase. `tokenize` indexes those runs
+ * by character and bigram instead, and `search` skips the prefix walk for
+ * them. One definition, used by both, so the two cannot drift.
+ */
+const CJK_RUN = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+const CJK_RUN_G = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]+/gu;
+
 export class Store {
   constructor() {
     /** @type {Map<string, Msg>} */
@@ -141,6 +152,37 @@ export class Store {
    * Subject and sender only. Snippets would triple index size for very little
    * gain, since a search that matches only a snippet is usually a search the
    * user did not mean.
+   *
+   * UNICODE IS NOT AN EDGE CASE HERE, AND TREATING IT AS ONE LOST MAIL
+   * (audit R3, finding R3-02).
+   * ------------------------------------------------------------------
+   * This used to split on `[^a-z0-9@.\-]+`, i.e. every character outside
+   * ASCII was a SEPARATOR. Measured consequences, not theorised ones:
+   *
+   *   "Café update"   indexed as `caf`,`update`  -> search "café" = 0 hits
+   *                                              -> search "cafe" = 0 hits
+   *   "Zürich trip"   indexed as `rich`,`trip`   -> "Zürich" = 0, and
+   *                                                 "rich" wrongly HIT
+   *   "日本語 メール"  indexed as NOTHING         -> unreachable by any query
+   *   "naïve résumé"  indexed as `na`,`ve`,`sum`
+   *
+   * That is total loss of recall for accented Latin, Devanagari, Cyrillic,
+   * Greek and CJK — mainstream input for a BITS mailbox, not hostile input.
+   * And because this is deliberately the ONE definition of searchable text
+   * (cross-audit B-04), the same defect propagated into lane membership and
+   * the rail counts: a message with a fully non-Latin subject occupied a row
+   * that no query could ever reach.
+   *
+   * The fix has three parts, and all three are required:
+   *   1. Split on Unicode letter/number classes (\p{L}\p{N}) instead of a-z0-9.
+   *   2. Index BOTH the raw token and its diacritic-folded form, so "café"
+   *      and "cafe" both find the same message. Folding one side only is a
+   *      one-way match and is how this class of bug half-heals.
+   *   3. Index scripts that do not use spaces (CJK) by character and bigram,
+   *      because whitespace splitting yields one enormous useless token.
+   *
+   * `search()` MUST apply `Store.foldTerm` to the query or the fold is
+   * one-way; the two are pinned together by test.
    */
   static tokenize(msg) {
     // ONE definition of searchable text (cross-audit B-04): the index and
@@ -148,19 +190,64 @@ export class Store {
     // and results cannot disagree about what a term matches.
     const text = `${msg.subject || ''} ${msg.from || ''} ${msg.snippet || ''}`.toLowerCase();
     const out = new Set();
-    // Split on anything that is not a letter, digit or @ . -
-    for (const raw of text.split(/[^a-z0-9@.\-]+/)) {
-      if (raw.length < 2) continue;
-      out.add(raw);
+
+    const add = (tok) => {
+      if (!tok) return;
+      // Two characters remains the floor for SPACE-DELIMITED scripts: a bare
+      // "a" matches most of the mailbox and costs an index entry to say so.
+      // CJK is exempt below, where one character is a real word.
+      if (tok.length < 2) return;
+      out.add(tok);
+      const folded = Store.foldTerm(tok);
+      if (folded && folded !== tok && folded.length >= 2) out.add(folded);
+    };
+
+    // Split on anything that is not a Unicode letter, digit or @ . -
+    for (const raw of text.split(/[^\p{L}\p{N}@.\-]+/u)) {
+      if (!raw) continue;
+      add(raw);
       // Also index the local part and domain of an address separately, so
       // "augsd" finds augsd@pilani.bits-pilani.ac.in.
       const at = raw.indexOf('@');
       if (at > 0) {
-        out.add(raw.slice(0, at));
-        out.add(raw.slice(at + 1));
+        add(raw.slice(0, at));
+        add(raw.slice(at + 1));
+      }
+      // SCRIPTS WITHOUT WORD SPACING. Han/Hiragana/Katakana/Hangul do not
+      // separate words with spaces, so the run above is one long token that
+      // only an exact full-string query could ever match. Index each
+      // character and each adjacent pair: a 2-char query (the common case
+      // for CJK) then hits an exact token, and longer queries hit through
+      // the prefix path. Bounded by construction — a run of n characters
+      // yields at most 2n-1 entries.
+      if (CJK_RUN.test(raw)) {
+        for (const run of raw.match(CJK_RUN_G) || []) {
+          const chars = [...run];
+          for (let i = 0; i < chars.length; i++) {
+            out.add(chars[i]);
+            if (i + 1 < chars.length) out.add(chars[i] + chars[i + 1]);
+          }
+        }
       }
     }
     return out;
+  }
+
+  /**
+   * Canonical form of one search term: lowercase, diacritics removed.
+   *
+   * NFKD splits "é" into "e" + U+0301 COMBINING ACUTE, which the
+   * \p{Diacritic} strip then removes — so "café" and "cafe" fold together.
+   * Deliberately NOT applied to CJK (which has no diacritics to strip) and
+   * deliberately lossless for the raw form, which is indexed alongside: a
+   * user who types the accent gets an exact hit, and one who does not still
+   * finds the message.
+   */
+  static foldTerm(s) {
+    return String(s || '')
+      .toLowerCase()
+      .normalize('NFKD')
+      .replace(/\p{Diacritic}/gu, '');
   }
 
   _index(msg) {
@@ -558,7 +645,19 @@ export class Store {
     const q = query.trim().toLowerCase();
     if (!q) return this.idsFor(category);
 
-    const terms = q.split(/\s+/).filter((t) => t.length >= 2);
+    /*
+     * The query is folded with the SAME function the index used
+     * (Store.foldTerm, R3-02). Folding one side only is a one-way match:
+     * the index would hold "cafe" while the user typed "café" and the two
+     * would never meet. Both the raw and the folded term are looked up, so
+     * an exact accented query still gets its exact hit.
+     *
+     * The 2-character floor is lifted for CJK, where a single character is
+     * a whole word and tokenize() indexed it as one.
+     */
+    const terms = q
+      .split(/\s+/)
+      .filter((t) => t.length >= 2 || CJK_RUN.test(t));
     if (terms.length === 0) return this.idsFor(category);
 
     /** @type {Set<string>|null} */
@@ -566,13 +665,19 @@ export class Store {
 
     for (const term of terms) {
       const hits = new Set();
-      // Exact token hit.
-      const exact = this.searchIndex.get(term);
-      if (exact) for (const id of exact) hits.add(id);
+      const folded = Store.foldTerm(term);
+      // Exact token hit, raw and folded.
+      for (const variant of folded && folded !== term ? [term, folded] : [term]) {
+        const exact = this.searchIndex.get(variant);
+        if (exact) for (const id of exact) hits.add(id);
+      }
       // Prefix hits, so "regis" finds "registration" as you type.
-      if (term.length >= 3) {
+      // CJK is exempt: its tokens are 1-2 characters by construction, so a
+      // prefix walk would match half the index rather than narrow it.
+      const prefixable = term.length >= 3 && !CJK_RUN.test(term);
+      if (prefixable) {
         for (const [tok, ids] of this.searchIndex) {
-          if (tok.length > term.length && tok.startsWith(term)) {
+          if (tok.length > term.length && (tok.startsWith(term) || (folded && tok.startsWith(folded)))) {
             for (const id of ids) hits.add(id);
           }
         }
