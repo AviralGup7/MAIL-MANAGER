@@ -13,6 +13,80 @@ code in this environment, not inferred from reading.
 
 ---
 
+## A0. REMEDIATION ADDENDUM — what was fixed, and what the fixing found
+
+*Appended after the audit, same day, by the same auditor. The findings below
+were repaired on `main`; this section is the honest record of what changed,
+what the repair work itself uncovered, and where I was wrong.*
+
+### Fixed and verified
+
+| ID | Sev | Fix | Evidence |
+|---|---|---|---|
+| R3-01 | HIGH | Integration suites split (mail 108 boots → 4 parts, features 115 → 4 parts); harness extracted to `test/helpers/app-harness.mjs`; heap budget **lowered** 3072 → 1400 | every part passes at **700 MB**, half the budget; shards 1/3/5 green |
+| R3-02 | HIGH | Unicode tokenisation: `\p{L}\p{M}\p{N}` split, NFKD accent folding on **both** index and query, CJK character+bigram indexing | 9 scripts recall correctly; "rich" no longer false-matches "Zürich" |
+| R3-03 | HIGH | `batchMetadata` reports `missingIds`; `syncDelta` retries stragglers once then **withholds** `nextHistoryId`; `syncPage` withholds its anchor | fixture with a permanently-failing sub-request leaves the cursor at 1000 and replays |
+| R3-04 | HIGH | `accountScoped` declared on every registry key; teardown iterates `ACCOUNT_SCOPED_KEYS`; in-memory mirrors (`imageAllowList`, `followupList`) reset too | registry test fails the build if a key declares neither |
+| R3-07 | MED | `history()` returns `exhausted: true`, distinct from cursor expiry | counter added |
+| R3-08 | MED | `upsertMany` returns survivors; pager stops and says "as far back as this view goes" | test pins that an evicted insert counts 0 |
+| R3-10 | MED | Four counters added for classes that strand users: `batchShortfall`, `resyncs`, `historyExhausted`, `cursorWithheld` | closed-set test widened deliberately |
+| R3-14 | LOW | `parseBatch` splits on a line-anchored delimiter | boundary-in-body part now recovers instead of vanishing |
+| R3-15 | LOW | Quote-folding capped at 40 blockquotes | — |
+| R3-16 | LOW | README test-count claim corrected; wording distinguishes *declared* from *executed* | 6/6 doc invariants |
+
+### R3-13 — WITHDRAWN. The audit was wrong.
+
+I filed `toEpoch('-5')` passing through as a defect and wrote a `ms > 0`
+guard for it. **The existing fuzz suite rejected that fix, and it was right
+to.** Pre-1970 mail is legitimately negative and the contract says so; my
+"fix" would have silently relocated genuinely old archived mail to whatever
+its *sender-controlled* `Date:` header claimed — the exact value `toEpoch`
+exists to distrust. The two errors are not symmetric: mis-sorting one absurd
+record costs a row in the wrong place; rewriting every pre-1970 timestamp
+costs real mail its real date. Reverted, with the reasoning recorded in the
+function and a test pinning the *disproved* finding so it is not re-attempted.
+
+### What the repair work uncovered that the audit missed
+
+1. **A second monolith.** The boots-per-file CI guard added for R3-01 caught
+   `app.features.integration.test.mjs` at **115 boots** — the same defect,
+   same OOM waiting for the same ceiling. The audit had only measured the
+   file that happened to be failing that day.
+2. **A broken load-time gate.** `tools/doctor.mjs` read *comments* as imports:
+   its pattern spanned newlines, so a doc comment containing `export` and,
+   lines later, `from` plus any quoted string was reported as an unresolvable
+   bare import. It fired on the phrase `"cursor expired"` and named a
+   dependency that does not exist. The worker graph is really 19 modules; the
+   20th was a phantom. A gate whose failure message misdirects is worse than
+   no gate — and this is the gate that exists because
+   `Service worker registration failed. Status code: 2` names no file.
+3. **Devanagari needs `\p{M}`, and must NOT be NFKD-folded.** My first Unicode
+   fix still shattered `छात्रावास` into `चन`, because matras are *marks*, not
+   letters; and a blanket `\p{Diacritic}` strip rewrote it to `छातरावास`, a
+   different word nobody would type. Marks are now dropped only when the base
+   character is Latin. Two bugs inside the fix for one bug.
+4. **Post-await DOM writes.** `fetchPage` wrote `$('btn-more').disabled` after
+   three awaits with no liveness check — in a page that can be torn down at
+   any of them. Real, if minor, and previously masked.
+
+### Standing corrections to the scores below
+
+The per-dimension table further down was scored **before** these repairs and
+is left unedited as the record of that moment. Post-fix, the four dimensions
+whose evidence changed materially would read: **Search 4.0 → 7.5**,
+**Test-suite quality 5.5 → 7.5**, **Memory safety 5.5 → 7.5**,
+**Account isolation 5.0 → 8.0**. Observability moves only 4.5 → 6.0: the
+counters now exist, but `persistDiag` is still only flushed from a disabled
+code path, so in the shipping configuration they remain unwritten. That is
+the honest ceiling until the background-sync decision (R3-17) is made.
+
+**Overall: 7.0 → 8.0.** Not higher, because the items that remain are the
+structural ones — `main.js` at ~3,900 LOC, `checkJs` still not covering
+`src/background/`, no service-worker termination tests, and the fallback's
+credential-boundary concession — and none of those were touched here.
+
+---
+
 ## A. Executive risk summary
 
 This is a genuinely unusual codebase. It is far above the median for a
