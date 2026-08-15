@@ -382,7 +382,7 @@ html[data-theme='cyberpunk'] #r-subject::before {
   background: var(--cp-line-active);
   box-shadow: 0 0 7px var(--cp-glow-calm);
 }
-html[data-theme='cyberpunk'] #thread-strip {
+html[data-theme='cyberpunk'] #r-thread {
   border-color: var(--cp-structural);
 }
 html[data-theme='cyberpunk'] #listquery {

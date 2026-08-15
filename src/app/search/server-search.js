@@ -107,7 +107,9 @@ async function runServerSearch() {
     // Replace, don't append: a newer query's results supersede the old
     // overlay wholesale.
     overlay.clear();
-    for (const m of ctx.shape(messages)) overlay.set(m.id, m);
+    for (const m of ctx.shape(messages)) {
+      overlay.set(m.id, { ...m, _provenance: 'remote' });
+    }
     const fresh = messages.filter((m) => !before.has(m.id));
     if (!fresh.length) {
       setSearchNote(before.size ? '' : 'No matches in your mail.');

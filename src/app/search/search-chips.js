@@ -108,6 +108,8 @@ export function renderSearchChips(container, query) {
   for (const chip of chipModel(query)) {
     const el = document.createElement('span');
     el.className = 'q-chip' + (chip.negated ? ' not' : '');
+    el.dataset.negated = String(chip.negated);
+    el.dataset.scope = chip.key || 'text';
     if (chip.key) {
       const k = document.createElement('span');
       k.className = 'q-k';

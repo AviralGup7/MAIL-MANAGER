@@ -1436,6 +1436,7 @@ function shapeRecords(messages, classified) {
       headers: m.headers,
       audience: audienceOf(m, state.selfEmail),
       courses: courseNumbersIn(`${m.subject || ''} ${m.snippet || ''}`),
+      _provenance: m._provenance || 'gmail',
     };
     if (classified) {
       const c = classify(m);
@@ -3452,7 +3453,9 @@ async function start() {
   if (!cached?.messages.length) setSkeleton(true);
   if (cached?.messages.length) {
     store.batch(() => {
-      for (const m of cached.messages) store.upsert(withDeadline(m));
+      for (const m of cached.messages) {
+        store.upsert({ ...withDeadline(m), _provenance: 'local' });
+      }
     });
     // Paint the cached list before touching the network.
     renderList();

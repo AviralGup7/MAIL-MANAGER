@@ -866,6 +866,11 @@ function buildRow(id) {
 function fillRow(li, m) {
   if (!m) return;
   const q = (s) => li.querySelector(s);
+  const provenance = String(m._provenance || (m.fromSearch ? 'remote' : 'gmail')).toUpperCase();
+  if (li.dataset.source !== provenance) li.dataset.source = provenance;
+  const operation = ctx.isInFlight?.(m.id) ? 'pending' : '';
+  if (operation) li.dataset.operation = operation;
+  else delete li.dataset.operation;
   // Forty identical "Select message" names made the accessibility tree a
   // list of clones; the subject gives each tick its own name (46 #46).
   q('.r-check')?.setAttribute('aria-label', `Select ${m.subject || m.from}`);
