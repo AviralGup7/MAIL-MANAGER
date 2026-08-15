@@ -14,8 +14,9 @@ LANCZOS, which is what gives clean edges at 16px.
 Run:  python3 tools/make-icons.py
 """
 
-from PIL import Image, ImageDraw
 import os
+
+from PIL import Image, ImageDraw
 
 SS = 8  # supersample factor
 SIZES = (16, 48, 128)

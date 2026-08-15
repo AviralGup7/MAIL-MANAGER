@@ -25,7 +25,7 @@
  */
 
 import { Store, MAX_MESSAGES } from './mail/store.js';
-import { loadCache, saveCache, clearCache, createSaver, CACHE_MAX } from './system/cache.js';
+import { loadCache, clearCache, createSaver, CACHE_MAX } from './system/cache.js';
 import { clearBodyCache } from './system/body-cache.js';
 import { clearOutbox } from '../features/outbox/model.js';
 import {
@@ -35,9 +35,8 @@ import {
 import { THEMES, DEFAULT_THEME } from './system/themes.js';
 import { applyInitialTheme, chooseTheme } from './system/theme-controller.js';
 import { icon, setIcon } from './core/icons.js';
-import { setAttr } from './core/dom.js';
-import { toast, hideToast, initToast } from './overlays/toast.js';
-import { loadViews, saveView, removeView } from './system/view-store.js';
+import { toast, initToast } from './overlays/toast.js';
+import { saveView, removeView } from './system/view-store.js';
 /* The account-scope law, derived from the storage registry rather than
    remembered in the teardown below (audit R3-04). */
 import { ACCOUNT_SCOPED_KEYS } from './system/storage-registry.js';
@@ -50,7 +49,6 @@ import { openSnoozeMenu, wireSnoozeMenu } from './overlays/snooze-menu.js';
 import { openCategoryMenu, openRecategoriseMenu, wireCategoryMenu } from './overlays/category-menu.js';
 import { renderNotices, wireNotices } from './academic/notices-rail.js';
 import { wireBulkbar } from './mail/bulkbar.js';
-import { buildReply } from './search/query.js';
 import * as settings from './system/settings.js';
 import { applyDensity, applyVisualPrefs } from './system/root-attrs.js';
 import {
@@ -62,7 +60,6 @@ import * as engine from './academic/rule-engine.js';
 import * as followups from './academic/followups.js';
 import * as deadlineStore from './academic/deadline-store.js';
 import * as myCourses from './academic/my-courses.js';
-import { detectNotice, shouldPromote, summarise } from './academic/notices.js';
 import {
   wireReader, openMessage as openMessageRaw, closeReader as closeReaderRaw,
   renderThreadStrip, syncReaderActions,
@@ -73,12 +70,12 @@ import { wireMicroInteractions } from './motion/wire-micro.js';
 import { wireLight } from './motion/light.js';
 import { assemble as fxAssemble } from './motion/particles.js';
 import {
-  wireRails, renderSnoozed, renderOutbox, pumpOutbox, cancelOutboxTimer,
+  wireRails, renderSnoozed, pumpOutbox, cancelOutboxTimer,
 } from './workspace/rails.js';
 import { wireRailVisibility } from './workspace/rail-visibility.js';
 import {
   wireList, renderList, patchRow, reorientTo, rowDomId, visibleIds,
-  collapseThreads, setCount, setSkeleton, refreshSubjectClip, travelGhost,
+  setSkeleton, refreshSubjectClip, travelGhost,
   clearRows, resetScrollState, capturePreSearchScroll, applySearchScroll,
   saveScroll, recallScroll, announceNew, renderedIdsOf, nodeByIdOf,
 } from './mail/list.js';
@@ -87,9 +84,8 @@ import { wireSystemTelemetry, renderSystemTelemetry } from './workspace/system-t
 import {
   wireBulk, selection, move, renderSelection, bulkAct, reconcileBulk, BULK_ACTIONS,
 } from './mail/bulk.js';
-import { displayName, fullDate } from './core/display.js';
-import { renderShortcuts } from './core/shortcuts.js';
-import { openLayer, closeTopLayer, hasLayers, closeAllLayers, closeWithMotion, cancelExit } from './overlays/layers.js';
+import { fullDate } from './core/display.js';
+import { closeTopLayer } from './overlays/layers.js';
 import { openMenu, closeMenu, menuIsOpen } from './overlays/menu.js';
 import { wireRowActions } from './mail/row-actions.js';
 import { wireSearchChips } from './search/search-chips.js';
@@ -105,17 +101,14 @@ import {
   clearSearchOverlay,
 } from './search/server-search.js';
 import {
-  renderViews, refreshViews, suggestViewName, updateSaveAffordance, currentViews,
-  wireViews, _resetViews,
+  renderViews, refreshViews, suggestViewName, updateSaveAffordance, wireViews, _resetViews,
 } from './search/saved-views.js';
 import {
   DEFAULT_MAILBOX, getMailbox, isMailbox, showsCategories,
 } from './mail/mailboxes.js';
 import {
-  emptyRules, loadRules, saveRules, pruneThreadMutes, toggleMute, toggleAutoArchive,
-  isAutoArchived, applyCorrection,
-  mutedCount,
-} from './mail/rules.js';
+  emptyRules, loadRules, saveRules, pruneThreadMutes, applyCorrection,
+  } from './mail/rules.js';
 import { addSnooze, removeSnooze } from '../features/snooze/model.js';
 /*
  * THE BARREL IS DISSOLVED (structure S2). features.js re-exported these five
@@ -123,13 +116,12 @@ import { addSnooze, removeSnooze } from '../features/snooze/model.js';
  * what a barrel does to a codebase's map. The shell now names each owner
  * directly; docs/STRUCTURE.md §1 holds the map.
  */
-import { undoStack, recordUndo, performUndo } from './mail/undo-actions.js';
+import { recordUndo, performUndo } from './mail/undo-actions.js';
 import { renderRadar, wireRadar, renderReaderIdle } from './academic/radar.js';
 import {
-  openPalette, closePalette, wirePalette, refreshLabels, _setLabels, labelNames,
-} from './overlays/palette.js';
+  openPalette, closePalette, wirePalette, refreshLabels, _setLabels, } from './overlays/palette.js';
 import {
-  openCompose, closeCompose, wireCompose, startReply,
+  openCompose, wireCompose, startReply,
   restoreDraftIfAny, flushDraft, editDraft,
 } from './compose/compose.js';
 import { wireAutocomplete, refreshContacts } from './compose/autocomplete.js';
@@ -142,7 +134,7 @@ import {
   CATEGORY_LABELS,
   SIDEBAR_ORDER,
 } from '../classify/categories.js';
-import { courseNumbersIn, isAcademicSender } from './academic/timetable-mail.js';
+import { courseNumbersIn } from './academic/timetable-mail.js';
 import { STORAGE } from '../platform/storage.js';
 
 // ---------------------------------------------------------------- constants --
@@ -3255,9 +3247,12 @@ const ctx = {
     navigateHash();
   },
   // The timetable panel quotes email and offers to open it, and needs a
-  // failure channel for a storage write.
-  toast,
-  openMessage,
+  // failure channel for a storage write — both already provided above
+  // (`toast`, `openMessage`). They were re-declared here, which is a silent
+  // no-op only because the second value is identical to the first; the day
+  // they differed, the LAST one would have won and the reason for the
+  // difference would have been invisible. Found by eslint's no-dupe-keys the
+  // hour the linter was added.
   // Compose hands a queued send back to the runner so the hold starts ticking
   // immediately rather than on the next scheduled wake.
   flushOutbox: () => pumpOutbox(),

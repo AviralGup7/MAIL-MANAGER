@@ -10,7 +10,15 @@
 import { icon } from '../core/icons.js';
 import { openLayer, closeWithMotion, cancelExit } from './layers.js';
 import { cameraPush, cameraPop } from '../motion/camera.js';
-import { openCompose } from '../compose/compose.js';
+/*
+ * `startReply` was USED HERE AND NEVER IMPORTED (found by eslint no-undef,
+ * 2026-08-15). The palette's Reply / Reply all / Forward commands each called
+ * it, so every one of them threw ReferenceError the moment it was invoked --
+ * three dead commands in the command palette, on the most-used verb in a mail
+ * client. Nothing caught it: the module still parses, the palette still
+ * renders, and no test opened the palette and ran those three entries.
+ */
+import { openCompose, startReply } from '../compose/compose.js';
 import { performUndo, undoStack } from '../mail/undo-actions.js';
 import * as settings from '../system/settings.js';
 import { registerReset } from '../core/reset-registry.js';
@@ -20,6 +28,17 @@ const $ = (id) => document.getElementById(id);
 /* ========================================================================== *
  * COMMAND PALETTE
  * ========================================================================== */
+
+/*
+ * The shell context, captured at wire time (eslint no-undef, 2026-08-15).
+ *
+ * renderPalette()'s empty-state row calls `ctx.runQuery(q)` -- the "no
+ * command matches, search mail instead" fallback -- but renderPalette takes
+ * no ctx parameter and none was in scope, so that row threw ReferenceError
+ * on click. Reachable by typing any non-matching string into the palette.
+ * wirePalette already RECEIVES ctx; it just never kept it.
+ */
+let paletteCtx = null;
 
 let paletteCommands = [];
 let paletteFiltered = [];
@@ -335,7 +354,7 @@ function renderPalette() {
     frag.appendChild(li);
 
     // Make Enter and click work through the paths that already exist.
-    paletteFiltered = q ? [{ id: 'fallback', label, run: () => ctx.runQuery(q) }] : [];
+    paletteFiltered = q ? [{ id: 'fallback', label, run: () => paletteCtx?.runQuery(q) }] : [];
     paletteRecentCount = 0;
     paletteIndex = 0;
   }
@@ -417,6 +436,7 @@ export function closePalette() {
 }
 
 export function wirePalette(ctx) {
+  paletteCtx = ctx;
   const box = $('palette');
   const input = $('palette-input');
   const list = $('palette-list');

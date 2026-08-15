@@ -16,6 +16,10 @@ import { dueAtOfNow } from '../academic/deadline-store.js';
 import { loadViews } from '../system/view-store.js';
 import { parseQuery } from './query.js';
 import { icon } from '../core/icons.js';
+/* Used by the view-label summariser for `category:` operators and NEVER
+   imported (eslint no-undef, 2026-08-15): naming a saved view that filters by
+   category threw ReferenceError while building its own label. */
+import { CATEGORY_LABELS } from '../../classify/categories.js';
 
 const $ = (id) => document.getElementById(id);
 
