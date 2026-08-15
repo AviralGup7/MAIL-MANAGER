@@ -18,10 +18,17 @@ const storage = {
   accessToken: 'test-token',
   expiresAt: Date.now() + 3_600_000,
 };
+/*
+ * The router listener is CAPTURED, not discarded (audit EXT2-H4). The verb
+ * table was reachable through _testHandle, but the envelope the router puts
+ * a failure into — the only thing the app ever sees — was not testable at
+ * all, which is how a classification that never crossed the wire shipped.
+ */
+export const routerListeners = [];
 globalThis.chrome = {
   runtime: {
     id: 'test',
-    onMessage: { addListener() {} },
+    onMessage: { addListener(fn) { routerListeners.push(fn); } },
     onStartup: { addListener() {} },
     onInstalled: { addListener() {} },
   },
@@ -147,4 +154,96 @@ test('GET_DRAFT stamps attachments with their owning message id', async () => {
 
 test('an unknown verb answers with a named error, not a crash', async () => {
   await assert.rejects(() => _testHandle({ type: 'NO_SUCH_VERB' }), /Unknown message: NO_SUCH_VERB/);
+});
+
+/* ==========================================================================
+ * THE FAILURE ENVELOPE (audit EXT2-H4)
+ *
+ * chrome.runtime.sendMessage structured-clones the response, and an Error's
+ * own properties do not survive that. So the router used to send nothing but
+ * `error` TEXT, and the app re-derived the failure class from it with
+ * /401|invalid_grant/i — which matches the hex MESSAGE ID in
+ * "Gmail 500 /messages/18f401ab77cd0e12/modify" and signed the user out on
+ * an unrelated backend blip.
+ *
+ * These pin the envelope: the classification crosses the wire as data, and
+ * the human text is unchanged so every existing reader still works.
+ * ========================================================================== */
+
+/** Drive the real router listener and capture what it answers. */
+async function throughRouter(msg) {
+  assert.ok(routerListeners.length, 'the worker must have registered its router');
+  return new Promise((resolve) => {
+    const keptOpen = routerListeners[0](msg, { id: 'test' }, resolve);
+    assert.equal(keptOpen, true, 'the channel must stay open for an async reply');
+  });
+}
+
+test('a failure answer carries status/code/kind, not just a sentence', async () => {
+  const realFetch = globalThis.fetch;
+  const realSetTimeout = globalThis.setTimeout;
+  globalThis.setTimeout = (fn) => realSetTimeout(fn, 0);
+  // A 500 on a message whose id contains "401" — the exact reproduction.
+  globalThis.fetch = async () => ({
+    ok: false, status: 500, text: async () => 'backend error',
+    headers: { get: () => null },
+  });
+  try {
+    const res = await throughRouter({ type: 'MARK_READ', id: '18f401ab77cd0e12' });
+    assert.equal(res.ok, false);
+    assert.equal(res.status, 500, 'the status must cross the wire');
+    assert.equal(res.kind, 'server', 'and so must the class');
+    assert.equal(res.code, 'GMAIL_500');
+    assert.match(res.error, /Gmail 500/, 'the human text is unchanged');
+    assert.notEqual(res.status, 401,
+      'a message id containing 401 must never be classified as an auth failure');
+  } finally {
+    globalThis.fetch = realFetch;
+    globalThis.setTimeout = realSetTimeout;
+  }
+});
+
+test('a real 401 is still classified as auth', async () => {
+  const realFetch = globalThis.fetch;
+  const realSetTimeout = globalThis.setTimeout;
+  globalThis.setTimeout = (fn) => realSetTimeout(fn, 0);
+  // Every attempt 401s, including the one after forceRenew, so the router
+  // surfaces the canonical revoked state rather than looping.
+  globalThis.fetch = async (url) => {
+    if (String(url).includes('accounts.google.com') || String(url).includes('oauth2')) {
+      return { ok: true, status: 200, json: async () => ({}), text: async () => '' };
+    }
+    return { ok: false, status: 401, text: async () => 'invalid credentials',
+      headers: { get: () => null } };
+  };
+  try {
+    const res = await throughRouter({ type: 'MARK_READ', id: 'plain-id' });
+    assert.equal(res.ok, false);
+    /* A 401 does NOT surface as a bare 401: api() owns the renew-once path,
+       so the answer is auth.js's own vocabulary. Any of these is the auth
+       class; what matters is that it is never mistaken for a server error
+       and never reached by a message id that merely contains "401". */
+    assert.ok(/AUTH_REVOKED|NOT_SIGNED_IN|AUTH_RENEW_TRANSIENT|401/.test(res.error),
+      `a genuine 401 must still read as an auth failure, got: ${res.error}`);
+  } finally {
+    globalThis.fetch = realFetch;
+    globalThis.setTimeout = realSetTimeout;
+    // The renew attempt above clears the session; restore it for later tests.
+    Object.assign(storage, {
+      authorized: true, accessToken: 'test-token', expiresAt: Date.now() + 3_600_000,
+    });
+  }
+});
+
+test('a success answer is unchanged by the envelope work', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => jsonResponse({ id: 'm1', threadId: 't1' });
+  try {
+    const res = await throughRouter({ type: 'MARK_READ', id: 'm1' });
+    assert.equal(res.ok, true);
+    assert.equal(res.data.id, 'm1');
+    assert.equal(res.status, undefined, 'a success carries no error classification');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
 });

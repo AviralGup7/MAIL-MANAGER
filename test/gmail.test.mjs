@@ -236,6 +236,129 @@ test('history() reports an expired cursor as tooOld', async () => {
   }
 });
 
+/*
+ * THE DESTRUCTIVE BRANCH IS RESERVED FOR AN ACTUAL 404 (audit EXT2-C2).
+ *
+ * `{tooOld:true}` is not an error report — it makes syncDelta answer
+ * `resync`, and the app then clears the store, clears the warm cache and
+ * refetches the mailbox from zero. The branch used to be chosen by
+ * `String(err).includes('404')`, and the error text carries the request
+ * path, which carries `startHistoryId=<digits>`. So a plain transient 503 on
+ * a cursor containing those three digits destroyed local state.
+ *
+ * The cursor value below is the reproduction: 4045678.
+ */
+test('a transient 5xx never destroys the mailbox, even when the cursor contains 404', async () => {
+  const { history } = await import('../src/background/gmail.js');
+  const realFetch = globalThis.fetch;
+  const realSetTimeout = globalThis.setTimeout;
+  // Collapse backoff so the three attempts do not spend real seconds.
+  globalThis.setTimeout = (fn) => realSetTimeout(fn, 0);
+  globalThis.fetch = async () => ({
+    ok: false,
+    status: 503,
+    text: async () => 'backend error',
+    headers: { get: () => null },
+  });
+  try {
+    await assert.rejects(
+      () => history('4045678'),
+      (err) => {
+        assert.equal(err.status, 503, 'the status rides the error, not just the prose');
+        assert.equal(err.kind, 'server');
+        return true;
+      },
+      'a 503 must THROW so the caller keeps its cursor — never answer tooOld'
+    );
+  } finally {
+    globalThis.fetch = realFetch;
+    globalThis.setTimeout = realSetTimeout;
+  }
+});
+
+test('a 410 Gone is an expired range, like 404', async () => {
+  const { history } = await import('../src/background/gmail.js');
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: false, status: 410, text: async () => 'gone', headers: { get: () => null },
+  });
+  try {
+    assert.deepEqual(await history('1'), { tooOld: true });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('transport errors carry a machine-readable class, not just a sentence', async () => {
+  const { apiError, networkError } = await import('../src/background/gmail.js');
+  // The message text is unchanged — humans and existing pins still read it.
+  assert.match(apiError(429, '/messages', 'slow down').message, /^Gmail 429 \/messages/);
+  assert.equal(apiError(401, '/x').kind, 'auth');
+  assert.equal(apiError(403, '/x').kind, 'permission');
+  assert.equal(apiError(404, '/x').kind, 'gone');
+  assert.equal(apiError(410, '/x').kind, 'gone');
+  assert.equal(apiError(429, '/x').kind, 'rate');
+  assert.equal(apiError(503, '/x').kind, 'server');
+  assert.equal(apiError(400, '/x').kind, 'client');
+  assert.equal(apiError(404, '/x').code, 'GMAIL_404');
+  const net = networkError('/x', 'fetch failed');
+  assert.equal(net.kind, 'network');
+  assert.equal(net.status, 0, 'no HTTP status ever happened — 0, not undefined');
+});
+
+/*
+ * A 429 IS NOT A LOST ATTACHMENT (audit EXT2-C2, same taxonomy).
+ *
+ * hydrateDraftAttachments classified with /Gmail 4\d\d/, which swallowed the
+ * one 4xx that is emphatically temporary. A rate-limited refetch became
+ * "Gmail refused it" — the permanent lost-attachment class the outbox takes
+ * straight to stuck, so the user's mail stopped instead of retrying.
+ */
+test('a rate-limited attachment refetch stays retryable, not permanently lost', async () => {
+  const { hydrateDraftAttachments } = await import('../src/background/gmail.js');
+  const realFetch = globalThis.fetch;
+  const realSetTimeout = globalThis.setTimeout;
+  globalThis.setTimeout = (fn) => realSetTimeout(fn, 0);
+  globalThis.fetch = async () => ({
+    ok: false, status: 429, text: async () => 'rateLimitExceeded',
+    headers: { get: () => null },
+  });
+  const draft = {
+    to: 'a@b.c', subject: 's', body: 'b',
+    attachments: [{ filename: 'f.pdf', mimeType: 'application/pdf', messageId: 'm1', attachmentId: 'a1' }],
+  };
+  try {
+    await assert.rejects(
+      () => hydrateDraftAttachments(draft),
+      (err) => {
+        assert.doesNotMatch(String(err.message), /Gmail refused it/,
+          'a 429 must not be reported as the permanent lost-attachment class');
+        return true;
+      }
+    );
+  } finally {
+    globalThis.fetch = realFetch;
+    globalThis.setTimeout = realSetTimeout;
+  }
+});
+
+test('a genuine 404 attachment IS permanently lost', async () => {
+  const { hydrateDraftAttachments } = await import('../src/background/gmail.js');
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: false, status: 404, text: async () => 'not found', headers: { get: () => null },
+  });
+  const draft = {
+    to: 'a@b.c', subject: 's', body: 'b',
+    attachments: [{ filename: 'f.pdf', mimeType: 'application/pdf', messageId: 'm1', attachmentId: 'a1' }],
+  };
+  try {
+    await assert.rejects(() => hydrateDraftAttachments(draft), /Gmail refused it/);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
 // ------------------------------------------------- retry / backoff --------
 
 /**
