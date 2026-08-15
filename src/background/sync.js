@@ -17,6 +17,9 @@
  */
 
 import { listIds, batchMetadata, history, profile, BATCH_SIZE } from './gmail.js';
+/* Counters for the failure classes that leave a user in a wrong state
+   (audit R3-10). diag.js is pure module state: no chrome.* touch here. */
+import { bump } from './diag.js';
 
 const HISTORY_KEY = 'historyId';
 
@@ -97,9 +100,20 @@ export async function syncPage({ pageToken = '', max = BATCH_SIZE, q = '', label
   }
 
   const messages = await batchMetadata(ids);
-  // PREPARE only. The app commits anchorHistoryId after the page is present in
-  // its durable cache; writing it here creates a crash window that skips mail.
-  return { messages, nextPageToken, anchorHistoryId: anchor || null };
+  /*
+   * The same shortfall law as syncDelta (R3-03). A page whose batch lost
+   * sub-requests must not hand back an anchor: the app commits that anchor
+   * as the delta cursor, which would declare "everything up to here is
+   * known" about messages that were never fetched. Dropping the anchor
+   * costs at most one extra full page next time; keeping it costs mail.
+   */
+  const missing = messages.missingIds || [];
+  return {
+    messages,
+    nextPageToken,
+    ...(missing.length ? { incomplete: true, missingIds: missing } : {}),
+    anchorHistoryId: missing.length ? null : (anchor || null),
+  };
 }
 
 /**
@@ -123,21 +137,61 @@ export async function syncDelta() {
   const res = await history(start);
   if (res.tooOld) {
     await chrome.storage.local.remove(HISTORY_KEY);
-    return { kind: 'resync' };
+    bump('resyncs');
+    // `exhausted` distinguishes "too much changed" from "cursor expired"
+    // (R3-07). Both resync; only one means the user was away.
+    return { kind: 'resync', ...(res.exhausted ? { exhausted: true } : {}) };
   }
 
   const { addIds, removeIds, patched } = reduceHistory(res.changes);
 
   if (addIds.length > MAX_DELTA_ADDS) {
     // Do NOT advance the cursor: the resync is what will cover these.
+    bump('resyncs');
     return { kind: 'resync' };
   }
 
   // Chunked, not truncated. BATCH_SIZE is Gmail's cap on one /batch request,
   // not a cap on how much mail can arrive between two syncs.
   const added = [];
+  /*
+   * A SHORT BATCH MUST NOT MOVE THE CURSOR (audit R3-03, HIGH).
+   *
+   * batchMetadata drops sub-requests that failed (a 500 on 40 of 100 ids is
+   * routine under load and arrives inside a 200 OK envelope, so the
+   * whole-request retry never sees it). Advancing historyId past ids we
+   * never fetched loses that mail until the cursor expires.
+   *
+   * One retry for the stragglers -- the failure is usually transient and a
+   * second attempt is far cheaper than the full resync the alternative
+   * forces. Anything still missing withholds nextHistoryId, so the SAME
+   * delta replays on the next refresh. Replay is free: upsert is idempotent
+   * and reduceHistory is a fold over final state, both by construction.
+   */
+  const missing = [];
   for (let i = 0; i < addIds.length; i += BATCH_SIZE) {
-    added.push(...(await batchMetadata(addIds.slice(i, i + BATCH_SIZE))));
+    const chunk = addIds.slice(i, i + BATCH_SIZE);
+    const got = await batchMetadata(chunk);
+    added.push(...got);
+    if (got.missingIds?.length) missing.push(...got.missingIds);
+  }
+
+  if (missing.length) {
+    const retried = [];
+    for (let i = 0; i < missing.length; i += BATCH_SIZE) {
+      try {
+        const got = await batchMetadata(missing.slice(i, i + BATCH_SIZE));
+        added.push(...got);
+        if (got.missingIds?.length) retried.push(...got.missingIds);
+      } catch {
+        // The whole retry chunk is unavailable. Treat every id in it as
+        // still missing: the cursor stays put and the next delta replays.
+        retried.push(...missing.slice(i, i + BATCH_SIZE));
+      }
+    }
+    missing.length = 0;
+    missing.push(...retried);
+    if (missing.length) bump('cursorWithheld');
   }
 
   // PREPARE only. Fetching every change is necessary but not sufficient for a
@@ -145,7 +199,10 @@ export async function syncDelta() {
   // SYNC_COMMIT with nextHistoryId only after that durable boundary.
   return {
     kind: 'delta', added, removed: removeIds, patched,
-    nextHistoryId: res.historyId || start,
+    // Withheld on a shortfall: the app applies what arrived (upsert is
+    // idempotent) but the cursor does not move, so nothing is skipped.
+    ...(missing.length ? { incomplete: true, missingIds: missing } : {}),
+    nextHistoryId: missing.length ? '' : (res.historyId || start),
   };
 }
 

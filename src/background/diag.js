@@ -29,6 +29,18 @@ const counters = {
   notifications: 0,   // cards the background sweep issued (index.js)
   renewals: 0,        // silent renewals that persisted a token (auth.js)
   mismatchClears: 0,  // account changes proven + cleared (auth.js, AUD-C1)
+  /*
+   * THE FAILURE CLASSES THAT ACTUALLY STRAND A USER (audit R3-10).
+   *
+   * The five above counted a feature that is currently disabled and nothing
+   * that leaves someone in a wrong state. These four do: each marks a moment
+   * where the extension knowingly did less than asked, and each was
+   * previously invisible to everyone including the developer.
+   */
+  batchShortfall: 0,  // sub-requests silently dropped from a batch (R3-03)
+  resyncs: 0,         // full resyncs forced (cursor expired or exhausted)
+  historyExhausted: 0,// MAX_HISTORY_PAGES hit: a resync that is NOT expiry (R3-07)
+  cursorWithheld: 0,  // deltas that refused to advance the cursor (R3-03)
 };
 
 /** Count one event. Unknown names are dropped — the surface is closed. */

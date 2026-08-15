@@ -263,6 +263,29 @@ export async function batchMetadata(ids) {
   if (ids.length > 0 && out.length === 0) {
     throw new Error('batch metadata returned nothing for ' + ids.length + ' ids');
   }
+  /*
+   * PARTIAL SUCCESS IS NOW SAYABLE (audit R3-03, HIGH).
+   *
+   * parseBatch drops any sub-part whose status line is not 2xx, and the
+   * guard above catches only the ALL-fail case. So 40 failed sub-requests
+   * out of 100 returned 60 messages and looked exactly like a healthy batch
+   * of 60 -- and syncDelta then advanced the history cursor past the 40 that
+   * were never fetched. Because the cursor is the only record of what has
+   * been seen, those messages were unrecoverable until it expired (~a week).
+   * That is the same class the syncPage comment already warns about
+   * ("too-new loses mail irrecoverably"), arriving through a different door.
+   *
+   * The array shape is preserved -- every existing caller keeps working and
+   * every existing test keeps passing -- and the shortfall rides along as a
+   * non-enumerable property so it cannot leak into JSON, deep-equality or a
+   * spread. Callers that advance a durable cursor MUST read it; syncDelta
+   * does, and a test pins that it does.
+   */
+  const missing = ids.filter((id) => !out.some((m) => m.id === id));
+  Object.defineProperty(out, 'missingIds', {
+    value: missing, enumerable: false, writable: false, configurable: true,
+  });
+  if (missing.length) bump('batchShortfall', missing.length);
   return out;
 }
 
@@ -525,9 +548,17 @@ export async function history(startHistoryId) {
     if (!pageToken) return { changes, historyId };
   }
 
-  // Still paging after MAX_HISTORY_PAGES. Advancing the cursor now would skip
-  // whatever is left, so treat it as a resync instead of losing mail.
-  return { tooOld: true };
+  /*
+   * Still paging after MAX_HISTORY_PAGES. Advancing the cursor now would skip
+   * whatever is left, so a resync is still the right answer -- but it is NOT
+   * the same event as an expired cursor (audit R3-07). Expiry means "you were
+   * away too long"; this means "too much changed", which is operationally
+   * normal (a busy week, a bulk label reorganisation) and previously
+   * indistinguishable in every log and metric. `exhausted` names it, and the
+   * counter makes a repeated resync loop visible instead of mysterious.
+   */
+  bump('historyExhausted');
+  return { tooOld: true, exhausted: true };
 }
 
 
