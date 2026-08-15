@@ -14,6 +14,7 @@ Newcomer order: this file → ARCHITECTURE.md → THREADING.md → the audits.
 | UX-AUDIT-V4.md | The active interaction-overhaul campaign (round 65) — plan, findings, per-round record |
 | OVERHAUL-V3.md | The v3 overhaul plan and record — the redesign the current shell grew out of |
 | NEXT.md | The long-term directions — M1–M5 with statuses, then the second-generation analysis (what to work on next) |
+| UNDERENGINEERING-REMEDIATION-PLAN.md | The plan closing the under-engineered-parts audit: which portions were thin relative to the rest, the acceptance criterion for each (the audit's own metric had to move), and what was deliberately left as backlog |
 | SOAK.md | The live-mailbox ritual (direction G1): the one audit cap no gate can lift from the inside |
 | SEMESTER.md | The semester refresh (direction G4 m3): timetable + data-pack regeneration, with dates, owners and the accuracy gate |
 | STRUCTURE.md | The growth playbook: CSS volumes and folder law, pinned not remembered |
