@@ -163,21 +163,30 @@ jobs:
           # O(n^2) render path, a reflow per keystroke, a surviving rAF
           # loop) move medians by multiples, not by 50%, so the gate keeps
           # its teeth. Tighten when CI hardware moves.
-          # MEASURED 2026-08-15 on this runner class: page avg 3380ms,
-          # search 5869ms. Both are INSIDE these ceilings and both are well
-          # OUTSIDE the tool's own defaults (2500/2500) — that gap is the
-          # honest state of rendering performance on a 2-core SwiftShader
-          # box, not a claim that 3.4s is fine.
+          # FIVE MEASURED CI RUNS, oldest to newest:
+          #   page   2602 / 2900 / 3435 / 3380 / 3910 ms
+          #   search 4277 / 5040 / 6164 / 5869 / 6893 ms
           #
-          # Tightened from 5000/9000 to sit ~1.35x over the measurement
-          # rather than ~1.5x. The regressions this bench exists to catch (an
-          # O(n^2) render path, a reflow per keystroke, a surviving rAF loop)
-          # move medians by multiples, so the gate keeps its teeth while
-          # leaving less room for a slow drift to hide. Retighten whenever a
-          # run comes in materially lower; raising these needs a measurement
-          # in the commit message, never a red build waved through.
-          RENDER_BENCH_PAGE_MS: '4600'
-          RENDER_BENCH_SEARCH_MS: '8000'
+          # These ceilings are LEFT AT 5000/9000 on purpose. They sit 1.28x
+          # and 1.31x over the worst observation, which is correct for a
+          # shared 2-core SwiftShader runner whose own run-to-run noise is
+          # ~17% (3380 -> 3910 on consecutive commits, no code change in
+          # between). A 2026-08-15 attempt to "tighten" them to 4600/8000 was
+          # reverted before it shipped: it left less headroom than the
+          # measured noise, which builds a gate that reddens on runner luck
+          # and teaches everyone to re-run CI until it passes.
+          #
+          # THE REAL PROBLEM THIS BENCH CANNOT SEE, recorded here because the
+          # numbers above are the evidence: page render is up ~50% and search
+          # up ~61% across those five runs. Every one of them PASSED, because
+          # an absolute ceiling cannot distinguish "slower hardware today"
+          # from "we got slower". A ratchet (compare against the last N runs
+          # and fail on a sustained upward step) is the fix; it needs run
+          # history persisted between builds, which this workflow does not
+          # have yet. Tracked in docs/NEXT.md rather than faked with a
+          # tighter constant.
+          RENDER_BENCH_PAGE_MS: '5000'
+          RENDER_BENCH_SEARCH_MS: '9000'
         run: |
           timeout 600 npm run render:bench || code=$?; case "${code:-0}" in
             0) ;;

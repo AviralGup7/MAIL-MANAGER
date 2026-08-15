@@ -182,6 +182,36 @@ and are NOT implied by this one.
 
 ---
 
+## M6 — A performance RATCHET, because a ceiling cannot see a trend
+
+**Why.** `render:bench` is a hard CI gate with absolute ceilings
+(5000ms page, 9000ms search). Five measured runs, oldest to newest:
+
+| | run 1 | run 2 | run 3 | run 4 | run 5 | change |
+|---|---|---|---|---|---|---|
+| page render | 2602 | 2900 | 3435 | 3380 | 3910 ms | **+50%** |
+| search keystroke | 4277 | 5040 | 6164 | 5869 | 6893 ms | **+61%** |
+
+**Every one of those runs passed.** An absolute ceiling cannot tell
+"slower runner today" from "we got slower", and the gap between the
+tool's own defaults (2500/2500) and the CI ceilings is wide enough to
+hide a doubling. Runner noise is real — ~17% between two consecutive
+commits with no code change — so the answer is not a tighter constant;
+an attempt to set 4600/8000 was reverted for leaving less headroom than
+the noise, which reddens builds on luck and teaches people to re-run CI.
+
+**Shape.** Persist the last N results (a committed JSON, or the
+artifact API), compare each run against the trailing median rather than
+a constant, and fail on a sustained step — e.g. median of the last 3
+more than 20% above the median of the 3 before. Absolute ceilings stay
+as the backstop.
+
+**Blocked on.** Run-to-run history, which this workflow does not keep;
+the shard manifest artifact is the nearest existing pattern.
+
+**Not doing instead.** Tightening the constants. It converts a real
+signal into flake, which is how a gate loses its authority.
+
 ### Deliberately not directions
 
 Multi-account (audience of one institute address), framework/event-bus/
