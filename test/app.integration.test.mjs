@@ -932,7 +932,7 @@ test('search chips edit the query, clear it, and promote it to a view (65/e)', a
     assert.equal(strip().hidden, false);
     const chips = strip().querySelectorAll('.q-chip');
     assert.equal(chips.length, 2, 'scope and free text are separate chips');
-    assert.match(strip().textContent, /^Searching/, 'P-3 mode statement leads');
+    assert.match(strip().textContent, /^Query/, 'the visual query-console label leads');
 
     // Removing the scope chip is string surgery on the one query.
     chips[0].querySelector('.q-x').click();

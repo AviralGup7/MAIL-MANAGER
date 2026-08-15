@@ -68,7 +68,7 @@ test('the strip renders chips, Save and Clear — all named, none tabbable', () 
   try {
     const c = dom.window.document.getElementById('listquery');
     renderSearchChips(c, 'from:augsd is:unread registration drive');
-    assert.match(c.textContent, /^Searching/, 'the P-3 readout word leads the strip');
+    assert.match(c.textContent, /^Query/, 'the visual query-console label leads the strip');
     const chips = c.querySelectorAll('.q-chip');
     assert.equal(chips.length, 3, 'from:augsd, is:unread, and the merged free text');
     assert.match(chips[0].textContent, /from:.*augsd/);
