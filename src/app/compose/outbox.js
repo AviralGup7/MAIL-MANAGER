@@ -522,6 +522,7 @@ export async function flushOutbox(/** @type {{send?:(item:any)=>Promise<any>, st
      sends only for its own account. The fallback is the wrong place to
      discover a cross-account send, not the right place to allow one. */
   let wrongAccount = 0;
+  const blockedIds = [];
   if (inFlight) return { sent: 0, failed: 0, skipped: true };
   let items = await loadOutbox(storage);
   let due = prioritizeDue(dueItems(items, now));
@@ -552,6 +553,7 @@ export async function flushOutbox(/** @type {{send?:(item:any)=>Promise<any>, st
       if (!dispatchable(item, accountEmail)) {
         // Not ours to send; it stays armed for its owner (AUD-C2).
         wrongAccount++;
+        blockedIds.push(item.id);
         continue;
       }
       // Claim it before awaiting, so a concurrent load cannot pick it up.
@@ -620,7 +622,7 @@ export async function flushOutbox(/** @type {{send?:(item:any)=>Promise<any>, st
     } catch { /* the TTL remains the backstop */ }
 
     return { sent, failed, skipped: false, sentIds,
-           ...(wrongAccount ? { wrongAccount } : {}) };
+           ...(wrongAccount ? { wrongAccount, blockedIds } : {}) };
   } finally {
     inFlight = false;
     // Release the pump lock on EVERY exit path that acquired it (the early

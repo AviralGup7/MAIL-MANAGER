@@ -49,6 +49,8 @@ let outboxTick = 0;
 let pumpFailedNotified = false;
 /** How many sends had already given up, so only NEW failures are announced. */
 let newlyStuck = 0;
+/** Rows owned by another account, reported by the last pump receipt. */
+let blockedOutboxIds = new Set();
 
 /**
  * Wire the rails to the shell. Called once, at boot.
@@ -202,6 +204,7 @@ export async function pumpOutbox() {
   let result;
   try {
     result = await ctx.send('OUTBOX_PUMP');
+    blockedOutboxIds = new Set(result?.blockedIds || []);
     pumpFailedNotified = false;
   } catch {
     /*
@@ -264,7 +267,7 @@ export async function pumpOutbox() {
     outboxTimer = setTimeout(pumpOutbox, 250);
     return;
   }
-  const wake = outbox.nextWakeIn(items);
+  const wake = outbox.nextWakeIn(items.filter((it) => !blockedOutboxIds.has(it.id)));
   if (wake !== null) {
     outboxTimer = setTimeout(pumpOutbox, Math.max(250, wake));
   }
@@ -296,7 +299,9 @@ export async function renderOutbox(known) {
    */
   clearTimeout(outboxTick);
   outboxTick = 0;
-  if (needsTick(items)) outboxTick = setTimeout(() => renderOutbox(), 1000);
+  if (needsTick(items.filter((it) => !blockedOutboxIds.has(it.id)))) {
+    outboxTick = setTimeout(() => renderOutbox(), 1000);
+  }
 
   wrap.hidden = items.length === 0;
   if (items.length === 0) return;
@@ -312,7 +317,9 @@ export async function renderOutbox(known) {
 
     const status = document.createElement('span');
     status.className = 'outbox-status';
-    status.textContent = outbox.statusOf(it);
+    status.textContent = blockedOutboxIds.has(it.id)
+      ? 'Waiting for the account that queued this message'
+      : outbox.statusOf(it);
 
     li.append(who, status);
 

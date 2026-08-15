@@ -397,16 +397,15 @@ async function handle(msg) {
         // backlog of automatic retries for a slot in the batch.
         const allDue = prioritizeDue(dueItems(items));
         if (allDue.length === 0) return { sent: 0, failed: 0, skipped: false };
-        /*
-         * BATCHED, NOT UNBOUNDED (bug-hunt #32). The verb's timeout is a
-         * session-level contract -- exceeding it degrades the WHOLE app to
-         * fallback -- so one pathological queue must not be able to spend
-         * it all. Eight items keeps the worst case well inside the budget;
-         * the app's timer re-arms for the rest (they are still due, so the
-         * next wake is immediate).
-         */
-        const due = allDue.slice(0, MAX_PUMP_BATCH);
-        const more = allDue.length > due.length;
+        // Eligibility is decided BEFORE the batch slice. Foreign rows must not
+        // consume all eight slots and permanently starve this account's mail.
+        const blockedIds = allDue
+          .filter((item) => !dispatchable(item, accountEmail))
+          .map((item) => item.id);
+        const eligible = allDue.filter((item) => dispatchable(item, accountEmail));
+        wrongAccount = blockedIds.length;
+        const due = eligible.slice(0, MAX_PUMP_BATCH);
+        const more = eligible.length > due.length;
 
         let sent = 0;
         let failed = 0;
@@ -427,14 +426,10 @@ async function handle(msg) {
             items = items.filter((x) => x.id !== item.id);
             continue;
           }
-          if (!dispatchable(item, accountEmail)) {
-            // Not ours to send (AUD-C2). It stays queued exactly as loaded;
-            // the count travels back so the caller may tell the user.
-            wrongAccount++;
-            continue;
-          }
-          // Persist `sending` BEFORE the request: the crash contract reads it
-          // on next boot, and cancel() refuses a record in this state.
+          // Persist `sending` from the freshest queue snapshot. This preserves
+          // rows enqueued while an earlier Gmail request was in flight instead
+          // of overwriting storage with the pump's original snapshot.
+          items = await loadOutbox(chrome.storage.local);
           items = items.map((x) => (x.id === item.id ? { ...x, state: 'sending' } : x));
           await saveOutbox(items, chrome.storage.local);
           try {
@@ -445,9 +440,11 @@ async function handle(msg) {
             // NAMESPACED per the PumpResult contract in outbox.js: `g:` marks
             // a real Gmail message id, distinct from the fallback's `q:` ids.
             if (res?.id) sentIds.push(`g:${res.id}`);
+            items = await loadOutbox(chrome.storage.local);
             items = items.filter((x) => x.id !== item.id);
             sent++;
           } catch (err) {
+            items = await loadOutbox(chrome.storage.local);
             items = items.map((x) => {
               if (x.id !== item.id) return x;
               return err?.code === 'OUTCOME_UNKNOWN'
@@ -459,7 +456,7 @@ async function handle(msg) {
           await saveOutbox(items, chrome.storage.local);
         }
         return { sent, failed, skipped: false, sentIds, more,
-          ...(wrongAccount ? { wrongAccount } : {}) };
+          ...(wrongAccount ? { wrongAccount, blockedIds } : {}) };
       } finally {
         outboxPumping = false;
       }
