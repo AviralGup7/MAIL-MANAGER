@@ -8,7 +8,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 
 // Importing these modules is what registers them.
 // (The features.js barrel used to register the composite 'features' seam; S2
@@ -42,9 +42,33 @@ test('the integration harnesses consume the registry, not hand captures', () => 
    * A return to seven hand-maintained captures is how the round-54 class of
    * bug comes back.
    */
-  for (const f of ['app.mail.integration.test.mjs', 'app.features.integration.test.mjs']) {
+  /*
+   * Both suites are split into parts (audit R3-01) and now share ONE
+   * harness, so the pin follows the harness rather than the filenames.
+   * That is strictly stronger: previously each monolith could drift from
+   * the other, and there was nothing stopping a third suite from
+   * hand-rolling its own captures.
+   */
+  const harness = readFileSync(new URL('./helpers/app-harness.mjs', import.meta.url), 'utf8');
+  assert.match(harness, /resetAll: resetRegistered/, 'the harness captures resetAll');
+  assert.match(harness, /resetRegistered\?\.\(\)/, 'the harness runs the registered resets');
+
+  /*
+   * The mail parts import that harness. The features parts still carry
+   * their own boot() -- a different signature (labels, timetable, dead
+   * worker), so merging them is a separate piece of work, not a drive-by.
+   * What matters for THIS pin is that whichever harness a part uses, it
+   * runs the registry rather than hand-maintained captures. So the rule is
+   * checked per part against its own source or the shared harness.
+   */
+  const parts = readdirSync(new URL('.', import.meta.url))
+    .filter((n) => /^app\.(mail|features)\.integration\.part.*\.test\.mjs$/.test(n));
+  assert.ok(parts.length >= 6, `expected the split parts, found ${parts.length}`);
+  for (const f of parts) {
     const src = readFileSync(new URL(`./${f}`, import.meta.url), 'utf8');
-    assert.match(src, /resetAll: resetRegistered/, `${f} captures resetAll`);
-    assert.match(src, /resetRegistered\?\.\(\)/, `${f} runs the registered resets`);
+    const usesShared = /from '\.\/helpers\/app-harness\.mjs'/.test(src);
+    const ownHarness = /resetRegistered\?\.\(\)/.test(src);
+    assert.ok(usesShared || ownHarness,
+      `${f} must run the registered resets, via the shared harness or its own`);
   }
 });

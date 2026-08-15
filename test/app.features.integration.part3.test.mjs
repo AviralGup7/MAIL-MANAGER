@@ -1,22 +1,25 @@
 /*
- * PART TWO OF THE INTEGRATION SUITE.
+ * THE FEATURES INTEGRATION SUITE, IN FOUR PARTS.
  *
- * Split from app.mail.integration.test.mjs for MEMORY, not for organisation.
+ * Split for MEMORY, not for organisation.
  *
  * Every boot() builds a full JSDOM document -- DOM tree, CSSOM, timers,
- * listeners, an ES module graph. The harness calls win.close() so each becomes
- * collectable, and that bought headroom to ~195 tests. Past that the file
- * aborted with SIGABRT on a machine with 1984 MB of RAM, which surfaces as a
- * test failure with no assertion attached and sends you hunting a logic bug
- * that is not there.
+ * listeners, an ES module graph -- and jsdom retains some of it even after
+ * win.close() and an explicit gc(). At 115 boots in one process this file
+ * crossed the V8 ceiling and aborted with SIGABRT, which surfaces as a test
+ * failure with no assertion attached and sends you hunting a logic bug that
+ * is not there (audit R3-01).
  *
- * Node runs each test FILE in its own process, so splitting halves the peak
- * live set. Measured before splitting: a 900MB heap died at 111 tests, 1100MB
- * at 143, 1400MB at ~190. Growth, not GC pressure -- a bigger flag was not the
- * answer.
+ * Node runs each test FILE in its own process, so parts bound the peak live
+ * set by construction. Earlier measurements on the mail suite: a 900MB heap
+ * died at 111 tests, 1100MB at 143, 1400MB at ~190 -- growth, not GC
+ * pressure, which is why a bigger flag was never the answer. tools/
+ * ci-selfcheck.mjs now caps boots per file so this cannot creep back.
  *
- * The header is duplicated deliberately. Sharing it through an import would
- * put both halves back into one module graph and undo the split.
+ * This harness is duplicated across the four parts deliberately: sharing it
+ * through an import would put every part back into one module graph and
+ * undo the split. (The mail parts CAN share test/helpers/app-harness.mjs
+ * because that module is imported per-process, once per file.)
  */
 
 /**
