@@ -175,13 +175,13 @@
   display: grid;
   grid-template-columns: 28% 1fr;
   border: 1px solid var(--line);
-  background: var(--preview-bg, var(--bg-sunken));
+  background: var(--preview-bg);
   overflow: hidden;
 }
 .set-theme-preview::before {
   content: '';
-  border-inline-end: 1px solid var(--preview-line, var(--line));
-  background: var(--preview-sunken, var(--bg-sunken));
+  border-inline-end: 1px solid var(--preview-line);
+  background: var(--preview-sunken);
 }
 .set-theme-preview::after {
   content: '';
@@ -189,8 +189,8 @@
   justify-self: center;
   width: 58%;
   height: 8px;
-  border: 1px solid var(--preview-accent, var(--accent));
-  box-shadow: inset 16px 0 0 var(--preview-accent, var(--accent));
+  border: 1px solid var(--preview-accent);
+  box-shadow: inset 16px 0 0 var(--preview-accent);
 }
 
 /* ---- modern/legacy compatibility --------------------------------------- */
