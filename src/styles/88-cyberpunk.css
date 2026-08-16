@@ -606,3 +606,213 @@ html[data-theme='cyberpunk'] #notices > * {
     0 100%, 0 var(--cp-cut)
   );
 }
+
+/* ---- the profile, re-composed ----------------------------------------------
+ *
+ * NOT A TINT OF THE CALM PAGE — A DIFFERENT DOCUMENT.
+ *
+ * 85-profile.css builds a quiet identity card: a round avatar, a soft grid of
+ * figures, a definition list. Under this skin the same DOM is read as an
+ * OPERATOR DOSSIER — the shape this interface language actually uses for
+ * "here is a record about a person": a hard-edged ID plate, a monospace data
+ * column, and the figures as a telemetry strip rather than as cards.
+ *
+ * WHY A RE-COMPOSITION IS LEGITIMATE HERE AND NOT ELSEWHERE. The rest of the
+ * skin restates SHAPE and COLOUR on a layout the calm themes decided, because
+ * the mail list must stay the mail list. The profile is a leaf surface: it
+ * owns no data other themes need laid out the same way, nothing navigates
+ * within it, and no muscle memory crosses themes because you visit it rarely.
+ * It is the one screen where the skin can hold a different opinion about
+ * STRUCTURE and cost nothing.
+ *
+ * Everything below is still token-derived, still gated, still finite: the
+ * avatar squares off into the chamfer language, the stat cards lose their
+ * boxes and become a bracketed readout, and the definition list becomes a
+ * two-column terminal print. No new colour is introduced — --cp-structural,
+ * --cp-telemetry and --cp-slab are the skin's existing three.
+ */
+
+html[data-theme='cyberpunk'] #profile-box {
+  clip-path: polygon(
+    var(--cp-cut) 0, 100% 0,
+    100% calc(100% - var(--cp-cut)), calc(100% - var(--cp-cut)) 100%,
+    0 100%, 0 var(--cp-cut)
+  );
+  border-color: var(--cp-structural);
+  background-image: var(--cp-scan);
+}
+
+/* The header stops being a title bar and becomes a record label. */
+html[data-theme='cyberpunk'] #profile-title {
+  font-family: var(--font-mono);
+  font-size: var(--t-md);
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+  color: var(--cp-telemetry);
+}
+
+/* THE ID PLATE. The identity block gains the structural frame and the scan,
+   so it reads as a laminated card rather than as a row of text. */
+html[data-theme='cyberpunk'] .pf-identity {
+  padding: var(--s-4);
+  border: 1px solid var(--cp-structural);
+  background: var(--cp-slab);
+  background-image: var(--cp-scan);
+  clip-path: polygon(
+    var(--cp-cut) 0, 100% 0,
+    100% calc(100% - var(--cp-cut)), calc(100% - var(--cp-cut)) 100%,
+    0 100%, 0 var(--cp-cut)
+  );
+}
+
+/* The avatar squares off — a round token is the one shape this skin does not
+   own, and the chamfer is its answer to "a bounded object". */
+html[data-theme='cyberpunk'] .pf-avatar {
+  border-radius: 0;
+  border-color: var(--cp-line-active);
+  background: var(--bg-sunken);
+  clip-path: polygon(
+    var(--s-2) 0, 100% 0,
+    100% calc(100% - var(--s-2)), calc(100% - var(--s-2)) 100%,
+    0 100%, 0 var(--s-2)
+  );
+  box-shadow: 0 0 10px var(--cp-glow-calm);
+}
+
+html[data-theme='cyberpunk'] .pf-avatar-t {
+  font-family: var(--font-mono);
+}
+
+html[data-theme='cyberpunk'] .pf-name {
+  font-family: var(--font-mono);
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+}
+
+html[data-theme='cyberpunk'] .pf-addr {
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  color: var(--cp-telemetry);
+}
+
+/* Badges become clearance tags: square, monospace, hairline. */
+html[data-theme='cyberpunk'] .pf-badge {
+  border-radius: 0;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+  border-color: var(--cp-structural);
+}
+
+html[data-theme='cyberpunk'] .pf-badge.is-bits {
+  border-color: var(--cp-line-active);
+  color: var(--cp-line-active);
+}
+
+/*
+ * THE TELEMETRY STRIP. The calm page boxes each figure; here the boxes come
+ * off entirely and the numbers sit in one instrument row divided by hairlines
+ * — the readout idiom the rest of the skin already uses for the system strip.
+ */
+html[data-theme='cyberpunk'] .pf-stats {
+  gap: 0;
+  border: 1px solid var(--cp-structural);
+  background-image: var(--cp-scan);
+  /* An instrument row reads as one strip only when the cells share a
+     baseline, so they stretch rather than each shrink-wrapping its text. */
+  align-items: stretch;
+}
+
+html[data-theme='cyberpunk'] .pf-stat {
+  border: 0;
+  border-radius: 0;
+  border-left: 1px solid var(--cp-structural);
+  background: transparent;
+}
+
+/* The first cell of each row has no divider to its left — a leading hairline
+   doubles the frame's own edge. */
+html[data-theme='cyberpunk'] .pf-stat:first-child {
+  border-left: 0;
+}
+
+html[data-theme='cyberpunk'] .pf-stat-v {
+  font-family: var(--font-mono);
+  color: var(--cp-line-active);
+}
+
+html[data-theme='cyberpunk'] .pf-stat-k {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  /* NO EXTRA TRACKING ON THE LABELS. Measured at 1280px: --track-caps on an
+     uppercased two-word label pushed "MESSAGES HELD" and "KEYS SCOPED TO YOU"
+     onto three ragged lines inside a 4-up strip, and the cells stopped
+     sharing a baseline. The heading rows above keep the tracking — they have
+     a whole line to themselves. */
+  font-size: var(--t-xs);
+  line-height: var(--lh-snug);
+}
+
+/* Section headings become addressed channels: a leading marker, monospace. */
+html[data-theme='cyberpunk'] .pf-h {
+  color: var(--cp-telemetry);
+  font-family: var(--font-mono);
+}
+
+html[data-theme='cyberpunk'] .pf-h::before {
+  content: '// ';
+  color: var(--cp-structural);
+}
+
+/* The definition list becomes a terminal print: leader dots carry the eye
+   across, which is what a fixed-width readout does instead of alignment. */
+html[data-theme='cyberpunk'] .pf-defs {
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  border-top: 1px solid var(--cp-structural);
+  padding-top: var(--s-3);
+}
+
+html[data-theme='cyberpunk'] .pf-defs dt {
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+  color: var(--cp-telemetry);
+}
+
+html[data-theme='cyberpunk'] .pf-defs dd {
+  color: var(--fg);
+}
+
+html[data-theme='cyberpunk'] .pf-empty {
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  color: var(--cp-telemetry);
+}
+
+/*
+ * MAXIMUM intensity earns the arrival glitch — the dossier snapping into
+ * frame. Finite, transform-only, and the global reduced-motion kill in
+ * 99-reduced-motion.css neutralises it like every other entrance. Balanced
+ * and calm do without: a page you open to read should not have to settle
+ * before you can read it.
+ */
+html[data-theme='cyberpunk'][data-cp-intensity='maximum'] #profile-box {
+  animation: cp-glitch-in var(--dur-base) var(--ease-out) both;
+}
+
+/* Calm drops the scan from the two big planes: texture on a page of figures
+   is exactly the noise calm exists to remove. The frames stay — they are
+   structure, not atmosphere, the same line the bracket rule draws above. */
+html[data-theme='cyberpunk'][data-cp-intensity='calm'] #profile-box,
+html[data-theme='cyberpunk'][data-cp-intensity='calm'] .pf-identity,
+html[data-theme='cyberpunk'][data-cp-intensity='calm'] .pf-stats {
+  background-image: none;
+}
+
+/* Textures off is the user outranking the theme, so it removes the scan
+   everywhere on this page regardless of intensity. */
+html[data-theme='cyberpunk'][data-textures='off'] #profile-box,
+html[data-theme='cyberpunk'][data-textures='off'] .pf-identity,
+html[data-theme='cyberpunk'][data-textures='off'] .pf-stats {
+  background-image: none;
+}

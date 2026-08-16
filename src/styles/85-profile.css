@@ -40,7 +40,11 @@
   border: 1px solid var(--line);
   border-radius: var(--r-xl);
   box-shadow: var(--shadow-lg);
-  overflow: hidden;
+  /* CLIP, DO NOT HIDE. `overflow: hidden` on the box would amputate a
+     chamfer a skin clips onto it — 88-cyberpunk cuts this very element — and
+     it is not needed: the BODY is what scrolls, and it clips itself. The
+     radius still contains the header's bottom border either way. */
+  overflow: clip;
 }
 
 #profile-head {
