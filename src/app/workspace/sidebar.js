@@ -329,8 +329,26 @@ export function renderSidebar() {
     // from the place it applies rather than only from a settings page.
     const muted = isMuted(ctx.getRules(), key);
     b.classList.toggle('is-muted', muted);
-    if (muted) b.title = `${CATEGORY_LABELS[key] || key} is muted — hidden from the inbox list`;
-    else if (b.title) b.removeAttribute('title');
+    /*
+     * THE TITLE IS THE COLLAPSED RAIL'S ONLY LABEL (round 6, 2026-08-16).
+     *
+     * This branch used to REMOVE the title whenever a category was not
+     * muted, which silently undid the one set at construction: below 860px
+     * .cat-name is display:none, so an unmuted category was a bare coloured
+     * dot with no tooltip and no text. Measured at 760px: fourteen
+     * identical circles.
+     *
+     * The mute note is now an ANNOTATION on the label rather than a
+     * replacement for it, so the name survives in both states and the rule
+     * stays discoverable where it applies.
+     */
+    /* Read the label back from the row that renders it, rather than
+       re-deriving it: 'all' has no CATEGORY_LABELS entry, so a second
+       derivation produced the raw key ("all") as the tooltip. One source
+       of truth -- the text catButton was given. */
+    const catLabel = (b.querySelector('.cat-name')?.textContent || '').trim()
+      || CATEGORY_LABELS[key] || key;
+    b.title = muted ? `${catLabel} — muted, hidden from the inbox list` : catLabel;
   }
 
   /*
