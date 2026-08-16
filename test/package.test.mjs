@@ -8,7 +8,7 @@
  * you at load time, and only for some of them.
  */
 
-import { spawnSync } from 'node:child_process';
+import { spawnSync, execSync } from 'node:child_process';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, rmSync, existsSync, readdirSync } from 'node:fs';
@@ -2886,4 +2886,44 @@ test('filenames truncate in the middle, keeping the extension', async () => {
   // reader.js in the round-51 workspace extraction.
   assert.match(read('src/app/mail/reader.js'), /middleTruncate\(a\.filename\)/);
   assert.match(read('src/app/compose/compose.js'), /middleTruncate\(f\.filename\)/);
+});
+
+test('no scratch or dotfile scripts are tracked in the repo (round 9, H-4)', () => {
+  /*
+   * ELEVEN verification probes shipped inside the extension package
+   * (.v-bidi, .v-dec, .v-h3, .v-high, .v-hm, .v-inj, .v-m2, .v-med, .v-rest,
+   * .v-rest2, .v-rt), and six more (.v9-*) followed while fixing that --
+   * because the ignore rule was a LIST OF PREFIXES and each new session
+   * invented a new one. A leading-dot file is invisible in a casual `ls` and
+   * does not stand out in a diff review.
+   *
+   * They were inert -- never referenced by the manifest -- but they are
+   * unreviewed code in an artifact the Web Store reviews, and "inert today"
+   * is not a property anyone re-checks.
+   *
+   * This asserts the OUTCOME (nothing scratch is tracked) rather than the
+   * mechanism (a particular ignore pattern), so it holds no matter what the
+   * next prefix is called.
+   */
+  const tracked = execSync('git ls-files', { cwd: ROOT, encoding: 'utf8' })
+    .split('\n').filter(Boolean);
+
+  const scratch = tracked.filter((f) => {
+    const base = f.split('/').pop();
+    if (!base.startsWith('.')) return false;
+    // Real dotfiles the repo legitimately tracks.
+    if (/^\.(gitignore|github|npmrc|nvmrc|editorconfig|eslintrc.*)$/.test(base)) return false;
+    // Anything else that is a SCRIPT is scratch by definition: shipped code
+    // lives under src/ or tools/ with an ordinary name.
+    return /\.(mjs|js|cjs|ts)$/.test(base);
+  });
+
+  assert.deepEqual(scratch, [],
+    `dotfile scripts must not be tracked — put throwaway verification in /.scratch/`);
+
+  /* And the convention itself must stay declared, or the next session has
+     nowhere obvious to put a probe. */
+  const ignore = readFileSync(join(ROOT, '.gitignore'), 'utf8');
+  assert.match(ignore, /^\/\.scratch\/$/m,
+    '/.scratch/ is the one place throwaway verification belongs');
 });

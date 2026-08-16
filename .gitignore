@@ -16,11 +16,6 @@ tools/bisect/
 
 .benchlabs/
 
-# Local visual-polish harnesses (round 64.5) — scratch, not shipped.
-/.shot.mjs
-/.shot2.mjs
-/.probe*.mjs
-.shot*.png
 
 # Failure evidence: the smoke tool's scene (screenshot, DOM, console,
 # trace) and the self-integrity gate's shard manifest.
@@ -28,16 +23,29 @@ tools/bisect/
 .smoke-trace.zip
 .ci-manifest.json
 
-# Verification probes — scratch, regenerated on demand, never shipped.
+# ---- SCRATCH ---------------------------------------------------------------
 #
-# The `.v-*` line is here because eleven of them DID ship (round 9, H-4):
-# the round-5 pattern covered `.probe-*` and `.shot-*` only, so the next
-# session's naming convention walked straight past it. A leading-dot name is
-# invisible in a casual `ls`, which is exactly why the glob has to be broad
-# rather than a list of the names used so far.
-/.shot-cp.mjs
-/.census-cp.mjs
-/.probe-*.mjs
+# THE CONVENTION: throwaway verification lives in /.scratch/. One directory,
+# one rule, nothing to remember.
+#
+# WHY IT IS A DIRECTORY AND NOT A PREFIX LIST (round 9, H-4). This section
+# used to carry six patterns — /.shot.mjs, /.shot2.mjs, /.shot-cp.mjs,
+# /.probe*.mjs, /.probe-*.mjs, .shot*.png — each added when someone invented
+# a new name. Eleven `.v-*.mjs` probes then shipped inside the extension
+# package, because the list did not anticipate a twelfth prefix and a
+# leading-dot file is invisible in a casual `ls`. A rule that has to be
+# extended every session is a rule that will be missed; a directory cannot be
+# misspelled into the repo.
+#
+# The legacy prefixes stay below so an older working copy does not suddenly
+# start offering its scratch for commit, but new work goes in /.scratch/.
+/.scratch/
+/.shot*.mjs
+/.shot*.png
+/.probe*.mjs
+/.census*.mjs
 /.v-*.mjs
-/.chk.mjs
-/.k.mjs
+# `.v9-*` shipped too, in the round-9 fixes, because `/.v-*.mjs` does not
+# match `.v9-`. Recorded rather than silently widened: the SAME class of
+# miss, two rounds running, is the argument for /.scratch/ above.
+/.v[0-9]*-*.mjs
