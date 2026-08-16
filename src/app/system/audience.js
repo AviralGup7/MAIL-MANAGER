@@ -33,7 +33,7 @@
  * all is 'direct', never 'broadcast' -- absent data must never cause a hide.
  */
 
-import { addressOf, parseAddressList } from '../core/contacts.js';
+import { mailboxOf, parseAddressList } from '../core/contacts.js';
 
 /**
  * Headers that prove a message came from a mailing list.
@@ -48,7 +48,11 @@ export const LIST_HEADERS = ['list-id', 'list-post', 'list-unsubscribe', 'mailin
 export function splitRecipients(value) {
   // Canonical parser, canonical lowercasing -- one truth for "who is this
   // addressed to" (cross-audit B-05).
-  return parseAddressList(value).map((a) => a.address).filter(Boolean);
+  //
+  // mailboxOf, not addressOf: `me+bits@domain` and `me@domain` are the SAME
+  // mailbox to Gmail, and comparing them literally made the user a stranger
+  // to mail addressed to their own tagged alias (round 8, H-1).
+  return parseAddressList(value).map((a) => mailboxOf(a.address)).filter(Boolean);
 }
 
 /**
@@ -78,7 +82,7 @@ export function looksLikeListAddress(address) {
  * @returns {'direct'|'cc'|'broadcast'}
  */
 export function audienceOf(msg, selfAddress) {
-  const self = addressOf(selfAddress);
+  const self = mailboxOf(selfAddress);
   if (!self) return 'direct'; // Not signed in yet: never hide anything.
 
   const headers = msg?.headers || {};

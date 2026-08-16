@@ -52,6 +52,44 @@ export function addressOf(from) {
   return (m ? m[1] : String(from || '')).trim().toLowerCase();
 }
 
+/**
+ * The same address, reduced to the MAILBOX IT ACTUALLY REACHES.
+ *
+ * Gmail delivers `me+anything@domain` to `me@domain` — plus-addressing is a
+ * first-class feature and students use it constantly (`me+jobs@`, `me+bits@`)
+ * precisely so they can filter on it. Comparing the raw strings makes the
+ * user a stranger to their own mail: measured, `audienceOf` scored a message
+ * addressed to `me+bits@…` as `broadcast` while the identical message to
+ * `me@…` scored `direct`, so mail a human sent the user personally landed in
+ * the bulk lane nobody reads carefully (round 8, H-1).
+ *
+ * DELIBERATELY SEPARATE FROM addressOf. That one is the lenient GROUPING key
+ * — "which sender is this from?" — and rules, corrections and contact
+ * suggestions are all keyed on its exact output. Folding tags there would
+ * silently merge `shop+a@` and `shop+b@` into one rule target, which is the
+ * opposite of what a user tagging their mail asked for. This function answers
+ * a different question — "is this the same MAILBOX as me?" — and is used only
+ * where identity is being compared.
+ *
+ * Dots are NOT folded. Gmail ignores them for @gmail.com only; on every other
+ * domain (including pilani.bits-pilani.ac.in, this product's whole audience)
+ * `m.e@` and `me@` are different people, and merging them would be a
+ * misdelivery rather than a convenience.
+ *
+ * @param {string} from  a raw header value or a bare address
+ * @returns {string} the canonical mailbox, lowercased
+ */
+export function mailboxOf(from) {
+  const addr = addressOf(from);
+  const at = addr.lastIndexOf('@');
+  if (at <= 0) return addr;
+  const local = addr.slice(0, at);
+  const domain = addr.slice(at);
+  const plus = local.indexOf('+');
+  // A leading '+' is not a tag separator, it is the whole local part; keep it.
+  return plus > 0 ? local.slice(0, plus) + domain : addr;
+}
+
 /** Parse one address out of a `Name <addr>` header. */
 export function parseAddress(raw) {
   const s = String(raw || '').trim();

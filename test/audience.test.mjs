@@ -146,3 +146,28 @@ test('isDirect agrees with audienceOf', () => {
   assert.equal(isDirect({ to: 'x@y.com', cc: ME }, ME), true);
   assert.equal(isDirect({ to: 'students@x.com' }, ME), false);
 });
+
+test('plus-addressed mail reaches the user, not the bulk lane (round 8, H-1)', () => {
+  /*
+   * Gmail delivers me+anything@domain to me@domain, and students tag their
+   * address precisely so they can filter on it. Comparing the raw strings
+   * made the user a stranger to their own mail: measured, a message to
+   * `me+bits@` scored 'broadcast' while the identical message to `me@`
+   * scored 'direct'. needsReply routes on this and is documented as the one
+   * lane that must never be wrong.
+   */
+  const me = 'me@pilani.bits-pilani.ac.in';
+  assert.equal(audienceOf({ to: 'me+bits@pilani.bits-pilani.ac.in' }, me), 'direct');
+  assert.equal(audienceOf({ to: 'me+jobs+more@pilani.bits-pilani.ac.in' }, me), 'direct');
+  assert.equal(audienceOf({ to: me }, me), 'direct', 'the plain case is unchanged');
+  // The signed-in address may itself be tagged.
+  assert.equal(audienceOf({ to: me }, 'me+tag@pilani.bits-pilani.ac.in'), 'direct');
+  assert.equal(audienceOf({ cc: 'me+x@pilani.bits-pilani.ac.in' }, me), 'cc');
+
+  /*
+   * DOTS ARE NOT FOLDED, on purpose. Gmail ignores them for @gmail.com only;
+   * on pilani.bits-pilani.ac.in — this product's entire audience — m.e@ and
+   * me@ are different people, and merging them would be a misdelivery.
+   */
+  assert.notEqual(audienceOf({ to: 'm.e@pilani.bits-pilani.ac.in' }, me), 'direct');
+});
