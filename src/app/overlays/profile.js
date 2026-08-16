@@ -207,8 +207,15 @@ function renderActions(doc, body, ctx) {
     b.type = 'button';
     b.id = id;
     if (iconName) {
-      const g = icon(iconName, { size: 15 });
-      if (g) b.appendChild(g);
+      /* icons.js builds through the GLOBAL document (createElementNS), which
+         is right in the app and wrong for a caller that passed its own doc —
+         a headless render has no global. The glyph is decoration; losing it
+         must not cost the page, so the label always ships and the icon is
+         best-effort. */
+      try {
+        const g = icon(iconName, { size: 15 });
+        if (g) b.appendChild(g);
+      } catch { /* no global document: label-only button */ }
     }
     b.appendChild(el(doc, 'span', null, label));
     b.addEventListener('click', run);
