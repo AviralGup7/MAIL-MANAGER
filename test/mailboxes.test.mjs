@@ -283,3 +283,40 @@ test('a degraded session always arms its own recovery probes (audit 42 B10)', ()
   assert.match(probe, /addEventListener\('online'/, 'recovery also rides the online event');
   assert.match(probe, /setTimeout\(check, 5000\)/, 'and re-probes on a short timer');
 });
+
+/* ==========================================================================
+ * THE COLLAPSED RAIL MUST STILL BE LABELLED (round 6, 2026-08-16)
+ *
+ * Below 860px the sidebar becomes a 64px icon rail: .cat-name is
+ * display:none. Screen readers keep the accessible name from the button's
+ * text, which is why the a11y suite never caught this — the gap was
+ * POINTER-only. Measured at 760px: categories rendered as fourteen
+ * identical coloured dots with no icon, no text and no tooltip, and colour
+ * alone is never a label.
+ * ========================================================================== */
+
+test('every rail button carries a title for the collapsed state', () => {
+  /* Both builders set one at construction. */
+  assert.match(sidebar, /b\.title = mb\.label;/,
+    'mailbox buttons need a tooltip when only the glyph is visible');
+  assert.match(sidebar, /b\.title = label;/,
+    'category buttons need one MORE: their glyph is just a coloured dot');
+});
+
+test('the sidebar refresh annotates the title, never deletes it', () => {
+  /*
+   * THE BUG THIS PINS: the refresh loop set a title only for MUTED
+   * categories and called removeAttribute('title') on every other one, so
+   * the constructor's tooltip was destroyed within a frame. The first fix
+   * looked correct and measured as title:null — this is why the assertion
+   * is about the DELETION, not merely about a title existing somewhere.
+   */
+  assert.ok(!/removeAttribute\('title'\)/.test(sidebar),
+    'a refresh must not strip the only label the 64px rail has');
+  assert.match(sidebar, /muted \?[^]*?muted, hidden from the inbox list[^]*?: catLabel/,
+    'the mute note annotates the label rather than replacing it');
+  /* 'all' has no CATEGORY_LABELS entry, so re-deriving produced the raw
+     key as a tooltip. The rendered name is the single source of truth. */
+  assert.match(sidebar, /querySelector\('\.cat-name'\)\?\.textContent/,
+    "the tooltip reads the rendered label, so 'all' does not surface as a key");
+});
