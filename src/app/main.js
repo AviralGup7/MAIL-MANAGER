@@ -3306,7 +3306,7 @@ const ctx = {
   toggleHelp,
   openSettings: () => openSettings(ctx),
   openActivityLog: () => openActivityLog(ctx),
-    openProfile: () => openProfile(ctx),
+  openProfile: () => openProfile(ctx),
   // R-4: the compose->autocomplete sibling edge becomes a ctx dependency.
   wireAutocomplete: (inputId, listId) => wireAutocomplete(inputId, listId),
   refreshContacts: (c) => refreshContacts(c),

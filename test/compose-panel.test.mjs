@@ -58,7 +58,16 @@ test('the narrow ladder still welds compose to the bottom edge (600px contract)'
   // layout-contract.test pins width: 100% in this block; this pins the other
   // half of the mobile regime -- the centring margin must come OFF, or a
   // full-width card with auto margins contradicts itself.
-  const at = css.indexOf('@media (max-width: 600px)');
+  /* The block that owns the PANES/compose regime, not merely the first 600px
+     block in the bundle: volumes sort by NN-, so any volume numbered below
+     86- carrying its own phone case (85-profile.css) became the first match
+     and this read the wrong rules. */
+  let at = -1;
+  for (let i = css.indexOf('@media (max-width: 600px)'); i !== -1;
+    i = css.indexOf('@media (max-width: 600px)', i + 1)) {
+    if (css.startsWith('\n  #panes', i + '@media (max-width: 600px) {'.length)) { at = i; break; }
+  }
+  assert.notEqual(at, -1, 'no 600px block owns the pane/compose regime');
   const block = css.slice(at, css.indexOf('}', css.indexOf('#compose', at)) + 1);
   assert.match(block, /margin-inline: 0;/, 'no auto-margins when spanning');
   assert.match(block, /bottom: 0;/, 'welded to the glass on a phone');
