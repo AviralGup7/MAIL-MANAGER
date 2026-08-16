@@ -615,10 +615,25 @@ test('MIME: a filename with a quote or newline cannot break the headers', () => 
   );
   const line = mime.split('\r\n').find((l) => l.startsWith('Content-Disposition'));
   assert.ok(line, 'the disposition header must exist');
+  /*
+   * Count UNESCAPED quotes, not raw ones (round 8, M-10). The quote used to
+   * be DELETED, which was safe but lossy and silent -- `a"b.pdf` arrived as
+   * `ab.pdf`, so the user's file quietly changed name. It is backslash-
+   * escaped now, which preserves the character while still closing the
+   * injection: only an unescaped `"` can terminate the parameter early.
+   *
+   * A raw-character count would pass the lossy version and fail the correct
+   * one, which is precisely backwards.
+   */
   assert.equal(
-    (line.match(/"/g) || []).length, 2,
+    (line.match(/(^|[^\\])"/g) || []).length, 2,
     `exactly one quoted filename, got: ${line}`
   );
+  /* And a conforming parser must read the original name back out. */
+  const parsed = /filename="((?:[^"\\]|\\.)*)"/.exec(line);
+  assert.ok(parsed, 'the filename parameter is a well-formed quoted-string');
+  assert.match(parsed[1].replace(/\\(.)/g, '$1'), /^ev"il/,
+    'the quote survives transit instead of being silently dropped');
 });
 
 
@@ -1122,4 +1137,56 @@ test('RFC 2047 encoded headers are decoded at the door (round 8, H-2)', async ()
     payload: { headers: [{ name: 'From', value: '=?UTF-8?B?SsO2cmc=?= <j@x.z>' }] },
   });
   assert.equal(rec.from, 'Jörg <j@x.z>', 'the display name is human before it is stored');
+});
+
+test('a long non-ASCII subject folds instead of violating RFC 2822 (round 8, H-3)', async () => {
+  const { buildMime, decodeEncodedWords } = await import('../src/background/gmail.js');
+  /*
+   * encodeHeader's comment claimed base64 "cannot produce a line that needs
+   * folding for a realistic subject". Measured: a 400-character accented
+   * subject produced a 1089-octet Subject line against RFC 2822's 998 limit,
+   * unfolded. 400 chars is unusual but legal, and a forwarded thread with
+   * several Re:/Fwd: prefixes in a non-Latin script reaches it. Strict MTAs
+   * reject or truncate, so the send fails or arrives mangled.
+   */
+  for (const subject of ['é'.repeat(400), '日本語のメール'.repeat(40), `${'a'.repeat(300)}é`]) {
+    const mime = buildMime({ to: 'a@b.c', subject, body: 'x' });
+    const lines = mime.split('\r\n');
+
+    for (const l of lines) {
+      assert.ok(Buffer.byteLength(l, 'utf8') <= 998,
+        `every header line must fit RFC 2822's 998 octets, got ${Buffer.byteLength(l, 'utf8')}`);
+    }
+
+    const at = lines.findIndex((l) => l.startsWith('Subject:'));
+    let raw = lines[at].slice('Subject:'.length).trim();
+    for (let i = at + 1; i < lines.length && /^[ \t]/.test(lines[i]); i++) raw += ` ${lines[i].trim()}`;
+
+    for (const word of raw.split(/\s+/).filter((w) => w.startsWith('=?'))) {
+      assert.ok(word.length <= 75, `RFC 2047 §2 caps an encoded-word at 75, got ${word.length}`);
+    }
+    /* The whole point: it must still say what the user typed. A chunk split
+       mid-UTF-8 would decode to U+FFFD, so an EXACT round trip is the proof
+       the byte-boundary walk works. */
+    assert.equal(decodeEncodedWords(raw), subject, 'the folded subject round-trips exactly');
+  }
+
+  /* A short subject stays ONE word -- folding must not tax the common case. */
+  const short = buildMime({ to: 'a@b.c', subject: 'Café', body: 'x' });
+  assert.match(short, /Subject: =\?UTF-8\?B\?[A-Za-z0-9+/=]+\?=\r\n/);
+});
+
+test('an empty To: is omitted rather than emitted blank (round 8, M-9)', async () => {
+  const { buildMime } = await import('../src/background/gmail.js');
+  /*
+   * A bare `To:` with no address is malformed. buildMime is fed by the outbox
+   * replaying stored drafts and by buildReply, not only by the compose form,
+   * so the guard belongs at the wire.
+   */
+  assert.doesNotMatch(buildMime({ to: '', subject: 's', body: 'b' }), /^To: *$/m);
+  assert.doesNotMatch(buildMime({ to: '   ', subject: 's', body: 'b' }), /^To: *$/m);
+  /* A Bcc-only message is legal and must still build. */
+  assert.match(buildMime({ to: '', bcc: 'x@y.z', subject: 's', body: 'b' }), /^Bcc: x@y\.z$/m);
+  /* The ordinary case is untouched. */
+  assert.match(buildMime({ to: 'a@b.c', subject: 's', body: 'b' }), /^To: a@b\.c$/m);
 });

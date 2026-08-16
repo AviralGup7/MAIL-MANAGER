@@ -799,10 +799,48 @@ function encodeHeader(value) {
   const s = String(value ?? '');
   // eslint-disable-next-line no-control-regex
   if (/^[\x20-\x7E]*$/.test(s)) return s; // pure ASCII: leave it readable
+
+  /*
+   * FOLDED INTO ≤75-OCTET WORDS (round 8, H-3).
+   *
+   * This function's comment used to claim base64 "cannot produce a line that
+   * needs folding for a realistic subject". Measured: a 400-character
+   * accented subject produced a Subject line of 1089 octets against RFC
+   * 2822's 998 limit, with no continuation lines at all. 400 characters is
+   * unusual but entirely legal, and a forwarded thread carrying several
+   * Re:/Fwd: prefixes in a non-Latin script reaches it. Strict MTAs reject or
+   * truncate over-long header lines, so the send fails — or worse, silently
+   * arrives mangled — and the outbox reports something the user cannot act on.
+   *
+   * RFC 2047 §2 caps an encoded-word at 75 characters INCLUDING the
+   * `=?UTF-8?B?` and `?=` wrapper, and §5 allows a long value to be split
+   * into several words joined by CRLF + a space. So: chunk the BYTES (never
+   * mid-character — a split multi-byte sequence decodes to U+FFFD), base64
+   * each chunk separately, and join with the folding whitespace.
+   *
+   * 45 input bytes -> 60 base64 chars + 12 wrapper = 72, comfortably inside
+   * 75 with room for the leading space a continuation line carries.
+   */
   const bytes = new TextEncoder().encode(s);
-  let bin = '';
-  for (const b of bytes) bin += String.fromCharCode(b);
-  return `=?UTF-8?B?${btoa(bin)}?=`;
+  const WRAP = 45;
+
+  const words = [];
+  let i = 0;
+  while (i < bytes.length) {
+    let end = Math.min(i + WRAP, bytes.length);
+    /* Never split a UTF-8 sequence: continuation bytes are 10xxxxxx, so walk
+       back to the lead byte. Guarded against runaway on malformed input. */
+    while (end > i && end < bytes.length && (bytes[end] & 0xc0) === 0x80) end--;
+    if (end === i) end = Math.min(i + WRAP, bytes.length); // pathological: take the chunk
+    let bin = '';
+    for (let k = i; k < end; k++) bin += String.fromCharCode(bytes[k]);
+    words.push(`=?UTF-8?B?${btoa(bin)}?=`);
+    i = end;
+  }
+  /* CRLF + SPACE is the fold: the space is what marks a continuation line,
+     and RFC 2047 §6.2 says whitespace BETWEEN encoded-words is not part of
+     the decoded text, so this adds nothing to the subject the user sees. */
+  return words.join('\r\n ');
 }
 
 /** base64url, which is what the Gmail API wants for a raw RFC 2822 message. */
@@ -860,7 +898,12 @@ export function buildMime(m) {
    */
   const headers = [
     m.from ? `From: ${safeAddressHeader(m.from)}` : null,
-    `To: ${safeAddressHeader(m.to)}`,
+    /* An empty To: is malformed, and buildMime is fed by the outbox replaying
+       stored drafts and by buildReply, not only by the compose UI -- so the
+       guard belongs here at the wire rather than only in the form (round 8,
+       M-9). Omitting the header is correct: a message with no To but a Bcc
+       is legal, a message with a blank To is not. */
+    safeAddressHeader(m.to) ? `To: ${safeAddressHeader(m.to)}` : null,
     m.cc ? `Cc: ${safeAddressHeader(m.cc)}` : null,
     m.bcc ? `Bcc: ${safeAddressHeader(m.bcc)}` : null,
     /*
@@ -980,9 +1023,20 @@ function safeSubject(v) {
  * adding a Bcc. Strip the line breaks, strip the quotes, and cap the length.
  */
 function safeFilename(name) {
+  /*
+   * ESCAPED, NOT DELETED (round 8, M-10). Stripping the quote was safe but
+   * LOSSY and silent: `a"b.pdf` arrived as `ab.pdf`, so the user's file
+   * quietly changed name in transit. RFC 2822 quoted-strings allow a
+   * backslash escape, which preserves the character while still closing the
+   * injection: the `"` can no longer terminate the parameter early.
+   *
+   * Backslashes are escaped FIRST, or escaping the quote would produce a
+   * dangling escape on a filename that already contained one.
+   */
   return String(name || 'attachment')
     .replace(/[\r\n]+/g, ' ')
-    .replace(/"/g, '')
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
     .slice(0, 200)
     .trim() || 'attachment';
 }
