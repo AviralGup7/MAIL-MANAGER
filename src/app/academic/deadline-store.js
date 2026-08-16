@@ -33,8 +33,34 @@ import { STORAGE } from '../../platform/storage.js';
 
 const KEY = 'deadlineOverrides';
 
-/** Cap. Overrides are small, but the list should not grow forever. */
+/**
+ * Cap. Overrides are small, but the list should not grow forever.
+ *
+ * OVER CAP, THE OLDEST GO (round 10, L-5). This was enforced only in
+ * `normaliseOverrides`, as a `break` at 500 while walking Object.entries —
+ * i.e. in insertion order. Measured with 505 overrides: the reload kept
+ * m0000..m0499 and discarded the five the user had just made. The user's
+ * newest deadline corrections are the ones they are least willing to lose,
+ * and the loss was silent: the UI confirmed, and the correction was gone
+ * after a reload.
+ */
 export const MAX_OVERRIDES = 500;
+
+/** Keep the most recently SET overrides, dropping the oldest. */
+function capNewest(map) {
+  const ids = Object.keys(map);
+  if (ids.length <= MAX_OVERRIDES) return map;
+  const keep = ids
+    .sort((a, b) => (map[b]?.setAt ?? 0) - (map[a]?.setAt ?? 0))
+    .slice(0, MAX_OVERRIDES);
+  const out = {};
+  for (const id of keep) {
+    Object.defineProperty(out, id, {
+      value: map[id], writable: true, enumerable: true, configurable: true,
+    });
+  }
+  return out;
+}
 
 /**
  * @typedef {Object} Override
@@ -51,9 +77,10 @@ export const MAX_OVERRIDES = 500;
 export function normaliseOverrides(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
   const out = {};
-  let n = 0;
   for (const [id, v] of Object.entries(raw)) {
-    if (n >= MAX_OVERRIDES) break;
+    /* The cap used to be a `break` HERE, in insertion order, which threw away
+       the newest corrections (round 10, L-5). It is now applied after
+       validation, by setAt, at the bottom of this function. */
     if (typeof id !== 'string' || !id) continue;
     if (!v || typeof v !== 'object') continue;
     const at = v.at === null ? null : Number.isFinite(v.at) ? v.at : undefined;
@@ -81,9 +108,8 @@ export function normaliseOverrides(raw) {
       },
       writable: true, enumerable: true, configurable: true,
     });
-    n++;
   }
-  return out;
+  return capNewest(out);
 }
 
 export async function loadOverrides(storage = STORAGE) {
@@ -118,7 +144,10 @@ export async function saveOverrides(map, storage = STORAGE) {
  */
 export function correct(map, messageId, at, { wasText, wasAt, note, now = Date.now() } = {}) {
   if (!messageId || !Number.isFinite(at)) return map;
-  return {
+  /* Capped at the WRITE as well as the load (round 10, L-5), so the in-memory
+     map cannot exceed the cap between saves and the eviction is visible in
+     what this returns rather than happening silently on the next reload. */
+  return capNewest({
     ...map,
     [messageId]: {
       messageId,
@@ -129,16 +158,16 @@ export function correct(map, messageId, at, { wasText, wasAt, note, now = Date.n
       ...(wasText ? { wasText } : {}),
       ...(Number.isFinite(wasAt) ? { wasAt } : {}),
     },
-  };
+  });
 }
 
 /** Add a deadline to a message the extractor found nothing in. */
 export function setManual(map, messageId, at, { note, now = Date.now() } = {}) {
   if (!messageId || !Number.isFinite(at)) return map;
-  return {
+  return capNewest({
     ...map,
     [messageId]: { messageId, at, origin: 'manual', setAt: now, ...(note ? { note } : {}) },
-  };
+  });
 }
 
 /**
@@ -150,7 +179,7 @@ export function setManual(map, messageId, at, { note, now = Date.now() } = {}) {
  */
 export function dismiss(map, messageId, { wasText, wasAt, now = Date.now() } = {}) {
   if (!messageId) return map;
-  return {
+  return capNewest({
     ...map,
     [messageId]: {
       messageId,
@@ -160,7 +189,7 @@ export function dismiss(map, messageId, { wasText, wasAt, now = Date.now() } = {
       ...(wasText ? { wasText } : {}),
       ...(Number.isFinite(wasAt) ? { wasAt } : {}),
     },
-  };
+  });
 }
 
 /** Forget an override entirely, restoring whatever the extractor says. */

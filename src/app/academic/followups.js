@@ -33,8 +33,19 @@ import { STORAGE } from '../../platform/storage.js';
 
 const KEY = 'followups';
 
-/** Cap. Beyond this the oldest resolved entries are dropped. */
+/** Cap. Beyond this the OLDEST entries are dropped, never the newest. */
 export const MAX_FOLLOWUPS = 200;
+
+/** Keep the most recently created MAX_FOLLOWUPS, in their original order. */
+function capNewest(list) {
+  if (list.length <= MAX_FOLLOWUPS) return list;
+  const keep = new Set(
+    [...list].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+      .slice(0, MAX_FOLLOWUPS)
+      .map((f) => f.threadId)
+  );
+  return list.filter((f) => keep.has(f.threadId));
+}
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -89,18 +100,46 @@ export async function loadFollowups(storage = STORAGE) {
 
 export async function saveFollowups(list, storage = STORAGE) {
   try {
-    await storage.set({ [KEY]: normaliseFollowups(list).slice(0, MAX_FOLLOWUPS) });
+    /* Belt and braces behind setFollowup's cap: a list assembled elsewhere
+       (a backup import) still gets trimmed, but oldest-first rather than by
+       insertion order — see setFollowup (round 10, L-6). */
+    await storage.set({ [KEY]: capNewest(normaliseFollowups(list)) });
     return true;
   } catch {
     return false;
   }
 }
 
-/** Add or replace the follow-up for a thread. Returns the NEW list. */
+/**
+ * Add or replace the follow-up for a thread. Returns the NEW list.
+ *
+ * THE CAP IS ENFORCED HERE, AND IT DROPS THE OLDEST (round 10, L-6).
+ *
+ * MAX_FOLLOWUPS was applied only in `saveFollowups`, as a bare
+ * `.slice(0, 200)` on insertion order. Measured with 205 follow-ups: the save
+ * kept t0000..t0199 and threw away t0200..t0204 — the five the user had JUST
+ * set. The declared behaviour one line above the constant is "the oldest
+ * entries are dropped", so the code did the exact opposite of its own
+ * comment, and it did it silently, after the UI had already confirmed.
+ *
+ * Capping at the write instead means the eviction is visible in the returned
+ * list, and sorting by `createdAt` means the thing dropped is the thing the
+ * user cared about least recently.
+ */
 export function setFollowup(list, { threadId, messageId, dueAt, note }, now = Date.now()) {
+  if (!Array.isArray(list)) list = [];
   if (!threadId || !Number.isFinite(dueAt)) return list;
   const without = list.filter((f) => f.threadId !== threadId);
-  return [...without, { threadId, messageId: messageId || '', dueAt, createdAt: now, ...(note ? { note } : {}) }];
+  const next = [...without, { threadId, messageId: messageId || '', dueAt, createdAt: now, ...(note ? { note } : {}) }];
+  if (next.length <= MAX_FOLLOWUPS) return next;
+  /* Evict oldest-first, then restore insertion order so nothing else that
+     reads this list has to care that a trim happened. */
+  const keep = new Set(
+    [...next].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+      .slice(0, MAX_FOLLOWUPS)
+      .map((f) => f.threadId)
+  );
+  return next.filter((f) => keep.has(f.threadId));
 }
 
 export function clearFollowup(list, threadId) {

@@ -13,7 +13,7 @@ import { fakeStorage } from './helpers/storage.mjs';
 const {
   setFollowup, clearFollowup, hasFollowup, isAnswered, dueFollowups,
   openFollowups, pruneFollowups, normaliseFollowups, loadFollowups,
-  saveFollowups, asRadarItem, PRESETS,
+  saveFollowups, asRadarItem, PRESETS, MAX_FOLLOWUPS,
 } = await import('../src/app/academic/followups.js');
 
 const ME = 'f20240294@pilani.bits-pilani.ac.in';
@@ -249,4 +249,23 @@ test('the readers are total, like the loader (round 10, I-1 / M-4)', () => {
     assert.deepEqual(dueFollowups(bad, store, ME, NOW), []);
     assert.deepEqual(openFollowups(bad, store, ME), []);
   }
+});
+
+test('over the cap, the OLDEST follow-ups go — not the newest (round 10, L-6)', () => {
+  /*
+   * MAX_FOLLOWUPS was applied only in saveFollowups, as a bare slice(0, 200)
+   * on insertion order — the exact opposite of the "the oldest entries are
+   * dropped" claim one line above the constant. Measured with 205: the save
+   * kept t0000..t0199 and threw away the five just set.
+   */
+  let list = [];
+  for (let i = 0; i < MAX_FOLLOWUPS + 5; i++) {
+    list = setFollowup(list, { threadId: `t${String(i).padStart(4, '0')}`, dueAt: 5000 + i }, 1000 + i);
+  }
+  assert.equal(list.length, MAX_FOLLOWUPS, 'capped at the write, so the eviction is visible');
+  assert.ok(list.some((f) => f.threadId === 't0204'), 'the newest follow-up survives');
+  assert.ok(!list.some((f) => f.threadId === 't0000'), 'the oldest is the one evicted');
+  /* Insertion order is preserved for everything that stayed. */
+  const ids = list.map((f) => f.threadId);
+  assert.deepEqual(ids, [...ids].sort(), 'the surviving list keeps its order');
 });

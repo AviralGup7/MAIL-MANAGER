@@ -37,15 +37,20 @@ tools/bisect/
 # extended every session is a rule that will be missed; a directory cannot be
 # misspelled into the repo.
 #
-# The legacy prefixes stay below so an older working copy does not suddenly
-# start offering its scratch for commit, but new work goes in /.scratch/.
+# THE LEGACY PREFIXES ARE COLLAPSED (round 10, L-23). Six named patterns were
+# left behind last round "so an older working copy does not suddenly start
+# offering its scratch for commit" — but keeping a list is what failed twice:
+# /.v-*.mjs did not match .v9-*, and the round before that no pattern matched
+# .v-* at all. Two shapes replace all six, and neither can be misspelled into
+# the repo:
+#
+#   /.scratch/          where throwaway verification belongs
+#   /.*.mjs, /.*.png    any leading-dot script or shot at the ROOT
+#
+# Root-level only (the leading slash), so a legitimate dotfile deeper in the
+# tree is unaffected. No tracked file matches either pattern — verified with
+# `git ls-files | grep '^\.'` — so nothing already committed is hidden by
+# this, which is the failure mode a broad ignore rule can otherwise cause.
 /.scratch/
-/.shot*.mjs
-/.shot*.png
-/.probe*.mjs
-/.census*.mjs
-/.v-*.mjs
-# `.v9-*` shipped too, in the round-9 fixes, because `/.v-*.mjs` does not
-# match `.v9-`. Recorded rather than silently widened: the SAME class of
-# miss, two rounds running, is the argument for /.scratch/ above.
-/.v[0-9]*-*.mjs
+/.*.mjs
+/.*.png

@@ -352,3 +352,30 @@ test('overrides round-trip through storage', async () => {
   await dl.saveOverrides(dl.correct({}, 'm1', NOW), s);
   assert.equal((await dl.loadOverrides(s)).m1.at, NOW);
 });
+
+test('over the cap, the OLDEST overrides go — not the newest (round 10, L-5)', () => {
+  /*
+   * MAX_OVERRIDES was enforced only in normaliseOverrides, as a `break` while
+   * walking Object.entries — i.e. in insertion order. Measured with 505
+   * overrides: the reload kept m0000..m0499 and discarded the five the user
+   * had just made. The UI had already confirmed, so the correction simply
+   * vanished after a reload, which is the worst shape a data loss can take.
+   */
+  let map = {};
+  for (let i = 0; i < dl.MAX_OVERRIDES + 5; i++) {
+    map = dl.setManual(map, `m${String(i).padStart(4, '0')}`, 1000 + i, { now: 1000 + i });
+  }
+  assert.equal(Object.keys(map).length, dl.MAX_OVERRIDES, 'capped at the write, not only at the load');
+  assert.ok('m0504' in map, 'the newest correction survives');
+  assert.ok(!('m0000' in map), 'the oldest is the one evicted');
+
+  /* And a reload of an over-cap blob makes the same choice. */
+  const over = {};
+  for (let i = 0; i < dl.MAX_OVERRIDES + 3; i++) {
+    over[`k${String(i).padStart(4, '0')}`] = { at: 5000, origin: 'manual', setAt: 1000 + i };
+  }
+  const back = dl.normaliseOverrides(over);
+  assert.equal(Object.keys(back).length, dl.MAX_OVERRIDES);
+  assert.ok('k0502' in back, 'newest survives the reload too');
+  assert.ok(!('k0000' in back));
+});
