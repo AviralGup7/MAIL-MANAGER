@@ -167,3 +167,42 @@ test('the reader empty-state keeps a readable measure (round 49 live render)', (
   assert.match(css, /#reader-empty \{[^}]*width: min\(100%, 480px\)/s,
     'the empty state must not collapse to its narrowest content');
 });
+
+test('a clipped category rail announces itself (round 6, reported bug)', () => {
+  /*
+   * REPORTED: "buttons of the sidepanel are cut". At 860px the rail held
+   * 872px of categories in a 611px box — eight below the fold — and the
+   * only affordance was an OVERLAY scrollbar, which Chrome paints solely
+   * during a scroll gesture (measured offsetWidth - clientWidth = 0). The
+   * list scrolled; nothing said it could.
+   *
+   * Unlike #scroller, the rail has no partially-visible row at the fold to
+   * hint at more content: every row is a fixed-height button, so the cut
+   * lands cleanly between two of them and reads as the end of the list.
+   * That asymmetry is why the fade belongs here and not on the mail list.
+   */
+  const css = readBundle();
+  const at = css.indexOf('#cats {');
+  assert.ok(at > -1, '#cats is styled');
+  const block = css.slice(at, css.indexOf('}', at));
+
+  assert.match(block, /mask-image:\s*linear-gradient/,
+    'the rail needs a visible "more below" affordance, not just a scrollbar');
+  assert.match(block, /animation-timeline:\s*scroll\(/,
+    'the affordance must be driven by scroll position — a permanent fade lies once you reach the end');
+
+  /*
+   * DIRECTION IS THE WHOLE CORRECTNESS ARGUMENT. The fade must OPEN from
+   * 0px, because an element that does not overflow has no scroll timeline:
+   * the animation never applies and the initial value is what survives.
+   * Starting at the fade height therefore dimmed the last row of a SHORT
+   * rail for no reason — measured on a six-item list before this was
+   * inverted. Starting at zero makes "nothing to scroll" and "scrolled to
+   * the end" agree.
+   */
+  assert.match(block, /--cats-fade:\s*0px/,
+    'the fade must start closed so a non-overflowing rail shows no fade at all');
+  const kf = css.slice(css.indexOf('@keyframes cats-fade-in'));
+  assert.ok(/from\s*\{[^}]*--cats-fade:\s*var\(--s-\d\)/.test(kf.slice(0, 200)),
+    'the keyframe opens the fade from the token scale, not a magic number');
+});
