@@ -156,3 +156,48 @@ test('no stadium survives in the hard skin', () => {
   assert.match(gated, /#notices > \*\s*\{[^}]*border-radius:\s*0/,
     'the notices banner takes the skin corner language, not the pill idiom');
 });
+
+test('later volumes must not reset a colour the skin assigned (round 5)', () => {
+  /*
+   * THE CLASS, NOT THE INSTANCE.
+   *
+   * 89-ui-innovation.css loads AFTER 88-cyberpunk.css, so a full `border`
+   * shorthand there resets any border-COLOUR the skin just assigned. Found
+   * by measuring: #reader-head rendered its divider at 1.41 contrast
+   * against the page instead of the structural red generation 2 gave it,
+   * and #listquery had the same defect. A LAYOUT rule was overriding a
+   * THEME decision, silently, in both cases.
+   *
+   * The rule is not "never use shorthand" — it is "do not restate a colour
+   * you do not own". Elements the skin colours must take width and style
+   * from the layout volume and leave the colour to cascade.
+   */
+  const later = read('src/styles/89-ui-innovation.css');
+  const skin = read('src/styles/88-cyberpunk.css');
+  const gated = skin.slice(skin.indexOf('GATE SENTINEL'));
+
+  /* Which selectors does the skin assign a border colour to? */
+  const coloured = new Set();
+  for (const m of gated.matchAll(/([^\n{}]+)\{([^}]*)\}/g)) {
+    if (!/border[a-z-]*color/.test(m[2])) continue;
+    for (const sel of m[1].split(',')) {
+      const bare = sel.trim().replace(/^html(\[[^\]]*\])+\s*/, '').trim();
+      if (bare && !bare.includes('::') && !bare.startsWith('html')) coloured.add(bare);
+    }
+  }
+  assert.ok(coloured.size >= 4, 'the skin should colour several frames');
+
+  const offenders = [];
+  for (const m of later.matchAll(/([^\n{}]+)\{([^}]*)\}/g)) {
+    const [, selectors, body] = m;
+    /* A shorthand that carries a colour: `border: 1px solid var(--line)`.
+       Width/style-only declarations are exactly the fix and must pass. */
+    if (!/border(-(top|right|bottom|left|inline-(start|end)))?\s*:\s*[^;]*(var\(--|#|rgb)/.test(body)) continue;
+    for (const target of coloured) {
+      if (selectors.includes(target)) offenders.push(`${target} in "${selectors.trim().slice(0, 60)}"`);
+    }
+  }
+  assert.deepEqual(offenders, [],
+    'a later volume restates a border colour the cyberpunk skin owns — ' +
+    'declare border-*-width/style there and let the colour cascade');
+});

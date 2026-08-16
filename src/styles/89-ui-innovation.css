@@ -13,7 +13,9 @@
   align-items: center;
   gap: var(--s-4);
   padding: var(--s-1) var(--s-4);
-  border-top: 1px solid var(--line);
+  /* Width/style only; the colour is the theme's to own (round 5). */
+  border-top-width: 1px;
+  border-top-style: solid;
   background: var(--bg-sunken);
   color: var(--fg-dim);
   font-size: var(--t-xs);
@@ -170,7 +172,9 @@
   gap: var(--s-1);
   align-items: baseline;
   padding: var(--s-1) var(--s-2);
-  border: 1px solid var(--line);
+  /* Width/style only; the colour is the theme's to own (round 5). */
+  border-width: 1px;
+  border-style: solid;
   background: var(--bg-sunken);
   font-variant-numeric: tabular-nums;
 }
@@ -191,7 +195,9 @@
 }
 :root[data-ui-profile='modern'][data-thread-timeline='on'] #r-thread:not([hidden]) {
   position: relative;
-  border-inline-start: 1px solid var(--line-strong);
+  /* Width/style only; the colour is the theme's to own (round 5). */
+  border-inline-start-width: 1px;
+  border-inline-start-style: solid;
   padding-inline-start: var(--s-3);
 }
 :root[data-ui-profile='modern'][data-thread-timeline='on'] #r-thread button.current,
@@ -213,7 +219,12 @@
   position: relative;
   align-items: stretch;
   gap: 0;
-  border: 1px solid var(--line);
+  /* Width and style only — the same law as the dossier head above. The
+     cyberpunk skin assigns this element the structural red; a shorthand
+     here loads later and would reset it to --line, so the console would
+     frame itself in the generic hairline while claiming to be a console. */
+  border-width: 1px;
+  border-style: solid;
   background: var(--bg-sunken);
 }
 :root[data-ui-profile='modern'][data-query-console='on'] .q-label {
@@ -221,7 +232,8 @@
   align-items: center;
   padding-inline: var(--s-2);
   color: var(--fg-faint);
-  border-inline-end: 1px solid var(--line);
+  border-inline-end-width: 1px;
+  border-inline-end-style: solid;
   font-size: var(--t-xs);
   letter-spacing: var(--track-wide);
   text-transform: uppercase;
