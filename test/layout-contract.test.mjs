@@ -206,3 +206,40 @@ test('a clipped category rail announces itself (round 6, reported bug)', () => {
   assert.ok(/from\s*\{[^}]*--cats-fade:\s*var\(--s-\d\)/.test(kf.slice(0, 200)),
     'the keyframe opens the fade from the token scale, not a magic number');
 });
+
+test('the sidebar grid pins its COLUMN, not just its rows (round 7, reported bug)', () => {
+  /*
+   * REPORTED: "a button next to the email and the hard edge of Compose are
+   * cut", and it survived several debugging passes. Every obvious suspect
+   * measured innocent -- --sidebar-w 244px, #shell's track 244px,
+   * #sidebar's computed width 244px -- because the overflow was INSIDE.
+   *
+   * #sidebar declared grid-template-ROWS only. An implicit column resolves
+   * to `auto` = max-content, and grid items default to min-width:auto, so
+   * the single column measured 295.95px inside a 244px box. Every child
+   * laid out 296px and overflow:hidden ate the last 52px: #btn-activity
+   * landed at 254-284px (entirely outside, invisible) and #btn-compose's
+   * right chamfer at 245.1px, one pixel past the edge -- which is why the
+   * diagonal looked sliced into a straight line.
+   *
+   * jsdom has no layout engine, so this pins the DECLARATION. The optical
+   * proof is tools/visual-regression.mjs; the measurement that found it was
+   * a headless Chromium probe across 42 theme x width combinations.
+   */
+  const css = readBundle();
+  /* #sidebar is declared in TWO volumes -- 10-shell.css gives it the flex
+     base, 86-v3-skin.css re-declares it as the grid. Take the block that
+     actually owns the grid, not merely the first match: my first draft of
+     this test read 10-shell's block and failed against a correct fix,
+     which is its own small lesson about asserting on bundles. */
+  const blocks = [...css.matchAll(/#sidebar \{([^}]*)\}/g)].map((m) => m[1]);
+  assert.ok(blocks.length > 0, '#sidebar is styled');
+  const grid = blocks.find((b) => /display:\s*grid/.test(b));
+  assert.ok(grid, '#sidebar is laid out as a grid somewhere in the cascade');
+
+  assert.match(grid, /grid-template-columns:\s*minmax\(0,\s*1fr\)/,
+    'an implicit auto column is max-content and will clip every child again');
+  /* Both axes or neither: pinning rows while leaving the column implicit is
+     exactly the asymmetry that produced this bug. */
+  assert.match(grid, /grid-template-rows:/, 'the row template is still declared');
+});
