@@ -17,6 +17,7 @@
     "src/globals.d.ts",
     "src/app/system/**/*.js",
     "src/app/mail/store.js",
+    "src/app/system/shell-contract.d.ts",
     "src/background/**/*.js"
   ]
 }

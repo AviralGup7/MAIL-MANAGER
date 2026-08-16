@@ -132,9 +132,17 @@ The rules of the house:
 
 ## 3 · The `ctx` contract
 
-`ctx` is the only sanctioned path from a feature to the shell. It is
-deliberately small, and everything on it is either a function or a getter —
-never a captured value.
+`ctx` is the only sanctioned path from a feature to the shell. Everything on
+it is either a function or a getter — never a captured value.
+
+**The contract lives in [`src/app/system/shell-contract.d.ts`](../src/app/system/shell-contract.d.ts),
+not in this file.** Audit ARCH-R2-3 found this section listing 12 of the 29
+members that actually existed: a hand-maintained copy of a live object drifts,
+and a drifting contract is read as a guarantee. Two tests in
+`test/architecture.test.mjs` now pin the declaration and the object to each
+other, so adding a member to one without the other is a failing build.
+
+The sketch below is illustrative. It is NOT the list.
 
 ```js
 ctx = {
@@ -151,6 +159,12 @@ ctx = {
 
 **A feature may not** reach into shell internals, import `main.js`, or hold a
 reference to anything on `ctx` across an `await`.
+
+**It is 29 members and growing**, which the audit flagged as the widest
+coupling surface in the app (one module reads it 32 times). Growth is not
+free: every addition is another thing a feature can depend on and another
+reason the shell cannot be split. Prefer passing what a function needs as an
+argument over adding a member.
 
 ---
 
@@ -207,19 +221,32 @@ code to hit a number is how hidden coupling gets created.
 
 ## 6 · Invariants that must stay true
 
-These are enforced by tests. Each exists because it was once violated.
+Each exists because it was once violated. The **Enforced by** column names
+the file that would go red — audit ARCH-R2-3 found this table citing
+mechanisms that did not exist (`source lint`, `ordering lint`, `seam test`
+were aspirations, not files), which is worse than an unenforced rule because
+it reads as a guarantee.
 
 | Invariant | Enforced by |
 |---|---|
-| One render per settled state | render-invariant test |
-| `state.loading` is *derived*, assigned in exactly one place | source lint |
-| Bulk actions resolve through `renderedIds`, never `idsFor('all')` | seam test |
-| Only the inbox advances the history cursor | `anchorHistory` tests |
-| Settings load before the first `settings.get()` | ordering lint |
-| No colour literal bypasses the theme tokens | CSS lint |
-| No selector defined twice in one CSS layer | CSS lint |
-| Every persistence entry point degrades on failure | failure injection |
-| The address regex lives in exactly one module | source lint |
+| One render per settled state | `test/bench.mjs` (renders-triggered count) |
+| Bulk actions resolve through `renderedIds`, never `idsFor('all')` | `test/store.test.mjs`, `test/bulk*` |
+| Only the inbox advances the history cursor | `test/sync.test.mjs` (`anchorHistory`) |
+| Every persistence entry point degrades on failure | `test/resilience.test.mjs` |
+| No colour literal bypasses the theme tokens | `test/package.test.mjs` |
+| No selector defined twice in one CSS layer | `test/package.test.mjs` |
+| The app layer never touches `chrome.storage` | `test/architecture.test.mjs` |
+| `chrome.*` outside the seam is a closed allow-list | `test/architecture.test.mjs` |
+| `ctx` matches `shell-contract.d.ts`, member for member | `test/architecture.test.mjs` |
+| `ctx` exposes functions and getters, never captured state | `test/architecture.test.mjs` |
+| No dependency cycles; layers point one way | `test/architecture.test.mjs` |
+| Correctness lint (no undefined identifiers, no duplicate keys) | `npm run lint` in CI |
+
+**Not currently enforced, and listed so the gap is visible rather than
+implied:** `state.loading` being derived in one place, settings loading before
+the first `settings.get()`, and the address regex living in one module. Each
+was true when written and none has a test; a future commit either adds one or
+removes the row.
 
 ---
 

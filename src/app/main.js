@@ -3175,6 +3175,20 @@ function cancelPendingWork() {
  * invariant is only enforceable if every path into the store goes through a
  * known set of functions.
  */
+/**
+ * The shell context — the ONE sanctioned path from a feature to the shell.
+ *
+ * TYPED, AND THE TYPE IS ENFORCED (architectural audit ARCH-R2-2). This had
+ * 29 members, 12 of them documented and none of them checked, while ~12
+ * modules read it (one of them 32 times). A member used but never provided
+ * failed at CALL time in a branch nobody exercised -- exactly the palette
+ * defect the linter caught. The contract now lives in shell-contract.d.ts and
+ * this annotation makes a mismatch a BUILD failure: add a member here without
+ * declaring it and tsc refuses; remove one and tsc names every feature that
+ * still wants it.
+ *
+ * @type {import('./system/shell-contract.js').ShellCtx}
+ */
 const ctx = {
   /*
    * A GETTER, NOT A CAPTURED VALUE.

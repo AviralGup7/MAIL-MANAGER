@@ -265,3 +265,85 @@ test('chrome.* outside the seam is confined to the layers that have no alternati
   assert.deepEqual(unexpected, [],
     `new chrome.* callers must use the seam or be declared: ${unexpected.join(', ')}`);
 });
+
+/* ==========================================================================
+ * THE ctx CONTRACT IS PINNED (architectural audit ARCH-R2-2)
+ *
+ * `ctx` is the only sanctioned feature -> shell path and the widest coupling
+ * surface in the app: ~12 modules read it, one of them 32 times. It had 29
+ * members, 12 documented, none typed, and NO test pinning its shape.
+ *
+ * shell-contract.d.ts now declares it and main.js carries the @type
+ * annotation. That annotation is documentation-grade only: main.js cannot
+ * join the checkJs scope yet (pulling it in drags its whole import graph and
+ * produces 248 pre-existing errors across academic/, compose/ and overlays/ —
+ * a real backlog, but a separate one, tracked as its own direction).
+ *
+ * So the enforcement lives here instead, and it is the property that actually
+ * matters: the declaration and the object must not drift apart. A member
+ * added to one and not the other is a failing build, which is what stops the
+ * next "used but never provided" defect.
+ * ========================================================================== */
+
+test('the ctx contract and the shell object agree, member for member', () => {
+  const shell = readFileSync(join(ROOT, 'src/app/main.js'), 'utf8');
+  const at = shell.indexOf('const ctx = {');
+  assert.ok(at !== -1, 'the shell must still build a ctx literal');
+  const body = shell.slice(at, shell.indexOf('\n};', at));
+
+  // Top-level members of the literal: `name,` `name:` `name(` and `get name()`.
+  const actual = new Set();
+  for (const m of body.matchAll(/^ {2}(?:get\s+)?([a-zA-Z_$][\w$]*)\s*[,:(]/gm)) {
+    actual.add(m[1]);
+  }
+
+  const dts = readFileSync(join(ROOT, 'src/app/system/shell-contract.d.ts'), 'utf8');
+  const iface = dts.slice(dts.indexOf('export interface ShellCtx'));
+  const declared = new Set();
+  for (const m of iface.matchAll(/^ {2}(?:readonly\s+)?([a-zA-Z_$][\w$]*)\s*[?]?\s*:/gm)) {
+    declared.add(m[1]);
+  }
+
+  const undeclared = [...actual].filter((k) => !declared.has(k)).sort();
+  const unused = [...declared].filter((k) => !actual.has(k)).sort();
+
+  assert.deepEqual(undeclared, [],
+    `ctx members missing from shell-contract.d.ts: ${undeclared.join(', ')}`);
+  assert.deepEqual(unused, [],
+    `declared in shell-contract.d.ts but absent from ctx: ${unused.join(', ')}`);
+  assert.ok(actual.size >= 25, `sanity: expected the full surface, parsed ${actual.size}`);
+});
+
+test('ctx exposes no captured mail state — functions and getters only', () => {
+  /*
+   * ARCHITECTURE.md §3: "everything on it is either a function or a getter —
+   * never a captured value". A captured store or list is stale the moment the
+   * user switches mailbox, which is why `store` is a getter. `state` is the
+   * one sanctioned exception: a const object mutated in place, so the
+   * reference stays valid by construction.
+   */
+  const shell = readFileSync(join(ROOT, 'src/app/main.js'), 'utf8');
+  const at = shell.indexOf('const ctx = {');
+  const body = shell.slice(at, shell.indexOf('\n};', at));
+  const ALLOWED_VALUES = new Set(['state']);
+
+  const captured = [];
+  for (const m of body.matchAll(/^ {2}([a-zA-Z_$][\w$]*),$/gm)) {
+    // A bare `name,` is a shorthand value. Fine when it names a FUNCTION
+    // declared in the shell; a problem when it names data.
+    const name = m[1];
+    if (ALLOWED_VALUES.has(name)) continue;
+    /* "Is it callable?" has three shapes in this shell, and an earlier
+       version of this test only knew the first -- so it reported toast,
+       openMessage and toggleHelp as captured state when all three are
+       functions. A false positive here would be fixed by deleting the test,
+       so it has to recognise every form the shell actually uses. */
+    const isFn =
+      new RegExp(`(?:^|\\n)(?:export\\s+)?(?:async\\s+)?function\\s+${name}\\b`).test(shell)
+      || new RegExp(`(?:^|\\n)(?:const|let)\\s+${name}\\s*=\\s*(?:async\\s*)?(?:\\(|function\\b)`).test(shell)
+      || new RegExp(`^import\\s[^;]*\\b${name}\\b[^;]*;`, 'm').test(shell);
+    if (!isFn) captured.push(name);
+  }
+  assert.deepEqual(captured, [],
+    `ctx must expose functions/getters, not captured values: ${captured.join(', ')}`);
+});
