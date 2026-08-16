@@ -401,7 +401,7 @@ src/
 timetable/data.json         GENERATED. 688 courses, 119 change rows.
 timetable/sources/          The two official documents, verbatim.
 tools/parse-timetable.mjs   Offline parser. Never runs in the extension.
-test/                       2,161 declared tests. `npm test` · `npm run test:ci` (fails on skips)
+test/                       2,168 declared tests. `npm test` · `npm run test:ci` (fails on skips)
   app.mail.integration.test.mjs      Core mail-shell integration journeys.
   app.features.integration.test.mjs  Feature/workspace integration journeys.
   resilience.test.mjs       Failure injection across every persistence module.
@@ -471,7 +471,7 @@ mis-file something the preview mis-files it too.
 
 ## Status
 
-**2,161 declared tests, 0 skipped.** Many of them boot the real `app.html` in a real
+**2,168 declared tests, 0 skipped.** Many of them boot the real `app.html` in a real
 DOM and drive it as a user would — click a row, type in search, press `j`/`k`,
 archive, snooze, sign out. All seven themes pass WCAG AA in CI.
 
