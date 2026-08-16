@@ -83,6 +83,74 @@
   overflow-y: auto;
   padding: var(--s-1) var(--s-2) var(--s-2);
   overscroll-behavior: contain;
+
+  /* ---- THE CLIPPED-CATEGORY BUG (round 6, 2026-08-16) -------------------
+   * REPORTED as "buttons of the sidepanel are cut". Reproduced and
+   * measured: at a 860px viewport the rail holds 872px of categories in a
+   * 611px box, so EIGHT of them sat below the fold — Events, Library,
+   * Technology, Ext Services, Ext Promotions, Spam, Other. The list did
+   * scroll, so nothing was unreachable in principle. The defect was that
+   * NOTHING SAID SO.
+   *
+   * Why the scrollbar did not save it: modern Chrome uses OVERLAY
+   * scrollbars. Measured offsetWidth - clientWidth = 0, meaning no gutter
+   * is reserved and the bar is painted only during a scroll gesture. A
+   * user who never scrolls the rail — because they have no reason to think
+   * there is more — sees "Clubs" butted against the footer and concludes
+   * the list ends there. The styling in 60-appearance.css is fine; it just
+   * describes a bar that is invisible at rest.
+   *
+   * The fix is a scroll-state fade, not a permanent gradient: a fixed
+   * "there is more" shadow that never goes away is a lie once you reach
+   * the end. `animation-timeline: scroll()` drives the fade from the
+   * element's own scroll position, so it is present at the top, gone at
+   * the bottom, and — because a non-scrolling element has no scroll
+   * timeline — completely absent when everything already fits.
+   *
+   * mask-image rather than a background gradient: the fade must dissolve
+   * the ROWS, and a background sits behind them. Progressive by design —
+   * where scroll timelines are unsupported the mask simply stays at its
+   * static value and the rail behaves exactly as it does today.
+   */
+  /* Starts at ZERO and is opened by the scroll timeline. Starting at the
+     fade height was the obvious way round and is wrong: an element that
+     does not overflow has no scroll timeline, so the animation never
+     applies and the initial value is what you keep — a short rail would
+     dim its own last row for no reason. Measured that exact bug on a
+     six-item list before flipping the direction. Opening the fade FROM
+     zero means "no overflow" and "scrolled to the end" agree, which is
+     correct in both cases. */
+  --cats-fade: 0px;
+  mask-image: linear-gradient(
+    to bottom,
+    #000 0,
+    #000 calc(100% - var(--cats-fade)),
+    transparent 100%
+  );
+  animation: cats-fade-in linear both;
+  animation-timeline: scroll(self block);
+  /* `contain` maps the whole scrollable range onto the animation, so the
+     fade is fully open the moment there is anything below and closes as
+     the last row arrives. */
+  animation-range: contain;
+}
+
+/* Open at the top, closed at the end: "more below" is claimed only while
+   it is true. Scroll-driven, so it advances only when the user scrolls —
+   the idle-animation law holds, and there is no timer or loop. */
+@keyframes cats-fade-in {
+  from {
+    --cats-fade: var(--s-6);
+  }
+  to {
+    --cats-fade: 0px;
+  }
+}
+
+@property --cats-fade {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
 }
 
 .cat[data-muted='true'] .cat-name,
