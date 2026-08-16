@@ -1,4 +1,7 @@
 import { STORAGE } from '../../platform/storage.js';
+/* themes.js imports nothing, so naming it here cannot create a cycle — and
+   deriving the theme enum from it is what keeps the two from drifting. */
+import { THEMES } from './themes.js';
 
 /**
  * Settings.
@@ -63,7 +66,19 @@ export const SCHEMA = {
    */
 
   // ---- appearance ----
-  theme: { type: 'string', def: 'daylight' },
+  /*
+   * AN ENUM, NOT A STRING (round 11, B4). `type:'string'` accepted and
+   * PERSISTED any value, so `set('theme','nonexistent')` stuck. applyTheme
+   * falls back for the DOM, so the app rendered daylight while the settings
+   * panel — which checks its radios with `get('theme') === tile.id` — showed
+   * NO theme selected. The UI and the truth disagreed, with no way for the
+   * user to tell which was right.
+   *
+   * The values are derived from THEMES so a new theme cannot be added
+   * without becoming settable, and a removed one cannot linger as a legal
+   * value. Every other enum in this schema already coerces to its default.
+   */
+  theme: { type: 'enum', def: 'daylight', values: THEMES.map((t) => t.id) },
   /*
    * Density. Returned to the schema by the commit that implements it, as the
    * note below promised.

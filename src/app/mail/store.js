@@ -471,8 +471,24 @@ export class Store {
     // tokenize() indexes subject + from + snippet (bug-hunt #19), so a
     // snippet patch that skipped reindexing would leave the search index
     // describing text the message no longer has.
+    /*
+     * THREADID IS AN INDEXED FIELD TOO (round 11, B1).
+     *
+     * `_index`/`_deindex` both maintain `byThread`, and `patch` deindexes and
+     * reindexes around the assignment — but `threadId` was missing from the
+     * list that decides WHETHER to do that, so a thread move updated the
+     * record and left the index describing the old conversation. Measured:
+     * after `patch(id, { threadId: 't2' })` the record reads `t2` while
+     * `threadIds('t2')` is `[]` and `threadIds('t1')` still returns the id.
+     *
+     * The reader renders a conversation from `threadIds`, so the message
+     * silently stays in the wrong thread and the right one cannot find it —
+     * and because `byThread` is only rebuilt on reindex, nothing repairs it
+     * short of a reload.
+     */
     const reindex =
       ('category' in fields && fields.category !== msg.category) ||
+      ('threadId' in fields && fields.threadId !== msg.threadId) ||
       'subject' in fields ||
       'from' in fields ||
       'snippet' in fields;

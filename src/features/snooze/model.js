@@ -68,7 +68,8 @@ export function presets(now = Date.now(), ctx = {}) {
   const hour = d.getHours();
 
   if (hour < 18) out.push({ id: 'evening', label: 'This evening', at: at(d, 18) });
-  out.push({ id: 'tomorrow', label: 'Tomorrow morning', at: startOfTomorrow(d, 8) });
+  const tomorrowAt = startOfTomorrow(d, 8);
+  out.push({ id: 'tomorrow', label: 'Tomorrow morning', at: tomorrowAt });
 
   // Saturday 8am, unless it already is the weekend.
   const day = d.getDay(); // 0 Sun .. 6 Sat
@@ -78,8 +79,22 @@ export function presets(now = Date.now(), ctx = {}) {
     out.push({ id: 'weekend', label: 'This weekend', at: at(sat, 8) });
   }
 
+  /*
+   * NEXT MONDAY, NEVER TOMORROW (round 11, B3).
+   *
+   * `((8 - day) % 7 || 7)` gives Sunday +1 — the very next day — so on a
+   * Sunday "Next week" and "Tomorrow morning" resolved to the SAME instant
+   * (Mon 08:00) and the menu offered two rows that did the same thing. A
+   * duplicate choice is worse than a missing one: the user picks the more
+   * specific-sounding label and gets something else's behaviour.
+   *
+   * "Next week" means the Monday of the FOLLOWING week. On Sunday that is
+   * eight days out, not one — Sunday is the tail of the current week in the
+   * only reading where "next week" is a distinct offer.
+   */
   const nextMon = new Date(d);
-  nextMon.setDate(nextMon.getDate() + ((8 - day) % 7 || 7));
+  const toMonday = day === 0 ? 8 : ((8 - day) % 7 || 7);
+  nextMon.setDate(nextMon.getDate() + toMonday);
   out.push({ id: 'nextweek', label: 'Next week', at: at(nextMon, 8) });
 
   /*
@@ -94,7 +109,21 @@ export function presets(now = Date.now(), ctx = {}) {
     if (t > now) out.push({ id: 'deadline', label: 'Day before the deadline', at: t });
   }
 
-  return out.filter((p) => p.at > now);
+  /*
+   * NO TWO PRESETS MAY NAME THE SAME INSTANT (round 11, B3). Friday's
+   * "Tomorrow morning" and "This weekend" are both Saturday 08:00, and the
+   * weekend row is the less precise of the two — the same collision the
+   * Monday arithmetic above produced on a Sunday. Dedupe on the resolved
+   * time, keeping the FIRST (the list is ordered nearest-first, and the
+   * nearer label is always the more specific one).
+   */
+  const seen = new Set();
+  return out.filter((p) => {
+    if (p.at <= now) return false;
+    if (seen.has(p.at)) return false;
+    seen.add(p.at);
+    return true;
+  });
 }
 
 /** @returns {Promise<Record<string, {at:number, snoozedAt:number}>>} */

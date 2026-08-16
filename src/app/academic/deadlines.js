@@ -224,6 +224,32 @@ function withTime(y, m, d, text, dateEnd = 0) {
  * confidently-wrong result that destroys trust in the feature.
  */
 function matchNumericDate(text, anchor) {
+  /*
+   * ISO FIRST, AND IT IS NOT OPTIONAL (round 11, B2).
+   *
+   * The day-first pattern below is anchored on `\b`, so against
+   * `2026-08-20` it matched the TAIL — `08-20` — and read it as day 8,
+   * month 20. Month 20 fails the range check, so the whole deadline
+   * silently vanished. Worse, `due 2026-12-01` matched `12-01` and produced
+   * **12 January**: a valid, plausible, and wrong date. Worst, an ISO date
+   * early in a message SHADOWED a real dd/mm date later in it, because this
+   * function returns on its first match.
+   *
+   * ISO is not exotic input here: it is what every system-generated notice
+   * and every spreadsheet export writes. Matching it explicitly, before the
+   * ambiguous form, is the only reading of `2026-08-20` that exists —
+   * yyyy-mm-dd has no day-first variant to be confused with.
+   */
+  const iso = text.match(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/);
+  if (iso) {
+    const y = Number(iso[1]);
+    const mo = Number(iso[2]) - 1;
+    const d = Number(iso[3]);
+    if (mo < 0 || mo > 11 || d < 1 || d > 31) return null;
+    if (!isRealDate(y, mo, d)) return null;
+    return { at: withTime(y, mo, d, text, iso.index + iso[0].length), text: iso[0] };
+  }
+
   const m = text.match(/\b(\d{1,2})[/\-.](\d{1,2})(?:[/\-.](\d{2,4}))?\b/);
   if (!m) return null;
   // A dash-separated PAIR with no year is ambiguous (P10): "due on 2-3" is a

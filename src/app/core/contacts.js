@@ -178,14 +178,28 @@ export function parseAddressList(raw) {
  * @param {{selfAddress?:string}} opts
  */
 export function buildContacts(messages, opts = {}) {
-  const self = (opts.selfAddress || '').toLowerCase();
+  /*
+   * SELF-EXCLUSION FOLDS THE PLUS TAG (round 11, B5).
+   *
+   * The comparison was `address === self` on the raw string, so every
+   * plus-addressed form of the user's OWN mailbox survived it:
+   * `me+tag@x.z` was offered in their own recipient autocomplete, and
+   * because a tag is how people file mail, the variants accumulate — the
+   * user ends up autocompleting three versions of themselves.
+   *
+   * `mailboxOf` is the function this codebase already added for exactly
+   * this question (round 8, H-1): it strips `+tag` and answers "is this the
+   * same mailbox", which is what self-exclusion actually means. Comparing
+   * the folded forms costs nothing and closes the whole family at once.
+   */
+  const self = mailboxOf(opts.selfAddress || '');
   /** @type {Map<string,{address:string,name:string,count:number,last:number}>} */
   const map = new Map();
 
   const note = (parsed, date) => {
     if (!parsed) return;
     const { address, name } = parsed;
-    if (!address || address === self) return;
+    if (!address || (self && mailboxOf(address) === self)) return;
     const hit = map.get(address);
     if (hit) {
       hit.count++;
