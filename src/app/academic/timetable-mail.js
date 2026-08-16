@@ -1,4 +1,5 @@
 import { parseDaysHours } from './timetable.js';
+import { detectBitsSource } from '../../classify/sender.js';
 /**
  * Deterministic extraction of timetable changes from academic mail.
  *
@@ -26,11 +27,28 @@ import { parseDaysHours } from './timetable.js';
  * from rather than asking them to trust a summary.
  */
 
-/** Only mail from these domains is considered official enough to act on. */
-const ACADEMIC_DOMAINS = [
-  'pilani.bits-pilani.ac.in',
-  'bits-pilani.ac.in',
-];
+/*
+ * WHO COUNTS AS OFFICIAL IS DECIDED IN ONE PLACE (round 10, H-1).
+ *
+ * This module used to carry its own two-entry domain list and test it with
+ *
+ *     addr.includes(`@${d}`) || addr.includes(`.${d}`)
+ *
+ * `includes` matches ANYWHERE in the string, so the check accepted
+ * `evil@pilani.bits-pilani.ac.in.attacker.com` — a domain an attacker can
+ * simply register — along with `x@notpilani.bits-pilani.ac.in` and any
+ * address whose display name merely contained the text. Measured: all four
+ * returned true. That is the classic suffix-spoof shape, and it gated
+ * `scanMessage`, the path that reads a message and proposes timetable
+ * changes.
+ *
+ * `classify/sender.js` already solved this correctly, on a PARSED domain,
+ * with a comment naming this exact hazard. The local list was also
+ * redundant: `BITS_DOMAINS` contains `bits-pilani.ac.in`, so under suffix
+ * matching it covers every campus subdomain the local list did. So the
+ * duplicate is deleted rather than repaired — two copies of one security
+ * rule is how the copies drift.
+ */
 
 /**
  * Supported change patterns.
@@ -200,8 +218,7 @@ const SECTION_RE = /\b([LTP])\s?(\d{1,2})\b/g;
 
 /** Is this address one we will act on? */
 export function isAcademicSender(from) {
-  const addr = String(from || '').toLowerCase();
-  return ACADEMIC_DOMAINS.some((d) => addr.includes(`@${d}`) || addr.includes(`.${d}`));
+  return detectBitsSource(String(from || '')).isBits;
 }
 
 /**

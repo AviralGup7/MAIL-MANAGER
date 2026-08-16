@@ -437,6 +437,43 @@ test('MAIL: a non-academic sender is ignored entirely', () => {
   assert.equal(isAcademicSender('x@gmail.com'), false);
 });
 
+test('MAIL: a lookalike domain is not an academic sender (round 10, H-1)', () => {
+  /* isAcademicSender gates scanMessage, the path that proposes changes to the
+     user's timetable. It used to be a bare `includes`, so every one of these
+     returned true -- the first is a domain an attacker can buy. */
+  for (const hostile of [
+    'evil@pilani.bits-pilani.ac.in.attacker.com',
+    'spoof@evil.com?x=@pilani.bits-pilani.ac.in',
+    'Name <n@evil.com> pilani.bits-pilani.ac.in',
+    'x@gmail.com',
+    '',
+    null,
+    undefined,
+  ]) {
+    assert.equal(isAcademicSender(hostile), false, String(hostile));
+  }
+  // And every honest shape still passes.
+  for (const good of [
+    'x@pilani.bits-pilani.ac.in',
+    'AUGSD <augsd@pilani.bits-pilani.ac.in>',
+    'Prof <p@cs.pilani.bits-pilani.ac.in>',
+    'x@bits-pilani.ac.in',
+    'x@goa.bits-pilani.ac.in',
+  ]) {
+    assert.equal(isAcademicSender(good), true, good);
+  }
+});
+
+test('MAIL: a spoofed sender cannot drive a timetable change (round 10, H-1)', () => {
+  const { state } = build();
+  const m = msg({
+    from: 'AUGSD <augsd@pilani.bits-pilani.ac.in.attacker.com>',
+    subject: 'CS F111 L1 room changed',
+    body: 'The class has been shifted to room 9999.',
+  });
+  assert.deepEqual(scanMessage(m, state), []);
+});
+
 test('MAIL: a course not in the timetable is ignored', () => {
   // The departmental list mails about everything. Only what the user has
   // registered for may be touched.

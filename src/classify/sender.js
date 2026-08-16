@@ -53,11 +53,33 @@ export function extractAddress(from) {
   return from.trim().toLowerCase();
 }
 
-/** The domain part of a `From` header, lowercased. */
+/**
+ * A syntactically plausible DNS name: labels of letters/digits/hyphens joined
+ * by dots. Deliberately narrow — anything else is not a domain we will treat
+ * as proof of anything.
+ */
+const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
+
+/**
+ * The domain part of a `From` header, lowercased, or `''` if the header does
+ * not carry one address-shaped token.
+ *
+ * WHY THE SHAPE IS CHECKED (round 10, H-1 follow-through). Splitting on the
+ * LAST `@` of an unbracketed header is right for `a@b.c` and wrong for a
+ * hostile one-liner: `spoof@evil.com?x=@pilani.bits-pilani.ac.in` has no
+ * angle brackets, so the last `@` handed back `pilani.bits-pilani.ac.in` and
+ * `detectBitsSource` said yes. An addr-spec has exactly one `@` and a domain
+ * made of DNS labels; rejecting everything else costs honest mail nothing and
+ * closes the parse-level half of the spoof.
+ */
 export function extractDomain(from) {
   const addr = extractAddress(from);
   const at = addr.lastIndexOf('@');
-  return at === -1 ? '' : addr.slice(at + 1);
+  if (at === -1) return '';
+  const local = addr.slice(0, at);
+  const domain = addr.slice(at + 1);
+  if (!local || local.includes('@')) return '';
+  return DOMAIN_RE.test(domain) ? domain : '';
 }
 
 /**

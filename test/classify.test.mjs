@@ -38,6 +38,35 @@ test('extractDomain', () => {
   assert.equal(extractDomain('no-at-sign'), '');
 });
 
+test('extractDomain refuses anything that is not one address (round 10, H-1)', () => {
+  /* An unbracketed hostile one-liner used to hand back its LAST @-token, so a
+     query string ending in a BITS domain was read as a BITS sender. */
+  assert.equal(extractDomain('spoof@evil.com?x=@pilani.bits-pilani.ac.in'), '');
+  /* The bracketed address wins, so this is honestly `evil.com` -- the point
+     is that the trailing text is NOT read as the domain. */
+  assert.equal(extractDomain('Name <n@evil.com> pilani.bits-pilani.ac.in'), 'evil.com');
+  assert.equal(extractDomain('@pilani.bits-pilani.ac.in'), '', 'no local part');
+  assert.equal(extractDomain('a@b c'), '', 'space is not a DNS label');
+  assert.equal(extractDomain('a@b_c.com'), '', 'underscore is not a DNS label');
+  // Honest mail is untouched.
+  assert.equal(extractDomain('a@b.com'), 'b.com');
+  assert.equal(extractDomain('First Last <a.b-c@cs.pilani.bits-pilani.ac.in>'),
+    'cs.pilani.bits-pilani.ac.in');
+});
+
+test('a lookalike suffix domain is not a BITS sender (round 10, H-1)', () => {
+  /* `…bits-pilani.ac.in.attacker.com` is registrable. A bare `includes` check
+     accepted it; the endsWith-on-a-dot form must not. */
+  for (const hostile of [
+    'evil@pilani.bits-pilani.ac.in.attacker.com',
+    'evil@bits-pilani.ac.in.attacker.com',
+    'evil@xbits-pilani.ac.in',
+  ]) {
+    assert.equal(detectBitsSource(hostile).isBits, false, hostile);
+  }
+  assert.equal(detectBitsSource('a@cs.pilani.bits-pilani.ac.in').isBits, true);
+});
+
 // ------------------------------------------------------------ BITS source --
 
 test('recognises every campus domain', () => {
