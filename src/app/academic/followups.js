@@ -1,4 +1,5 @@
 import { STORAGE } from '../../platform/storage.js';
+import { mailboxOf } from '../core/contacts.js';
 
 /**
  * Follow-ups: "I am waiting on a reply to this."  (Feature 6, absorbing 20.)
@@ -166,7 +167,7 @@ export function hasFollowup(list, threadId) {
  * @param {string} self
  */
 export function isAnswered(f, store, self) {
-  const me = String(self || '').toLowerCase();
+  const me = mailboxOf(self || '');
   /*
    * BOTH methods are checked, not just the first.
    *
@@ -182,10 +183,25 @@ export function isAnswered(f, store, self) {
     const m = store.get(id);
     if (!m) continue;
     if (m.date <= f.createdAt) continue;
-    const from = String(m.from || '').toLowerCase();
-    // A message from me does not answer my own follow-up -- that is a nudge,
-    // not a reply, and nudging should not clear the reminder.
-    if (me && from.includes(me)) continue;
+    /*
+     * "IS THIS FROM ME" IS A PARSED-ADDRESS QUESTION (round 11, B6).
+     *
+     * This was `from.includes(me)` — a substring test on the whole From
+     * header — and it was wrong in both directions. Measured:
+     *
+     *   from 'notme@x.z'          read as ME, so a genuine reply NEVER
+     *                             cleared the follow-up: it nagged forever.
+     *   from 'me+tag@x.z'         read as someone else, so my own nudge
+     *                             cleared a reminder I still needed.
+     *   from '"me@x.z" <them@y>'  a SENDER-CONTROLLED display name read as
+     *                             me, silently answering their own message.
+     *
+     * `mailboxOf` parses the address out of the header and folds `+tag`,
+     * which is the question actually being asked. audience.js has compared
+     * identity this way since round 8; these two callers were simply never
+     * updated with it.
+     */
+    if (me && mailboxOf(m.from) === me) continue;
     return true;
   }
   return false;

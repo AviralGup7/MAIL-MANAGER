@@ -120,6 +120,25 @@ export async function enqueueIntent(rec, storage = STORAGE) {
     createdAt: Date.now(),
     attempts: 0,
   };
+  /*
+   * THE SAME VERB ON THE SAME MESSAGE IS ONE INTENT (round 11, B8).
+   *
+   * Offline, a row does not visibly settle — nothing confirms — so a user
+   * taps Archive again. Measured: three taps queued three records and the
+   * drain replayed all three, sending `archive:m1` to Gmail three times.
+   * Every extra call is a wasted round trip on a connection that just came
+   * back, and for a NON-IDEMPOTENT verb it is a second real mutation.
+   *
+   * Superseding rather than appending also keeps the queue honest about
+   * ORDER: archive-then-star-then-archive must still end archived, so the
+   * duplicate moves to the back rather than the first occurrence winning.
+   * The record keeps its original createdAt so the queue's age is truthful.
+   */
+  const dupIndex = mem.findIndex((r) => r.verb === stored.verb && r.targetId === stored.targetId);
+  if (dupIndex !== -1) {
+    stored.createdAt = mem[dupIndex].createdAt;
+    mem.splice(dupIndex, 1);
+  }
   mem.push(stored);
   await persist(storage);
   return stored;

@@ -38,6 +38,7 @@
  */
 
 import { audienceOf } from '../system/audience.js';
+import { mailboxOf } from '../core/contacts.js';
 
 /** Lane ids, in display order. The order is the priority cascade. */
 export const LANES = /** @type {const} */ ([
@@ -186,7 +187,20 @@ export function partition(ids, get, ctx = {}) {
  * @param {string} self
  */
 export function answeredPredicate(store, self) {
-  const me = String(self || '').toLowerCase();
+  /*
+   * PARSED IDENTITY, NOT A SUBSTRING (round 11, B7).
+   *
+   * `String(other.from).toLowerCase().includes(me)` decided whether a later
+   * message in the thread was MY reply. A From header's display name is
+   * SENDER-CONTROLLED, so anyone could put `me@x.z` in theirs and have their
+   * own message count as my answer — silently removing it from Needs-reply,
+   * which is the one lane whose whole job is "you still owe someone a
+   * reply". Measured: `'"me@x.z" <them@y.z>'` answered on my behalf.
+   *
+   * It also failed the honest direction: `notme@x.z` contains `me@x.z`, so a
+   * stranger's reply was read as mine.
+   */
+  const me = mailboxOf(self || '');
   if (!me) return () => false;
 
   return (m) => {
@@ -196,7 +210,7 @@ export function answeredPredicate(store, self) {
       const other = store.get(id);
       if (!other || other.id === m.id) continue;
       if (other.date <= m.date) continue;
-      if (String(other.from || '').toLowerCase().includes(me)) return true;
+      if (mailboxOf(other.from) === me) return true;
     }
     return false;
   };

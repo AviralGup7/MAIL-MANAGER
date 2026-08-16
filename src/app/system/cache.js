@@ -128,6 +128,21 @@ function pack(m) {
     m.cc || '',
     (m.courses || []).join(','),
     headersJSON(m.headers),
+    /*
+     * LABELS ARE SEARCHABLE, SO THEY MUST SURVIVE A RELOAD (round 11, B9).
+     *
+     * `query.js` implements `label:` by reading `m.labels`, and this row did
+     * not carry it — the flags byte packs unread/starred/attachment, but a
+     * Gmail label is a NAME, not a flag. Measured: `label:hostel` matched a
+     * live record and matched NOTHING after a reload, because the whole
+     * corpus rehydrates from here before the first sync lands. A saved view
+     * built on `label:` therefore looked broken every time the app opened.
+     *
+     * Joined rather than JSON'd, like `courses` two lines up: a label name
+     * cannot contain a comma (Gmail forbids it), so the cheap encoding is
+     * lossless here and keeps the row a flat array of scalars.
+     */
+    (Array.isArray(m.labels) ? m.labels : []).join(','),
   ];
 }
 
@@ -178,6 +193,10 @@ function unpack(a) {
     ...(a[13] ? { cc: a[13] } : {}),
     ...(a[14] ? { courses: a[14].split(',') } : {}),
     ...(a[15] ? { headers: safeHeaders(a[15]) } : {}),
+    /* Index 16, the round-11 widening. An old blob has nothing there and
+       yields no key at all — the pre-fix behaviour — which self-corrects on
+       the next sync, so no VERSION bump. Same reasoning as 11 and 12..15. */
+    ...(a[16] ? { labels: a[16].split(',') } : {}),
   };
 }
 
