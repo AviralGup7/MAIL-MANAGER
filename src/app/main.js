@@ -96,6 +96,7 @@ import {
 } from './system/deep-links.js';
 import { promptDialog } from './overlays/dialog.js';
 import { openActivityLog } from './academic/activity-ui.js';
+import { openProfile } from './overlays/profile.js';
 import {
   scheduleServerSearch, wireServerSearch, _resetServerSearch,
   clearSearchOverlay,
@@ -2751,6 +2752,10 @@ $('btn-theme').addEventListener('click', (e) => {
 $('btn-help').addEventListener('click', () => toggleHelp());
 $('btn-settings').addEventListener('click', () => openSettings(ctx));
 $('btn-activity').addEventListener('click', () => openActivityLog(ctx));
+/* The account line opens the profile. It is a real button now (app.html), so
+   the keyboard reaches it for free -- no new key binding invented for a
+   screen that already has a visible, focusable home. */
+$('account')?.addEventListener('click', () => openProfile(ctx));
 
 async function doSignIn() {
   const btn = $('btn-signin');
@@ -3301,6 +3306,7 @@ const ctx = {
   toggleHelp,
   openSettings: () => openSettings(ctx),
   openActivityLog: () => openActivityLog(ctx),
+    openProfile: () => openProfile(ctx),
   // R-4: the compose->autocomplete sibling edge becomes a ctx dependency.
   wireAutocomplete: (inputId, listId) => wireAutocomplete(inputId, listId),
   refreshContacts: (c) => refreshContacts(c),

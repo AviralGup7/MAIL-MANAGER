@@ -70,6 +70,8 @@ export interface ShellCtx {
   toggleHelp: () => any;
   openSettings: () => any;
   openActivityLog: () => any;
+  /** The profile page: identity, measured mailbox figures, account actions. */
+  openProfile: () => any;
   viewsList: () => any;
 
   /* ---- appearance ---------------------------------------------------- */

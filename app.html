@@ -33,6 +33,7 @@
     <link rel="stylesheet" href="src/styles/80-compression.css" />
     <link rel="stylesheet" href="src/styles/82-spatial-memory.css" />
     <link rel="stylesheet" href="src/styles/84-dialogs.css" />
+    <link rel="stylesheet" href="src/styles/85-profile.css" />
     <link rel="stylesheet" href="src/styles/86-v3-skin.css" />
     <link rel="stylesheet" href="src/styles/86-v3a-rows.css" />
     <link rel="stylesheet" href="src/styles/86-v3b-motion-responsive.css" />
@@ -65,7 +66,16 @@
           <span id="brand-mark" aria-hidden="true"></span>
           <span id="brand-text">
             <strong>BITS Mail</strong>
-            <small id="account">not signed in</small>
+            <!--
+              THE ACCOUNT LINE IS THE WAY IN TO THE PROFILE. It was a dead
+              <small> showing the address and nothing else; making the thing
+              that names you the thing you click to see yourself is the
+              affordance users already expect from every mail client. Still
+              renders the address, so nothing that read it visually changed.
+            -->
+            <button id="account" type="button" class="acct-btn"
+                    title="Your profile" aria-label="Your profile"
+                    aria-haspopup="dialog">not signed in</button>
             <!--
               Ambient freshness. Empty until the first successful sync, so it
               never claims currency we have not earned. Recomputed on render,
@@ -920,6 +930,28 @@
             <kbd>Ctrl</kbd><kbd>K</kbd> — and every action can be undone with
             <kbd>Ctrl</kbd><kbd>Z</kbd>, not just sending.
           </footer>
+        </div>
+      </div>
+
+      <!--
+        PROFILE.
+
+        Who is signed in, and what this install knows about them. Placed
+        BEFORE #settings in the DOM so a settings dialog summoned from the
+        profile's own button paints above it rather than behind it — the same
+        stacking reasoning the settings comment below records.
+
+        The body starts EMPTY: every figure is read from the live store and
+        the settings cache at open time, so the page can never show a stale
+        count. overlays/profile.js builds it.
+      -->
+      <div id="profile" role="dialog" aria-modal="true" aria-labelledby="profile-title" hidden>
+        <div id="profile-box" class="lit">
+          <header id="profile-head">
+            <h2 id="profile-title">Profile</h2>
+            <button id="profile-close" class="ghost icon" type="button" aria-label="Close profile"></button>
+          </header>
+          <div id="profile-body"><!-- built by overlays/profile.js --></div>
         </div>
       </div>
 

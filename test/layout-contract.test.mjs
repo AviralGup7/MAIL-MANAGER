@@ -38,7 +38,17 @@ test('below 600px the panes stack and compose spans the window', () => {
   // a row cannot hold them -- so they stack, neither is display:none'd, and
   // compose stops pretending to be a 580px card. Lives in the V3 ladder's
   // 600px block since the legacy ladder's retirement (R-A3).
-  const at = css.indexOf('@media (max-width: 600px)');
+  /* THE BLOCK THAT OWNS THE PANES, not merely the first 600px block in the
+     bundle. Volumes sort by their NN- prefix, so any new volume numbered
+     below 86- that carries its own phone case (85-profile.css does) became
+     the first match and this read the wrong rules. Anchor on the pane grid
+     itself — that is the block under test. */
+  let at = -1;
+  for (let i = css.indexOf('@media (max-width: 600px)'); i !== -1;
+    i = css.indexOf('@media (max-width: 600px)', i + 1)) {
+    if (css.startsWith('\n  #panes', i + '@media (max-width: 600px) {'.length)) { at = i; break; }
+  }
+  assert.notEqual(at, -1, 'no 600px block owns the pane grid');
   const block = css.slice(at, css.indexOf('}', css.indexOf('#compose', at)) + 1);
   assert.match(block, /grid-template-columns: minmax\(0, 1fr\)/, 'panes go single-column');
   assert.match(block, /grid-template-rows/, 'and split the height instead');

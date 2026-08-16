@@ -1,0 +1,241 @@
+/* ========================================================================= */
+/* PROFILE (2026-08-16)                                                       */
+/*                                                                            */
+/* The account page: who is signed in, the figures this install can honestly  */
+/* state, and the account-level actions. Content comes from                   */
+/* overlays/profile.js; this volume owns only how the calm themes present it. */
+/*                                                                            */
+/* WHY 85- AND NOT 90-. It must load BEFORE the skin volumes (86-v3-skin,     */
+/* 88-cyberpunk), because those are where a theme states its opinion about    */
+/* shape. A base layer that loaded after them would have to be out-specified  */
+/* by every theme that wants to differ, and the cyberpunk profile is a        */
+/* wholesale re-composition rather than a tint — see 88-cyberpunk.css.        */
+/*                                                                            */
+/* THE CALM READING. Six of the seven themes get THIS: a quiet identity card, */
+/* a four-cell figure grid, a definition list and a button row. Generous      */
+/* space, one accent, no texture. It is a page you glance at and leave.       */
+/*                                                                            */
+/* Every value is token-derived (package.test fails a raw hex outside the     */
+/* allowed neutrals), so tuning themes.js retunes this page with everything   */
+/* else.                                                                      */
+/* ========================================================================= */
+
+#profile {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--s-6);
+  /* The same dim every modal surface uses — one scrim for the whole app. */
+  background: rgba(0, 0, 0, 0.42);
+  z-index: var(--z-settings);
+}
+
+#profile-box {
+  width: min(560px, 100%);
+  max-height: min(720px, 86vh);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+#profile-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  padding: var(--s-4) var(--s-6);
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+
+#profile-title {
+  margin: 0;
+  font-size: var(--t-xl);
+  font-weight: var(--w-semi);
+  letter-spacing: var(--track-tight);
+}
+
+#profile-body {
+  padding: var(--s-6);
+  overflow-y: auto;
+  /* A scrollable overlay must not hand its overscroll to the list behind it
+     (house rule, package.test) — reaching the end here stops here. */
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-6);
+}
+
+/* ---- identity ----------------------------------------------------------- */
+
+.pf-identity {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+}
+
+.pf-avatar {
+  flex: none;
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  border: 1px solid var(--line);
+  color: var(--accent);
+}
+
+.pf-avatar-t {
+  font-size: var(--t-lg);
+  font-weight: var(--w-bold);
+  letter-spacing: var(--track-caps);
+}
+
+.pf-who {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pf-name {
+  margin: 0;
+  font-size: var(--t-lg);
+  font-weight: var(--w-semi);
+  letter-spacing: var(--track-tight);
+}
+
+.pf-addr {
+  margin: 0;
+  color: var(--fg-dim);
+  font-size: var(--t-sm);
+  /* An address is one unbroken token; let it shrink rather than push the
+     card wider than its own box. */
+  overflow-wrap: anywhere;
+}
+
+.pf-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+}
+
+.pf-badge {
+  font-size: var(--t-xs);
+  padding: 2px var(--s-2);
+  border-radius: var(--r-full);
+  border: 1px solid var(--line);
+  color: var(--fg-dim);
+}
+
+.pf-badge.is-bits {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ---- measured figures --------------------------------------------------- */
+
+.pf-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--s-3);
+}
+
+.pf-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg);
+}
+
+.pf-stat-v {
+  font-size: var(--t-xl);
+  font-weight: var(--w-bold);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--track-tight);
+}
+
+.pf-stat-k {
+  font-size: var(--t-xs);
+  color: var(--fg-dim);
+}
+
+.pf-stat-n {
+  font-size: var(--t-xs);
+  color: var(--fg-faint);
+}
+
+.pf-empty {
+  margin: 0;
+  color: var(--fg-dim);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* ---- sections ----------------------------------------------------------- */
+
+.pf-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.pf-h {
+  margin: 0;
+  font-size: var(--t-xs);
+  font-weight: var(--w-semi);
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+  color: var(--fg-faint);
+}
+
+.pf-defs {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--s-2) var(--s-4);
+  font-size: var(--t-sm);
+}
+
+.pf-defs dt {
+  color: var(--fg-dim);
+}
+
+.pf-defs dd {
+  margin: 0;
+  text-align: right;
+}
+
+.pf-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+/* ---- the phone case ----------------------------------------------------- */
+
+@media (max-width: 600px) {
+  #profile {
+    padding: 0;
+  }
+  #profile-box {
+    width: 100%;
+    max-height: 100%;
+    height: 100%;
+    border: 0;
+    border-radius: 0;
+  }
+  .pf-defs dd {
+    text-align: left;
+  }
+}

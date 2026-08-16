@@ -136,6 +136,7 @@ function buildCommands(ctx) {
     { id: 'shortcuts', icon: 'keyboard', label: 'Show keyboard shortcuts', hint: '?', run: () => ctx.toggleHelp?.() },
     { id: 'settings', icon: 'settings', label: 'Open settings', hint: '', run: () => ctx.openSettings?.() },
     { id: 'activity', icon: 'clock', label: 'Activity log', hint: '', run: () => ctx.openActivityLog?.() },
+    { id: 'profile', icon: 'mail', label: 'Open your profile', hint: '', run: () => ctx.openProfile?.() },
   ];
 
   if (sel) {
