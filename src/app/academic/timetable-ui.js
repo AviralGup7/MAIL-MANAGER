@@ -930,6 +930,8 @@ function pendingSection() {
       mine.addEventListener('click', async () => {
         // Pass the message id: the edit is the user's, but this mail is what
         // prompted it, and the reader shows that link back.
+        const before = state.entries.find((e) => e.id === f.entryId);
+        const prevEntry = before ? JSON.parse(JSON.stringify(before)) : null;
         const r = manualEdit(
           state, f.entryId, f.field, f.value, Date.now(),
           f.messageId || f.noticeRef || 'user'
@@ -937,6 +939,41 @@ function pendingSection() {
         if (!r.applied) { ctxRef?.toast?.(r.reason, { kind: 'error' }); return; }
         state = r.state;
         await dismissFinding(f, 'accepted-as-manual');
+
+        /*
+         * THIS PATH OWED AN UNDO TOO (round 11, B16).
+         *
+         * `acceptFinding` snapshots the entry and calls recordUndo; this
+         * button — the one the user actually reaches whenever the document
+         * outranks the mail, which is the COMMON case for a room change —
+         * did neither. Measured through the real UI: clicking "Set room to
+         * 9999" then Ctrl+Z left the room at 9999 and the proposal gone.
+         *
+         * It is the worse of the two to leave unreversible, because a manual
+         * edit writes precedence `manual` (5), which outranks the official
+         * document (3) FOREVER — so an accidental click does not merely set
+         * a wrong room, it permanently stops the real timetable from ever
+         * correcting it. Undo is the only way back, and it was not there.
+         *
+         * Restores the entry AND returns the proposal to the Changes room,
+         * the same both-sides honesty acceptFinding documents: the user is
+         * never left with a reverted schedule and no way to re-apply.
+         */
+        if (!prevEntry) return;
+        const key = f.messageId || `notice:${f.noticeRef}:${f.kind}`;
+        recordUndo(ctxRef, `Timetable: ${f.field} set to ${f.value}`, async () => {
+          state = {
+            ...state,
+            entries: state.entries.map((e) => (e.id === prevEntry.id ? prevEntry : e)),
+            appliedMail: (state.appliedMail || []).filter((k) => k !== key),
+            updatedAt: Date.now(),
+          };
+          state.conflicts = detectConflicts(state.entries);
+          pending = dedupePending([...pending, f]);
+          await persist();
+          updateBadge();
+          render();
+        });
       });
       act.appendChild(mine);
     } else {
