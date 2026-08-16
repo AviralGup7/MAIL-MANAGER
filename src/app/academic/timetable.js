@@ -31,6 +31,8 @@
  * ordered by arrival time.
  */
 
+import { joinCapped } from '../core/display.js';
+
 /** Source precedence. Higher wins. */
 export const PRECEDENCE = {
   unresolved: 1,
@@ -902,15 +904,11 @@ export function examEvents(entries) {
  * incrementally. The list is at most a few dozen entries, and a conflict set
  * that drifts out of sync with the entries is worse than a cheap recompute.
  */
-/** How many clashing courses to name before summarising the rest (M-6). */
-const CONFLICT_NAME_CAP = 4;
-
+/* Round 9's M-6 capped this one message and left the same shape in the exam
+   clash and the unresolved notice below. `joinCapped` is the shared rule
+   (round 10, I-7); the cap is on the SENTENCE, never on entryIds. */
 function conflictNames(list) {
-  const names = list.map((e) => `${e.courseNo} ${e.section}`);
-  if (names.length <= CONFLICT_NAME_CAP) return names.join(' and ');
-  const shown = names.slice(0, CONFLICT_NAME_CAP);
-  const rest = names.length - CONFLICT_NAME_CAP;
-  return `${shown.join(', ')} and ${rest} other${rest === 1 ? '' : 's'}`;
+  return joinCapped(list.map((e) => `${e.courseNo} ${e.section}`));
 }
 
 export function detectConflicts(entries) {
@@ -1004,7 +1002,7 @@ export function detectConflicts(entries) {
       entryIds: [e.id],
       fields: [...unresolved],
       message:
-        `${e.courseNo} ${e.section} has no ${unresolved.join(' or ')} in the ` +
+        `${e.courseNo} ${e.section} has no ${joinCapped(unresolved, { conjunction: 'or' })} in the ` +
         'official timetable. Enter it manually, or leave it blank.',
     });
   }
@@ -1056,7 +1054,7 @@ export function detectConflicts(entries) {
       severity: 'blocking',
       entryIds: evs.map((e) => e.entryId),
       message:
-        `${evs.map((e) => e.courseNo).join(' and ')} are both examined on ` +
+        `${joinCapped(evs.map((e) => e.courseNo))} are both examined on ` +
         `${date} in session ${session}. Contact AUGSD.`,
     });
   }
@@ -1178,6 +1176,17 @@ export function summariseMeetings(meetings) {
  * "we do not know"; '10:40 PM' says something false with confidence.
  */
 export function fmtTime(min) {
+  /*
+   * ONLY A NUMBER IS A MINUTE-OF-DAY (round 10, found by the I-5 boundary
+   * sweep). The round-9 guard ran `Number(min)` first, and JavaScript coerces
+   * `null`, `''`, `[]` and `false` to 0 -- so a MISSING time rendered as a
+   * confident '12:00 AM'. That is the same "corrupt data wearing a
+   * legitimate face" failure the guard was written to stop, one type
+   * further out. A numeric string still parses, because the source document
+   * is text.
+   */
+  if (typeof min !== 'number' && typeof min !== 'string') return '';
+  if (typeof min === 'string' && min.trim() === '') return '';
   const n = Number(min);
   if (!Number.isFinite(n) || n < 0 || n > 1440) return '';
   // 1440 is midnight at the END of the day: wrap it rather than let it fall

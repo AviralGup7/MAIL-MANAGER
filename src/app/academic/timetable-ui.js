@@ -19,6 +19,7 @@
 import { confirmDialog } from '../overlays/dialog.js';
 import { recordUndo } from '../mail/undo-actions.js';
 import { icon } from '../core/icons.js';
+import { joinCapped } from '../core/display.js';
 import {
   emptyState, addCourse, removeCourse, manualEdit, setLocked,
   switchSection, finalize, resetTimetable,
@@ -646,7 +647,7 @@ function sectionButton(course, section) {
   b.append(name, when, who, where);
   if (section.unresolved?.length) {
     const flag = el('span', 'tt-flag');
-    flag.textContent = `${section.unresolved.join(' and ')} not in the timetable`;
+    flag.textContent = `${joinCapped(section.unresolved)} not in the timetable`;
     b.appendChild(flag);
   }
   b.addEventListener('click', () => chooseLecture(course, section));
@@ -680,7 +681,7 @@ async function chooseLecture(course, lecture) {
   render();
 
   if (extras.length && ctxRef?.toast) {
-    const kinds = links.auto.map((a) => `${a.kind} ${a.section.section}`).join(' and ');
+    const kinds = joinCapped(links.auto.map((a) => `${a.kind} ${a.section.section}`));
     ctxRef.toast(`Added ${course.courseNo} ${lecture.section}, with ${kinds}`);
   }
 }
@@ -691,7 +692,7 @@ function askForLinked(course, lecture, choices) {
 
   const box = el('div', 'tt-chooser');
   const h = el('h3', 'tt-chooser-title');
-  h.textContent = `${course.courseNo} — choose your ${choices.map((c) => c.kind).join(' and ')}`;
+  h.textContent = `${course.courseNo} — choose your ${joinCapped(choices.map((c) => c.kind))}`;
   box.appendChild(h);
 
   box.appendChild(note(

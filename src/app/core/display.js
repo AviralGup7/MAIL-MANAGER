@@ -110,3 +110,35 @@ export function fullDate(ms) {
     minute: '2-digit',
   });
 }
+
+/**
+ * Join a list into a sentence, naming the first few and counting the rest.
+ *
+ * WHY THIS IS SHARED (round 10, I-7). Round 9's M-6 found a 500-way slot
+ * clash building a 7,525-character sentence and rendering it into the
+ * conflict panel as an unreadable wall. That was fixed for the overlap
+ * message alone, and the same `join(' and ')` shape remained in the exam
+ * clash, the unresolved-field notice and the auto-link toast — every one of
+ * them fed by a list whose length the user does not control.
+ *
+ * The cap is on the SENTENCE, never on the data: `entryIds` and the
+ * underlying arrays stay whole, so the panel can still act on all of them.
+ * This only decides how many to say out loud.
+ *
+ * @param {string[]} items
+ * @param {{cap?:number, conjunction?:string, separator?:string}} [opts]
+ */
+export function joinCapped(items, { cap = 4, conjunction = 'and', separator = ', ' } = {}) {
+  const list = (Array.isArray(items) ? items : []).map((v) => String(v ?? '')).filter(Boolean);
+  if (list.length === 0) return '';
+  if (list.length === 1) return list[0];
+  if (list.length <= cap) {
+    /* Two items read best as "A and B"; three or four take the separator up
+       to the last, which is how the existing messages already read. */
+    return list.length === 2
+      ? `${list[0]} ${conjunction} ${list[1]}`
+      : `${list.slice(0, -1).join(separator)} ${conjunction} ${list[list.length - 1]}`;
+  }
+  const rest = list.length - cap;
+  return `${list.slice(0, cap).join(separator)} ${conjunction} ${rest} other${rest === 1 ? '' : 's'}`;
+}
