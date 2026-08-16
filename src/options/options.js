@@ -204,6 +204,16 @@ function fmtHold(sec) {
   delayLabel.textContent = fmtDelay(settings.get('markReadDelayMs'));
   images.value = settings.get('remoteImages');
   if (threaded) threaded.checked = settings.get('threaded');
+  /* Pointer motion (round 7): the press/magnetic/ripple/key-light tier.
+     Optional-chained like every control added after the first draft — the
+     options page is also booted by tests with a trimmed DOM. */
+  const pointerMotion = $('pointerMotion');
+  if (pointerMotion) {
+    pointerMotion.value = settings.get('pointerMotion');
+    pointerMotion.addEventListener('change', () => {
+      void persist(settings.set('pointerMotion', pointerMotion.value));
+    });
+  }
   const lanesBox = $('lanes');
   if (lanesBox) {
     lanesBox.checked = settings.get('lanes');

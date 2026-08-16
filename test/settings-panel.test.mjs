@@ -201,10 +201,13 @@ test('open renders one control per descriptor item and closes through the layer'
 
     /* Descriptor census. The modern profile adds eight independently
        reversible intelligence checks and two selects (UI generation and
-       Cyberpunk intensity); legacy behavior remains one setting away. */
+       Cyberpunk intensity); legacy behavior remains one setting away.
+       Round 7 (2026-08-16) added a seventh select, `pointerMotion`: the
+       press/magnetic/ripple/key-light tier used to be wired
+       unconditionally for every theme with no preference at all. */
     assert.equal(node.querySelectorAll('input[type="checkbox"]').length, 19, 'checkboxes');
     assert.equal(node.querySelectorAll('#settings-body .set-row button').length, 4, 'actions + the rules editor pair');
-    assert.equal(node.querySelectorAll('select').length, 6, 'selects');
+    assert.equal(node.querySelectorAll('select').length, 7, 'selects');
     assert.equal(node.querySelectorAll('input[type="range"]').length, 3, 'sliders');
     assert.equal(node.querySelectorAll('textarea').length, 1, 'signature');
     assert.equal(node.querySelectorAll('input[name="set-theme"]').length, THEMES.length,
