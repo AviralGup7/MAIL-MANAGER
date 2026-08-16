@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { selectNotifiable, NOTIFY_CATEGORIES, NOTIFY_BURST_CAP } from '../src/background/notify.js';
+import { selectNotifiable, cardText, NOTIFY_CATEGORIES, NOTIFY_BURST_CAP } from '../src/background/notify.js';
 
 const INDEX_SRC = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), '..', 'src/background/index.js'),
@@ -75,9 +75,18 @@ test('notification titles scrub control chars and truncate the sender', () => {
      one gate shared by sender AND subject; shortSender keeps only the
      name-or-fallback rule. The behavioural pins (chars out, ellipsis
      inside the cap) live in audit-hardening.test.mjs. */
-  const fn = readFileSync(new URL('../src/background/notify.js', import.meta.url), 'utf8');
-  assert.match(fn, /\\x00-\\x1f/, 'C0 control chars scrubbed');
-  assert.match(fn, /\\u202a-\\u202e/, 'bidi overrides scrubbed too');
-  assert.match(fn, /slice\(0, max - 1\)/, 'truncated with an ellipsis');
+  /* ASSERTED ON BEHAVIOUR, NOT ON THE SOURCE TEXT (round 10, I-6). These
+     three used to grep notify.js for the regex literals, so moving the one
+     shared definition into src/shared/scrub.js broke a passing test without
+     changing a single output. A test that reads the implementation cannot
+     survive a refactor it should not have noticed. */
+  assert.equal(cardText('Exam\nPostponed\u0000\u001f\u007f'), 'ExamPostponed',
+    'C0/C1 control chars scrubbed');
+  assert.equal(cardText('safe\u202Egpj.exe\u2066'), 'safegpj.exe',
+    'bidi overrides scrubbed too');
+  assert.equal(cardText('\u200Fشكرا'), '\u200Fشكرا', 'RLM is a mark, not an override');
+  const long = cardText('x'.repeat(500), 40);
+  assert.equal(long.length, 40, 'truncated with the ellipsis INSIDE the cap');
+  assert.ok(long.endsWith('…'));
   assert.match(INDEX_SRC, /cardText\(from, max\) \|\| 'BITS mail'/, 'empty sender falls back');
 });

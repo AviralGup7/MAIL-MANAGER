@@ -29,6 +29,8 @@
  * removing the salutation first would leave the quote header behind.
  */
 
+import { C0_CONTROLS, BIDI_CONTROLS } from '../../shared/scrub.js';
+
 /**
  * Salutations. Anchored at the start, and each must be followed by a boundary
  * so that "Dear Students" is stripped but a subject line like
@@ -128,10 +130,12 @@ function normalise(text) {
      * \n and \t survive this line: the whitespace collapse below turns them
      * into spaces, which is the right answer for a single-line row.
      */
-    // eslint-disable-next-line no-control-regex
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
-    // eslint-disable-next-line no-misleading-character-class
-    .replace(/[\u202A-\u202E\u2066-\u2069]/g, '')
+    /* One definition, in src/shared/scrub.js (round 10, I-6). The copy that
+       used to sit here had already drifted from sanitize.js's in its
+       eslint-disable comments, which is how two copies of a security rule
+       become two different rules. */
+    .replace(C0_CONTROLS, '')
+    .replace(BIDI_CONTROLS, '')
     .replace(/\r/g, '');
 }
 

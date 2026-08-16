@@ -266,3 +266,39 @@ test('the module graph stays acyclic at file level', () => {
   for (const [file, c] of colour) if (c === WHITE && !cycle.length) visit(file, []);
   assert.deepEqual(cycle, [], 'import cycle detected');
 });
+
+test('the scrub rules have exactly one definition (round 10, I-6 / L-20)', () => {
+  /*
+   * The bidi and control-character classes had grown three copies —
+   * sanitize.js, snippet.js and notify.js — and had already drifted: the two
+   * bidi copies were byte-identical but carried different eslint-disable
+   * comments, and notify's control class covered C1 while snippet's did not.
+   * A rule about what an attacker may put on screen must have ONE statement,
+   * or a fix lands in two places out of three.
+   *
+   * OUTCOME-BASED: this counts literal occurrences of the character classes
+   * anywhere under src/, so a fourth copy fails wherever it is written.
+   */
+  const BIDI = /\\u202A-\\u202E|\\u202a-\\u202e/;
+  const CONTROLS = /\\u0000-\\u00|\\x00-\\x1f/;
+  const offenders = { bidi: [], controls: [] };
+
+  const walk = (dir) => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, e.name);
+      if (e.isDirectory()) { walk(full); continue; }
+      if (!e.name.endsWith('.js')) continue;
+      const rel = full.slice(ROOT.length + 1);
+      if (rel === 'src/shared/scrub.js') continue;   // the one definition
+      const text = readFileSync(full, 'utf8');
+      if (BIDI.test(text)) offenders.bidi.push(rel);
+      if (CONTROLS.test(text)) offenders.controls.push(rel);
+    }
+  };
+  walk(join(ROOT, 'src'));
+
+  assert.deepEqual(offenders.bidi, [],
+    'bidi controls are defined in src/shared/scrub.js — import BIDI_CONTROLS instead of re-writing the class');
+  assert.deepEqual(offenders.controls, [],
+    'control characters are defined in src/shared/scrub.js — import C0_CONTROLS or ALL_CONTROLS');
+});

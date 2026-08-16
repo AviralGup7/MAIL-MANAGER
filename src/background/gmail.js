@@ -831,7 +831,9 @@ export async function history(startHistoryId) {
  */
 function encodeHeader(value) {
   const s = String(value ?? '');
-  // eslint-disable-next-line no-control-regex
+  /* No disable comment: \x20-\x7E is the PRINTABLE range, so no-control-regex
+     never fired here. A directive that suppresses nothing claims a hazard
+     that does not exist (round 10, M-7). */
   if (/^[\x20-\x7E]*$/.test(s)) return s; // pure ASCII: leave it readable
 
   /*

@@ -232,7 +232,10 @@ export class Store {
       out.add(tech);
     }
 
-    for (const raw of text.split(/[^\p{L}\p{M}\p{N}@.\-]+/u)) {
+    /* `\-` was a no-op escape at the END of a character class -- harmless,
+       but flagged, and this is the most correctness-critical regex in the app
+       (round 10, M-8). Trailing hyphen is already literal. */
+    for (const raw of text.split(/[^\p{L}\p{M}\p{N}@.-]+/u)) {
       if (!raw) continue;
       add(raw);
       // Also index the local part and domain of an address separately, so

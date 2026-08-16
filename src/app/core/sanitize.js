@@ -26,6 +26,17 @@
  * now, not a substitute for the first.
  */
 
+/*
+ * The bidi scrub used to be defined here (round 8, M-7) and copied into
+ * snippet.js. It now lives in src/shared/scrub.js with the reasoning intact
+ * (round 10, I-6): U+202E reverses the rendering of everything after it, so
+ * `<a href="https://good.example">\u202Emoc.live</a>` displays as `evil.com`
+ * while pointing elsewhere, and the same trick renames attachments. The
+ * sanitiser adds a `title` with the real hostname, but that needs a hover and
+ * a suspicious user; the text should not lie in the first place.
+ */
+import { stripBidi, scrubUrl } from '../../shared/scrub.js';
+
 /** Elements allowed through. Everything else is unwrapped or dropped. */
 const ALLOWED = new Set([
   // structure
@@ -302,29 +313,6 @@ function walk(src, dest, doc, ctx, depth = 0) {
   }
 }
 
-/**
- * Remove bidirectional FORMATTING controls from displayed text.
- *
- * WHY (round 8, M-7). `U+202E RIGHT-TO-LEFT OVERRIDE` reverses the rendering
- * of everything after it, so `<a href="https://good.example">\u202Emoc.live</a>`
- * displays as `evil.com` while pointing somewhere else — the visible text and
- * the destination disagree, which is the whole mechanism of a link spoof. The
- * same trick renames attachments (`fdp.exe` reading as `exe.pdf`).
- *
- * The sanitiser already adds a `title` with the real hostname, but that needs
- * a hover and a suspicious user; the text should not lie in the first place.
- *
- * OVERRIDES AND ISOLATES ONLY. The stripped set is LRO/RLO/PDF and the
- * isolate family (LRI/RLI/FSI/PDI), which exist to re-order neighbouring
- * text. `U+200F RLM` and `U+200E LRM` are deliberately KEPT: they are marks,
- * not overrides, and legitimate Arabic, Hebrew and Urdu mail uses them for
- * correct rendering. Stripping those would corrupt honest text to defend
- * against a trick they cannot perform.
- */
-function stripBidi(value) {
-  // eslint-disable-next-line no-misleading-character-class
-  return String(value ?? '').replace(/[\u202A-\u202E\u2066-\u2069]/g, '');
-}
 
 function copyAttributes(from, to, tag, ctx) {
   const allowed = ATTRS[tag];
@@ -345,7 +333,7 @@ function copyAttributes(from, to, tag, ctx) {
     if (!GLOBAL_ATTRS.has(name) && !allowed?.has(name)) continue;
 
     if (name === 'src' && tag === 'img') {
-      const url = value.trim().replace(/[\u0000-\u001F\u007F\s]/g, '');
+      const url = scrubUrl(value);
 
       /*
        * INLINE IMAGES. `cid:` is not a fetchable scheme in any browser: it is
@@ -402,7 +390,7 @@ function copyAttributes(from, to, tag, ctx) {
     }
 
     if (name === 'href' || name === 'src') {
-      const url = value.trim().replace(/[\u0000-\u001F\u007F\s]/g, '');
+      const url = scrubUrl(value);
       // Blocks javascript:, data: (which can carry HTML), vbscript:, and any
       // scheme we have not explicitly permitted.
       if (!SAFE_SCHEME.test(url)) continue;

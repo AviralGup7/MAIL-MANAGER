@@ -17,6 +17,8 @@
  *     so a delta that is re-synced cannot notify twice.
  */
 
+import { ALL_CONTROLS, BIDI_CONTROLS } from '../shared/scrub.js';
+
 export const NOTIFY_CATEGORIES = new Set(['augsd', 'academics']);
 
 /** At most this many notifications per background sync run. */
@@ -84,9 +86,12 @@ export function mergeNotified(freshIds, prev = []) {
  */
 export function cardText(s, max = 160) {
   const clean = String(s || '')
-    // C0/C1 controls plus bidi embedding/override/isolate marks: none belongs
-    // in an OS card where it can visually reorder trusted surrounding text.
-    .replace(/[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g, '')
+    /* C0/C1 controls plus bidi embedding/override/isolate marks: none belongs
+       in an OS card where it can visually reorder trusted surrounding text.
+       Shared with the in-app surfaces (round 10, I-6) -- a card is
+       single-line, so line breaks go too. */
+    .replace(ALL_CONTROLS, '')
+    .replace(BIDI_CONTROLS, '')
     .trim();
   return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
 }
