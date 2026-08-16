@@ -72,7 +72,30 @@ function ensureCanvas() {
   // transform — a burst that scales 0.985 mid-push would read as the
   // particles belonging to the chrome. They are scene-free spectacle.
   doc.body?.appendChild(el);
-  ctx = ctxFactoryForTest ? ctxFactoryForTest(el) : el.getContext?.('2d');
+  /*
+   * getContext CAN THROW, NOT ONLY RETURN NULL (round 11, B17).
+   *
+   * The `!ctx` guard below handles the documented null (context refused), but
+   * not the throw — and a throw here escapes into the SEND path:
+   * compose.js's doSend calls fxBurst between `closeCompose()` and the
+   * "Sending to …" toast, with no try/catch anywhere above it. An exception
+   * at that point aborts doSend AFTER the panel has closed and BEFORE the
+   * toast, so the user sees their compose window vanish with no confirmation
+   * and no undo affordance for a message that is already queued.
+   *
+   * Observed live in jsdom (`Not implemented: HTMLCanvasElement.prototype
+   * .getContext`), and reachable in a real browser too: a blocked or
+   * exhausted GPU context, a canvas the compositor refuses, or a
+   * privacy extension that stubs getContext to throw all do this.
+   *
+   * `themeInk` twenty lines up already wraps its DOM read in try/catch for
+   * exactly this reason — decoration must never be able to break a verb.
+   */
+  try {
+    ctx = ctxFactoryForTest ? ctxFactoryForTest(el) : el.getContext?.('2d');
+  } catch {
+    ctx = null;
+  }
   if (!ctx) { el.remove(); return false; }
   canvas = el;
   ink = themeInk();
