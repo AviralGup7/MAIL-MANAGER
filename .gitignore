@@ -27,3 +27,8 @@ tools/bisect/
 .smoke-failure.*
 .smoke-trace.zip
 .ci-manifest.json
+
+# Round-5 cyberpunk probes — scratch, regenerated on demand, never shipped.
+/.shot-cp.mjs
+/.census-cp.mjs
+/.probe-*.mjs
