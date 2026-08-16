@@ -81,3 +81,78 @@ test('one owner: only the skin volume and the fx module speak cyberpunk', () => 
   assert.ok(read('app.html').includes('src/styles/88-cyberpunk.css'));
   assert.ok(bundleStyles().includes('GATE SENTINEL'), 'the bundle carries the skin');
 });
+
+/* ==========================================================================
+ * ROUND 5 (2026-08-16): the corner language, the data face, the brackets.
+ *
+ * Every one of these was found by RENDERING the theme in a browser and
+ * measuring computed styles — not by reading CSS. They are pinned here
+ * because each is the kind of regression that reappears silently: a new
+ * component rule reaching for --r-md, a new readout set in the UI sans, a
+ * bracket rule drifting onto full-width chrome again.
+ * ========================================================================== */
+
+test('a hard-edged theme collapses the radius scale, keeping the pill idiom', () => {
+  const css = read('src/styles/00-tokens.css');
+  /* The seam is the SCALE, not a list of selectors: ~111 rules reach for
+     --r-* directly and beat the base control rule on cascade order, so
+     patching selectors would always leave the next one to be found. */
+  const m = css.match(/html\[style\*='--btn-radius: 0px'\]\s*\{([^}]*)\}/);
+  assert.ok(m, 'the zero-radius override exists and keys off theme DATA, not a theme id');
+  const body = m[1];
+  for (const step of ['--r-sm', '--r-md', '--r-lg', '--r-xl']) {
+    assert.match(body, new RegExp(`${step}:\\s*0px`), `${step} must flatten`);
+  }
+  assert.ok(!body.includes('--r-full'),
+    '--r-full is the pill/dot idiom: flattening it turns every unread dot into a square');
+
+  /* Keyed off the inline custom property applyTheme writes, so BOTH 0px
+     themes get it and a future hard theme inherits it with no new CSS. */
+  const zero = THEMES.filter((t) => t.btnRadius === '0px').map((t) => t.id);
+  assert.deepEqual(zero.sort(), ['contrast', 'cyberpunk'],
+    'if this list changes, confirm the new theme really wants flat corners');
+});
+
+test('machine readouts wear the data face; mail content never does', () => {
+  const css = read('src/styles/88-cyberpunk.css');
+  const gated = css.slice(css.indexOf('GATE SENTINEL'));
+
+  assert.ok(read('src/styles/00-tokens.css').includes('--font-mono:'),
+    'the data face is a token, not a fourth hardcoded copy of the stack');
+  assert.ok(gated.includes('font-family: var(--font-mono)'),
+    'the skin consumes the token');
+
+  /* The pairing is the point: mono for VALUES, the UI sans for everything a
+     human wrote. Setting a subject or a snippet in mono would be costume. */
+  for (const humanText of ['.r-subj', '.r-snip', '#reader-body', '.r-from']) {
+    const rule = new RegExp(`${humanText.replace('.', '\\.')}[^{]*\\{[^}]*--font-mono`);
+    assert.ok(!rule.test(gated), `${humanText} is human prose and must not be set in mono`);
+  }
+});
+
+test('corner brackets designate objects, never full-width chrome', () => {
+  const css = read('src/styles/88-cyberpunk.css');
+  const gated = css.slice(css.indexOf('GATE SENTINEL'));
+  assert.ok(/#radar::after/.test(gated) && /#reader-idle::after/.test(gated),
+    'the bracket lives on the compact rail cards');
+  /* The first attempt bracketed the full-width headers: at 1440px the marks
+     sat ~1200px apart and read as two stray ticks. A bracket is a
+     designation; designating a whole header designates nothing. */
+  for (const wide of ['#listhead::after', '#reader-head::after', '#topbar::after']) {
+    assert.ok(!gated.includes(wide),
+      `${wide} is full-width chrome — brackets there read as stray ticks, not a frame`);
+  }
+  /* Calm is a promise about NOISE, so it drops them; textures-off is a
+     promise about ATMOSPHERE, so structure survives it. */
+  assert.match(gated, /data-cp-intensity='calm'\] #radar::after/,
+    'calm intensity removes the brackets');
+});
+
+test('no stadium survives in the hard skin', () => {
+  const gated = read('src/styles/88-cyberpunk.css');
+  /* #notices > * is a 348x30 BANNER, not a chip: --r-full made it the
+     softest shape in the theme and clipped its amber status edge into a
+     crescent, deforming the one piece of colour carrying meaning. */
+  assert.match(gated, /#notices > \*\s*\{[^}]*border-radius:\s*0/,
+    'the notices banner takes the skin corner language, not the pill idiom');
+});
