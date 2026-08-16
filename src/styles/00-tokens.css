@@ -150,6 +150,23 @@ html:not([data-theme]) body {
   --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas,
     'Liberation Mono', monospace;
 
+  /* --- SCROLL AFFORDANCE ---------------------------------------------------
+   * How far the category rail dissolves at its bottom edge to say "there is
+   * more below" (round 6). Zero by default and OPENED by a scroll timeline
+   * — see #cats in 10-shell.css and @keyframes cats-fade-in beside it.
+   *
+   * The direction is the correctness argument: an element that does not
+   * overflow has no scroll timeline, so the animation never applies and
+   * this initial value is what survives. Starting at the fade height
+   * therefore dimmed the last row of a SHORT rail for no reason. Starting
+   * at zero makes "nothing to scroll" and "scrolled to the end" agree.
+   *
+   * Defined HERE because token definitions have exactly two legal
+   * addresses (structure.test); 10-shell.css only consumes it. That gate
+   * caught this on CI shard 4/8 after it shipped in the wrong volume.
+   */
+  --cats-fade: 0px;
+
   /* THE SHAPE AXIS. themes.js re-authors these per theme at runtime (shape
      is theme data since 2026-08-14); the fallbacks are the pre-axis look,
      so an un-themed render — boot flash, storage dead — keeps yesterday's
@@ -216,6 +233,16 @@ html:not([data-theme]) body {
    * Lives here with the other density tokens so it cannot drift from them.
    */
   --listbar-h: 41px;
+}
+
+/* --cats-fade must animate as a LENGTH, not as a string: an unregistered
+   custom property is un-interpolable, so the fade would jump 24px -> 0px in
+   one step instead of tracking the scroll. Registered beside its definition
+   for the same reason the definition lives here at all. */
+@property --cats-fade {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
 }
 
 /* ---- HARD-EDGED THEMES COLLAPSE THE WHOLE SCALE (round 5, 2026-08-16) -----

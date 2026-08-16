@@ -200,10 +200,20 @@ test('a clipped category rail announces itself (round 6, reported bug)', () => {
    * inverted. Starting at zero makes "nothing to scroll" and "scrolled to
    * the end" agree.
    */
-  assert.match(block, /--cats-fade:\s*0px/,
+  /* The DEFINITION lives in 00-tokens.css — token definitions have exactly
+     two legal addresses (structure.test), and shipping it inside #cats is
+     what turned CI shard 4/8 red. Assert the property, not the address it
+     briefly had: the initial value must be zero wherever it is declared. */
+  assert.match(css, /--cats-fade:\s*0px/,
     'the fade must start closed so a non-overflowing rail shows no fade at all');
-  const kf = css.slice(css.indexOf('@keyframes cats-fade-in'));
-  assert.ok(/from\s*\{[^}]*--cats-fade:\s*var\(--s-\d\)/.test(kf.slice(0, 200)),
+  assert.match(css, /@property --cats-fade\s*\{[^}]*syntax:\s*'<length>'/,
+    'an unregistered custom property cannot interpolate — the fade would jump, not track');
+  /* Match the AT-RULE, not the first mention of its name: a comment in
+     00-tokens.css now points readers at this keyframe, and a bare indexOf
+     found the prose instead of the rule. */
+  const kf = /@keyframes cats-fade-in\s*\{([\s\S]*?)\n\}/.exec(css);
+  assert.ok(kf, 'the scroll-driven keyframe exists');
+  assert.match(kf[1], /from\s*\{[^}]*--cats-fade:\s*var\(--s-\d\)/,
     'the keyframe opens the fade from the token scale, not a magic number');
 });
 

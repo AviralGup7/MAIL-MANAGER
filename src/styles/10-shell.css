@@ -112,15 +112,10 @@
    * where scroll timelines are unsupported the mask simply stays at its
    * static value and the rail behaves exactly as it does today.
    */
-  /* Starts at ZERO and is opened by the scroll timeline. Starting at the
-     fade height was the obvious way round and is wrong: an element that
-     does not overflow has no scroll timeline, so the animation never
-     applies and the initial value is what you keep — a short rail would
-     dim its own last row for no reason. Measured that exact bug on a
-     six-item list before flipping the direction. Opening the fade FROM
-     zero means "no overflow" and "scrolled to the end" agree, which is
-     correct in both cases. */
-  --cats-fade: 0px;
+  /* The token's own initial value is ZERO and the scroll timeline opens it;
+     both live in 00-tokens.css, because token DEFINITIONS have exactly two
+     legal addresses (structure.test: "token definitions live only in the
+     tokens volumes"). This volume only CONSUMES it. */
   mask-image: linear-gradient(
     to bottom,
     #000 0,
@@ -145,12 +140,6 @@
   to {
     --cats-fade: 0px;
   }
-}
-
-@property --cats-fade {
-  syntax: '<length>';
-  inherits: false;
-  initial-value: 0px;
 }
 
 .cat[data-muted='true'] .cat-name,
