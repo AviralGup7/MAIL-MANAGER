@@ -156,7 +156,11 @@ const SECTIONS = [
       { kind: 'check', key: 'readerDossier', label: 'Use the message dossier reader', hint: 'Structures sender, thread, deadline, labels and attachments around a calm message body.' },
       { kind: 'check', key: 'threadTimeline', label: 'Show thread trajectory', hint: 'Keeps the conversation timeline visible for multi-message threads.' },
       { kind: 'check', key: 'queryConsole', label: 'Use the visual query console', hint: 'Shows operators, values, grouping and local/remote execution as an inspectable query chain.' },
-      { kind: 'check', key: 'timetableTerminal', label: 'Use timetable operations mode', hint: 'Adds selected-course and validation telemetry; Cyberpunk uses a bounded terminal-lime subsystem palette.' },
+      /* Cyberpunk-only in fact, not just in flavour: both consumers of
+         data-tt-terminal are `html[data-theme='cyberpunk']...` rules in
+         88-cyberpunk.css and nothing in JS reads the key, so under any other
+         theme this checkbox changed literally nothing. */
+      { kind: 'check', key: 'timetableTerminal', label: 'Use timetable operations mode', theme: 'cyberpunk', hint: 'Gives the timetable workspace the bounded terminal-lime subsystem palette, with selected-course and validation telemetry.' },
       { kind: 'check', key: 'operationCenter', label: 'Show activity entry', hint: 'Opens the existing activity log from the system strip. Sync and storage diagnostics remain separate.' },
       { kind: 'check', key: 'calmContent', label: 'Keep message content calm', hint: 'Prevents scanlines, chromatic fringing and decorative texture from crossing into email bodies and writing surfaces.' },
     ],

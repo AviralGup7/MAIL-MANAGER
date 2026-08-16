@@ -201,3 +201,68 @@ test('later volumes must not reset a colour the skin assigned (round 5)', () => 
     'a later volume restates a border colour the cyberpunk skin owns — ' +
     'declare border-*-width/style there and let the colour cascade');
 });
+
+test('a setting only the cyberpunk skin consumes is only offered under cyberpunk', () => {
+  /*
+   * THE LEAK THIS CATCHES (2026-08-16). Three controls — cyberpunkIntensity,
+   * cyberpunkAudioProfile and timetableTerminal — rendered as live, enabled
+   * inputs under all seven themes while doing nothing in six of them.
+   * Measured in Chromium: opening the panel in `daylight` put the word
+   * "Cyberpunk" on screen 7 times.
+   *
+   * The residue rule at the top of this file is about PIXELS. This is the
+   * same rule for CONTROLS: a theme may not leave inert switches behind in
+   * another theme's settings panel.
+   *
+   * DERIVED, NOT LISTED. The check reads which root attributes are consumed
+   * exclusively by cyberpunk-gated CSS, maps them back to their schema keys,
+   * and demands `theme: 'cyberpunk'` on each. A new cyberpunk-only attribute
+   * is therefore covered the day it is added, with no list to update.
+   */
+  const skin = read('src/styles/88-cyberpunk.css');
+  const others = styleFiles().filter((f) => !f.includes('88-cyberpunk'))
+    .map((f) => read(f)).join('\n').replace(/\/\*[\s\S]*?\*\//g, ' ');
+  const panel = read('src/app/overlays/settings-panel.js');
+
+  /* attribute -> the settings key that stamps it, from the one stamper. */
+  const attrs = new Map();
+  for (const m of read('src/app/system/root-attrs.js')
+    .matchAll(/setAttribute\('(data-[\w-]+)',\s*settings\.get\('(\w+)'\)/g)) {
+    attrs.set(m[1], m[2]);
+  }
+
+  /*
+   * ESCAPE HATCHES ARE NOT THEME-SCOPED, AND MY FIRST VERSION OF THIS TEST
+   * GOT THAT WRONG — it demanded `theme:` on `textures`, which would have
+   * been a real regression.
+   *
+   * `textures` and `sounds` are the two axes settings.js documents as
+   * outranking any theme: "Themes may offer atmosphere; they may not insist
+   * on it." Today only the cyberpunk skin reads them, because it is the only
+   * theme currently shipping scanlines and chirps — but the user must be able
+   * to switch them off BEFORE picking such a theme, and the next heavy theme
+   * inherits the preference rather than re-asking. Hiding them under
+   * cyberpunk would make the override reachable only from inside the thing it
+   * overrides.
+   */
+  const ESCAPE_HATCHES = new Set(['textures', 'sounds']);
+
+  for (const [attr, key] of attrs) {
+    if (!skin.includes(attr)) continue;          // the skin does not use it
+    if (others.includes(attr)) continue;         // shared with calm themes — fine
+    if (ESCAPE_HATCHES.has(key)) continue;       // deliberately cross-theme
+    /* Used by the skin ONLY. Every rule mentioning it must also be gated, or
+       the attribute is not really cyberpunk-scoped. */
+    const ungated = skin.split('\n')
+      .filter((l) => l.includes(attr) && !l.includes(GATE));
+    assert.deepEqual(ungated, [],
+      `${attr} is used outside the theme gate inside the skin volume`);
+
+    const at = panel.indexOf(`key: '${key}'`);
+    if (at === -1) continue;                     // not offered in the panel at all
+    assert.match(panel.slice(at - 300, at + 400), /theme: 'cyberpunk'/,
+      `"${key}" is consumed only by the cyberpunk skin, so the settings panel `
+      + `must scope it with theme: 'cyberpunk' — otherwise it renders as a live `
+      + `control that does nothing under the other six themes`);
+  }
+});

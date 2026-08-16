@@ -241,3 +241,54 @@ test('open renders one control per descriptor item and closes through the layer'
     restore();
   }
 });
+
+/* ==========================================================================
+ * THEME-SCOPED CONTROLS: OFFERED ONLY WHERE THEY DO SOMETHING
+ * ========================================================================== */
+
+test('a control that only affects one theme declares that theme', () => {
+  /*
+   * Measured in Chromium before the fix: opening the panel under `daylight`
+   * rendered "Cyberpunk intensity" and "Cyberpunk sound detail" as live,
+   * enabled selects — the word "Cyberpunk" appeared 7 times in a panel for a
+   * theme that is not cyberpunk. Their own hints said "Only affects the
+   * Cyberpunk theme", which is the tell: a control present, enabled, and
+   * inert is read as broken rather than inapplicable.
+   *
+   * OUTCOME-BASED, so the next cyberpunk-only control cannot ship ungated:
+   * any descriptor key beginning `cyberpunk` must carry `theme:`.
+   */
+  for (const m of panel.matchAll(/key: '(cyberpunk[A-Za-z]*)'/g)) {
+    const key = m[1];
+    const item = panel.slice(m.index - 200, m.index + 400);
+    assert.match(item, /theme: 'cyberpunk'/,
+      `${key} only applies under cyberpunk — it must declare theme: 'cyberpunk'`);
+  }
+});
+
+test('theme-scoped rows are resolved on first paint and on every theme change', () => {
+  /* Three seams, all required. Miss the renderBody call and the first paint
+     shows an inapplicable control; miss the subscribe branch and switching
+     theme from the topbar or the palette leaves the panel stale. */
+  assert.match(panel, /function syncThemeScoped/, 'the resolver exists');
+  assert.match(panel, /syncThemeScoped\(\);\s*\n\s*\}/,
+    'renderBody resolves before the panel is shown');
+  assert.match(panel, /if \(key === 'theme'\) syncThemeScoped\(value\)/,
+    'a theme write from ANY source re-resolves the rows');
+
+  /* Hidden, not rebuilt: a rebuild would destroy focus and scroll, which is
+     what the live-binding block exists to prevent. */
+  assert.match(panel, /el\.hidden = theme !== active/,
+    'scoped rows toggle `hidden` rather than being re-rendered');
+});
+
+test('hiding a scoped row never writes to the setting', () => {
+  /* The value must survive a round trip through another theme: hiding is a
+     presentation decision, and settings.js stays the authority. Verified in
+     Chromium — intensity read back 'balanced' after daylight → cyberpunk →
+     daylight with the panel open throughout. */
+  const fn = panel.slice(panel.indexOf('function syncThemeScoped'));
+  const body = fn.slice(0, fn.indexOf('\n}'));
+  assert.ok(!/settings\.set|commit\(/.test(body),
+    'syncThemeScoped must not write — it only decides what is offered');
+});
