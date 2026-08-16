@@ -25,7 +25,7 @@ directory. Open Options, paste your client ID, open Gmail, press
 1. **One canonical representation per business concept.** Audience, deadline,
    address lists, search tokens and ingest records each have exactly one
    producer; consumers read the stamp or the accessor, never a re-derivation
-   (see audits/39-BUSINESS-LOGIC.md, cross-audit in audits/40-*).
+   (the rule outlived the audit that found it; see docs/FINDINGS.md).
 2. **Tests are sabotage-verified.** A new guard ships with a demonstration
    that breaking the contract fails the test.
 3. **No layout animation per frame.** Discrete state-bound transitions only,
@@ -47,7 +47,10 @@ directory. Open Options, paste your client ID, open Gmail, press
 
 ## Where the knowledge lives
 
-- `docs/` — architecture, threading, service worker, timetable provenance
-- `audits/` — ten audits plus the cross-audit consolidation; findings stay
-  retracted-in-place, never deleted
-- `notes/` — bug post-mortems (SYNC_BUGS.md is the history API's scar tissue)
+- `docs/` — architecture, threading, service worker, timetable provenance.
+  Living documents, gated by `tools/check-docs.mjs`
+- `docs/FINDINGS.md` — the finding-id ledger. Code comments cite ids like
+  `AUD-C1` and `R3-02`; this is what they mean, including the withdrawn ones
+- `audits/` — the four reference audits code cites by name, plus the latest
+  bug hunt. The rest were retired once fixed and pinned; `audits/README.md`
+  states the criterion
