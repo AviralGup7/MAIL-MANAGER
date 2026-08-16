@@ -154,6 +154,14 @@ function mailboxButton(mb) {
   const count = document.createElement('span');
   count.className = 'cat-count';
 
+  /* THE COLLAPSED RAIL HAS NO WORDS (round 6, 2026-08-16).
+     At <=860px .cat-name is display:none and the rail is 64px of icons.
+     A screen reader still gets the accessible name, but a sighted mouse
+     user had nothing at all -- no label, no tooltip. `title` is the one
+     affordance that costs no layout and needs no JS, and it is inert at
+     full width because the label is already visible there. */
+  b.title = mb.label;
+
   b.append(ic, name, count);
   return b;
 }
@@ -187,6 +195,12 @@ function catButton(key, label, color) {
   name.textContent = label;
   const count = document.createElement('span');
   count.className = 'cat-count';
+  /* Same rule as the mailboxes, and it matters MORE here: a collapsed
+     mailbox at least keeps a distinct glyph, while a collapsed category
+     is a bare coloured dot. Measured at 760px: fourteen identical circles,
+     no icons, no titles -- unusable by pointer. The dot's colour is the
+     only differentiator and colour alone is never a label. */
+  b.title = label;
   b.append(dot, name, count);
   return b;
 }
