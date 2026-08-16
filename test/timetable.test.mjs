@@ -1829,3 +1829,87 @@ test('the department list matches the shipped timetable', async () => {
   const actual = new Set(data.courses.map((c) => c.courseNo.split(/\s+/)[0]));
   assert.deepEqual([...actual].filter((d) => !declared.has(d)), [], 'departments the detector cannot see');
 });
+
+/* ==========================================================================
+ * ROUND 9 — detectConflicts against hostile / restored data (2026-08-16)
+ *
+ * `timetable` is a backup:true registry key, so every shape below is
+ * reachable from a restored backup written by an older build, or from the
+ * hand-edited export the UI invites by offering export at all.
+ * ========================================================================== */
+
+test('a conflict pass survives an entry with no `unresolved` (round 9, H-1)', () => {
+  /*
+   * The consumer assumed the field exists while the sibling line two above
+   * it defends `e.meetings || []`, and every PRODUCER defends too
+   * (addCourse writes `[...(section.unresolved || [])]`). The throw took out
+   * the whole conflict pass, and with it the timetable panel.
+   */
+  const bare = { id: 'a', courseNo: 'X', section: 'L1', meetings: [{ day: 'M', hour: 1 }] };
+  assert.doesNotThrow(() => detectConflicts([bare]));
+  assert.deepEqual(detectConflicts([bare]), []);
+  /* Still reported when it IS present. */
+  const withField = { ...bare, unresolved: ['room'] };
+  const un = detectConflicts([withField]).filter((c) => c.kind === 'unresolved');
+  assert.equal(un.length, 1);
+  assert.deepEqual(un[0].fields, ['room']);
+});
+
+test('an entry cannot conflict with itself (round 9, H-2/H-3)', () => {
+  const base = { id: 'a', courseNo: 'CS F211', section: 'L1', unresolved: [] };
+
+  /*
+   * H-2: a duplicated meeting row -- what a re-import or a double-applied
+   * timetable mail produces -- reported "CS F211 L1 and CS F211 L1 are both
+   * on Monday at hour 1". Unresolvable, because both sides are the same row.
+   */
+  assert.deepEqual(
+    detectConflicts([{ ...base, meetings: [{ day: 'M', hour: 1 }, { day: 'M', hour: 1 }] }]),
+    [], 'a repeated meeting is not a clash'
+  );
+
+  /*
+   * H-3: the same bug through duplicate IDS. The entry must not be reported
+   * as CLASHING with itself — but it is still legitimately reported as a
+   * `duplicate`, which is the honest description and already existed. So the
+   * assertion is about the overlap kind specifically, not about silence:
+   * asserting `[]` here would have demanded the removal of a correct
+   * conflict, which is how a "fix" makes a product worse.
+   */
+  const dup = { ...base, meetings: [{ day: 'M', hour: 1 }] };
+  const dupConflicts = detectConflicts([dup, { ...dup }]);
+  assert.deepEqual(dupConflicts.filter((c) => c.kind === 'overlap'), [],
+    'one entry listed twice is not two courses clashing');
+  assert.ok(dupConflicts.some((c) => c.kind === 'duplicate'),
+    'it IS still reported as a duplicate, which the user can act on');
+});
+
+test('deduping must not silence a real clash (round 9, H-2 guard)', () => {
+  /*
+   * The point of the fix is to remove FALSE conflicts, so the true ones are
+   * pinned here: a fix that quietened everything would pass the two tests
+   * above and be worse than the bug.
+   */
+  const at = (id, courseNo) => ({ id, courseNo, section: 'L1', unresolved: [],
+    meetings: [{ day: 'M', hour: 1 }] });
+
+  const two = detectConflicts([at('a', 'CS F211'), at('b', 'MATH F211')])
+    .filter((c) => c.kind === 'overlap');
+  assert.equal(two.length, 1);
+  assert.deepEqual(two[0].entryIds, ['a', 'b']);
+
+  const three = detectConflicts([at('a', 'A'), at('b', 'B'), at('c', 'C')])
+    .filter((c) => c.kind === 'overlap');
+  assert.deepEqual(three[0].entryIds, ['a', 'b', 'c']);
+
+  /*
+   * Two DIFFERENT entries that both lack an id must stay distinct. Keying
+   * the dedupe on `undefined` would merge every malformed entry into one and
+   * hide a genuine clash between them.
+   */
+  const anon = detectConflicts([
+    { courseNo: 'X', section: '1', meetings: [{ day: 'M', hour: 1 }] },
+    { courseNo: 'Y', section: '2', meetings: [{ day: 'M', hour: 1 }] },
+  ]).filter((c) => c.kind === 'overlap');
+  assert.equal(anon.length, 1, 'id-less entries are still two entries');
+});

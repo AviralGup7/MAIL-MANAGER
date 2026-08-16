@@ -881,16 +881,47 @@ export function examEvents(entries) {
 export function detectConflicts(entries) {
   const conflicts = [];
 
-  // 1. Two classes in the same slot on the same day.
+  /*
+   * 1. Two classes in the same slot on the same day.
+   *
+   * ONE ENTRY PER SLOT, DEDUPED BY IDENTITY (round 9, H-2/H-3).
+   *
+   * The map pushed the entry once per meeting with no dedupe, so an entry
+   * carrying the same {day,hour} twice — exactly what a re-import or a
+   * double-applied timetable mail produces — was reported as clashing with
+   * ITSELF: `entryIds: ['a','a']`, "CS F211 L1 and CS F211 L1 are both on
+   * Monday at hour 1". The user cannot resolve that, because both sides of
+   * the conflict are the same row.
+   *
+   * Duplicate IDS in the entry list are the same bug through another door
+   * (H-3), and nothing enforces uniqueness there. Keying the per-slot set on
+   * the id closes both: a slot lists each distinct entry once, so a genuine
+   * two-course clash still reports and a self-clash cannot.
+   *
+   * The id is only a grouping key here. A malformed entry with no id shares
+   * `undefined` with every other malformed entry, which would silently merge
+   * them, so those fall back to a per-object identity instead.
+   */
   const slots = new Map();
+  let anonSeq = 0;
+  const anonIds = new WeakMap();
+  const identityOf = (e) => {
+    if (e && (typeof e.id === 'string' || typeof e.id === 'number') && e.id !== '') return `id:${e.id}`;
+    if (!e || typeof e !== 'object') return `anon:${anonSeq++}`;
+    if (!anonIds.has(e)) anonIds.set(e, `anon:${anonSeq++}`);
+    return anonIds.get(e);
+  };
   for (const e of entries) {
     for (const m of e.meetings || []) {
       const key = `${m.day}:${m.hour}`;
-      if (!slots.has(key)) slots.set(key, []);
-      slots.get(key).push(e);
+      if (!slots.has(key)) slots.set(key, new Map());
+      const perSlot = slots.get(key);
+      const identity = identityOf(e);
+      if (!perSlot.has(identity)) perSlot.set(identity, e);
     }
   }
-  for (const [key, list] of slots) {
+  for (const [key, perSlot] of slots) {
+    const list = [...perSlot.values()];
     if (list.length < 2) continue;
     const [day, hour] = key.split(':');
     conflicts.push({
@@ -907,14 +938,24 @@ export function detectConflicts(entries) {
 
   // 2. A section whose value the source never supplied.
   for (const e of entries) {
-    if (!e.unresolved.length) continue;
+    /*
+     * `|| []`, matching the `e.meetings || []` two loops above (round 9,
+     * H-1). Every PRODUCER already defends this field — addCourse writes
+     * `[...(section.unresolved || [])]` — and this consumer was the only
+     * place that assumed it exists. `timetable` is a backup:true registry
+     * key, so a restored backup from an older build, or the hand-edited
+     * export the UI invites, produces exactly that shape: the throw took
+     * out the whole conflict pass and the timetable panel with it.
+     */
+    const unresolved = e.unresolved || [];
+    if (!unresolved.length) continue;
     conflicts.push({
       kind: 'unresolved',
       severity: 'needs-input',
       entryIds: [e.id],
-      fields: [...e.unresolved],
+      fields: [...unresolved],
       message:
-        `${e.courseNo} ${e.section} has no ${e.unresolved.join(' or ')} in the ` +
+        `${e.courseNo} ${e.section} has no ${unresolved.join(' or ')} in the ` +
         'official timetable. Enter it manually, or leave it blank.',
     });
   }
