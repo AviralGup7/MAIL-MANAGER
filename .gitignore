@@ -28,7 +28,16 @@ tools/bisect/
 .smoke-trace.zip
 .ci-manifest.json
 
-# Round-5 cyberpunk probes — scratch, regenerated on demand, never shipped.
+# Verification probes — scratch, regenerated on demand, never shipped.
+#
+# The `.v-*` line is here because eleven of them DID ship (round 9, H-4):
+# the round-5 pattern covered `.probe-*` and `.shot-*` only, so the next
+# session's naming convention walked straight past it. A leading-dot name is
+# invisible in a casual `ls`, which is exactly why the glob has to be broad
+# rather than a list of the names used so far.
 /.shot-cp.mjs
 /.census-cp.mjs
 /.probe-*.mjs
+/.v-*.mjs
+/.chk.mjs
+/.k.mjs
