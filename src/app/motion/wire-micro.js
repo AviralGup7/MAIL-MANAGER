@@ -21,7 +21,7 @@
  */
 
 import { makePressable } from './press.js';
-import { attachMagnetic } from './magnetic.js';
+import { attachMagnetic, detachMagnetic } from './magnetic.js';
 import { spawnRipple } from './ripple.js';
 
 /** Pressable = compress + recover. Selector → compression depth. */
@@ -49,9 +49,42 @@ const excluded = (el) => EXCLUSIONS.some((sel) => {
   try { return el.matches(sel) || el.closest(sel); } catch { return false; }
 });
 
+/**
+ * Is the pointer-motion tier switched on right now? (round 7, 2026-08-16)
+ *
+ * Reads the RESOLVED decision published by applyVisualPrefs, never the raw
+ * preference: `auto` is theme-dependent, and re-deriving that rule here
+ * would be a second copy of it. A missing attribute means the surface has
+ * not published yet (boot, tests), and the historical behaviour was ON, so
+ * absence reads as on.
+ */
+function pointerMotionOn(root) {
+  const doc = root?.ownerDocument || (root?.documentElement ? root : globalThis.document);
+  const html = doc?.documentElement;
+  return html?.getAttribute('data-pointer-motion') !== 'off';
+}
+
 export function wireMicroInteractions(root = document) {
   // Presence-gated: every surface listed may be absent in gate/tests.
   const all = (sel) => { try { return [...root.querySelectorAll(sel)]; } catch { return []; } };
+
+  /*
+   * OFF MEANS UNWIRE, NOT MERELY SKIP.
+   *
+   * This function re-runs on every settings change, so a user turning the
+   * tier off mid-session must have existing magnetic fields RELEASED —
+   * skipping the attach loop would leave already-attached elements pulling
+   * forever. detachMagnetic restores the transform it borrowed, so an
+   * element mid-approach returns home rather than freezing off-centre.
+   *
+   * Press and ripple need no teardown: press is per-event and stateless
+   * between gestures, and the ripple listener checks the gate at spawn
+   * time (below), so both simply stop responding.
+   */
+  if (!pointerMotionOn(root)) {
+    for (const [sel] of MAGNET) for (const el of all(sel)) detachMagnetic(el);
+    return;
+  }
 
   for (const [sel, opts] of PRESS) {
     for (const el of all(sel)) if (!excluded(el)) makePressable(el, opts);
@@ -65,6 +98,10 @@ export function wireMicroInteractions(root = document) {
   if (root.__rippleWired !== true) {
     root.__rippleWired = true;
     root.addEventListener('pointerdown', (e) => {
+      // Gate at SPAWN, not at wire time: the listener is delegated and
+      // registered once, so it must ask the current answer each time
+      // rather than capture the answer it was born with.
+      if (!pointerMotionOn(root)) return;
       const host = e.target?.closest?.(RIPPLE[0]);
       if (!host || excluded(host)) return;
       spawnRipple(host, e.clientX, e.clientY);

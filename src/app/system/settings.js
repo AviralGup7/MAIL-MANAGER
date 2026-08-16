@@ -118,6 +118,27 @@ export const SCHEMA = {
   timetableTerminal: { type: 'bool', def: true },
   operationCenter: { type: 'bool', def: true },
   calmContent: { type: 'bool', def: true },
+  /*
+   * POINTER MOTION — the micro-interaction tier (round 7, 2026-08-16).
+   *
+   * press / magnetic / ripple / key-light are the "objects have mass" cues.
+   * They shipped wired UNCONDITIONALLY: wireMicroInteractions(document) ran
+   * for every theme with no gate and no setting, so a user who wanted the
+   * cyberpunk palette also got elements leaning toward the cursor whether
+   * they wanted that or not, and no preference could stop it.
+   *
+   * A tri-state rather than a bool, because the honest answer differs by
+   * theme: `auto` keeps today's behaviour for the calm themes and turns the
+   * tier OFF under cyberpunk, whose own signature motion (glitch entrances,
+   * signal kicks, scan sweep) is already doing that job — two motion
+   * languages on one pointer is noise, not character. `on` and `off` are
+   * the explicit overrides for people who disagree with either default.
+   *
+   * prefers-reduced-motion still outranks all three: the primitives refuse
+   * to attach listeners under it, which is a stronger guarantee than a
+   * preference and stays that way.
+   */
+  pointerMotion: { type: 'enum', def: 'auto', values: ['auto', 'on', 'off'] },
 
   // ---- sending ----
   /*

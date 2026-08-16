@@ -66,4 +66,14 @@ export function applyVisualPrefs() {
   root.setAttribute('data-tt-terminal', settings.get('timetableTerminal') !== false ? 'on' : 'off');
   root.setAttribute('data-operation-center', settings.get('operationCenter') !== false ? 'on' : 'off');
   root.setAttribute('data-calm-content', settings.get('calmContent') !== false ? 'on' : 'off');
+  /*
+   * POINTER MOTION, RESOLVED (round 7). `auto` is theme-dependent, so the
+   * DOM states the DECISION rather than the preference: consumers read one
+   * attribute and never re-derive the theme rule. Cyberpunk brings its own
+   * motion language, so auto means off there and on everywhere else.
+   */
+  const pm = settings.get('pointerMotion') || 'auto';
+  const themeId = settings.get('theme') || 'daylight';
+  const pmOn = pm === 'on' || (pm === 'auto' && themeId !== 'cyberpunk');
+  root.setAttribute('data-pointer-motion', pmOn ? 'on' : 'off');
 }

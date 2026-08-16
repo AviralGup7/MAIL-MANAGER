@@ -76,6 +76,15 @@ const SECTIONS = [
         hint: 'Modern adds truthful telemetry, dossier structure and richer state cues. Legacy keeps the previous presentation without deleting it.',
       },
       {
+        kind: 'select', key: 'pointerMotion', label: 'Pointer motion',
+        options: [
+          ['auto', 'Auto — off in Cyberpunk, on elsewhere'],
+          ['on', 'On — buttons lean toward the cursor'],
+          ['off', 'Off — no press, magnet, ripple or key light'],
+        ],
+        hint: 'Press, magnetic pull, ripple and the key light. Cyberpunk brings its own motion language, so Auto stands these down there rather than running two at once. Reduced motion still overrides every choice.',
+      },
+      {
         kind: 'select', key: 'cyberpunkIntensity', label: 'Cyberpunk intensity',
         options: [
           ['calm', 'Calm — geometry and colour only'],

@@ -3555,7 +3555,20 @@ async function boot() {
       'cyberpunkIntensity', 'cyberpunkAudioProfile', 'showTelemetry', 'showProvenance',
       'readerDossier', 'threadTimeline', 'queryConsole',
       'timetableTerminal', 'operationCenter', 'calmContent',
+      /* pointerMotion resolves to a root attribute like the rest; `theme`
+         joins the list because pointerMotion:'auto' is theme-dependent, so
+         switching theme can flip the resolved answer with no change to the
+         preference itself. */
+      'pointerMotion', 'theme',
     ].includes(key)) applyVisualPrefs();
+    /*
+     * The micro-interaction tier is WIRED state, not just an attribute:
+     * turning it off must release the magnetic fields already attached, and
+     * turning it on must attach them again. applyVisualPrefs has published
+     * the resolved decision by this point, so the re-wire reads the new
+     * answer. (See wireMicroInteractions: off unwires rather than skipping.)
+     */
+    if (key === 'pointerMotion' || key === 'theme') wireMicroInteractions(document);
   });
 
   /*

@@ -71,6 +71,15 @@ function flush() {
   const doc = win?.document;
   if (!doc) return;
   if (reducedMotion()) return; // OS toggle landed mid-session: stop tracking now
+  /*
+   * The pointer-motion preference, checked HERE rather than at wire time
+   * (round 7, 2026-08-16). wireLight registers one listener per window and
+   * is deliberately idempotent, so a wire-time gate would strand the light
+   * off for the session once a user turned the tier off and back on.
+   * Reading the resolved attribute per flush costs one attribute lookup on
+   * an already-rAF-coalesced path and makes the toggle instant.
+   */
+  if (doc.documentElement?.getAttribute('data-pointer-motion') === 'off') return;
   if (!anyVisible(doc)) {
     __light.skippedHidden++;
     return;
