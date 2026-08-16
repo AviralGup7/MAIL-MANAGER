@@ -878,8 +878,27 @@ export function examEvents(entries) {
  * incrementally. The list is at most a few dozen entries, and a conflict set
  * that drifts out of sync with the entries is worse than a cheap recompute.
  */
+/** How many clashing courses to name before summarising the rest (M-6). */
+const CONFLICT_NAME_CAP = 4;
+
+function conflictNames(list) {
+  const names = list.map((e) => `${e.courseNo} ${e.section}`);
+  if (names.length <= CONFLICT_NAME_CAP) return names.join(' and ');
+  const shown = names.slice(0, CONFLICT_NAME_CAP);
+  const rest = names.length - CONFLICT_NAME_CAP;
+  return `${shown.join(', ')} and ${rest} other${rest === 1 ? '' : 's'}`;
+}
+
 export function detectConflicts(entries) {
   const conflicts = [];
+  /*
+   * TOTAL OVER ITS INPUT (round 9, M-5). `detectConflicts(null)` threw
+   * "entries is not iterable", so every caller passing a freshly-loaded or
+   * absent timetable had to defend itself -- and the one that forgot took
+   * the panel down. An absent timetable has no conflicts; that is an answer,
+   * not an error.
+   */
+  if (!Array.isArray(entries)) return conflicts;
 
   /*
    * 1. Two classes in the same slot on the same day.
@@ -930,8 +949,14 @@ export function detectConflicts(entries) {
       day,
       hour: Number(hour),
       entryIds: list.map((e) => e.id),
-      message:
-        `${list.map((e) => `${e.courseNo} ${e.section}`).join(' and ')} are both on ` +
+      /*
+       * ENUMERATION IS CAPPED (round 9, M-6). A 500-way slot clash from a
+       * corrupt import joined every course into one sentence -- measured at
+       * 7,525 characters -- and rendered it into the conflict panel as an
+       * unreadable wall. Naming the first few and counting the rest says the
+       * same thing in a line a human can read.
+       */
+      message: `${conflictNames(list)} are both on ` +
         `${DAY_NAME_LONG[day] || day} at hour ${hour}.`,
     });
   }
@@ -1108,9 +1133,34 @@ export function summariseMeetings(meetings) {
     .join(' · ');
 }
 
+/**
+ * A minute-of-day as a human clock time.
+ *
+ * TOTAL, AND BLANK ON NONSENSE (round 9, M-1..M-4). There was no validation
+ * at all, so every corrupt value rendered as a plausible-looking string:
+ *
+ *   fmtTime(NaN)  -> 'NaN:NaN AM'   literally on screen
+ *   fmtTime(-1)   -> '-1:-1 AM'
+ *   fmtTime(1e9)  -> '10:40 PM'     corrupt data wearing a legitimate face
+ *   fmtTime(1440) -> '12:00 PM'     midnight shown as MIDDAY
+ *
+ * The last is the dangerous one: 1440 is the exclusive upper bound of a day
+ * and the likeliest value to appear at a slot boundary, and it landed in the
+ * PM branch — an end-of-day time displayed as noon. It is accepted and
+ * rendered as midnight, because a computed end-of-day genuinely reaches it.
+ *
+ * Everything else out of range returns '' — the convention every other
+ * display helper here already follows (`fullDate(NaN)` -> ''). A blank says
+ * "we do not know"; '10:40 PM' says something false with confidence.
+ */
 export function fmtTime(min) {
-  const h = Math.floor(min / 60);
-  const mm = String(min % 60).padStart(2, '0');
+  const n = Number(min);
+  if (!Number.isFinite(n) || n < 0 || n > 1440) return '';
+  // 1440 is midnight at the END of the day: wrap it rather than let it fall
+  // into the PM branch as 12:00 PM.
+  const total = n === 1440 ? 0 : Math.floor(n);
+  const h = Math.floor(total / 60);
+  const mm = String(total % 60).padStart(2, '0');
   const ampm = h >= 12 ? 'PM' : 'AM';
   const h12 = h % 12 === 0 ? 12 : h % 12;
   return `${h12}:${mm} ${ampm}`;

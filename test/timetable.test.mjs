@@ -18,7 +18,7 @@ import {
   detectConflicts, linkedSections, instructorsFor, sectionsByKind,
   weekView, summariseMeetings, explainEntry, entriesForMessage, examEvents,
   parseDaysHours, switchSection, finalize, resetTimetable,
-  validateAgainstSource, PRECEDENCE,
+  validateAgainstSource, PRECEDENCE, fmtTime,
 } from '../src/app/academic/timetable.js';
 
 import {
@@ -1912,4 +1912,55 @@ test('deduping must not silence a real clash (round 9, H-2 guard)', () => {
     { courseNo: 'Y', section: '2', meetings: [{ day: 'M', hour: 1 }] },
   ]).filter((c) => c.kind === 'overlap');
   assert.equal(anon.length, 1, 'id-less entries are still two entries');
+});
+
+test('fmtTime is total and blanks on nonsense (round 9, M-1..M-4)', () => {
+  /*
+   * There was no validation at all, so every corrupt value rendered as a
+   * plausible string: NaN:NaN AM literally on screen, -1:-1 AM, and
+   * fmtTime(1e9) -> '10:40 PM' — corrupt data wearing a legitimate face.
+   * Blank is the convention every other display helper here follows
+   * (fullDate(NaN) -> ''): it says "we do not know" instead of asserting
+   * something false.
+   */
+  assert.equal(fmtTime(NaN), '');
+  assert.equal(fmtTime(-1), '');
+  assert.equal(fmtTime(1e9), '');
+  assert.equal(fmtTime(Infinity), '');
+  assert.equal(fmtTime('abc'), '');
+
+  /*
+   * 1440 is the exclusive upper bound of a day and the likeliest value at a
+   * slot boundary. It fell into the PM branch and displayed END OF DAY as
+   * MIDDAY. Accepted and wrapped, because a computed end-of-day reaches it.
+   */
+  assert.equal(fmtTime(1440), '12:00 AM', 'midnight, not noon');
+
+  /* The ordinary range is untouched. */
+  assert.equal(fmtTime(0), '12:00 AM');
+  assert.equal(fmtTime(720), '12:00 PM');
+  assert.equal(fmtTime(1439), '11:59 PM');
+  assert.equal(fmtTime(555), '9:15 AM');
+});
+
+test('detectConflicts is total, and caps a runaway enumeration (round 9, M-5/M-6)', () => {
+  /* M-5: an absent timetable has no conflicts; that is an answer, not a throw. */
+  assert.doesNotThrow(() => detectConflicts(null));
+  assert.deepEqual(detectConflicts(null), []);
+  assert.deepEqual(detectConflicts(undefined), []);
+
+  /*
+   * M-6: a 500-way clash from a corrupt import joined every course into one
+   * sentence — measured at 7,525 characters — and rendered it into the
+   * conflict panel as an unreadable wall.
+   */
+  const many = Array.from({ length: 500 }, (_, i) => ({
+    id: `e${i}`, courseNo: `C${i}`, section: 'L1', unresolved: [],
+    meetings: [{ day: 'M', hour: 1 }],
+  }));
+  const overlap = detectConflicts(many).find((c) => c.kind === 'overlap');
+  assert.ok(overlap.message.length < 200, `the sentence must stay readable, got ${overlap.message.length}`);
+  assert.match(overlap.message, /and 496 others/);
+  /* The machine-readable list is NOT truncated — only the prose is. */
+  assert.equal(overlap.entryIds.length, 500);
 });

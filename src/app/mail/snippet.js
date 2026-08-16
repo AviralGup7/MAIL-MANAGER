@@ -111,6 +111,27 @@ function normalise(text) {
       return n === 8203 || n === 160 ? ' ' : _;
     })
     .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    /*
+     * CONTROL CHARACTERS AND BIDI OVERRIDES (round 9, M-10/M-11).
+     *
+     * notify.js's `cardText` has scrubbed these since bug-hunt #50 before
+     * handing a subject to an OS notification; the in-app list row never got
+     * the same treatment, so `cleanSnippet('a\u0000b\u0007c')` returned the
+     * control characters verbatim and `'a\u202Eb'` kept the override.
+     *
+     * U+202E in a list row reverses the rest of the LINE, so a sender
+     * controls how neighbouring text renders — the same spoof the sanitiser
+     * closed for link text in round 8, one layer up. Overrides and isolates
+     * go; U+200E/U+200F MARKS are left alone, because legitimate Arabic,
+     * Hebrew and Urdu mail needs them and they cannot re-order anything.
+     *
+     * \n and \t survive this line: the whitespace collapse below turns them
+     * into spaces, which is the right answer for a single-line row.
+     */
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+    // eslint-disable-next-line no-misleading-character-class
+    .replace(/[\u202A-\u202E\u2066-\u2069]/g, '')
     .replace(/\r/g, '');
 }
 

@@ -175,3 +175,27 @@ test('rowSnippet returns empty for a restatement and text otherwise', () => {
     /SBI counter/
   );
 });
+
+test('a snippet cannot carry control characters or bidi overrides (round 9, M-10/M-11)', () => {
+  /*
+   * notify.js's cardText has scrubbed these since bug-hunt #50 before handing
+   * a subject to an OS notification; the in-app list row never got the same
+   * treatment. U+202E in a row reverses the rest of the LINE, so a sender
+   * controls how NEIGHBOURING text renders — the same spoof the sanitiser
+   * closed for link text in round 8, one layer up.
+   */
+  assert.equal(cleanSnippet('a\u0000b\u0007c'), 'abc');
+  assert.equal(cleanSnippet('a\u202Eb'), 'ab');
+  assert.equal(cleanSnippet('a\u2066b\u2069c'), 'abc');
+
+  /*
+   * MARKS ARE KEPT. U+200E/U+200F are marks, not overrides: legitimate
+   * Arabic, Hebrew and Urdu mail needs them for correct rendering and they
+   * cannot re-order anything.
+   */
+  assert.match(cleanSnippet('\u200Fشلام עברית'), /\u200F/);
+
+  /* Ordinary text, and the newline-to-space collapse, are untouched. */
+  assert.equal(cleanSnippet('a\nb\tc'), 'a b c');
+  assert.equal(cleanSnippet('Course registration opens Monday.'), 'Course registration opens Monday.');
+});

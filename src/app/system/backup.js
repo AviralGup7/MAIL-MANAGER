@@ -130,13 +130,32 @@ export function validateBackup(raw) {
   if (parsed.format !== 'bits-mail-manager-backup') {
     return { ok: false, reason: 'That file was not produced by this extension.' };
   }
-  if (!Number.isFinite(parsed.version) || parsed.version > BACKUP_VERSION) {
+  /*
+   * A CORRUPT VERSION IS NOT A FUTURE VERSION (round 9, M-9).
+   *
+   * The two cases shared one branch, so `version: NaN` produced "That backup
+   * was made by a newer version (vNaN). Update the extension first." The
+   * advice is wrong — no update fixes a corrupt file — and it leaked the
+   * internal value into the sentence. They are different failures and now
+   * say so.
+   */
+  if (!Number.isFinite(parsed.version)) {
+    return { ok: false, reason: 'That backup file is damaged — its version number is missing or unreadable.' };
+  }
+  if (parsed.version > BACKUP_VERSION) {
     return {
       ok: false,
       reason: `That backup was made by a newer version (v${parsed.version}). Update the extension first.`,
     };
   }
-  if (!parsed.data || typeof parsed.data !== 'object') {
+  /*
+   * AN ARRAY IS NOT A DATA OBJECT (round 9, M-8). `typeof [] === 'object'`,
+   * so `data: []` passed here and importBackup then reported
+   * `{ok:true, applied:[]}` — the user was told the restore succeeded when
+   * nothing was restored. A backup whose payload is the wrong SHAPE is a
+   * damaged file, not an empty one.
+   */
+  if (!parsed.data || typeof parsed.data !== 'object' || Array.isArray(parsed.data)) {
     return { ok: false, reason: 'That backup has no data in it.' };
   }
   return { ok: true, backup: parsed };

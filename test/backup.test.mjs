@@ -297,3 +297,33 @@ test('imageAllow and timetable actually round-trip through a backup', async () =
   assert.ok(out.applied.includes('imageAllow'));
   assert.ok(out.applied.includes('timetable'));
 });
+
+test('a damaged backup is not reported as a successful restore (round 9, M-8/M-9)', () => {
+  /*
+   * M-8: `typeof [] === 'object'`, so `data: []` passed validation and
+   * importBackup then reported {ok:true, applied:[]} — the user was told the
+   * restore succeeded when nothing was restored. A payload of the wrong
+   * SHAPE is a damaged file, not an empty one.
+   */
+  const arrayData = validateBackup({ format: 'bits-mail-manager-backup', version: 1, data: [] });
+  assert.equal(arrayData.ok, false);
+  assert.match(arrayData.reason, /no data/);
+
+  /*
+   * M-9: a corrupt version shared the "newer version" branch, so version:NaN
+   * produced "made by a newer version (vNaN). Update the extension first."
+   * The advice is wrong — no update fixes a corrupt file — and it leaked the
+   * internal value into the sentence.
+   */
+  const nanVersion = validateBackup({ format: 'bits-mail-manager-backup', version: NaN, data: {} });
+  assert.equal(nanVersion.ok, false);
+  assert.doesNotMatch(nanVersion.reason, /newer version|Update the extension/,
+    'a damaged file must not be described as a future one');
+  assert.doesNotMatch(nanVersion.reason, /NaN/, 'the internal value does not belong in the sentence');
+
+  /* A genuinely newer backup still gets the upgrade advice. */
+  const future = validateBackup({ format: 'bits-mail-manager-backup', version: 9999, data: {} });
+  assert.match(future.reason, /newer version/);
+  /* And a valid one still passes. */
+  assert.equal(validateBackup({ format: 'bits-mail-manager-backup', version: 1, data: {} }).ok, true);
+});
