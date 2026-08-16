@@ -255,6 +255,54 @@ export function sectionsIn(text) {
 }
 
 /** A verbatim sentence containing the match, for the UI to quote. */
+/**
+ * Cut the message at its first quoted-reply marker (round 11, B10).
+ *
+ * A reply carries the notice it is answering, and that notice usually states
+ * the very change the reply is WITHDRAWING. Measured: a body reading
+ * "> the class has been shifted to room 1111 / please ignore the message
+ * below" produced a proposal to move the class to 1111 — the app acted on
+ * the text the human explicitly told it to ignore.
+ *
+ * The markers are the same shapes snippet.js cuts on. Only the text ABOVE
+ * the first one is the sender's own words, and only those may drive a
+ * timetable change.
+ */
+function dropQuoted(text) {
+  const src = String(text || '');
+  let cut = src.length;
+  for (const re of [
+    /^\s*>/m,                                   // a quoted line
+    /^\s*On .{0,80}\bwrote:/mi,                 // "On Mon, X wrote:"
+    /^-{2,}\s*Original Message\s*-{2,}/mi,
+    /^\s*From:\s.+$/mi,                         // a forwarded header block
+  ]) {
+    const m = src.match(re);
+    if (m && m.index !== undefined && m.index < cut) cut = m.index;
+  }
+  return src.slice(0, cut);
+}
+
+/** Words that flip the meaning of the sentence they sit in. */
+const NEGATORS = /\b(not|no longer|never|cancel(?:led|s)? the (?:change|update)|withdrawn|ignore|disregard|stands? unchanged|remains? unchanged|unchanged)\b/i;
+
+/**
+ * Does the sentence that MATCHED say the opposite of what it matched?
+ *
+ * Read on the matched sentence, not the whole message: a long notice
+ * legitimately contains "not" somewhere far from the claim, and rejecting on
+ * that would fail closed so often the feature would stop working.
+ *
+ * `cancellation` is exempt from the bare `cancel...` negator for the obvious
+ * reason — its own pattern is built from that word — so the negator list
+ * spells out the phrases that negate a cancellation instead.
+ */
+function negated(text, re) {
+  const sentence = quote(text, re);
+  if (!sentence) return false;
+  return NEGATORS.test(sentence);
+}
+
 function quote(text, re) {
   /*
    * Prefer the LONGEST matching sentence.
@@ -294,7 +342,7 @@ function quote(text, re) {
 export function scanMessage(msg, state) {
   if (!msg || !isAcademicSender(msg.from)) return [];
 
-  const text = [msg.subject, msg.snippet, msg.body].filter(Boolean).join('\n');
+  const text = dropQuoted([msg.subject, msg.snippet, msg.body].filter(Boolean).join('\n'));
   if (!text.trim()) return [];
 
   const courses = courseNumbersIn(text);
@@ -311,6 +359,25 @@ export function scanMessage(msg, state) {
 
   for (const pattern of PATTERNS) {
     if (!pattern.test.test(text)) continue;
+    /*
+     * A SENTENCE THAT SAYS THE OPPOSITE IS NOT EVIDENCE (round 11, B10).
+     *
+     * This module's header promises to FAIL CLOSED — "if the message does
+     * not state the change unambiguously, we produce a proposal the user
+     * must confirm, or nothing at all". It did not. Measured:
+     *
+     *   'the class will NOT be shifted to room 9999'   -> room -> 9999
+     *   'the class is NOT cancelled'                   -> cancellation
+     *   'contrary to the notice, it has not been moved to 9999' -> 9999
+     *
+     * A correction notice is exactly the kind of mail that names a room and
+     * then denies it, and acting on the denial is the failure the header
+     * calls "worse than doing nothing": the user stops trusting the
+     * schedule. The matched SENTENCE is re-read for a negation rather than
+     * the whole message, because a long notice legitimately contains "not"
+     * somewhere far from the claim.
+     */
+    if (negated(text, pattern.test)) continue;
 
     // Narrow to the named section when the mail names one; otherwise the
     // finding applies to every section of that course the user has.
