@@ -467,3 +467,104 @@ html[data-theme='cyberpunk'][data-calm-content='on'] #c-text {
   background-image: none;
   text-shadow: none;
 }
+
+/* ---- generation 3: the data face, and frames that admit they are frames --
+ *
+ * Round 5 (2026-08-16) rendered the skin in a browser and compared it with
+ * the reference study again. Two absences, both structural rather than
+ * decorative:
+ *
+ * 1. NO DATA FACE. Every string in the app was the same humanist UI sans —
+ *    including the telemetry strip, the record counts and the fact table,
+ *    which are machine readouts. Every study of the genre describes the
+ *    same pairing: a technical sans for labels WITH a monospace for data.
+ *    We had one half of it. Mono is applied ONLY to machine-authored
+ *    values — counts, states, timestamps, telemetry — and never to mail
+ *    content: a human's subject line is not a readout, and setting prose in
+ *    mono would be costume rather than information design.
+ *
+ * 2. NO FRAMES. The reference frames its panels with corner brackets: short
+ *    right-angle marks that say "this region is a bounded instrument". Our
+ *    panels were separated by single hairlines, which reads as a document,
+ *    not an instrument. Brackets are drawn with ONE pseudo-element per
+ *    panel using two gradients, so no markup changes and nothing new to
+ *    lay out.
+ *
+ * Both ride existing tokens; both unapply with the gate.
+ */
+
+/* The data face. Tabular figures matter more than the family here: these are
+   columns of numbers that must not jitter as they update. */
+html[data-theme='cyberpunk'] #system-strip,
+html[data-theme='cyberpunk'] .sys-cell,
+html[data-theme='cyberpunk'] .r-fact dd,
+html[data-theme='cyberpunk'] .c-count,
+html[data-theme='cyberpunk'] kbd {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+/* Category counts are readouts too — the rail is a status board. Only the
+   NUMBER changes face; the label beside it stays in the UI sans, which is
+   the pairing the reference actually uses. */
+html[data-theme='cyberpunk'] .c-unread,
+html[data-theme='cyberpunk'] .c-total {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Timestamps: a column of times reads as data, and tabular figures stop the
+   column shifting when 4:41 becomes 11:41. */
+html[data-theme='cyberpunk'] .r-date {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+/* ---- corner brackets ------------------------------------------------------
+   Two gradients in one background, positioned at opposite corners: a short
+   horizontal arm and a short vertical arm each. `background-repeat: no-repeat`
+   with two sizes gives four marks from one pseudo-element.
+
+   The pseudo is inert (pointer-events: none) and sits UNDER content, so it
+   cannot intercept a click or cover text. It is painted with the structural
+   red the generation-2 rules already established as the frame colour, so the
+   brackets read as part of the chassis rather than as a new accent. */
+html[data-theme='cyberpunk'][data-ui-profile='modern'] #listhead,
+html[data-theme='cyberpunk'][data-ui-profile='modern'] #reader-head {
+  position: relative;
+}
+
+html[data-theme='cyberpunk'][data-ui-profile='modern'] #listhead::after,
+html[data-theme='cyberpunk'][data-ui-profile='modern'] #reader-head::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image:
+    linear-gradient(to right, var(--cp-structural) 0 100%),
+    linear-gradient(to bottom, var(--cp-structural) 0 100%),
+    linear-gradient(to right, var(--cp-structural) 0 100%),
+    linear-gradient(to bottom, var(--cp-structural) 0 100%);
+  background-size:
+    var(--s-3) 1px,
+    1px var(--s-2),
+    var(--s-3) 1px,
+    1px var(--s-2);
+  background-position:
+    left top,
+    left top,
+    right bottom,
+    right bottom;
+  background-repeat: no-repeat;
+}
+
+/* Textures off is a promise about ATMOSPHERE, and brackets are structure, so
+   they stay. Calm intensity is a promise about NOISE, and four marks per
+   panel is the kind of detail calm exists to remove — so calm drops them. */
+html[data-theme='cyberpunk'][data-cp-intensity='calm'] #listhead::after,
+html[data-theme='cyberpunk'][data-cp-intensity='calm'] #reader-head::after {
+  display: none;
+}

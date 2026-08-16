@@ -134,6 +134,22 @@ html:not([data-theme]) body {
   --r-xl: 18px;   /* the gate card, compose */
   --r-full: 999px;
 
+  /* --- TYPE FAMILIES ------------------------------------------------------
+   * The data face, as ONE token (round 5, 2026-08-16).
+   *
+   * Three volumes already hardcoded this exact stack (40-suggest, 84-dialogs,
+   * 70-overlays-and-rails) and the cyberpunk skin — the one place a technical
+   * face carries real meaning — used none of it. Every reference study of the
+   * genre says the same thing: a condensed technical sans for labels PAIRED
+   * WITH monospace for data readouts. We had the pairing nowhere.
+   *
+   * Defined here so the skin can consume it behind its gate and the three
+   * ad-hoc copies have something to converge on. A token with no reader is
+   * inert, so themes that never mention it pay nothing.
+   */
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas,
+    'Liberation Mono', monospace;
+
   /* THE SHAPE AXIS. themes.js re-authors these per theme at runtime (shape
      is theme data since 2026-08-14); the fallbacks are the pre-axis look,
      so an un-themed render — boot flash, storage dead — keeps yesterday's
