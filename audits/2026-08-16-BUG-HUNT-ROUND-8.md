@@ -252,6 +252,15 @@ URL leaves a latch that never resolves.
 (`queuedAt + DEFAULT_HOLD_MS`) never fires. The undo-send window the user is
 entitled to is skipped. The same guard already exists for `NaN`/missing.
 
+> **DISPROVED during remediation (2026-08-16).** Re-probed against the real
+> module with a complete record: `normaliseOutbox([{id,state:'held',
+> releaseAt:-5,queuedAt,to,subject,body}])` returns `[]` — the record is
+> **dropped entirely**, not kept with a negative `releaseAt`, so no held send
+> becomes immediately due. The original probe appears to have read the
+> intermediate value rather than the function's output. No fix applied; the
+> finding is left in place with this note rather than deleted, per the
+> report's own §7 convention.
+
 ---
 
 ## 3 · LOW
