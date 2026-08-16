@@ -20,6 +20,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 const { JSDOM } = await import('jsdom');
 
@@ -237,4 +238,70 @@ test('wiring: the roster, menus and search are NEVER motion-wired (doctrine excl
     wire.wireMicroInteractions(doc);
     assert.equal(doc.__rippleWired, true, 'the delegated ripple listener is exactly once');
   } finally { clock.restore(); resetSeams(); restore(); }
+});
+
+/* ==========================================================================
+ * THE POINTER-MOTION GATE (round 7, 2026-08-16 — reported)
+ *
+ * REPORTED: cyberpunk-unique animation like the magnetic effect should not
+ * run in the Cyberpunk theme, and these effects should have settings.
+ *
+ * Both were true: wireMicroInteractions(document) ran unconditionally for
+ * every theme with no gate and no preference, so press/magnetic/ripple/
+ * key-light were unavoidable.
+ * ========================================================================== */
+
+test('the micro tier is gated on the resolved pointer-motion attribute', () => {
+  const src = readFileSync(new URL('../src/app/motion/wire-micro.js', import.meta.url), 'utf8');
+  assert.match(src, /data-pointer-motion/,
+    'the tier must consult the published decision');
+  /* Reading the RESOLVED attribute, not the raw preference: `auto` is
+     theme-dependent and re-deriving that rule here would be a second copy
+     of it. */
+  assert.ok(!/pointerMotion'\)/.test(src),
+    'wire-micro must not re-derive the auto rule from the raw setting');
+});
+
+test('turning the tier off UNWIRES, it does not merely skip', () => {
+  const src = readFileSync(new URL('../src/app/motion/wire-micro.js', import.meta.url), 'utf8');
+  /*
+   * This re-runs on every settings change. Skipping the attach loop would
+   * leave already-attached magnetic fields pulling forever, so an element
+   * mid-approach would freeze off-centre instead of returning home.
+   */
+  assert.match(src, /import \{ attachMagnetic, detachMagnetic \}/,
+    'the release path is imported, not improvised');
+  /*
+   * Assert the CALL inside the off-branch, not merely that the identifier
+   * appears in the file. My first draft matched /detachMagnetic/ anywhere,
+   * which the import line alone satisfied: deleting the entire release loop
+   * still passed. Sabotage caught it. A test that survives the removal of
+   * the thing it names is decoration.
+   */
+  const off = src.slice(src.indexOf('if (!pointerMotionOn(root))'));
+  const branch = off.slice(0, off.indexOf('return;'));
+  assert.match(branch, /for \(const \[sel\] of MAGNET\)[^]*detachMagnetic\(el\)/,
+    'the off-branch must actually release every magnetic target before returning');
+});
+
+test('the key light gates per flush, not at wire time', () => {
+  const src = readFileSync(new URL('../src/app/motion/light.js', import.meta.url), 'utf8');
+  /*
+   * wireLight registers one listener per window and is deliberately
+   * idempotent, so a wire-time gate would strand the light OFF for the
+   * whole session once a user toggled the tier off and on again.
+   */
+  const flush = src.slice(src.indexOf('function flush()'), src.indexOf('function onMove'));
+  assert.match(flush, /data-pointer-motion/,
+    'the per-flush check is what makes the toggle instant and reversible');
+});
+
+test('auto resolves against the theme, and the resolution is published once', () => {
+  const src = readFileSync(new URL('../src/app/system/root-attrs.js', import.meta.url), 'utf8');
+  assert.match(src, /data-pointer-motion/, 'the decision is published as an attribute');
+  assert.match(src, /themeId !== 'cyberpunk'/,
+    'auto stands the tier down under Cyberpunk, which has its own motion language');
+  /* Consumers read the attribute; only this module knows the rule. */
+  const wire = readFileSync(new URL('../src/app/motion/wire-micro.js', import.meta.url), 'utf8');
+  assert.ok(!/cyberpunk/.test(wire), 'the theme rule lives in exactly one place');
 });
