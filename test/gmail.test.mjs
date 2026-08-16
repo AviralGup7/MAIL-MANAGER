@@ -656,6 +656,14 @@ function headersOf(mime) {
   return mime.split('\r\n\r\n')[0];
 }
 
+/* Undo RFC 5322 folding: a CRLF followed by whitespace is not part of the
+   value. Headers are folded now (round 10, H-2), so any assertion about what
+   a header SAYS must read the unfolded form; assertions about line LENGTH
+   must read the folded one. */
+function unfoldedHeaders(mime) {
+  return headersOf(mime).replace(/\r\n[ \t]+/g, ' ');
+}
+
 test('every address header resists CRLF injection', () => {
   for (const field of ['to', 'cc', 'bcc', 'from', 'inReplyTo', 'references']) {
     const mime = buildMime({ to: 'a@b.com', subject: 's', body: 'b', [field]: INJECTION });
@@ -720,7 +728,7 @@ test('A LARGE REPLY-ALL IS NOT SILENTLY TRUNCATED', () => {
    * Length was never the attack. CRLF is, and that is stripped regardless.
    */
   const many = Array.from({ length: 60 }, (_, i) => `student${i}.f2024@pilani.bits-pilani.ac.in`).join(', ');
-  const toLine = buildMime({ to: many, subject: 's', body: 'b' })
+  const toLine = unfoldedHeaders(buildMime({ to: many, subject: 's', body: 'b' }))
     .split('\r\n')
     .find((l) => l.startsWith('To: '));
   assert.equal(toLine.split(',').length, 60, 'recipients were dropped');
@@ -729,6 +737,70 @@ test('A LARGE REPLY-ALL IS NOT SILENTLY TRUNCATED', () => {
 test('scrubbing does not damage an ordinary display-name recipient', () => {
   const mime = buildMime({ to: 'Vinti Agarwal <vinti@pilani.bits-pilani.ac.in>', subject: 's', body: 'b' });
   assert.match(headersOf(mime), /^To: Vinti Agarwal <vinti@pilani\.bits-pilani\.ac\.in>$/m);
+});
+
+test('EVERY header line fits RFC 5322, not just Subject (round 10, H-2)', () => {
+  /*
+   * Round 9 fixed over-long headers for Subject alone, inside encodeHeader.
+   * Measured on the build after that fix, with 60 recipients and an 80-id
+   * thread:
+   *
+   *     Subject     19 folded lines, max   81  ok
+   *     To                                3062  VIOLATION
+   *     Cc                                3062  VIOLATION
+   *     Bcc                               3063  VIOLATION
+   *     References                        3691  VIOLATION
+   *
+   * References is the one that matters: it grows by one message-id per reply,
+   * so a long thread reaches the limit with no unusual input, and an MTA that
+   * truncates it silently breaks threading for every downstream client.
+   *
+   * This asserts the INVARIANT rather than any one header (report I-9), so
+   * the next header added to buildMime is covered without a new test.
+   */
+  const many = Array.from({ length: 60 }, (_, i) => `person.number${i}@pilani.bits-pilani.ac.in`).join(', ');
+  const refs = Array.from({ length: 80 }, (_, i) => `<msg-${i}-abcdefghij@mail.gmail.com>`).join(' ');
+  const mime = buildMime({
+    from: 'Me <me@pilani.bits-pilani.ac.in>',
+    to: many, cc: many, bcc: many,
+    subject: 'é'.repeat(400),
+    references: refs,
+    inReplyTo: '<last-abcdefghij@mail.gmail.com>',
+    body: 'hi',
+  });
+
+  for (const line of headersOf(mime).split('\r\n')) {
+    assert.ok(Buffer.byteLength(line, 'utf8') <= 998,
+      `header line of ${Buffer.byteLength(line, 'utf8')} octets exceeds RFC 5322's 998: ${line.slice(0, 60)}`);
+  }
+
+  /* Every continuation line starts with whitespace, or it is not a
+     continuation and the header above it was corrupted. */
+  for (const line of headersOf(mime).split('\r\n')) {
+    assert.ok(/^[ \t]/.test(line) || /^[!-9;-~]+:/.test(line),
+      `line is neither a header nor a continuation: ${JSON.stringify(line.slice(0, 60))}`);
+  }
+
+  /* FOLDING MUST NOT CHANGE WHAT THE HEADER SAYS. The CRLF in a fold is not
+     part of the value (RFC 5322 §3.2.2), so unfolding must give back exactly
+     what went in. This is what catches a fold placed mid-token. */
+  const unfolded = unfoldedHeaders(mime);
+  const norm = (v) => v.replace(/\s+/g, ' ').trim();
+  const valueOf = (name) => unfolded.split('\r\n').find((l) => l.startsWith(`${name}: `)).slice(name.length + 2);
+  for (const [name, expected] of [['To', many], ['Cc', many], ['Bcc', many], ['References', refs]]) {
+    assert.equal(norm(valueOf(name)), norm(expected), `${name} did not survive folding`);
+  }
+  assert.equal(valueOf('In-Reply-To'), '<last-abcdefghij@mail.gmail.com>');
+  assert.equal(valueOf('From'), 'Me <me@pilani.bits-pilani.ac.in>');
+});
+
+test('folding does not tax a short header (round 10, H-2)', () => {
+  /* The common case must emit exactly what it always did: one line, no
+     continuation, no trailing space. */
+  const mime = buildMime({ to: 'a@b.com', cc: 'c@d.com', subject: 'Hello there', body: 'x' });
+  const lines = headersOf(mime).split('\r\n');
+  assert.deepEqual(lines.slice(0, 3), ['To: a@b.com', 'Cc: c@d.com', 'Subject: Hello there']);
+  assert.ok(!lines.some((l) => /^[ \t]/.test(l)), 'nothing short enough to fit should be folded');
 });
 
 

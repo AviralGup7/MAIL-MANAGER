@@ -877,6 +877,88 @@ function encodeHeader(value) {
   return words.join('\r\n ');
 }
 
+/**
+ * Fold ONE header — name and value — into RFC 5322 §2.2.3 continuation lines.
+ *
+ * WHY THIS IS GENERIC AND NOT ANOTHER SUBJECT-SHAPED PATCH (round 10, H-2).
+ *
+ * The previous round fixed over-long headers for `Subject` alone, inside
+ * `encodeHeader`. Measured on the build after that fix, with 60 recipients
+ * and an 80-id thread:
+ *
+ *     Subject     19 folded lines, max   81  ✅
+ *     To                                3062  ❌
+ *     Cc                                3062  ❌
+ *     Bcc                               3063  ❌
+ *     References                        3691  ❌
+ *
+ * RFC 5322 §2.1.1 caps a line at 998 octets. `References` is the one that
+ * matters: it grows by one message-id per reply, so a long thread reaches
+ * the limit with no unusual input at all, and an MTA that truncates it
+ * silently breaks threading for every downstream client.
+ *
+ * So the fix is at the CLASS, not the symptom: every header in `buildMime`
+ * goes through here, and a test asserts no emitted line exceeds 998 octets
+ * for a hostile draft.
+ *
+ * FOLDING RULES
+ *   - Break only at existing folding whitespace, or immediately AFTER a
+ *     comma. Both are legal fold points in a structured header and neither
+ *     changes what the value means: RFC 5322 §3.2.2 says the CRLF in a fold
+ *     is not part of the value.
+ *   - A continuation line begins with a single space. That space is what
+ *     marks it as a continuation.
+ *   - Folds already present in the value (encodeHeader emits them) are
+ *     preserved and each resulting segment is folded independently.
+ *   - An unbreakable token longer than the target is emitted whole rather
+ *     than split mid-token: splitting a single address or message-id
+ *     corrupts it, and a corrupted recipient is worse than a long line.
+ *
+ * Target is 78, the §2.1.1 *recommended* limit, not 998: staying under the
+ * soft limit means the hard limit is never approached even after a relay
+ * rewrites a header.
+ */
+function foldHeader(name, value) {
+  const LIMIT = 78;
+  const out = [];
+
+  for (const [segIndex, segment] of String(value ?? '').split('\r\n').entries()) {
+    /* The first segment carries `Name: `; later ones are already
+       continuations, so they start folded. */
+    let line = segIndex === 0 ? `${name}: ` : ' ';
+    /* Has a chunk landed on THIS line yet? A line holding only `Name: ` must
+       never fold — that would emit a bare `Subject:` with the whole value on
+       the continuation, which is legal but reads as an empty header to a
+       careless parser and adds a leading space when naively unfolded. */
+    let filled = false;
+
+    /* Split into fold-point-delimited chunks, keeping the delimiter attached
+       to the chunk it follows so commas and spaces survive the round trip. */
+    const chunks = segment.match(/[^\s,]+,*\s*|\s+/g) || [];
+
+    for (const chunk of chunks) {
+      const piece = filled ? chunk : chunk.replace(/^\s+/, '');
+      if (!piece) continue;
+      if (filled && byteLength(line + piece.trimEnd()) > LIMIT) {
+        out.push(line.trimEnd());
+        line = ` ${piece.replace(/^\s+/, '')}`;
+      } else {
+        line += piece;
+      }
+      filled = true;
+    }
+    out.push(line.trimEnd());
+  }
+
+  /* An empty value must still emit `Name:` rather than nothing. */
+  return out.filter((l, i) => i === 0 || l.trim() !== '').join('\r\n');
+}
+
+/** Octets, not UTF-16 code units — the RFC limit counts bytes on the wire. */
+function byteLength(s) {
+  return new TextEncoder().encode(s).length;
+}
+
 /** base64url, which is what the Gmail API wants for a raw RFC 2822 message. */
 function b64urlEncode(text) {
   const bytes = new TextEncoder().encode(text);
@@ -931,15 +1013,15 @@ export function buildMime(m) {
    * already handles both, which is why it is reused rather than reinvented.
    */
   const headers = [
-    m.from ? `From: ${safeAddressHeader(m.from)}` : null,
+    m.from ? foldHeader('From', safeAddressHeader(m.from)) : null,
     /* An empty To: is malformed, and buildMime is fed by the outbox replaying
        stored drafts and by buildReply, not only by the compose UI -- so the
        guard belongs here at the wire rather than only in the form (round 8,
        M-9). Omitting the header is correct: a message with no To but a Bcc
        is legal, a message with a blank To is not. */
-    safeAddressHeader(m.to) ? `To: ${safeAddressHeader(m.to)}` : null,
-    m.cc ? `Cc: ${safeAddressHeader(m.cc)}` : null,
-    m.bcc ? `Bcc: ${safeAddressHeader(m.bcc)}` : null,
+    safeAddressHeader(m.to) ? foldHeader('To', safeAddressHeader(m.to)) : null,
+    m.cc ? foldHeader('Cc', safeAddressHeader(m.cc)) : null,
+    m.bcc ? foldHeader('Bcc', safeAddressHeader(m.bcc)) : null,
     /*
      * SUBJECT GETS THE SCRUB TOO (bug-hunt #1). encodeHeader alone passes a
      * pure-ASCII subject through unchanged, and an ASCII CR/LF in it was the
@@ -954,11 +1036,11 @@ export function buildMime(m) {
      * line break; a multi-line compose input or a crafted inbound subject
      * has nothing honest on the later lines.
      */
-    `Subject: ${encodeHeader(safeSubject(m.subject))}`,
+    foldHeader('Subject', encodeHeader(safeSubject(m.subject))),
     // Threading. Without these two a reply starts a NEW conversation, which is
     // the single most visible way a mail client looks broken.
-    m.inReplyTo ? `In-Reply-To: ${safeIdHeader(m.inReplyTo)}` : null,
-    m.references ? `References: ${safeIdHeader(m.references)}` : null,
+    m.inReplyTo ? foldHeader('In-Reply-To', safeIdHeader(m.inReplyTo)) : null,
+    m.references ? foldHeader('References', safeIdHeader(m.references)) : null,
     'MIME-Version: 1.0',
   ].filter(Boolean);
 
