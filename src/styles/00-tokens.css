@@ -202,6 +202,40 @@ html:not([data-theme]) body {
   --listbar-h: 41px;
 }
 
+/* ---- HARD-EDGED THEMES COLLAPSE THE WHOLE SCALE (round 5, 2026-08-16) -----
+ *
+ * The shape axis gave `button` its radius from --btn-radius, and that was
+ * right as far as it went. It did not go far enough: ~111 rules across the
+ * bundle reach for --r-sm/md/lg/xl DIRECTLY, and those rules beat the base
+ * control rule by ordinary cascade order. Measured in a browser on
+ * cyberpunk (btnRadius '0px'), SEVENTEEN elements still painted rounded —
+ * .cat, #btn-compose, every .ghost, #search, .r-act, #toast-action — and
+ * because the chamfer DID apply, each drew a 10px round corner and a 9px
+ * diagonal chop at once. That is exactly the "half-terminal, half-mail-app"
+ * hybrid the 10-shell.css comment says was fixed: only the base rule was
+ * fixed, so the contradiction moved rather than left.
+ *
+ * Patching seventeen selectors would leave the eighteenth for a user to
+ * find. The SCALE is the right seam: a theme declaring zero radius means
+ * "this product has no round corners", so the scale goes flat and every
+ * consumer follows — including rules not yet written.
+ *
+ * --r-full is deliberately NOT collapsed: it is the pill/dot idiom (avatar,
+ * unread dots, #newpill), where a chamfer is meaningless and a flat 999px
+ * would turn every status dot into a square.
+ *
+ * Keyed off the INLINE --btn-radius applyTheme writes, not off [data-theme],
+ * so it stays theme DATA: a future theme choosing 0px inherits this with no
+ * new CSS and no edit here.
+ */
+html[style*='--btn-radius: 0px'] {
+  --r-sm: 0px;
+  --r-md: 0px;
+  --r-lg: 0px;
+  --r-xl: 0px;
+}
+
+
 /*
  * DENSITY.  (Feature 28.)
  *
