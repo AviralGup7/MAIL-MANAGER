@@ -576,9 +576,77 @@ export function headerMap(headers) {
   for (const entry of headers) {
     const name = entry?.name;
     if (typeof name !== 'string') continue;
-    out[name.toLowerCase()] = str(entry.value);
+    /* Decoded at the door (round 8, H-2): every consumer — normalise, the
+       search index, extractBody's reply fields — reads the human text
+       rather than the wire encoding. */
+    out[name.toLowerCase()] = decodeEncodedWords(entry.value);
   }
   return out;
+}
+
+/**
+ * Decode RFC 2047 encoded-words: `=?charset?B|Q?text?=`.
+ *
+ * WHY THIS EXISTS (round 8, H-2). This codebase ENCODES headers when sending
+ * (`encodeHeader`) and had no decoder for the receive path. Gmail's API
+ * normally pre-decodes, but not for every header on every message, and when
+ * it does not the raw encoded-word reaches the store. Measured on
+ * `=?UTF-8?B?SsO2cmc=?= <j@x.z>`:
+ *
+ *   - the list rendered the literal `=?UTF-8?B?SsO2cmc=?=` as the sender
+ *   - `search('jörg')` returned nothing — the real name was unfindable
+ *   - the index gained `utf-8`, `c3`, `a9`, `sso2cmc` as permanent tokens,
+ *     so unrelated queries matched the encoding's own fragments
+ *
+ * Decoding HERE, in headerMap, is deliberate: it is the single door every
+ * header value already passes through on its way in, so display, search and
+ * the canonical record are fixed by one change rather than three.
+ *
+ * TOTALITY, like every other coercion at this boundary: a malformed word,
+ * an unknown charset or a bad base64 payload yields the ORIGINAL text
+ * unchanged. A header that fails to decode must stay readable-ish, never
+ * become empty — losing the subject is worse than showing it awkwardly.
+ */
+export function decodeEncodedWords(value) {
+  const v = str(value);
+  if (!v.includes('=?')) return v; // the overwhelmingly common case, untouched
+
+  /* Adjacent encoded-words separated only by whitespace are one logical run
+     (RFC 2047 §6.2), so the space between them is dropped rather than kept. */
+  return v.replace(
+    /=\?([A-Za-z0-9_-]+)(?:\*[A-Za-z0-9-]+)?\?([BbQq])\?([^?]*)\?=(\s+)(?==\?)/g,
+    (_m, cs, enc, txt) => `=?${cs}?${enc}?${txt}?=`
+  ).replace(
+    /=\?([A-Za-z0-9_-]+)(?:\*[A-Za-z0-9-]+)?\?([BbQq])\?([^?]*)\?=/g,
+    (whole, charset, encoding, text) => {
+      try {
+        let bytes;
+        if (encoding.toLowerCase() === 'b') {
+          const bin = atob(text.replace(/\s+/g, ''));
+          bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+        } else {
+          /* Quoted-printable, RFC 2047 flavour: '_' is a space, and only
+             '=XX' is an escape. */
+          const qp = text.replace(/_/g, ' ');
+          const out = [];
+          for (let i = 0; i < qp.length; i++) {
+            if (qp[i] === '=' && /^[0-9A-Fa-f]{2}$/.test(qp.slice(i + 1, i + 3))) {
+              out.push(parseInt(qp.slice(i + 1, i + 3), 16));
+              i += 2;
+            } else {
+              out.push(qp.charCodeAt(i) & 0xff);
+            }
+          }
+          bytes = Uint8Array.from(out);
+        }
+        /* `fatal: true` so a mislabelled charset throws to the catch and
+           keeps the original, rather than silently emitting U+FFFD soup. */
+        return new TextDecoder(charset, { fatal: true }).decode(bytes);
+      } catch {
+        return whole; // undecodable: the raw word beats an empty header
+      }
+    }
+  );
 }
 
 function str(v) {

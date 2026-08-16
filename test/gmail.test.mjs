@@ -1078,3 +1078,48 @@ test('batchMetadata names the ids a partial batch lost (audit R3-03)', async () 
     globalThis.fetch = realFetch;
   }
 });
+
+test('RFC 2047 encoded headers are decoded at the door (round 8, H-2)', async () => {
+  const { decodeEncodedWords, headerMap, normalise } = await import('../src/background/gmail.js');
+
+  /*
+   * The codebase ENCODES headers when sending and had no decoder for the
+   * receive path. Gmail usually pre-decodes, but not always -- and when it
+   * did not, the raw word reached the store: the list showed
+   * '=?UTF-8?B?SsO2cmc=?=' as the sender, search('jörg') found nothing, and
+   * the index gained 'utf-8'/'c3'/'a9' as permanent tokens that matched
+   * unrelated queries.
+   */
+  assert.equal(decodeEncodedWords('=?UTF-8?B?SsO2cmc=?='), 'Jörg');
+  assert.equal(decodeEncodedWords('=?UTF-8?Q?Caf=C3=A9?='), 'Café');
+  assert.equal(decodeEncodedWords('=?ISO-8859-1?Q?a=E9b?='), 'aéb');
+  assert.equal(decodeEncodedWords('=?UTF-8?Q?a_b?='), 'a b', "'_' is a space in the 2047 QP flavour");
+  assert.equal(decodeEncodedWords('prefix =?UTF-8?B?SsO2cmc=?= suffix'), 'prefix Jörg suffix');
+  // Adjacent words are ONE logical run (RFC 2047 §6.2): the separating
+  // whitespace is not part of the text.
+  assert.equal(decodeEncodedWords('=?UTF-8?B?SGVsbG8=?= =?UTF-8?B?V29ybGQ=?='), 'HelloWorld');
+
+  /*
+   * TOTALITY. An undecodable word keeps its ORIGINAL text: a header that
+   * fails to decode must stay readable-ish, never become empty. Losing the
+   * subject is worse than showing it awkwardly.
+   */
+  for (const bad of ['=?UTF-8?B?!!!notbase64!!!?=', '=?NOSUCHCHARSET?B?SGk=?=', '=?UTF-8?X?zzz?=']) {
+    assert.equal(decodeEncodedWords(bad), bad, `${bad} must survive unchanged`);
+  }
+  for (const junk of [null, undefined, {}, []]) {
+    assert.equal(decodeEncodedWords(junk), '', 'non-strings coerce like every other value here');
+  }
+  assert.equal(decodeEncodedWords('plain subject'), 'plain subject');
+
+  /* Applied at headerMap, so normalise and the index get it for free. */
+  /* headerMap returns a NULL-PROTOTYPE object on purpose (no inherited
+     'constructor'/'__proto__' keys from a hostile header name), so compare
+     the value rather than deep-equalling against a plain literal. */
+  assert.equal(headerMap([{ name: 'Subject', value: '=?UTF-8?Q?Caf=C3=A9?=' }]).subject, 'Café');
+  const rec = normalise({
+    id: 'm1', internalDate: '1700000000000', labelIds: ['INBOX'],
+    payload: { headers: [{ name: 'From', value: '=?UTF-8?B?SsO2cmc=?= <j@x.z>' }] },
+  });
+  assert.equal(rec.from, 'Jörg <j@x.z>', 'the display name is human before it is stored');
+});
