@@ -395,6 +395,13 @@ html[data-theme='cyberpunk'][data-ui-profile='modern'] .row[aria-selected='true'
 /* Dossier and query console: red structure, cyan current data. */
 html[data-theme='cyberpunk'][data-ui-profile='modern'] #reader-head {
   border-color: var(--cp-structural);
+  /* The containing block for the corner brackets below. #reader-head is
+     static in 44-reader-head.css, and an absolutely-positioned ::after on a
+     static parent escapes to the viewport — four red marks pinned to the
+     window corners. Declared HERE rather than in a second rule for the same
+     selector: package.test forbids defining one selector twice in a layer,
+     and it is right to — two rules for one element is how they drift. */
+  position: relative;
 }
 html[data-theme='cyberpunk'][data-ui-profile='modern'] #r-subject::before {
   background: var(--cp-line-active);
@@ -498,11 +505,12 @@ html[data-theme='cyberpunk'][data-calm-content='on'] #c-text {
 html[data-theme='cyberpunk'] #system-strip,
 html[data-theme='cyberpunk'] .sys-cell,
 html[data-theme='cyberpunk'] .r-fact dd,
-html[data-theme='cyberpunk'] .c-count,
-html[data-theme='cyberpunk'] kbd {
+html[data-theme='cyberpunk'] .c-count {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0;
+  /* Mono is already even; the caps tracking the skin adds elsewhere would
+     over-open a readout. --track-normal IS the scale's zero. */
+  letter-spacing: var(--track-normal);
 }
 
 /* Category counts are readouts too — the rail is a status board. Only the
@@ -519,7 +527,7 @@ html[data-theme='cyberpunk'] .c-total {
 html[data-theme='cyberpunk'] .r-date {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0;
+  letter-spacing: var(--track-normal);
 }
 
 /* ---- corner brackets ------------------------------------------------------
@@ -531,8 +539,7 @@ html[data-theme='cyberpunk'] .r-date {
    cannot intercept a click or cover text. It is painted with the structural
    red the generation-2 rules already established as the frame colour, so the
    brackets read as part of the chassis rather than as a new accent. */
-html[data-theme='cyberpunk'][data-ui-profile='modern'] #listhead,
-html[data-theme='cyberpunk'][data-ui-profile='modern'] #reader-head {
+html[data-theme='cyberpunk'][data-ui-profile='modern'] #listhead {
   position: relative;
 }
 
@@ -542,7 +549,8 @@ html[data-theme='cyberpunk'][data-ui-profile='modern'] #reader-head::after {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  z-index: 0;
+  /* Under the panel's own content, above nothing: the scale's floor. */
+  z-index: var(--z-base);
   background-image:
     linear-gradient(to right, var(--cp-structural) 0 100%),
     linear-gradient(to bottom, var(--cp-structural) 0 100%),
