@@ -1205,8 +1205,32 @@ async function drainQueuedIntents() {
 /* Draining triggers: the 'online' event, and one boot-time pass — alarms
    are nudges, catch-up is the guarantee (the sweep's own law, applied to
    the queue). */
-window.addEventListener('online', () => { void drainQueuedIntents(); });
-setTimeout(() => { void drainQueuedIntents(); }, 4000);
+/*
+ * THE DRAIN OWNS ITS OWN FAILURE (round 9, M-12).
+ *
+ * Both call sites were `void drainQueuedIntents()`. Per-ITEM failure is
+ * handled well -- onGiveUp records to the activity log and toasts -- but a
+ * rejection from the drain ITSELF (queuedIntentCount throwing on a damaged
+ * store, drainIntents rejecting before the loop) escaped to the global
+ * unhandledrejection handler. That logs to console and the activity log, and
+ * says nothing on screen: the user's queued archives silently fail to drain
+ * and the inbox keeps showing mail they already filed.
+ *
+ * `void` marks a promise as deliberately unawaited; it does not make the
+ * failure someone else's problem.
+ */
+function drainQueuedIntentsSafely() {
+  return drainQueuedIntents().catch((err) => {
+    activity.record({
+      verb: 'INTENT_DRAIN', ids: [], actor: 'intent',
+      outcome: 'failed', error: err?.message,
+    });
+    toast('Queued actions could not be applied. They are still queued — try again when the connection settles.', { kind: 'error' });
+  });
+}
+
+window.addEventListener('online', () => { void drainQueuedIntentsSafely(); });
+setTimeout(() => { void drainQueuedIntentsSafely(); }, 4000);
 
 async function act(action, id) {
   const m = store.get(id);

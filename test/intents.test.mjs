@@ -216,9 +216,24 @@ test("the queue toast's Undo restores the snapshot only through a real cancel", 
 
 test('drains ride the online event plus one boot pass, with honest provenance', () => {
   const src = read('src/app/main.js');
-  assert.match(src, /window\.addEventListener\('online', \(\) => \{ void drainQueuedIntents\(\); \}\);/);
-  assert.match(src, /setTimeout\(\(\) => \{ void drainQueuedIntents\(\); \}, 4000\);/,
+  /*
+   * Both triggers still exist; both go through the GUARDED wrapper (round 9,
+   * M-12). Per-item failure was always handled by onGiveUp, but a rejection
+   * from the drain itself -- queuedIntentCount throwing on a damaged store --
+   * escaped to the global unhandledrejection handler, which logs and says
+   * nothing on screen. `void` marks a promise deliberately unawaited; it does
+   * not make the failure someone else's problem.
+   */
+  assert.match(src, /window\.addEventListener\('online', \(\) => \{ void drainQueuedIntentsSafely\(\); \}\);/);
+  assert.match(src, /setTimeout\(\(\) => \{ void drainQueuedIntentsSafely\(\); \}, 4000\);/,
     'the boot catch-up: alarms are nudges, catch-up is the guarantee');
+  assert.match(src, /function drainQueuedIntentsSafely\(\)[^]*?\.catch\(/,
+    'the wrapper is what makes a drain failure visible instead of console-only');
+  /* Comments mention the old shape by name (the fix records what it fixed),
+     so strip them before counting call SITES. */
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.equal(code.split('void drainQueuedIntents()').length - 1, 0,
+    'no unguarded call site may come back');
   assert.match(src, /actor: 'intent', detail: 'queued while offline'/,
     'the log can answer "who changed this mail while I was offline"');
   assert.match(src, /onGiveUp:/, 'the give-up surfaces (activity + toast), never silent');
