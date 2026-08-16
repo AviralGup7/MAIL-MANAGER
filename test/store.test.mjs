@@ -799,3 +799,43 @@ test('upsertMany reports what survived eviction (audit R3-08)', () => {
   assert.equal(s.upsertMany(older), 0, 'an evicted insert must not count as kept');
   assert.equal(s.get('ancient'), undefined);
 });
+
+test('technical tokens survive their own punctuation (round 8, M-3)', () => {
+  /*
+   * '+' and '#' are token separators, so 'C++' lost its suffix and the
+   * surviving 'c' fell under the 2-character floor -- the token vanished
+   * entirely and search('c++') returned nothing. Course codes and language
+   * names are exactly what a student searches for.
+   */
+  const s = new Store();
+  s.upsert({ id: 'a', threadId: 't', from: 'x@y.z', subject: 'C++ and C# notes',
+    snippet: '', date: 1, category: 'academics' });
+  assert.equal(s.search('c++').length, 1, 'C++ must be findable');
+  assert.equal(s.search('c#').length, 1, 'C# must be findable');
+  /* Prose is unaffected: the pattern is bounded to 1-4 letters + marks. */
+  assert.ok(s.searchIndex.has('notes'));
+  assert.equal(s.search('zzz').length, 0);
+});
+
+test('a term nothing can match returns nothing, not everything (round 8, M-2)', () => {
+  /*
+   * Terms under two characters are dropped, and when EVERY term was dropped
+   * search() fell through to idsFor(category) -- the whole mailbox. Typing
+   * 'c' on the way to 'cs f211' flashed the complete inbox, which reads as
+   * "your filter matched everything" rather than "I have nothing to go on".
+   */
+  const s = new Store();
+  for (let i = 0; i < 3; i++) {
+    s.upsert({ id: `m${i}`, threadId: `t${i}`, from: 'x@y.z', subject: `Subject ${i}`,
+      snippet: '', date: i, category: 'academics' });
+  }
+  assert.equal(s.search('z').length, 0, 'an unusable single character matches nothing');
+  /* An EMPTY query still means "no filter" -- that distinction is the point. */
+  assert.equal(s.search('').length, 3, 'no query still shows everything');
+  assert.equal(s.search('   ').length, 3, 'whitespace is no query');
+  /* A short term that IS indexed stays usable. */
+  const cjk = new Store();
+  cjk.upsert({ id: 'j', threadId: 'tj', from: 'x@y.z', subject: '日本語',
+    snippet: '', date: 1, category: 'academics' });
+  assert.equal(cjk.search('日本').length, 1, 'CJK keeps its lifted floor');
+});

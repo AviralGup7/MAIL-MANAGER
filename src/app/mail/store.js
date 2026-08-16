@@ -216,6 +216,22 @@ export class Store {
     // as SEPARATORS and shattered the word: छात्रावास tokenised to a
     // meaningless 'चन'. Indic, Thai, Arabic and Hebrew all carry meaning in
     // marks; excluding them re-creates R3-02 for half the world's scripts.
+    /*
+     * TECHNICAL TOKENS SURVIVE THEIR OWN PUNCTUATION (round 8, M-3).
+     *
+     * `+` and `#` are separators above, so `C++` and `C#` lost their suffix
+     * and the surviving `c` fell under the 2-character floor -- the token
+     * vanished entirely and `search('c++')` returned nothing. Course codes
+     * and language names are exactly what a student searches for.
+     *
+     * Scanned BEFORE the split, from the original text, because the split is
+     * what destroys them. Bounded by shape (1-4 letters + 1-3 marks), so this
+     * indexes `c++`, `c#`, `f#`, `objective-c++` and nothing resembling prose.
+     */
+    for (const tech of text.match(/\b[a-z]{1,4}(?:\+\+?|#)(?![\w#+])/g) || []) {
+      out.add(tech);
+    }
+
     for (const raw of text.split(/[^\p{L}\p{M}\p{N}@.\-]+/u)) {
       if (!raw) continue;
       add(raw);
@@ -719,8 +735,21 @@ export class Store {
      */
     const terms = q
       .split(/\s+/)
-      .filter((t) => t.length >= 2 || CJK_RUN.test(t));
-    if (terms.length === 0) return this.idsFor(category);
+      .filter((t) => t.length >= 2 || CJK_RUN.test(t) || this.searchIndex.has(t));
+    /*
+     * "NO USABLE TERM" IS NOT "NO QUERY" (round 8, M-2).
+     *
+     * Terms under two characters are dropped, and when EVERY term is dropped
+     * this used to fall through to idsFor(category) -- the whole mailbox.
+     * Typing `c` on the way to `cs f211` flashed the complete inbox, which
+     * reads as "your filter matched everything" rather than "I have nothing
+     * to go on yet". The honest answer to an unusable query is no rows.
+     *
+     * The `searchIndex.has(t)` clause above keeps genuinely indexed short
+     * tokens usable -- a CJK character, or `c++` if it were ever one char --
+     * so this rejects only terms that could not match anything anyway.
+     */
+    if (terms.length === 0) return [];
 
     /** @type {Set<string>|null} */
     let acc = null;

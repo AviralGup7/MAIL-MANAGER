@@ -77,6 +77,20 @@ export function visibleIds(store, ctx) {
   // Operators are a PREDICATE over what the index returns, not a scan of
   // every message: the index does the fast token lookup, the parser narrows.
   const parsed = parse(query);
+  /*
+   * A QUERY THAT PARSED TO NOTHING MATCHES NOTHING (round 8, M-1).
+   *
+   * `a OR` and `((` yield no terms, no operators and a null predicate, so
+   * `base` fell through to idsFor(category) and `applyPredicate` had nothing
+   * to narrow with -- the user typed a filter and got their whole inbox back,
+   * with no signal that it was not understood. Compare '"unclosed', which
+   * already returned zero, so the behaviour was not even self-consistent.
+   *
+   * Showing nothing is the honest answer: it says "that matched nothing"
+   * rather than "that matched everything", and the query is still on screen
+   * for the user to correct.
+   */
+  if (parsed.unparsed) return [];
   const base = parsed.terms.length
     ? store.search(parsed.terms.join(' '), category)
     : store.idsFor(category);

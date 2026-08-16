@@ -258,6 +258,10 @@ function parseGrouped(tokens, now, ctx = {}) {
     terms: [],
     operators,
     isEmpty: toks.length === 0,
+    /* The grouped path builds a real predicate from its tokens, so it is
+       never "input arrived but meant nothing" -- declared for shape parity
+       so callers can read one field on every result. */
+    unparsed: false,
     predicate: toks.length === 0 ? null : predicate,
     grouped: true,
   };
@@ -320,10 +324,27 @@ function compileFlat(tokens, now, { textAsPredicate = false } = {}, ctx = {}) {
     checks.push(negated ? (m) => !check(m) : check);
   }
 
+  /*
+   * "UNDERSTOOD NOTHING" IS ITS OWN STATE (round 8, M-1).
+   *
+   * `parseQuery('a OR')` and `parseQuery('((')` produced isEmpty:false with
+   * no terms, no operators and a null predicate: the struct claimed to be a
+   * real filter while carrying nothing to filter with, so every caller kept
+   * the whole list. The user typed a filter, saw their entire inbox, and had
+   * no signal the query was not understood -- compare '"unclosed', which
+   * correctly yields zero.
+   *
+   * `unparsed` names it explicitly rather than making each caller infer it
+   * from the absence of three other fields. isEmpty keeps its old meaning
+   * (nothing was typed) so existing readers are unaffected.
+   */
+  const isEmpty = terms.length === 0 && checks.length === 0;
   return {
     terms,
     operators,
-    isEmpty: terms.length === 0 && checks.length === 0,
+    isEmpty,
+    /* Input arrived, meaning did not. */
+    unparsed: isEmpty && tokens.length > 0,
     predicate: checks.length === 0 ? null : (m) => checks.every((c) => c(m)),
   };
 }

@@ -114,9 +114,20 @@ test('a query narrows through the store index and the predicate', () => {
 
 test('the predicate still applies when the index returns nothing', () => {
   const store = inbox([msg(1), msg(2)]);
-  // predicate-only query: no terms, so idsFor('all') is the base.
-  // msg(2) is the clubs one (see msg(): odd = augsd, even = clubs).
-  const ctx = ctxFor(store, { query: 'x', parse: parseWith((m) => m.category === 'clubs') });
+  /*
+   * A PREDICATE-ONLY query: `is:unread`-shaped, so the real parser yields NO
+   * terms and the base is idsFor('all'). The stub used to be handed 'x',
+   * which produced terms:['x'] and only looked predicate-only because the
+   * store happened to return everything for an unusable single character.
+   * Round 8's M-2 fixed that (a term nothing can match now matches nothing),
+   * which exposed the stub as the thing that was wrong: it was testing the
+   * old bug, not the intended behaviour. Terms are empty here, which is what
+   * "predicate-only" actually means.
+   */
+  const ctx = ctxFor(store, {
+    query: 'is:clubs',
+    parse: () => ({ terms: [], predicate: (m) => m.category === 'clubs' }),
+  });
   assert.deepEqual(visibleIds(store, ctx), ['m2']);
 });
 
@@ -217,4 +228,22 @@ test('a predicate-null parse leaves the index result untouched', () => {
   const store = inbox([msg(1, { subject: 'fee notice' }), msg(2, { subject: 'fee reminder' })]);
   const ctx = ctxFor(store, { query: 'fee' }); // plainParse: terms, no predicate
   assert.deepEqual(visibleIds(store, ctx), ['m2', 'm1']);
+});
+
+test('a query that parsed to nothing matches nothing (round 8, M-1)', () => {
+  /*
+   * parseQuery('a OR') and parseQuery('((') yield no terms, no operators and
+   * a null predicate: the struct claimed to be a real filter while carrying
+   * nothing to filter with, so visibleIds fell through to idsFor(category)
+   * and returned the whole inbox. The user typed a filter, saw everything,
+   * and had no signal it was not understood -- while '"unclosed' correctly
+   * returned zero, so the behaviour was not even self-consistent.
+   */
+  const store = inbox([msg(1), msg(2), msg(3)]);
+  const ctx = ctxFor(store, {
+    query: 'a OR',
+    parse: () => ({ terms: [], operators: [], isEmpty: true, unparsed: true, predicate: null }),
+  });
+  assert.deepEqual(visibleIds(store, ctx), [],
+    'showing nothing says "that matched nothing" instead of "that matched everything"');
 });
