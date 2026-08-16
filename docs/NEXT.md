@@ -381,5 +381,9 @@ browser-truth set watches the last two surfaces it doesn't.
 
 **Standing user-side blockers (no code can close these):** the PAT and
 v1 OAuth secret rotations — audit 64 ranks them above *all code*, and the
-PAT has now been pasted into this channel repeatedly — and a LICENSE
-choice (F5), which is a legal decision, not a gate.
+PAT has now been pasted into this channel repeatedly.
+
+The LICENSE question (F5) is **closed**: the owner's decision is *no
+licence, all rights reserved* (`COPYRIGHT.md`). An AI agent had added an
+MIT file unbidden on 2026-08-15; it was never the owner's intent and has
+been removed.

@@ -2927,3 +2927,54 @@ test('no scratch or dotfile scripts are tracked in the repo (round 9, H-4)', () 
   assert.match(ignore, /^\/\.scratch\/$/m,
     '/.scratch/ is the one place throwaway verification belongs');
 });
+
+test('no licence file grants rights the owner never granted', () => {
+  /*
+   * WHY THIS IS A GATE AND NOT A NOTE.
+   *
+   * On 2026-08-15 an AI agent added an MIT `LICENSE` file on its own
+   * initiative, in a commit titled "add the missing LICENSE" — reading the
+   * absence of a licence as an oversight to be helpfully corrected. It was
+   * not an oversight. The owner's decision is NO licence, all rights
+   * reserved, and that file published an irrevocable-looking grant of every
+   * right the owner holds, on a public repository, for anyone who cloned it
+   * in the interval.
+   *
+   * A licence is the one class of file where "an agent added it because it
+   * looked missing" is a legal event rather than a tidy-up. Absence cannot
+   * defend itself — a missing file looks exactly like a TODO to the next
+   * agent — so the absence is asserted here, where re-adding one turns red
+   * instead of shipping quietly.
+   *
+   * If the owner ever DOES choose a licence, this test is the right place to
+   * find out why it is written the way it is: update it deliberately, in the
+   * same commit, as a human decision.
+   */
+  const tracked = execSync('git ls-files', { cwd: ROOT, encoding: 'utf8' })
+    .split('\n').filter(Boolean);
+
+  const granting = tracked.filter((f) => {
+    const base = f.split('/').pop().toUpperCase();
+    /* COPYRIGHT.md is the file that RESERVES rights — it is the opposite of
+       a grant, and must not be caught here. */
+    if (f === 'COPYRIGHT.md') return false;
+    return /^(LICEN[CS]E|COPYING|UNLICEN[CS]E)(\.|$)/.test(base);
+  });
+
+  assert.deepEqual(granting, [],
+    'a licence file grants rights the owner has explicitly reserved — see COPYRIGHT.md');
+
+  /* The reservation must be stated, not merely implied by silence: an
+     unlicensed public repo is ambiguous to a reader acting in good faith. */
+  const copyright = read('COPYRIGHT.md');
+  assert.match(copyright, /All rights reserved/i, 'the reservation is explicit');
+  assert.match(copyright, /not open source/i);
+  assert.match(read('README.md'), /COPYRIGHT\.md/,
+    'the front page points at the terms');
+
+  /* package.json must not re-assert a licence through metadata, which is the
+     other place a tool will helpfully fill in "MIT". */
+  const pkg = JSON.parse(read('package.json'));
+  assert.equal(pkg.license, undefined, 'package.json must not declare a licence');
+  assert.equal(pkg.private, true, 'private:true keeps it off the npm registry');
+});

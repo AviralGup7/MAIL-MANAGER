@@ -1,4 +1,15 @@
-# Contributing to BITS Mail Manager
+# Working on BITS Mail Manager
+
+> **This is not an invitation to contribute.** The project is closed-source
+> and **all rights are reserved** — see [COPYRIGHT.md](COPYRIGHT.md). No
+> licence is granted to use, copy, modify or redistribute this code, and
+> outside contributions are not being accepted.
+>
+> This file exists because the repository is publicly readable and the owner
+> is its sole maintainer: it is the **owner's own build and house-rules
+> reference**, kept in the open so the rules that keep the codebase honest are
+> written down rather than remembered. Read it as documentation of how the
+> project is maintained, not as an offer of participation.
 
 ## Prerequisites
 
@@ -10,7 +21,7 @@
 ## Quick start
 
 ```
-git clone <this repo> && cd MAIL-MANAGER
+cd MAIL-MANAGER        # the owner's working copy; see COPYRIGHT.md
 npm ci                 # jsdom only; everything else is dependency-free
 npm test               # full suite; skips nothing when jsdom is present
 npm run preview        # builds preview.html — the app on synthetic mail

@@ -127,7 +127,10 @@ test('runs cancel when superseded; every gate mirrors to the Summary page', () =
 
 /* Audit 64's own "merge next" list, the machine-checkable half: F2's
    split exit codes and F4's docs-as-gates (2026-08-14). F5 (no LICENSE)
-   is a legal choice, not a gate — it stays a human decision. */
+   was a legal choice, not a gate; the owner has since decided it — no
+   licence, all rights reserved, recorded in COPYRIGHT.md. The MIT file an
+   agent added unbidden on 2026-08-15 is gone, and the gate below pins its
+   absence so it cannot come back the same way. */
 test('F2: the paint gate cannot pass while red (exit-code split)', () => {
   const src = read('tools/render-bench.mjs');
   assert.match(src, /INFRA \(exit 2\)/, 'launch failure is infrastructure');

@@ -15,6 +15,7 @@
 - [Audits](audits/) — the four reference audits, and why the rest were retired
 - [Finding-id ledger](docs/FINDINGS.md) — what `AUD-C1`, `R3-02`, `EXT2-C2` mean
 - [Security posture](SECURITY.md) — including the credentials that need rotating
+- [Copyright](COPYRIGHT.md) — **all rights reserved; no licence is granted**
 
 
 A Chrome extension that takes over the Gmail tab and replaces it with a faster,
@@ -400,7 +401,7 @@ src/
 timetable/data.json         GENERATED. 688 courses, 119 change rows.
 timetable/sources/          The two official documents, verbatim.
 tools/parse-timetable.mjs   Offline parser. Never runs in the extension.
-test/                       2,116 declared tests. `npm test` · `npm run test:ci` (fails on skips)
+test/                       2,117 declared tests. `npm test` · `npm run test:ci` (fails on skips)
   app.mail.integration.test.mjs      Core mail-shell integration journeys.
   app.features.integration.test.mjs  Feature/workspace integration journeys.
   resilience.test.mjs       Failure injection across every persistence module.
@@ -470,7 +471,7 @@ mis-file something the preview mis-files it too.
 
 ## Status
 
-**2,116 declared tests, 0 skipped.** Many of them boot the real `app.html` in a real
+**2,117 declared tests, 0 skipped.** Many of them boot the real `app.html` in a real
 DOM and drive it as a user would — click a row, type in search, press `j`/`k`,
 archive, snooze, sign out. All seven themes pass WCAG AA in CI.
 
@@ -541,3 +542,16 @@ fix before trusting it:
 catch — it found seven behaviours nothing verified, including the sanitiser's
 attribute allow-list.
 
+
+## Copyright
+
+**Copyright © 2026 Aviral Gupta. All rights reserved.**
+
+This project is **not open source** and carries **no licence**. No permission
+is granted to use, copy, modify, redistribute or create derivative works from
+this code. Being able to read the source is not a grant of any right to use
+it — see [COPYRIGHT.md](COPYRIGHT.md).
+
+An MIT `LICENSE` file briefly existed here after an AI agent added one
+unbidden on 2026-08-15. That was never the owner's decision; it has been
+removed and the mistake is recorded in COPYRIGHT.md rather than hidden.
