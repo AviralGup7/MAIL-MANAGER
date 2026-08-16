@@ -84,17 +84,35 @@ const SECTIONS = [
         ],
         hint: 'Press, magnetic pull, ripple and the key light. Cyberpunk brings its own motion language, so Auto stands these down there rather than running two at once. Reduced motion still overrides every choice.',
       },
+      /*
+       * THEME-SCOPED CONTROLS (2026-08-16). `theme:` means "this control only
+       * does anything under that theme, so only offer it there".
+       *
+       * Both of these used to render for all seven themes, and their own
+       * hints admitted it: "Only affects the Cyberpunk theme". A control that
+       * is present, enabled, and does nothing when you move it is a worse lie
+       * than a missing one — the user reasonably concludes the setting is
+       * broken rather than inapplicable. Measured in daylight before the fix:
+       * the word "Cyberpunk" appeared 7 times in a panel for a theme that is
+       * not cyberpunk.
+       *
+       * The VALUES are untouched when the row is hidden. Switching away and
+       * back restores the user's chosen intensity exactly, because hiding is
+       * a presentation decision and settings.js remains the authority.
+       */
       {
         kind: 'select', key: 'cyberpunkIntensity', label: 'Cyberpunk intensity',
+        theme: 'cyberpunk',
         options: [
           ['calm', 'Calm — geometry and colour only'],
           ['balanced', 'Balanced — recommended'],
           ['maximum', 'Maximum — full telemetry and glow'],
         ],
-        hint: 'Only affects the Cyberpunk theme. Reduced motion, textures and sounds still outrank this choice.',
+        hint: 'Geometry, telemetry and glow density for this theme. Reduced motion, textures and sounds still outrank this choice.',
       },
       {
         kind: 'select', key: 'cyberpunkAudioProfile', label: 'Cyberpunk sound detail',
+        theme: 'cyberpunk',
         options: [
           ['minimal', 'Minimal — warnings and errors only'],
           ['semantic', 'Semantic — actions and outcomes'],
@@ -250,11 +268,27 @@ const SECTIONS = [
 /** @type {Map<string, Array<{el:Element, apply:(v:any)=>void}>>} */
 let live = new Map();
 let stopLive = null;
+/** Rows that only apply under one theme: [element, themeId]. */
+let themeScoped = [];
 
 function track(key, el, apply) {
   const arr = live.get(key) || [];
   arr.push({ el, apply });
   live.set(key, arr);
+}
+
+/**
+ * Show exactly the theme-scoped rows that belong to the active theme.
+ *
+ * WHY `hidden` AND NOT A REBUILD. Re-rendering the panel on every theme
+ * change would blow away focus, scroll position and any control mid-edit —
+ * the live-binding block above exists precisely to avoid that. Toggling
+ * `hidden` is the same idea one layer out: the row keeps its identity and its
+ * live binding, it simply stops being offered.
+ */
+function syncThemeScoped(themeId) {
+  const active = themeId || settings.get('theme') || 'daylight';
+  for (const [el, theme] of themeScoped) el.hidden = theme !== active;
 }
 
 function startLive() {
@@ -263,6 +297,13 @@ function startLive() {
     for (const b of live.get(key) || []) {
       if (document.activeElement !== b.el) b.apply(value);
     }
+    /*
+     * A theme switch is the moment a scoped control becomes applicable or
+     * stops being — and it can arrive from the topbar picker or the command
+     * palette, not just from this panel, so it must be handled here where
+     * every write lands rather than at any one call site.
+     */
+    if (key === 'theme') syncThemeScoped(value);
   });
 }
 
@@ -508,6 +549,7 @@ function wireOnce() {
 
 function renderBody(body, ctx, doc) {
   live = new Map();
+  themeScoped = [];
   body.replaceChildren();
 
   for (const section of SECTIONS) {
@@ -550,10 +592,15 @@ function renderBody(body, ctx, doc) {
       cell.className = 'set-control' + (item.kind === 'themes' || item.wide ? ' wide' : '');
       cell.appendChild(control);
       row.appendChild(cell);
+      /* Theme-scoped rows register before mount, so the first paint is
+         already correct — no flash of an inapplicable control. */
+      if (item.theme) themeScoped.push([row, item.theme]);
       sec.appendChild(row);
     }
     body.appendChild(sec);
   }
+  /* Correct on FIRST paint, not on the first theme change after it. */
+  syncThemeScoped();
 }
 
 export function openSettings(ctx = {}) {
