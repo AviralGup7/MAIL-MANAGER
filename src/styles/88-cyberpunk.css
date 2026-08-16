@@ -579,3 +579,30 @@ html[data-theme='cyberpunk'][data-cp-intensity='calm'] #radar::after,
 html[data-theme='cyberpunk'][data-cp-intensity='calm'] #reader-idle::after {
   display: none;
 }
+
+/* ---- the last stadium ------------------------------------------------------
+ *
+ * Swept every element in the rendered app for round corners after the scale
+ * collapse (round 5.1). Four survived, and three were correct: `.dot`,
+ * `.r-bar` and `.r-star` are the pill/dot idiom --r-full deliberately keeps.
+ *
+ * The fourth was not. `#notices > *` is a 348x30 BANNER — a full sentence of
+ * text — and --r-full made it a stadium: the softest shape in a theme whose
+ * whole argument is that nothing is soft. It also clipped its own amber
+ * status edge into a crescent, so the one piece of colour carrying meaning
+ * was deformed by the rounding.
+ *
+ * The chip idiom is right for the OTHER hard theme (contrast has no chamfer
+ * language to belong to), so this is corrected HERE behind the gate rather
+ * than by touching --r-full or the shared component rule. The chamfer is the
+ * skin's own corner language, and a notice is exactly the sort of bounded
+ * readout it was written for.
+ */
+html[data-theme='cyberpunk'] #notices > * {
+  border-radius: 0;
+  clip-path: polygon(
+    var(--cp-cut) 0, 100% 0,
+    100% calc(100% - var(--cp-cut)), calc(100% - var(--cp-cut)) 100%,
+    0 100%, 0 var(--cp-cut)
+  );
+}
