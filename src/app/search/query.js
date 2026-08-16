@@ -216,41 +216,71 @@ function parseGrouped(tokens, now, ctx = {}) {
   const peek = () => toks[i];
   const isOr = (t) => /^(or|\|\|)$/i.test(t || '');
 
-  /** @returns {(m:object)=>boolean} */
+  /*
+   * AN EMPTY BRANCH IS NOT `true` (round 10, H-3).
+   *
+   * `parseAnd` used to return `() => true` when it consumed no atoms, and
+   * `parseExpr` ORed that identity into the result. Measured:
+   *
+   *     parseQuery('a OR')  -> isEmpty:false, no terms  -> 3 of 3 visible
+   *     parseQuery('((')    -> isEmpty:false, no terms  -> 3 of 3 visible
+   *     parseQuery('c')     ->                          -> 0 of 3   correct
+   *
+   * The user typed a filter, the app understood none of it, and showed the
+   * whole mailbox with no signal — and since the 1-character case was fixed
+   * to correctly return nothing, two malformed queries behaved two different
+   * ways, which is worse than either behaviour on its own.
+   *
+   * So every level now returns `null` for "nothing here" and the levels above
+   * it drop the branch instead of treating it as a match-everything. A
+   * half-typed `a OR` filters on `a`; a query with no atoms at all reaches
+   * the bottom as `null` and is reported as `unparsed`, which selectors.js
+   * already renders as zero results rather than the whole inbox.
+   */
+  /** @returns {((m:object)=>boolean)|null} null = this branch said nothing */
   function parseExpr(depth) {
-    const alts = [parseAnd(depth)];
+    const alts = [];
+    const first = parseAnd(depth);
+    if (first) alts.push(first);
     while (isOr(peek())) {
       i++;
-      alts.push(parseAnd(depth));
+      const next = parseAnd(depth);
+      if (next) alts.push(next);
     }
+    if (alts.length === 0) return null;
     return alts.length === 1 ? alts[0] : (m) => alts.some((p) => p(m));
   }
 
+  /** @returns {((m:object)=>boolean)|null} */
   function parseAnd(depth) {
     const parts = [];
     while (i < toks.length && !isOr(peek()) && peek() !== ')') {
       const p = parseFactor(depth);
       if (p) parts.push(p);
     }
-    if (parts.length === 0) return () => true;
+    if (parts.length === 0) return null;
     return parts.length === 1 ? parts[0] : (m) => parts.every((p) => p(m));
   }
 
+  /** @returns {((m:object)=>boolean)|null} */
   function parseFactor(depth) {
     const t = toks[i];
     if (t === '(' || t === '-(') {
       i++;
       // Bounded recursion. Deeply nested input is more likely a typo than a
       // query, and a stack overflow in the search box is not an error message.
-      const inner = depth > 12 ? (() => { i++; return () => true; })() : parseExpr(depth + 1);
+      const inner = depth > 12 ? (() => { i++; return null; })() : parseExpr(depth + 1);
       if (peek() === ')') i++;
+      if (!inner) return null;         // `()` and `-()` say nothing
       return t === '-(' ? (m) => !inner(m) : inner;
     }
     if (t === ')') { i++; return null; }
     i++;
     const one = compileFlat([t], now, { textAsPredicate: true }, ctx);
     operators.push(...one.operators);
-    return one.predicate || (() => true);
+    /* An atom that compiled to nothing (a bare `-`, a lone quote) is dropped
+       rather than promoted to `() => true` -- same reason as the branches. */
+    return one.predicate;
   }
 
   const predicate = parseExpr(0);
@@ -258,11 +288,14 @@ function parseGrouped(tokens, now, ctx = {}) {
     terms: [],
     operators,
     isEmpty: toks.length === 0,
-    /* The grouped path builds a real predicate from its tokens, so it is
-       never "input arrived but meant nothing" -- declared for shape parity
-       so callers can read one field on every result. */
-    unparsed: false,
-    predicate: toks.length === 0 ? null : predicate,
+    /*
+     * Input arrived, meaning did not. The flat parser has said this since
+     * round 8; the grouped parser claimed it could never happen, which was
+     * exactly wrong -- `a OR` and `((` are grouped queries by definition,
+     * because it is the OR and the parens that route them here.
+     */
+    unparsed: toks.length > 0 && predicate === null,
+    predicate,
     grouped: true,
   };
 }

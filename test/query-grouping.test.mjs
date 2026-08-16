@@ -137,7 +137,48 @@ test('a trailing OR does not match everything', () => {
 
 test('absurd nesting terminates rather than overflowing the stack', () => {
   const q = '('.repeat(200) + 'is:unread' + ')'.repeat(200);
-  assert.doesNotThrow(() => parseQuery(q).predicate(M({ unread: true })));
+  let parsed;
+  assert.doesNotThrow(() => { parsed = parseQuery(q); });
+  /*
+   * Past the depth bound the parser stops descending, so it never reaches the
+   * atom and honestly has no predicate. It used to substitute `() => true`
+   * there, which showed the WHOLE mailbox for a query it had given up on --
+   * the same lie round 10's H-3 removed from the empty branches. `unparsed`
+   * is the honest report: selectors renders it as zero results with the query
+   * still on screen.
+   */
+  assert.equal(parsed.unparsed, true, 'a query we gave up on must say so');
+  assert.equal(parsed.predicate, null);
+});
+
+test('a query that parses to nothing says so rather than matching all (round 10, H-3)', () => {
+  /*
+   * Measured before the fix: `parseQuery('a OR')` and `parseQuery('((')`
+   * returned isEmpty:false with no terms, no operators and a
+   * match-everything predicate, so the user typed a filter and got the whole
+   * inbox back with no signal. Worse, the 1-character case had just been
+   * fixed to correctly return nothing -- so two malformed queries behaved two
+   * different ways.
+   */
+  for (const q of ['((', '()', '-()', '( )']) {
+    const p = parseQuery(q);
+    assert.equal(p.unparsed, true, `${q} understood nothing and must say so`);
+    assert.equal(p.predicate, null, `${q} must not carry a match-everything predicate`);
+  }
+
+  /* A half-typed OR is NOT unparseable -- it has a usable left side, and
+     dropping the empty branch is what makes it filter on that side alone. */
+  const half = parseQuery('category:clubs OR');
+  assert.equal(half.unparsed, false);
+  assert.equal(half.predicate(M({ category: 'clubs' })), true);
+  assert.equal(half.predicate(M({ category: 'admin' })), false,
+    'the empty branch must not re-admit everything');
+
+  /* And a real grouped query is untouched. */
+  const real = parseQuery('(category:clubs OR category:events)');
+  assert.equal(real.unparsed, false);
+  assert.equal(real.predicate(M({ category: 'events' })), true);
+  assert.equal(real.predicate(M({ category: 'admin' })), false);
 });
 
 test('operators from inside groups are reported for the query description', () => {
