@@ -87,7 +87,8 @@ docs/                         living documents — kept true, always
 
 ## 3 · The stylesheet, as volumes
 
-`src/app/app.css` (6,667 lines) is split into `src/styles/NN-name.css`. The
+The stylesheet was one 6,667-line `src/app/app.css`; it is now
+`src/styles/NN-name.css` volumes (8,300 lines across them today). The
 **NN prefix is the load order** — sorted directory order, nothing else. No
 manifest of files exists anywhere, because the filenames are the manifest.
 

@@ -40,8 +40,8 @@ directory. Open Options, paste your client ID, open Gmail, press
 2. **Tests are sabotage-verified.** A new guard ships with a demonstration
    that breaking the contract fails the test.
 3. **No layout animation per frame.** Discrete state-bound transitions only,
-   with a measured reflow cost cited (see the SPATIAL COMPRESSION section in
-   src/app/app.css and test/package.test.mjs).
+   with a measured reflow cost cited (see src/styles/80-compression.css and
+   test/package.test.mjs).
 4. **The worker owns the token.** The app page never sees the access token;
    do not merge layers (see SECURITY.md).
 5. **Do not rewrite app.js.** Extract only proven tenants with explicit ctx

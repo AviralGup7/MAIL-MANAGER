@@ -21,7 +21,7 @@ WORKER (background/index.js)          APP PAGE (app.html → app/main.js)
         ▲                                       ▲
         └──────── chrome.storage.local ─────────┘
               (the ONLY shared surface; registry in
-               src/app/storage-registry.js)
+               src/app/system/storage-registry.js)
 ```
 
 ## Why it must stay this way

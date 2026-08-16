@@ -4,7 +4,8 @@ Status: **Phase 1 audit + prioritized plan**. Implementation checkpoints land as
 separate commits named `Round 65/x`. This file is the map they follow.
 
 Method: full interactive-surface inventory of the extension (66 modules in
-`src/app`, shell in `app.html`, 6300-line design system in `src/styles/`),
+`src/app` and a 6,300-line design system *as of round 65* — 93 and 8,300
+today; this is a dated record, not a live census),
 cross-checked against the interaction-intelligence brief received 2026-08-12
 ("Maximum UX & Interaction Intelligence Overhaul"). The brief's sixty sections
 are distilled to nine friction themes below; each finding cites the code that

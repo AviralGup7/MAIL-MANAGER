@@ -393,12 +393,13 @@ it claims.** Sabotage is the only thing that has reliably exposed them.
 tools/parse-timetable.mjs   offline parser: PDF text -> data.json (npm run timetable)
 src/timetable/data.json     688 courses, 119 change rows (generated)
 src/timetable/sources/      the two official documents, verbatim
-src/app/timetable.js        the model: entries, precedence, conflicts, trace,
-                            exams, credits, day/hour grammar (shared with the tool)
-src/app/timetable-mail.js   deterministic mail patterns
-src/app/timetable-store.js  persistence and course search
-src/app/timetable-ui.js     the panel: wizard, manager, proposals
-test/timetable.test.mjs     94 tests
+src/app/academic/timetable.js       the model: entries, precedence, conflicts,
+                                    trace, exams, credits, day/hour grammar
+                                    (shared with the tool)
+src/app/academic/timetable-mail.js  deterministic mail patterns
+src/app/academic/timetable-store.js persistence and course search
+src/app/academic/timetable-ui.js    the panel: wizard, manager, proposals
+test/timetable.test.mjs             the contracts
 ```
 
 Layering: `timetable.js` is **pure domain** — no DOM, no storage, no `chrome`.
