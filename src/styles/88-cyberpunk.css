@@ -395,13 +395,6 @@ html[data-theme='cyberpunk'][data-ui-profile='modern'] .row[aria-selected='true'
 /* Dossier and query console: red structure, cyan current data. */
 html[data-theme='cyberpunk'][data-ui-profile='modern'] #reader-head {
   border-color: var(--cp-structural);
-  /* The containing block for the corner brackets below. #reader-head is
-     static in 44-reader-head.css, and an absolutely-positioned ::after on a
-     static parent escapes to the viewport — four red marks pinned to the
-     window corners. Declared HERE rather than in a second rule for the same
-     selector: package.test forbids defining one selector twice in a layer,
-     and it is right to — two rules for one element is how they drift. */
-  position: relative;
 }
 html[data-theme='cyberpunk'][data-ui-profile='modern'] #r-subject::before {
   background: var(--cp-line-active);
@@ -490,12 +483,21 @@ html[data-theme='cyberpunk'][data-calm-content='on'] #c-text {
  *    content: a human's subject line is not a readout, and setting prose in
  *    mono would be costume rather than information design.
  *
- * 2. NO FRAMES. The reference frames its panels with corner brackets: short
- *    right-angle marks that say "this region is a bounded instrument". Our
+ * 2. NO FRAMES. The reference frames regions with corner brackets: short
+ *    right-angle marks that say "this thing is a bounded instrument". Our
  *    panels were separated by single hairlines, which reads as a document,
  *    not an instrument. Brackets are drawn with ONE pseudo-element per
- *    panel using two gradients, so no markup changes and nothing new to
+ *    region using four gradients, so no markup changes and nothing new to
  *    lay out.
+ *
+ *    WHERE THEY GO WAS A CORRECTION. The first attempt bracketed #listhead
+ *    and #reader-head — full-width strips. Rendered at 1440px the marks sat
+ *    ~1200px apart and read as two stray ticks, not a frame; going back to
+ *    the reference showed why. It brackets COMPACT, SELECTED objects —
+ *    item cards, equipment slots, the scanned target — never wide chrome.
+ *    A bracket is a designation, and designating a whole header designates
+ *    nothing. They live on the rail cards now, which are the app's actual
+ *    "objects": 275px wide, self-contained, and genuinely instrument-like.
  *
  * Both ride existing tokens; both unapply with the gate.
  */
@@ -539,12 +541,13 @@ html[data-theme='cyberpunk'] .r-date {
    cannot intercept a click or cover text. It is painted with the structural
    red the generation-2 rules already established as the frame colour, so the
    brackets read as part of the chassis rather than as a new accent. */
-html[data-theme='cyberpunk'][data-ui-profile='modern'] #listhead {
+html[data-theme='cyberpunk'][data-ui-profile='modern'] #radar,
+html[data-theme='cyberpunk'][data-ui-profile='modern'] #reader-idle {
   position: relative;
 }
 
-html[data-theme='cyberpunk'][data-ui-profile='modern'] #listhead::after,
-html[data-theme='cyberpunk'][data-ui-profile='modern'] #reader-head::after {
+html[data-theme='cyberpunk'][data-ui-profile='modern'] #radar::after,
+html[data-theme='cyberpunk'][data-ui-profile='modern'] #reader-idle::after {
   content: '';
   position: absolute;
   inset: 0;
@@ -572,7 +575,7 @@ html[data-theme='cyberpunk'][data-ui-profile='modern'] #reader-head::after {
 /* Textures off is a promise about ATMOSPHERE, and brackets are structure, so
    they stay. Calm intensity is a promise about NOISE, and four marks per
    panel is the kind of detail calm exists to remove — so calm drops them. */
-html[data-theme='cyberpunk'][data-cp-intensity='calm'] #listhead::after,
-html[data-theme='cyberpunk'][data-cp-intensity='calm'] #reader-head::after {
+html[data-theme='cyberpunk'][data-cp-intensity='calm'] #radar::after,
+html[data-theme='cyberpunk'][data-cp-intensity='calm'] #reader-idle::after {
   display: none;
 }
