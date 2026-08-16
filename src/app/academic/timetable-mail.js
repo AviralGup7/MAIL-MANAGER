@@ -392,6 +392,10 @@ export function scanMessages(messages, state) {
    * as well as across sessions. A message with no id is skipped rather than
    * treated as a repeat of the last one: '' would collide with itself.
    */
+  /* Total, like scanMessage (round 10, M-14 -- the report flagged this as
+     unverified; probed: `scanMessages(null)` threw on `state.appliedMail`).
+     No state means nothing to compare a message against, so no findings. */
+  if (!state || typeof state !== 'object' || !Array.isArray(state.entries)) return [];
   const seen = new Set(state.appliedMail || []);
   const out = [];
   for (const m of messages || []) {

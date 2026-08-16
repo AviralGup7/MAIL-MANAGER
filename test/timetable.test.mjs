@@ -2001,3 +2001,35 @@ test('detectConflicts is total, and caps a runaway enumeration (round 9, M-5/M-6
   /* The machine-readable list is NOT truncated — only the prose is. */
   assert.equal(overlap.entryIds.length, 500);
 });
+
+test('entryId is total and refuses to invent an id (round 10, M-6)', () => {
+  /*
+   * A bare template literal returned "[object Object]:undefined" for
+   * `entryId({})` and "undefined:undefined" for `entryId()`, so every
+   * malformed entry collided on ONE id -- and an id is what dedupe,
+   * correction and linking all key on, so two unrelated courses silently
+   * became one.
+   */
+  assert.equal(entryId(), '');
+  assert.equal(entryId({}), '');
+  assert.equal(entryId({}, undefined), '');
+  assert.equal(entryId(null, 'L1'), '');
+  assert.equal(entryId('CS F211', ''), '');
+  assert.equal(entryId('  ', 'L1'), '');
+  /* Two different malformed entries must NOT share an id. */
+  assert.notEqual(entryId({ a: 1 }, undefined) || 'A', entryId({ b: 2 }, undefined) || 'B');
+  // The honest cases are untouched.
+  assert.equal(entryId('CS F211', 'L1'), 'CS F211:L1');
+  assert.equal(entryId(1, 2), '1:2');
+});
+
+test('scanMessages is total, like scanMessage (round 10, M-14)', async () => {
+  /* The report flagged this as unverified. Probed: `scanMessages(null)` threw
+     "Cannot read properties of undefined (reading 'appliedMail')". No state
+     means nothing to compare a message against, so no findings. */
+  const { scanMessages } = await import('../src/app/academic/timetable-mail.js');
+  for (const bad of [undefined, null, {}, 'nope', 7, []]) {
+    assert.deepEqual(scanMessages([], bad), []);
+    assert.deepEqual(scanMessages(null, bad), []);
+  }
+});

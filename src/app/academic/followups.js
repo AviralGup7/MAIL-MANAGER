@@ -160,6 +160,11 @@ export function isAnswered(f, store, self) {
  * function with a side effect on storage is how a list flickers.
  */
 export function dueFollowups(list, store, self, now = Date.now()) {
+  /* Total, like normaliseFollowups (round 10, I-1 / M-4). The loader
+     tolerated null and the reader did not, so a caller that skipped
+     normalisation threw instead of reporting "nothing is due" -- which is
+     what an absent list actually means. */
+  if (!Array.isArray(list)) return [];
   return list
     .filter((f) => f.dueAt <= now)
     .filter((f) => !isAnswered(f, store, self))
@@ -168,6 +173,7 @@ export function dueFollowups(list, store, self, now = Date.now()) {
 
 /** Everything still outstanding, due or not. For the "Waiting" view. */
 export function openFollowups(list, store, self) {
+  if (!Array.isArray(list)) return [];
   return list.filter((f) => !isAnswered(f, store, self)).sort((a, b) => a.dueAt - b.dueAt);
 }
 

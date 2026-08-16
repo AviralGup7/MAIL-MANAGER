@@ -239,3 +239,14 @@ test('A STORE THAT CANNOT ANSWER DOES NOT CAUSE MASS DELETION', () => {
   const realStore = { threadIds: (t) => (t === 't1' ? ['m1'] : []), get: () => ({ id: 'm1', from: ME, date: NOW - 1 }) };
   assert.deepEqual(pruneFollowups(list, realStore, ME).map((f) => f.threadId), ['t1']);
 });
+
+test('the readers are total, like the loader (round 10, I-1 / M-4)', () => {
+  /* `normaliseFollowups(null)` returned []; `dueFollowups(null, ...)` threw
+     "Cannot read properties of null (reading 'filter')". An absent list means
+     nothing is due, which is an answer, not a crash. */
+  const store = { byId: () => null };
+  for (const bad of [undefined, null, {}, 'nope', 7]) {
+    assert.deepEqual(dueFollowups(bad, store, ME, NOW), []);
+    assert.deepEqual(openFollowups(bad, store, ME), []);
+  }
+});

@@ -246,6 +246,19 @@ export function isOverridden(map, messageId) {
  * forever. Called after a full sync.
  */
 export function pruneOverrides(map, liveIds) {
+  /*
+   * A MISSING liveIds MUST NOT MEAN "NOTHING IS LIVE" (round 10, M-3).
+   *
+   * `new Set(undefined)` is an EMPTY set, so every override was treated as
+   * dead and dropped -- and these are the user's hand-made deadline
+   * corrections, a backup:true class of data. The only production caller
+   * passes a real Set and is correctly gated against a partial store, so this
+   * was latent; but the function is exported and "delete everything" is the
+   * wrong failure mode for a forgotten argument. Absent means "prune
+   * nothing", which is the reading that cannot lose data.
+   */
+  if (liveIds == null) return map;
+  if (!map || typeof map !== 'object') return {};
   const live = liveIds instanceof Set ? liveIds : new Set(liveIds);
   const kept = {};
   let dropped = 0;

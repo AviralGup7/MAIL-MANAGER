@@ -96,7 +96,27 @@ export function emptyState() {
   };
 }
 
-export const entryId = (comCode, section) => `${comCode}:${section}`;
+/**
+ * The stable identity of a timetable entry: `COMCODE:SECTION`.
+ *
+ * TOTAL, AND EMPTY WHEN IT CANNOT ANSWER (round 10, M-6 / round 9 M-13).
+ *
+ * This was a bare template literal, so `entryId({})` returned the string
+ * `"[object Object]:undefined"` and `entryId()` returned `"undefined:undefined"`
+ * -- every malformed entry collided on ONE id, which for a Map or a
+ * `some(e => e.id === id)` dedupe means two unrelated courses silently become
+ * one. An id that cannot be computed is `''`, and callers that build entries
+ * refuse to build one without it, so the collision cannot be constructed.
+ *
+ * Only strings and numbers count: a comCode is a document token, and anything
+ * else reaching here is a bug upstream that must not be laundered into a
+ * plausible-looking key.
+ */
+export const entryId = (comCode, section) => {
+  const ok = (v) => (typeof v === 'string' && v.trim() !== '') || (typeof v === 'number' && Number.isFinite(v));
+  if (!ok(comCode) || !ok(section)) return '';
+  return `${String(comCode).trim()}:${String(section).trim()}`;
+};
 
 /* ========================================================================== *
  * BUILDING — the one-time initial build
@@ -271,6 +291,10 @@ export function addCourse(state, course, { lecture, extraSections = [], ref, at 
 
   const push = (section, linkedTo = '') => {
     const id = entryId(course.comCode, section.section);
+    /* No id, no entry (round 10, M-6). An entry that cannot be identified
+       cannot be deduplicated, corrected or linked -- adding it would put a
+       row in the timetable that every later operation misses. */
+    if (!id) return;
     if (next.entries.some((e) => e.id === id)) return;
     const entry = makeEntry(course, section, { ref, at, linkedTo });
     next.entries.push(entry);

@@ -357,3 +357,17 @@ test('thread mutes survive a normalise round trip', () => {
   const r = toggleThreadMute(emptyRules(), 't1');
   assert.deepEqual(normaliseRules(r).mutedThreads, ['t1']);
 });
+
+test('mute state readers are total, like normaliseRules (round 10, I-1 / M-5)', () => {
+  /* `normaliseRules(null)` returned a complete empty-rules object while
+     `isMuted(null, k)` and `toggleMute(null, k)` threw on `.muted`. Third
+     instance of the same asymmetry in the tree. */
+  for (const bad of [undefined, null, {}, [], 'nope']) {
+    assert.equal(isMuted(bad, 'clubs'), false, JSON.stringify(bad));
+    assert.equal(isAutoArchived(bad, 'clubs'), false);
+    assert.deepEqual(toggleMute(bad, 'clubs'), { ...emptyRules(), muted: ['clubs'] });
+  }
+  /* A partially-shaped object is repaired rather than half-read. */
+  assert.deepEqual(toggleMute({ muted: ['admin'] }, 'clubs'),
+    { ...emptyRules(), muted: ['admin', 'clubs'] });
+});

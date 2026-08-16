@@ -320,6 +320,22 @@ test('pruning returns the SAME object when nothing changed', () => {
   assert.equal(dl.pruneOverrides(map, new Set(['m1'])), map);
 });
 
+test('a missing liveIds prunes NOTHING, not everything (round 10, M-3)', () => {
+  /*
+   * `new Set(undefined)` is an EMPTY set, so a forgotten second argument made
+   * every override look dead and dropped the lot -- and these are the user's
+   * hand-made deadline corrections, a backup:true class of data. The only
+   * production caller passes a real Set, so this was latent; "delete
+   * everything" is still the wrong failure mode for a missing argument.
+   */
+  const map = dl.correct(dl.correct({}, 'm1', NOW), 'm2', NOW);
+  assert.equal(dl.pruneOverrides(map, undefined), map, 'undefined must prune nothing');
+  assert.equal(dl.pruneOverrides(map, null), map, 'null must prune nothing');
+  /* An EXPLICITLY empty set still means "nothing is live" and still prunes. */
+  assert.deepEqual(dl.pruneOverrides(map, new Set()), {});
+  assert.deepEqual(dl.pruneOverrides(map, []), {});
+});
+
 test('a corrupt override blob degrades to empty', () => {
   for (const bad of [null, 'x', 7, [], { m1: null }, { m1: { at: 'soon' } }]) {
     assert.deepEqual(dl.normaliseOverrides(bad), {});

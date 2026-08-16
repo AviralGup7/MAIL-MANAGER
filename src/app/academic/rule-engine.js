@@ -151,7 +151,12 @@ export async function saveRuleList(rules, storage = STORAGE) {
  * Exposed so the "create a rule from this message" path (feature 75) does not
  * have to know the record shape.
  */
-export function makeRule({ name, query, actions, enabled = true, stopProcessing = false }) {
+export function makeRule(spec) {
+  /* Total, like emptyRules()/emptyState() (round 10, I-1 / M-1). Destructuring
+     the parameter list threw "Cannot destructure property 'name' of
+     'undefined'"; normaliseRuleList then rejects the empty spec and this
+     returns null, which is the outcome the signature already promised. */
+  const { name, query, actions, enabled = true, stopProcessing = false } = spec || {};
   const [built] = normaliseRuleList([
     { id: makeId(), name, query, actions, enabled, created: Date.now(), stopProcessing },
   ]);
@@ -243,6 +248,11 @@ export function idsMatching(query, ids, get, now = Date.now()) {
  *   the MERGED action set and the ids of the rules that fired.
  */
 export function evaluate(rules, msg, now = Date.now()) {
+  /* Total, like normaliseRuleList (round 10, I-1 / M-2). The module defended
+     its loader and not its evaluator, so a caller that skipped normalisation
+     threw "rules is not iterable" inside the ingest path -- where the honest
+     answer to "no rules" is "no actions". */
+  if (!Array.isArray(rules)) rules = [];
   const actions = [];
   const matched = [];
   const seen = new Set();

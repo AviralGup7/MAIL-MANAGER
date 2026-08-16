@@ -260,3 +260,31 @@ test('every declared action is either destructive or not, with no gaps', () => {
   assert.ok(DESTRUCTIVE.has('archive'));
   assert.ok(!DESTRUCTIVE.has('star'));
 });
+
+/* ==========================================================================
+ * TOTALITY: THE LOADER DEFENDED ITSELF AND THE OPERATOR DID NOT
+ * ========================================================================== */
+
+test('every exported entry point tolerates a missing argument (round 10, I-1)', () => {
+  /*
+   * `normaliseRuleList(null)` correctly returned []; `makeRule()` threw
+   * "Cannot destructure property 'name' of 'undefined'" and
+   * `evaluate(msg, undefined)` threw "rules is not iterable". Each module in
+   * this tree had the same asymmetry, so a caller that skipped normalisation
+   * -- a fresh profile, a storage read that came back undefined -- crashed
+   * the ingest path instead of behaving as if there were no rules.
+   */
+  assert.equal(makeRule(), null, 'a spec-less rule is null, not a throw');
+  assert.equal(makeRule(undefined), null);
+  assert.equal(makeRule({}), null, 'an empty spec is still invalid');
+
+  for (const rules of [undefined, null, {}, 'nonsense', 42]) {
+    const out = evaluate(rules, msg({ from: 'x@y.z' }));
+    assert.deepEqual(out.actions, [], `evaluate(${JSON.stringify(rules)}) must yield no actions`);
+    assert.deepEqual(out.matched, []);
+  }
+
+  /* A real rule list still works -- the guard must not have eaten the path. */
+  const real = evaluate([rule()], msg({ from: 'x@y.z' }));
+  assert.deepEqual(real.actions, [{ type: 'archive' }]);
+});

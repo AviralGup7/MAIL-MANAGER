@@ -115,11 +115,29 @@ export async function saveRules(rules, storage = STORAGE) {
 }
 
 /** Toggle membership of a string list, returning a NEW rules object. */
+/*
+ * ONE "TOLERATE A MISSING ARGUMENT" RULE (round 10, I-1 / M-5).
+ *
+ * Every module in this tree defends its LOADER and not its OPERATOR:
+ * `normaliseRules(null)` returns a complete empty-rules object while
+ * `isMuted(null, k)` and `toggleMute(null, k)` threw
+ * "Cannot read properties of null (reading 'muted')". A caller that skipped
+ * normalisation -- a fresh profile, a storage read that came back undefined,
+ * a test harness -- crashed the path instead of behaving as if nothing were
+ * muted, which is the truthful answer.
+ *
+ * Reusing `normaliseRules` rather than adding `|| []` at each read means a
+ * partially-shaped object (muted present, autoArchive missing) is repaired
+ * too, and there is exactly one definition of what a rules object is.
+ */
+const asRules = (r) => (r && typeof r === 'object' && !Array.isArray(r) ? normaliseRules(r) : emptyRules());
+
 function toggleIn(rules, field, value) {
-  const set = new Set(rules[field]);
+  const base = asRules(rules);
+  const set = new Set(base[field]);
   if (set.has(value)) set.delete(value);
   else set.add(value);
-  return { ...rules, [field]: [...set] };
+  return { ...base, [field]: [...set] };
 }
 
 export function toggleMute(rules, category) {
@@ -144,11 +162,11 @@ export function toggleAutoArchive(rules, category) {
 }
 
 export function isMuted(rules, category) {
-  return rules.muted.includes(category);
+  return asRules(rules).muted.includes(category);
 }
 
 export function isAutoArchived(rules, category) {
-  return rules.autoArchive.includes(category);
+  return asRules(rules).autoArchive.includes(category);
 }
 
 /*
