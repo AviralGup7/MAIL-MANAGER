@@ -117,7 +117,16 @@
     'intel intel';
   align-items: start;
   column-gap: var(--s-4);
-  border-bottom: 1px solid var(--line);
+  /* WIDTH AND STYLE ONLY — never the colour (round 5, 2026-08-16).
+     This volume loads AFTER 88-cyberpunk.css, so a full `border-bottom`
+     shorthand here silently reset the skin's structural red back to --line.
+     Measured: the dossier's bottom edge rendered at 1.41 contrast against
+     the page instead of the frame colour generation 2 assigned it, so the
+     skin's own intent was being defeated by a LAYOUT rule two volumes
+     later. Declaring width/style and leaving the colour to cascade lets
+     every theme keep its own opinion about what a frame is worth. */
+  border-bottom-width: 1px;
+  border-bottom-style: solid;
 }
 :root[data-ui-profile='modern'][data-reader-dossier='on'] #r-subject {
   grid-area: subject;
