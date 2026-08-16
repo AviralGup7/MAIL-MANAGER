@@ -103,6 +103,38 @@
    the D2 starvation (52px of visible nav) is impossible by construction. */
 #sidebar {
   display: grid;
+  /*
+   * THE COLUMN MUST BE PINNED, NOT JUST THE ROWS (round 7, 2026-08-16).
+   *
+   * REPORTED as "the button next to the email and the hard edge of Compose
+   * are cut", and it survived several debugging passes because every
+   * suspect measured innocent: --sidebar-w is 244px, #shell's grid track
+   * is 244px, and #sidebar's own computed width is 244px. Nothing looked
+   * wrong at the container.
+   *
+   * The overflow was INSIDE. This rule set grid-template-ROWS and left the
+   * column implicit, so it resolved to `auto` — max-content. Grid items
+   * also default to min-width:auto, which refuses to shrink below their
+   * content. Measured: the single column resolved to 295.95px inside a
+   * 244px box, so every child (#brand, #side-actions, #cats, #side-foot)
+   * laid out 296px wide and `overflow: hidden` amputated the last 52px.
+   *
+   * That is exactly the reported damage: the address truncates early,
+   * #btn-compose is centred in a 272px box whose right chamfer lands at
+   * 245px (one pixel past the edge, so the cut looks like a straight
+   * line while other themes' round corners survive), and #btn-activity
+   * lays out at 254-284px — entirely outside the sidebar, invisible.
+   *
+   * WHY IT LOOKED THEME-SPECIFIC: it is not. Every theme clips here; the
+   * chamfered themes just make it obvious, because a diagonal corner
+   * sliced flat reads as damage while a round corner sliced flat still
+   * reads as a corner.
+   *
+   * minmax(0, 1fr) is the fix the narrow-rail block already applies to
+   * #cats ("grid items refuse to shrink below their content by default").
+   * The same law was never applied to the sidebar itself.
+   */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto auto minmax(180px, 1fr) auto;
   height: 100%;
   overflow: hidden;
