@@ -212,6 +212,49 @@ the shard manifest artifact is the nearest existing pattern.
 **Not doing instead.** Tightening the constants. It converts a real
 signal into flake, which is how a gate loses its authority.
 
+## M7 — The two expensive strict flags
+
+**Why this is a direction and not a chore.** `strict: true` is six flags.
+Measured one at a time on the current checked scope (2026-08-15):
+
+| flag | errors | status |
+|---|---|---|
+| `strictFunctionTypes` | 0 | ✅ on |
+| `noImplicitThis` | 0 | ✅ on |
+| `alwaysStrict` | 0 | ✅ on |
+| `strictBindCallApply` | 0 | ✅ on |
+| `noFallthroughCasesInSwitch` (extra) | 0 | ✅ on |
+| `noImplicitReturns` (extra) | 0 | ✅ on |
+| **`strictNullChecks`** | **94** | staged |
+| **`noImplicitAny`** | **442** | staged |
+
+The four free ones are already enabled. These two are the remainder.
+
+**They are annotation debt, not defects.** Sampled: `body-cache.js` owns 26
+of the 94 null errors, and **four** JSDoc annotations on its `let x = null`
+declarations take it to 13 — `let x = null` infers the type `null`, so every
+later assignment is an error. The residue is false positives from private
+helpers only reachable after init, which need either a guard or a
+`@returns`-style assertion.
+
+**Shape.** One flag, one folder, one commit — `strictNullChecks` first because
+it is 5× smaller and its errors are the ones that occasionally *are* real. Do
+not enable a flag tree-wide and fix 500 errors in one diff: a genuine finding
+would be invisible inside it.
+
+**Order.** `strictNullChecks` over `src/app/system/**` → `src/background/**` →
+the rest, then `noImplicitAny` the same way. Each commit keeps `npm run types`
+green.
+
+**Blocked on.** Nothing. This is available whenever someone wants a
+low-risk, high-tedium session.
+
+**Related but separate.** `main.js` cannot join the checked scope at all yet:
+adding it drags its import graph and surfaces **248** pre-existing errors
+across `academic/`, `compose/` and `overlays/` (found while pinning the `ctx`
+contract, ARCH-R2-2). That is its own direction — widening the SCOPE is a
+different problem from tightening the FLAGS.
+
 ### Deliberately not directions
 
 Multi-account (audience of one institute address), framework/event-bus/
