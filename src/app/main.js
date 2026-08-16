@@ -1667,10 +1667,36 @@ function withDeadline(m) {
   return d ? { ...m, dueAt: d.at, dueKind: d.kind, dueText: d.text } : m;
 }
 
-/** Persist inbox state before acknowledging a Gmail history cursor. */
+/**
+ * Persist inbox state before acknowledging a Gmail history cursor.
+ *
+ * Returns TRUE when the local cache is durable, FALSE when it is not. It no
+ * longer THROWS, and that distinction is the whole bug this comment exists
+ * for (reported 2026-08-16: "mails don't load — Load more works, but the
+ * extension starts with 0 mails").
+ *
+ * WHAT WENT WRONG. A failed cache write is a durability problem, not a fetch
+ * problem: the mail has already arrived and is already in the store. Throwing
+ * from here aborted the REST of fetchPage — `state.nextPageToken`,
+ * `state.lastSync`, `renderSidebar()` — and unwound into loadPage's catch,
+ * which reported an error instead of showing the inbox. The messages sat in
+ * the store, unpainted, and the empty state rendered over them. "Load more"
+ * then appeared to work because it ran a fresh fetchPage whose write
+ * happened to succeed (or whose render simply ran), which is exactly the
+ * asymmetry that made this look like a loading bug rather than a save bug.
+ *
+ * chrome.storage.local is shared with bodyCache, outbox, activityLog and the
+ * rest, so a quota refusal on a busy profile is ordinary, not exotic.
+ *
+ * The CURSOR still respects it — the caller only commits historyId when this
+ * returns true — so the delta contract (R3-03: never advance past mail we
+ * have not durably applied) is unchanged. What changes is that a user whose
+ * disk is full still sees their mail.
+ */
 async function persistBeforeCursor() {
   const ok = await saver.flush();
-  if (ok === false) throw new Error('SYNC_NOT_DURABLE: local cache write failed');
+  // `undefined` means "nothing was pending", which is durable by definition.
+  return ok !== false;
 }
 
 /** Fetch and ingest one page. Throws; callers own the error reporting. */
@@ -1681,10 +1707,20 @@ async function fetchPage(pageToken) {
   });
   if (epoch !== opEpoch) return; // signed out / switched while in flight
   const lastKept = ingest(messages);
-  await persistBeforeCursor();
+  const durable = await persistBeforeCursor();
   if (epoch !== opEpoch) return;
-  if (anchorHistoryId) await send('SYNC_COMMIT', { historyId: anchorHistoryId });
+  /*
+   * The cursor is the only thing a failed write may block. Committing a
+   * historyId we cannot replay from would skip mail permanently (R3-03);
+   * NOT painting the mail we just fetched only loses a render, and costs
+   * the user their entire inbox. Those are not the same severity, and the
+   * old code treated them as if they were.
+   */
+  if (durable && anchorHistoryId) await send('SYNC_COMMIT', { historyId: anchorHistoryId });
   if (epoch !== opEpoch) return;
+  /* No separate report here: createSaver's own onError already toasts
+     "Local storage is full" once per session, and every failed flush runs
+     it. A second message for the same fact would be noise. */
   state.nextPageToken = nextPageToken;
   // Reached only if data is durable and the cursor acknowledgement settled.
   state.lastSync = Date.now();
@@ -1825,9 +1861,14 @@ async function refresh({ silent = false } = {}) {
     // Cursor is a commit record, not a read-progress marker. If persistence or
     // acknowledgement fails, the old cursor remains and this idempotent delta
     // is replayed on the next refresh.
-    await persistBeforeCursor();
+    //
+    // persistBeforeCursor REPORTS rather than throws (see its note): the
+    // delta is already applied to the store above, so a failed cache write
+    // must not unwind the rest of this function and leave the reader, the
+    // freshness stamp and the sidebar describing the previous state.
+    const durable = await persistBeforeCursor();
     if (epoch !== opEpoch) return 'stale';
-    if (res.nextHistoryId) {
+    if (durable && res.nextHistoryId) {
       await send('SYNC_COMMIT', { historyId: res.nextHistoryId });
     }
     if (epoch !== opEpoch) return 'stale';
