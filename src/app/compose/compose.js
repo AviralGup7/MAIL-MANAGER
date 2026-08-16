@@ -624,10 +624,11 @@ async function doSend(ctx) {
    * "{{reason}}" to a professor. Same warn-don't-block posture as the
    * bad-address check: name the gap, let the human decide.
    */
-  const gaps = [...new Set([
-    ...(draft.body.match(/\{\{\s*[a-zA-Z][a-zA-Z0-9_]*\s*\}\}/g) || []),
-    ...(draft.subject.match(/\{\{\s*[a-zA-Z][a-zA-Z0-9_]*\s*\}\}/g) || []),
-  ])];
+  /* Asked through templates.unfilled rather than re-writing its regex here
+     (round 10, L-13/I-6). The copy that used to sit here had to be kept in
+     step with templates.fill by hand, and a placeholder syntax the two
+     disagreed about is exactly a gap that ships. */
+  const gaps = templates.unfilled(`${draft.subject}\n${draft.body}`).map((p) => `{{${p}}}`);
   if (gaps.length) {
     const sendAnyway = await confirmDialog({
       title: 'Unfilled template fields',
