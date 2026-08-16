@@ -33,7 +33,7 @@
  * the fix for a wrong bucket AND the mechanism that generates that corpus.
  */
 
-import { addressOf } from '../core/contacts.js';
+import { addressOf, mailboxOf } from '../core/contacts.js';
 import { STORAGE } from '../../platform/storage.js';
 
 const KEY = 'categoryRules';
@@ -184,13 +184,27 @@ export { addressOf };
  * decided. Keyed on the bare address, because the display name changes.
  */
 export function correctSender(rules, from, category) {
-  const addr = addressOf(from);
+  /*
+   * KEYED ON THE MAILBOX, NOT THE TAGGED ADDRESS (round 11, B11).
+   *
+   * `addressOf` keeps `+tag`, so a correction recorded against
+   * `augsd@…` did not apply to `augsd+notices@…` — the same sender, filing
+   * their own mail. The user re-files it, the correction "does not stick",
+   * and there is nothing on screen explaining why.
+   *
+   * `mailboxOf` folds the tag and is what audience, contacts and (since
+   * round 11) the follow-up and lane readers already use to answer "is this
+   * the same sender". Dots are deliberately NOT folded — that is a
+   * Gmail-only rule and folding it would merge genuinely distinct mailboxes
+   * on other hosts.
+   */
+  const addr = mailboxOf(from);
   if (!addr) return rules;
   return { ...rules, corrections: { ...rules.corrections, [addr]: category } };
 }
 
 export function clearCorrection(rules, from) {
-  const addr = addressOf(from);
+  const addr = mailboxOf(from);
   const next = { ...rules.corrections };
   delete next[addr];
   return { ...rules, corrections: next };
@@ -205,7 +219,7 @@ export function clearCorrection(rules, from) {
  * match, and confidence is 1 because the user is not guessing.
  */
 export function applyCorrection(rules, msg) {
-  const addr = addressOf(msg.from);
+  const addr = mailboxOf(msg.from);
   /*
    * Own-read + string check (fuzz round 3, 2026-08-14, defect #4): the
    * sender string is attacker-controlled -- 'constructor', '__proto__',

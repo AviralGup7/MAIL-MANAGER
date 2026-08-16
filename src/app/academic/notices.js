@@ -102,11 +102,40 @@ const EXTRA = [
  * Without this, a mail forwarding last week's cancellation notice pins itself
  * to the top of the inbox as though it were live.
  */
+/*
+ * Text that means "this is NOT the notice it looks like" (round 11, B12).
+ *
+ * The first four are STALE — a notice about something already over. The rest
+ * are NEGATIONS, and they were missing. Measured:
+ *
+ *   'CS F211 class is NOT cancelled'      -> kind 'cancelled', confidence 1
+ *   'CS F211 class will not be cancelled' -> kind 'cancelled', confidence 1
+ *   'The extra class has been withdrawn'  -> kind 'extra',     confidence 1
+ *
+ * Confidence 1 clears `shouldPromote`, so the notices rail showed a banner
+ * reading "CS F211: class cancelled" for a message saying the opposite — and
+ * a student who trusts the banner skips a class that is running. That is the
+ * worst failure this feature has, because the whole point of the rail is to
+ * be believed at a glance.
+ *
+ * `\bnot\b` is deliberately NOT in this list on its own: "please note" and
+ * "notice" contain it only as a substring (\b protects that), but a long
+ * notice legitimately says "do not park bicycles" while announcing a real
+ * cancellation. Each pattern below therefore binds the negation TO the verb
+ * it negates, which is the only reading that cannot fire on unrelated prose.
+ */
 const STALE = [
   /\bwas\s+cancell?ed\b/i,
   /\bhad\s+been\s+(?:cancell?ed|shifted|rescheduled)\b/i,
   /\bkindly\s+ignore\b/i,
   /\bplease\s+disregard\b/i,
+  // Negations, bound to the verb.
+  /\b(?:is|are|was|were|will\s+be|has\s+been|have\s+been)\s+not\s+(?:being\s+)?(?:cancell?ed|shifted|moved|rescheduled|changed|held)\b/i,
+  /\bnot\s+(?:be\s+)?(?:cancell?ed|shifted|moved|rescheduled|changed)\b/i,
+  /\b(?:notice|change|update|cancellation|reschedul\w*)\s+(?:has\s+been\s+|is\s+)?(?:withdrawn|revoked|retracted|cancell?ed)\b/i,
+  /\b(?:has\s+been|is|stands?)\s+withdrawn\b/i,
+  /\b(?:remains?|stands?|is)\s+unchanged\b/i,
+  /\bno\s+change\s+(?:to|in)\b/i,
 ];
 
 /** Day names, used to date a notice when it says one. */
