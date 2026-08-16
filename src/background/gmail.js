@@ -477,6 +477,13 @@ function payloadHasAttachment(payload) {
  * Shared with mime.js's extractBody, which made the same promise with the
  * same broken cascade on the GET_BODY path.
  */
+/**
+ * Roughly the year 2200. Any timestamp beyond this is a corrupt or hostile
+ * value, not a scheduled message: it would pin the row to the top of the
+ * list permanently (round 8, M-5).
+ */
+const MAX_PLAUSIBLE_EPOCH_MS = 7258118400000;
+
 export function toEpoch(internalDate, dateHeader) {
   const ms = Number(internalDate);
   /*
@@ -496,10 +503,26 @@ export function toEpoch(internalDate, dateHeader) {
    * place, while rewriting every pre-1970 date costs real mail its real
    * timestamp. The boundary that matters — non-finite — is already closed.
    */
-  if (ms && Number.isFinite(ms)) return ms;
+  /*
+   * A CEILING, NOT JUST A FINITENESS CHECK (round 8, M-5).
+   *
+   * Non-finite was already refused (fuzz #19), but any finite number passed:
+   * toEpoch('99999999999999') yielded the year 5138, which sorts above
+   * everything for ever, survives cache round-trips and cannot be dismissed.
+   * internalDate is server-supplied so this is not attacker-controlled
+   * today, but the Date: HEADER fallback below is, and it shares this path.
+   *
+   * The bound is generous on purpose -- a legitimately post-dated message is
+   * a real thing, an eleventh-century-hence one is not. Below the floor the
+   * value is refused rather than clamped: silently rewriting a timestamp is
+   * how a message ends up at a position nothing explains.
+   */
+  if (ms && Number.isFinite(ms) && ms < MAX_PLAUSIBLE_EPOCH_MS) return ms;
   // Date.parse returns NaN or a finite number -- never a non-finite one --
-  // so the `|| 0` floor is the whole second half of the contract.
-  return Date.parse(dateHeader) || 0;
+  // so the `|| 0` floor is the whole second half of the contract. The
+  // ceiling applies here too: this half IS attacker-controlled.
+  const parsed = Date.parse(dateHeader) || 0;
+  return parsed < MAX_PLAUSIBLE_EPOCH_MS ? parsed : 0;
 }
 
 export function normalise(g) {
@@ -576,10 +599,21 @@ export function headerMap(headers) {
   for (const entry of headers) {
     const name = entry?.name;
     if (typeof name !== 'string') continue;
+    /*
+     * FIRST WINS, per RFC 5322 §3.6 (round 8, M-4).
+     *
+     * This kept the LAST value, and a message with two `Subject:` or two
+     * `From:` headers is a classic spoofing shape: the receiving client
+     * shows one value while a filter or a scanner matched the other.
+     * Last-wins hands the attacker whichever one the user reads. Conforming
+     * senders emit these once, so first-wins costs honest mail nothing.
+     */
+    const key = name.toLowerCase();
+    if (key in out) continue;
     /* Decoded at the door (round 8, H-2): every consumer — normalise, the
        search index, extractBody's reply fields — reads the human text
        rather than the wire encoding. */
-    out[name.toLowerCase()] = decodeEncodedWords(entry.value);
+    out[key] = decodeEncodedWords(entry.value);
   }
   return out;
 }

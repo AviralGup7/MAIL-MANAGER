@@ -533,3 +533,25 @@ test('FAIL CLOSED: no parser means no HTML, and the reader is told why', async (
   assert.equal(sanitizeHtml('', { defaultView: {} }, { stats2 }), '');
   assert.ok(!stats2.failedClosed, 'empty input is not a fail-closed event');
 });
+
+test('bidi overrides cannot make a link text lie (round 8, M-7)', () => {
+  /*
+   * U+202E RIGHT-TO-LEFT OVERRIDE reverses everything after it, so
+   * `<a href="https://good.example">\u202Emoc.live</a>` DISPLAYS as
+   * "evil.com" while pointing elsewhere -- visible text and destination
+   * disagree, which is the whole mechanism of a link spoof. The same trick
+   * renames attachments (`fdp.exe` reading as `exe.pdf`).
+   */
+  const out = clean('<a href="https://good.example">\u202Emoc.live</a>');
+  assert.doesNotMatch(out, /[\u202A-\u202E\u2066-\u2069]/, 'no override survives into the text');
+  assert.match(out, />moc\.live</, 'the characters stay; only the re-ordering control goes');
+
+  /*
+   * MARKS ARE KEPT, on purpose. U+200F RLM and U+200E LRM are marks, not
+   * overrides: legitimate Arabic, Hebrew and Urdu mail uses them for correct
+   * rendering, and stripping them would corrupt honest text to defend
+   * against a trick they cannot perform.
+   */
+  const rtl = clean('<p>\u200Fشلام עברית</p>');
+  assert.match(rtl, /\u200F/, 'legitimate RLM survives');
+});

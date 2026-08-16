@@ -88,7 +88,14 @@ export function parseHash(hash, { validMailbox }) {
     mailbox: mailbox || null,
     category: category || null,
     q: params.get('q') || '',
-    m: params.get('m'),
+    /*
+     * An EMPTY value is an ABSENT selection (round 8, M-11). `#inbox/all?m=`
+     * yielded `''`, which is falsy so most call sites survived, but it is
+     * passed to checkPendingSelection as a PRESENT selection -- a
+     * hand-edited or truncated URL left a latch that never resolved. `null`
+     * is what "no message requested" already means everywhere else here.
+     */
+    m: params.get('m') || null,
   };
 }
 

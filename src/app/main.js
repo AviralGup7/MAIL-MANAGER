@@ -735,7 +735,17 @@ const saver = createSaver(() => {
   onError: () => {
     if (cacheQuotaWarned) return;
     cacheQuotaWarned = true;
-    toast('Local storage is full — offline painting is limited', { kind: 'error' });
+    /*
+     * SAY WHAT ACTUALLY STOPPED (round 8, M-6).
+     *
+     * This read "offline painting is limited", which describes a cosmetic
+     * degradation. Since the cursor became a post-persistence commit, a
+     * failed write also means the history cursor is NEVER advanced: the
+     * same delta replays on every refresh and sync stops making progress.
+     * The old sentence gave a user no reason to act on something that will
+     * not fix itself.
+     */
+    toast('Local storage is full — mail still loads, but it cannot be saved for offline use and sync will keep re-checking the same changes. Free some space to resume.', { kind: 'error' });
   },
 });
 

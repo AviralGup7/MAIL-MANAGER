@@ -260,9 +260,10 @@ const MAX_DEPTH = 1024;
 function walk(src, dest, doc, ctx, depth = 0) {
   if (depth > MAX_DEPTH) return;
   for (const node of Array.from(src.childNodes)) {
-    // Text is always safe: it is inserted as a text node, never parsed.
+    // Text is always safe FROM PARSING: it is inserted as a text node, never
+    // re-parsed. It is not automatically safe to READ -- see stripBidi.
     if (node.nodeType === 3) {
-      dest.appendChild(doc.createTextNode(node.nodeValue));
+      dest.appendChild(doc.createTextNode(stripBidi(node.nodeValue)));
       continue;
     }
     if (node.nodeType !== 1) continue; // comments, CDATA, processing instructions
@@ -299,6 +300,30 @@ function walk(src, dest, doc, ctx, depth = 0) {
     walk(node, el, doc, ctx, depth + 1);
     dest.appendChild(el);
   }
+}
+
+/**
+ * Remove bidirectional FORMATTING controls from displayed text.
+ *
+ * WHY (round 8, M-7). `U+202E RIGHT-TO-LEFT OVERRIDE` reverses the rendering
+ * of everything after it, so `<a href="https://good.example">\u202Emoc.live</a>`
+ * displays as `evil.com` while pointing somewhere else — the visible text and
+ * the destination disagree, which is the whole mechanism of a link spoof. The
+ * same trick renames attachments (`fdp.exe` reading as `exe.pdf`).
+ *
+ * The sanitiser already adds a `title` with the real hostname, but that needs
+ * a hover and a suspicious user; the text should not lie in the first place.
+ *
+ * OVERRIDES AND ISOLATES ONLY. The stripped set is LRO/RLO/PDF and the
+ * isolate family (LRI/RLI/FSI/PDI), which exist to re-order neighbouring
+ * text. `U+200F RLM` and `U+200E LRM` are deliberately KEPT: they are marks,
+ * not overrides, and legitimate Arabic, Hebrew and Urdu mail uses them for
+ * correct rendering. Stripping those would corrupt honest text to defend
+ * against a trick they cannot perform.
+ */
+function stripBidi(value) {
+  // eslint-disable-next-line no-misleading-character-class
+  return String(value ?? '').replace(/[\u202A-\u202E\u2066-\u2069]/g, '');
 }
 
 function copyAttributes(from, to, tag, ctx) {

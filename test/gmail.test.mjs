@@ -1190,3 +1190,38 @@ test('an empty To: is omitted rather than emitted blank (round 8, M-9)', async (
   /* The ordinary case is untouched. */
   assert.match(buildMime({ to: 'a@b.c', subject: 's', body: 'b' }), /^To: a@b\.c$/m);
 });
+
+test('duplicate headers keep the FIRST value, per RFC 5322 (round 8, M-4)', async () => {
+  const { headerMap } = await import('../src/background/gmail.js');
+  /*
+   * This kept the LAST value. Two `Subject:` or two `From:` headers is a
+   * classic spoofing shape: the client shows one value while a filter or a
+   * scanner matched the other, and last-wins hands the attacker whichever
+   * one the user reads. Conforming senders emit these once, so first-wins
+   * costs honest mail nothing.
+   */
+  assert.equal(headerMap([
+    { name: 'Subject', value: 'first' },
+    { name: 'Subject', value: 'second' },
+  ]).subject, 'first');
+  assert.equal(headerMap([
+    { name: 'From', value: 'real@bank.example' },
+    { name: 'from', value: 'attacker@evil.example' },
+  ]).from, 'real@bank.example', 'the case-folded duplicate must not win either');
+});
+
+test('an absurd timestamp cannot pin a message to the top for ever (round 8, M-5)', async () => {
+  const { toEpoch } = await import('../src/background/gmail.js');
+  /*
+   * Non-finite was already refused; any finite number passed, so
+   * toEpoch('99999999999999') gave the year 5138 -- sorts above everything
+   * permanently, survives cache round-trips, cannot be dismissed.
+   */
+  assert.equal(toEpoch('99999999999999', ''), 0, 'year 5138 is refused');
+  assert.equal(toEpoch('', 'Fri, 01 Jan 9999 00:00:00 GMT'), 0,
+    'the Date: header shares the ceiling -- that half IS attacker-controlled');
+  /* Ordinary mail, and the deliberate pre-1970 contract, are untouched. */
+  assert.equal(toEpoch('1700000000000', ''), 1700000000000);
+  assert.equal(toEpoch('-31536000000', ''), -31536000000, 'pre-1970 stays a contract');
+  assert.equal(toEpoch('1e999', ''), 0, 'non-finite stays refused');
+});
