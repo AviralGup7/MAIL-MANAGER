@@ -12,8 +12,9 @@
 - [Security](#security) · [Status](#status) · [Known gaps](#known-gaps) · [Audited, then fixed](#audited-then-fixed)
 - [Contributing / quick start](CONTRIBUTING.md)
 - [Documentation index](docs/README.md) — architecture, threading, worker, timetable
-- [Audits](audits/) — the two load-bearing audits, and where the rest went
-- [Security posture](SECURITY.md) and [things only you can do](DO-THIS-NOW.md)
+- [Audits](audits/) — the four reference audits, and why the rest were retired
+- [Finding-id ledger](docs/FINDINGS.md) — what `AUD-C1`, `R3-02`, `EXT2-C2` mean
+- [Security posture](SECURITY.md) — including the credentials that need rotating
 
 
 A Chrome extension that takes over the Gmail tab and replaces it with a faster,
@@ -404,9 +405,9 @@ test/                       2,116 declared tests. `npm test` · `npm run test:ci
   app.features.integration.test.mjs  Feature/workspace integration journeys.
   resilience.test.mjs       Failure injection across every persistence module.
   package.test.mjs          Lints the manifest, tokens, motion rules, hit targets.
-audits/                     The two load-bearing audits; the retired series is
-                            summarised in audits/README.md.
-DO-THIS-NOW.md              The short list of actions only the owner can take.
+audits/                     Four reference audits code cites by name; the
+                            retired series is explained in audits/README.md.
+docs/FINDINGS.md            Finding-id ledger for the retired audits.
 docs/CLASSIFICATION_DATA_PACK.md  Source of truth for every rule and weight.
 tools/make-icons.py         Deterministic icon generation.
 tools/check-contrast.mjs    WCAG AA audit of every theme. `npm run contrast`

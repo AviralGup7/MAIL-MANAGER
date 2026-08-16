@@ -108,7 +108,7 @@ test('Registrar mail is admin regardless of subject', () => {
 
 test('AUGSD is recognised from a bare display name', () => {
   // NOT a bug fixed during the port -- the old list already had bare 'augSD'
-  // and 'Academic Section'. See notes/CLASSIFIER_CORRECTION.md.
+  // and 'Academic Section'. See docs/CLASSIFIER-CORRECTION.md.
   const r = classify({
     from: 'AUGSD <noreply@somehost.in>',
     subject: 'Course registration opens Monday',
@@ -191,7 +191,7 @@ test('an unknown BITS sender is classified on keywords', () => {
   //
   // This test previously asserted `augsd`, which only passed because the first
   // hand-written port had invented its own weights. See
-  // notes/CLASSIFIER_CORRECTION.md.
+  // docs/CLASSIFIER-CORRECTION.md.
   assert.equal(r.category, 'academics');
 });
 
@@ -295,7 +295,7 @@ test('a duplicated sender pattern is always won by the earlier rule', () => {
   // 'placement unit' being in both `clubs` and `internship` misfiled Placement
   // Unit mail. That was wrong: `internship` is rule 7 and `clubs` is rule 11,
   // so internship already won and the duplicate is simply unreachable.
-  // See notes/CLASSIFIER_CORRECTION.md.
+  // See docs/CLASSIFIER-CORRECTION.md.
   //
   // What is worth asserting is the property that made the duplicate harmless:
   // first rule wins, so a duplicate can never change a classification.
@@ -351,7 +351,7 @@ test('classifying 500 messages is fast enough to be synchronous', () => {
 // These guard the two REAL bugs found by diffing src/classify against
 // CLASSIFICATION_DATA_PACK.md, plus the shape of the data itself. Unlike the
 // four claims in the first port, each of these was verified against the
-// authoritative export before being written. See notes/CLASSIFIER_CORRECTION.md.
+// authoritative export before being written. See docs/CLASSIFIER-CORRECTION.md.
 
 test('sender rule order matches the data pack exactly', () => {
   // Order IS behaviour: first match wins. An "improvement" here silently

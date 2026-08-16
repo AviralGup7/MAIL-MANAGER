@@ -5,13 +5,16 @@ the doctrine (layers, ctx, state ownership); this document is the
 *floor plan* that doctrine lives on, and `test/structure.test.mjs` is the
 bouncer that keeps it true.
 
-Why this file exists: the codebase passed 37,000 source lines and 90 test
-files, and a flat `src/app/` had 73 modules in one directory. That is fine
-at 7,000 lines of CSS and survivable at 37k of JS. It is unmaintainable at
-the 15–25k-line stylesheet and 100k-line source tree this project becomes
-if it keeps working. So the layout is now decided *by rule*, not by taste,
+Why this file exists: a flat `src/app/` had reached 73 modules in one
+directory. That is survivable; it is unmaintainable at the size this project
+becomes if it keeps working. So the layout is decided *by rule*, not by taste,
 and the rules are enforced by tests — the same house pattern as everything
 else that has ever stayed true here.
+
+**Current census** (regenerate rather than trust prose — the numbers below
+drift, the rules above do not): 9 folders under `src/app/`, 93 modules there
+and 117 across `src/`, 163 test files, 8,300 lines of CSS. `main.js` is the
+only module allowed to sit at the `src/app/` root.
 
 ---
 
@@ -23,7 +26,9 @@ app.html                      the app document (shell page, loads styles + main.
 options.html                  settings page
 src/
   styles/                     THE stylesheet, as numbered volumes (see §3)
-  shared/                     leaf constants (labels, limits) — imports nothing
+  shared/                     leaf constants and pure helpers (labels, limits,
+                              scrub — the one definition of every character we
+                              refuse to display); imports nothing
   platform/                   chrome.storage wrapper
   classify/                   the mail classifier (pure domain, generated files)
   background/                 the service worker (credentials, network, sync)

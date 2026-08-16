@@ -2,8 +2,10 @@
  * Delta-sync tests.
  *
  * Every test below is a regression test for a bug that was in the first draft
- * of sync.js. See notes/SYNC_BUGS.md. All of them lose mail silently, which is
- * the exact failure class this rewrite exists to eliminate.
+ * of sync.js. All of them lose mail silently, which is the exact failure class
+ * this rewrite exists to eliminate — so each test names its own bug below
+ * rather than deferring to a notes file (which no longer exists; the pointer
+ * had been dead long enough that nobody noticed).
  */
 
 import test from 'node:test';

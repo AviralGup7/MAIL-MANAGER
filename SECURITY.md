@@ -20,8 +20,29 @@ secret-harvesters. Deleting the file does not help — history is what matters.
 3. **Reset / delete the client secret**
 4. Do not put the new one anywhere. This build does not need one.
 
-While you are there, also revoke any GitHub personal access token that has been
-pasted into a chat: <https://github.com/settings/tokens>
+### 1b. GitHub personal access tokens — three, all compromised
+
+Three `ghp_` tokens have been pasted into plain chat. **All three must be
+revoked**, including the one currently in use for pushes:
+
+| Token | Note |
+|---|---|
+| `ghp_VUbK78…` | oldest |
+| `ghp_0zyVLu…` | previously used for pushes |
+| `ghp_lDfwHn…` | **still live and still in use at the time of writing** |
+
+The full values are deliberately **not** written here — this file is committed
+to a public repository, and repeating a secret in the place that documents the
+leak is a fresh leak. The tokens page lists them:
+
+1. Go to <https://github.com/settings/tokens>
+2. Delete **every token you do not recognise**, and all three above. Do not
+   edit their scopes — delete them.
+3. Issue a fresh token, scoped to this one repository, and do not paste it into
+   a chat window.
+
+A token that has appeared in a chat log should be treated as public from that
+moment. Rotation is the only remedy; a token cannot be un-seen.
 
 ### The comment that defended it
 

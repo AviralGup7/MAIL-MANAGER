@@ -358,7 +358,9 @@ if (!problems.length) {
   console.log('  ok    manifest, match patterns, named files and key all valid\n');
   console.log('No load-time problems found.\n');
   console.log('If Chrome still refuses to register the worker, the cause is in the');
-  console.log('browser rather than the files — see DO-THIS-NOW.md for what to check.\n');
+  console.log('browser rather than the files: reload the unpacked extension, check');
+  console.log('chrome://extensions for a load error, and open the service worker');
+  console.log('console from that page for the real message.\n');
   process.exit(0);
 }
 
