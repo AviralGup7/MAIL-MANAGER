@@ -1,7 +1,4 @@
 import { STORAGE } from '../../platform/storage.js';
-/* themes.js imports nothing, so naming it here cannot create a cycle — and
-   deriving the theme enum from it is what keeps the two from drifting. */
-import { THEMES } from './themes.js';
 
 /**
  * Settings.
@@ -78,7 +75,26 @@ export const SCHEMA = {
    * without becoming settable, and a removed one cannot linger as a legal
    * value. Every other enum in this schema already coerces to its default.
    */
-  theme: { type: 'enum', def: 'daylight', values: THEMES.map((t) => t.id) },
+  theme: {
+    type: 'enum',
+    def: 'daylight',
+    /*
+     * THE IDS ARE LISTED, NOT IMPORTED (round 11, B4).
+     *
+     * Deriving these from THEMES was the obvious move and it inverted the
+     * layering: settings.js is PLATFORM and themes.js is a feature, so
+     * importing it made a low layer depend on a high one — caught by
+     * package.test's "dependencies point downward only" gate, which is
+     * exactly what that gate is for.
+     *
+     * A literal list would normally be the thing that drifts, so the drift
+     * is gated instead: themes.test.mjs asserts this array equals
+     * THEMES.map(t => t.id), and adding a theme without adding it here
+     * fails there. The check lives with the themes, where the change is
+     * made, rather than as an import that reverses the architecture.
+     */
+    values: ['daylight', 'midnight', 'pilani', 'solarised', 'nord', 'cyberpunk', 'contrast'],
+  },
   /*
    * Density. Returned to the schema by the commit that implements it, as the
    * note below promised.

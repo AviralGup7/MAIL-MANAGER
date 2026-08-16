@@ -172,3 +172,25 @@ test('an unknown theme id falls back rather than rendering unstyled', () => {
 test('applyTheme returns the theme it applied', () => {
   assert.equal(applyTheme('nord', fakeRoot()).id, 'nord');
 });
+
+test('every theme is settable, and nothing else is (round 11, B4)', async () => {
+  /*
+   * settings.js lists the theme ids as a literal rather than importing
+   * THEMES: it is the PLATFORM layer and themes.js is a feature, so the
+   * import inverted the dependency rank and package.test rejected it —
+   * correctly.
+   *
+   * The gate lives HERE instead, next to the themes, because this is the
+   * file someone edits when they add one. A new theme that is not settable
+   * would render but could never be chosen; a settable id with no theme
+   * would coerce to daylight and leave the picker showing nothing selected
+   * — the exact defect B4 fixed.
+   */
+  const { SCHEMA } = await import('../src/app/system/settings.js');
+  assert.equal(SCHEMA.theme.type, 'enum', 'an unknown theme must coerce, not persist');
+  assert.deepEqual(
+    [...SCHEMA.theme.values].sort(),
+    THEMES.map((t) => t.id).sort(),
+    'add the new theme id to SCHEMA.theme.values in src/app/system/settings.js'
+  );
+});

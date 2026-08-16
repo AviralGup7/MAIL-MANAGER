@@ -201,14 +201,10 @@ test('B4: an unknown theme is coerced, not persisted', async () => {
   assert.equal(settings.get('theme'), 'cyberpunk');
 });
 
-test('B4: the theme enum is derived from THEMES, so it cannot drift', async () => {
-  /* A hand-written list would go stale the day a theme is added or removed.
-     Every shipped theme must be settable, and nothing else may be. */
-  const { SCHEMA } = await import('../src/app/system/settings.js');
-  const { THEMES } = await import('../src/app/system/themes.js');
-  assert.equal(SCHEMA.theme.type, 'enum');
-  assert.deepEqual([...SCHEMA.theme.values].sort(), THEMES.map((t) => t.id).sort());
-});
+/* The "cannot drift" half of B4 moved to themes.test.mjs. Deriving the enum
+   by IMPORTING THEMES inverted the layer rank — settings.js is platform,
+   themes.js is a feature — and package.test caught it. The literal list is
+   gated next to the themes instead, where the change is actually made. */
 
 /* ========================================================================
  * B5 · plus-tagged self survived contact self-exclusion
