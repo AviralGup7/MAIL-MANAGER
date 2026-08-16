@@ -42,6 +42,11 @@
  */
 
 import { MAX_INLINE_BYTES, MAX_INLINE_PARTS, BULK_CHUNK } from '../../shared/limits.js';
+/* The storage seam (ARCH-R2-1). This module reached `chrome.storage.local`
+   directly while the seam existed for exactly that; `localArea()` resolves the
+   area at CALL time, so the harness swapping globalThis.chrome per boot keeps
+   working, and STORAGE is the same area behind a live-binding proxy. */
+import { STORAGE, localArea } from '../../platform/storage.js';
 
 /** Verbs that genuinely cannot work without a worker. */
 const WORKER_ONLY = new Set(['TOGGLE_TAKEOVER']);
@@ -258,13 +263,13 @@ function makeHandler({ auth, gmail, sync, snooze, outbox, mime }) {
        */
       case 'OUTBOX_PUMP': {
         /* Owner gate parity with the worker pump (AUD-C2). */
-        const { accountEmail } = (await chrome.storage?.local?.get('accountEmail')) || {};
+        const { accountEmail } = (await STORAGE.get('accountEmail')) || {};
         return outbox.flushOutbox({
           send: async (draft) => {
             const d = await gmail.hydrateDraftAttachments(draft);
             return gmail.sendMessage(gmail.buildMime(d), d.threadId);
           },
-          storage: chrome.storage?.local,
+          storage: localArea(),
           accountEmail,
         });
       }

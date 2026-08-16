@@ -268,7 +268,10 @@ const EMBED_NONCE = (() => {
 try {
   const sp = new URLSearchParams(globalThis.window?.location?.search || '');
   if (sp.has('u')) {
-    void chrome.storage?.local?.set({ activeAuthUser: ACCOUNT_INDEX }).catch(() => {});
+    /* Through the seam (ARCH-R2-1), not `chrome.storage` directly: STORAGE
+       is already imported here and resolves the area at call time, which is
+       what lets the harness swap `globalThis.chrome` per boot. */
+    void STORAGE.set({ activeAuthUser: ACCOUNT_INDEX })?.catch?.(() => {});
   }
 } catch { /* storage denied in an odd boot: the fallback IS the old behavior */ }
 const IS_EMBEDDED = (() => {
@@ -2356,7 +2359,7 @@ async function endAccountSession(gateMessage) {
     (k) => !(keepOutbox && (k === 'outbox' || k === 'outboxClaims'))
   );
   try {
-    await chrome.storage.local.remove(sweep);
+    await STORAGE.remove(sweep);
   } catch {
     // A storage failure must not strand the user in a half-signed-out state:
     // the gate still shows, and the next sign-out retries the sweep.

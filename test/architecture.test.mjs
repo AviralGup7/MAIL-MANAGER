@@ -189,3 +189,79 @@ test('the timetable workspace renders in exactly one module (round 57 boundary p
   assert.match(app, /timetableIsOpen\(\)/,
     'the shell keeps exactly its seam: the Esc-ladder rung');
 });
+
+/* ==========================================================================
+ * THE PLATFORM SEAM IS A LAW, NOT A COMMENT (architectural audit ARCH-R2-1)
+ *
+ * platform/storage.js opens by calling itself "the one module that owns
+ * chrome.* access", whose stated benefit is that "the permission surface is
+ * greppable in one place". Neither was true: ten modules touched chrome.*,
+ * four of them in the APP LAYER where the seam's own STORAGE export was the
+ * right answer (and, in main.js, was already imported two lines away).
+ *
+ * Nothing enforced it, so the claim had been decorative since it was written.
+ * These two tests make the boundary real and — just as important — make its
+ * LIMITS explicit, because the original sentence claimed an exclusivity that
+ * was never achievable.
+ * ========================================================================== */
+
+/** Every src module, as a repo-relative path. */
+function srcFiles() {
+  return allFiles(SRC).map((p) => p.slice(ROOT.length + 1));
+}
+
+/** Source with comments removed: prose ABOUT an API is not a call to it. */
+function codeOf(file) {
+  return readFileSync(join(ROOT, file), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n')
+    .filter((l) => !l.trimStart().startsWith('//'))
+    .join('\n');
+}
+
+test('the app layer reaches storage through the seam, never chrome.storage', () => {
+  /*
+   * The app document is the one layer with a complete alternative: STORAGE
+   * (a live-binding proxy) and localArea()/sessionArea() cover every storage
+   * shape it needs. Using chrome.storage directly there also breaks the
+   * integration harness, which swaps globalThis.chrome per boot — a captured
+   * area silently belongs to a previous test's window.
+   */
+  const offenders = [];
+  for (const f of srcFiles().filter((x) => x.startsWith('src/app/'))) {
+    if (/\bchrome\.storage\b/.test(codeOf(f))) offenders.push(f);
+  }
+  assert.deepEqual(offenders, [],
+    `app-layer modules must use platform/storage.js, not chrome.storage: ${offenders.join(', ')}`);
+});
+
+test('chrome.* outside the seam is confined to the layers that have no alternative', () => {
+  /*
+   * The seam covers STORAGE. It does not cover alarms, identity, tabs,
+   * scripting, notifications or runtime messaging — those have no storage-
+   * shaped equivalent, and the worker, the content script and the options
+   * page must call them directly. That is a boundary, not a violation, and
+   * naming it here is what stops the next reader believing the header's
+   * absolute phrasing.
+   *
+   * The list is CLOSED: a new module reaching for chrome.* must either use
+   * the seam or be added here deliberately, with a reason.
+   */
+  const ALLOWED = new Set([
+    'src/platform/storage.js',            // the seam itself
+    'src/background/index.js',            // alarms, tabs, scripting, action, notifications
+    'src/background/auth.js',             // identity + token storage
+    'src/background/sync.js',             // history cursor
+    'src/background/diag.js',             // counter flush
+    'src/takeover/content.js',            // runtime messaging inside Gmail
+    'src/options/options.js',             // identity redirect + runtime probe
+    'src/app/system/fallback.js',         // runtime messaging (worker probe)
+    'src/app/main.js',                    // runtime messaging (the verb bridge)
+    'src/app/overlays/settings-panel.js', // runtime.openOptionsPage
+    'src/app/academic/timetable-store.js', // runtime.getURL for a packaged asset
+  ]);
+  const unexpected = srcFiles()
+    .filter((f) => !ALLOWED.has(f) && /\bchrome\.[a-zA-Z]/.test(codeOf(f)));
+  assert.deepEqual(unexpected, [],
+    `new chrome.* callers must use the seam or be declared: ${unexpected.join(', ')}`);
+});
