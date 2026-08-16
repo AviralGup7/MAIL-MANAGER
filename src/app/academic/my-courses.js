@@ -83,17 +83,36 @@ export async function saveEnrolment(list, storage = STORAGE) {
 }
 
 /** Add a course, or update the section if it is already there. */
+/*
+ * THE WRITERS MUST FOLD SPACING TOO (round 11, B14).
+ *
+ * `canonical()` exists precisely because BITS writes "CS F111", "CSF111",
+ * "CS  F111" and "cs f111" for one course, sometimes in the same message —
+ * and isEnrolled, sectionFor, mineAmong, findCourse and sectionsOf all use
+ * it. `enrol` and `unenrol`, the two functions that WRITE the list, compared
+ * raw strings instead. Measured against a list holding `CS F211`:
+ *
+ *   enrol({courseNo:'CSF211'})   -> TWO rows for one course, and isEnrolled
+ *                                   then reports true while sectionFor
+ *                                   returns whichever came first
+ *   unenrol('CSF211')            -> silently removes nothing; the course
+ *                                   stays enrolled and the button looks dead
+ *
+ * A reader and a writer that disagree about identity is how a list grows a
+ * duplicate nobody can delete.
+ */
 export function enrol(list, { courseNo, section, comCode }) {
   const norm = normaliseEnrolment([{ courseNo, section, comCode }]);
   if (norm.length === 0) return list;
   const [entry] = norm;
-  const without = list.filter((e) => e.courseNo !== entry.courseNo);
+  const want = canonical(entry.courseNo);
+  const without = list.filter((e) => canonical(e.courseNo) !== want);
   return [...without, entry];
 }
 
 export function unenrol(list, courseNo) {
-  const want = String(courseNo || '').trim().toUpperCase();
-  return list.filter((e) => e.courseNo !== want);
+  const want = canonical(courseNo);
+  return list.filter((e) => canonical(e.courseNo) !== want);
 }
 
 /**

@@ -26,7 +26,7 @@
 
 import { parseAddressList } from '../core/contacts.js';
 import { DAY_MS } from '../academic/deadlines.js';
-import { addressOf as addr } from '../core/contacts.js';
+import { mailboxOf } from '../core/contacts.js';
 
 // Imported rather than redeclared. Two modules each defining their own
 // DAY_MS is legal under ES modules but is duplicated truth, and it broke the
@@ -499,7 +499,7 @@ export function describeQuery(parsed) {
 // ============================================================================
 
 /** Pull the bare address out of a header value. */
-// `addr` is contacts.js's addressOf, imported above — one definition.
+// `mailboxOf` is contacts.js's — one definition of sender identity.
 
 /** Split a comma-separated address header, respecting quoted display names. */
 /*
@@ -519,7 +519,10 @@ function splitAddrs(v) {
  * @param {'reply'|'replyAll'|'forward'} mode
  */
 export function buildReply(body, selfEmail, mode = 'reply') {
-  const self = (selfEmail || '').toLowerCase();
+  /*
+   * IDENTITY IS THE MAILBOX (round 11, B13). See the dedupe note below.
+   */
+  const self = mailboxOf(selfEmail || '');
   // Reply-To wins over From. Mailing lists and no-reply senders rely on this,
   // and ignoring it sends the reply somewhere nobody reads.
   const target = body.replyTo || body.from || '';
@@ -538,10 +541,28 @@ export function buildReply(body, selfEmail, mode = 'reply') {
     to = target;
     // Everyone on To and Cc, minus ourselves and minus the person we are
     // already replying to. Duplicating them is a common and irritating bug.
-    const seen = new Set([addr(target), self].filter(Boolean));
+    /*
+     * DEDUPED ON THE MAILBOX, NOT THE RAW ADDRESS (round 11, B13).
+     *
+     * `addr` keeps `+tag`, so a reply-all measured against a real thread:
+     *
+     *   my address arrives as `f20240294+cs@…`  -> I Cc MYSELF on every
+     *      reply-all, because the tagged form did not match `self`
+     *   a TA appears as both `ta@…` and `ta+grading@…` -> they are Cc'd
+     *      TWICE, and get two copies of the same mail
+     *
+     * A mailing list expanding an address with a tag is the normal case, not
+     * an exotic one — which is exactly when reply-all is used. `mailboxOf`
+     * folds the tag and is the same fold contacts, audience, corrections and
+     * the follow-up readers use.
+     *
+     * The ORIGINAL spelling is what goes on the wire (`others.push(a)`): the
+     * fold decides identity, it does not rewrite someone's address.
+     */
+    const seen = new Set([mailboxOf(target), self].filter(Boolean));
     const others = [];
     for (const a of [...splitAddrs(body.to), ...splitAddrs(body.cc)]) {
-      const bare = addr(a);
+      const bare = mailboxOf(a);
       if (!bare || seen.has(bare)) continue;
       seen.add(bare);
       others.push(a);
