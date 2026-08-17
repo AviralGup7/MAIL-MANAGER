@@ -54,3 +54,15 @@ tools/bisect/
 /.scratch/
 /.*.mjs
 /.*.png
+
+# A REDIRECT TYPO IS A FILE (2026-08-17).
+#
+# `cmd 2>0` instead of `2>&1` creates a real, empty file called `0`, and it
+# was committed and carried for several rounds — zero bytes, referenced by
+# nothing, invisible in a casual `ls` among the dotfiles. Same class as the
+# scratch probes above: a mistake that is easy to make and easy to miss, so
+# the rule catches it rather than a reviewer.
+#
+# Root-level only, so a legitimate `0` deeper in the tree (a fixture, a
+# numbered directory) is unaffected. Verified no tracked file matches.
+/0
