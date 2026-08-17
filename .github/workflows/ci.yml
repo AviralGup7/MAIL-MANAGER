@@ -243,8 +243,18 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/ms-playwright
-          key: ms-playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          key: ms-playwright-shell-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
+      # APT IS THE COST, AND IT IS PAID ONLY WHEN NEEDED (2026-08-17).
+      # `--with-deps` shells out to apt-get, which a browser cache cannot
+      # cover — so the install step stayed 11-27s (noisy, shared runners)
+      # even on a cache HIT, and that variance was the whole gap between
+      # these jobs and the test shards. The step now installs the shell,
+      # PROVES it launches with one real ~1s launch, and only falls back to
+      # apt when that fails. Verification rather than assumption: the runner
+      # image usually has the libs, but "usually" is not a thing to build a
+      # gate on.
+      #
       # ONLY THE HEADLESS SHELL (2026-08-17). Neither tool asks for a
       # `channel` or a headed browser — ci-smoke and render-bench both call
       # `chromium.launch()` plain — so the full ~560MB Chromium was being
@@ -263,7 +273,18 @@ jobs:
       # exists to prevent. npm ci above guarantees the bin is there.
       - name: Install Chromium (once)
         run: |
-          node_modules/.bin/playwright-core install chromium --only-shell --with-deps || { echo "::warning::install --with-deps failed; retrying without system deps"; node_modules/.bin/playwright-core install chromium --only-shell; }
+          set -e
+          # 1. The cheap path: fetch the shell (a no-op on a cache hit) and
+          #    do NOT touch apt.
+          node_modules/.bin/playwright-core install chromium --only-shell
+          # 2. PROVE it can actually launch, rather than assuming the runner
+          #    image has the libs. One real launch, ~1s.
+          if node -e "import('playwright-core').then(async ({chromium})=>{const b=await chromium.launch({args:['--no-sandbox']});await b.close();}).catch(()=>process.exit(1))"; then
+            echo "chromium launches; system deps already present"
+          else
+            echo "::warning::launch failed on the bare runner; installing system deps"
+            node_modules/.bin/playwright-core install chromium --only-shell --with-deps
+          fi
 
       # Audit 64's F2, closed 2026-08-14: paint numbers are a HARD gate.
       # The bench itself splits its failure classes — exit 2 means "no
@@ -335,7 +356,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/ms-playwright
-          key: ms-playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          key: ms-playwright-shell-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
       # Exactly ONE browser install; the bench and the smoke gate both
       # reuse it through the job's shared cache (the workflow previously
@@ -347,7 +368,18 @@ jobs:
       # exists to prevent. npm ci above guarantees the bin is there.
       - name: Install Chromium (once)
         run: |
-          node_modules/.bin/playwright-core install chromium --only-shell --with-deps || { echo "::warning::install --with-deps failed; retrying without system deps"; node_modules/.bin/playwright-core install chromium --only-shell; }
+          set -e
+          # 1. The cheap path: fetch the shell (a no-op on a cache hit) and
+          #    do NOT touch apt.
+          node_modules/.bin/playwright-core install chromium --only-shell
+          # 2. PROVE it can actually launch, rather than assuming the runner
+          #    image has the libs. One real launch, ~1s.
+          if node -e "import('playwright-core').then(async ({chromium})=>{const b=await chromium.launch({args:['--no-sandbox']});await b.close();}).catch(()=>process.exit(1))"; then
+            echo "chromium launches; system deps already present"
+          else
+            echo "::warning::launch failed on the bare runner; installing system deps"
+            node_modules/.bin/playwright-core install chromium --only-shell --with-deps
+          fi
 
       # The hard browser gate (direction M2, 2026-08-13). The bench REPORTS
       # numbers and soft-fails on exotic environments; the smoke suite
