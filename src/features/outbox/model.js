@@ -550,6 +550,36 @@ const dispatching = new Set();
 const delivered = new Set();
 
 /**
+ * Record that Gmail has accepted this item, whatever storage then does.
+ *
+ * EXPORTED BECAUSE THERE ARE TWO PUMPS (round 13, W-1).
+ *
+ * The ledger above was added for the in-page fallback runner in
+ * `flushOutbox`. The SERVICE WORKER has its own pump — `OUTBOX_PUMP` in
+ * background/index.js — which reimplements the same send/remove/save
+ * sequence and never touched the ledger. So the protection covered the
+ * fallback path and left the NORMAL PRODUCTION PATH exposed.
+ *
+ * MEASURED against a replay of the worker's exact sequence, storage writes
+ * failing:
+ *
+ *     pump 1 reports sent: 1   gmail calls: 1   queue still holds: 1
+ *     pump 2 reports sent: 1   TOTAL GMAIL SENDS: 2   <- duplicate email
+ *
+ * Two functions doing one job is the actual defect; the duplicate send is
+ * the symptom. `markDelivered`/`wasDelivered` are the seam both pumps share,
+ * so a future third caller cannot miss it either.
+ */
+export function markDelivered(id) {
+  if (id) delivered.add(id);
+}
+
+/** Has Gmail already accepted this item in this session? */
+export function wasDelivered(id) {
+  return delivered.has(id);
+}
+
+/**
  * Attempt every due item once.
  *
  * @param {object} deps
@@ -563,6 +593,21 @@ const TAB_ID = Math.random().toString(36).slice(2);
 const CLAIM_KEY = 'outboxClaims';
 // Longer than the worst-case send (60s budget + retries); a claim that
 // expires mid-send is what let two tabs both believe they owned it (V2 P1-9).
+/*
+ * THE TTL BOUNDS ONE DISPATCH, AND IS RENEWED PER DISPATCH (round 13, W-3).
+ *
+ * The old comment claimed this was "longer than the worst-case send (60s
+ * budget + retries)". That is true of ONE send and false of a pump: the
+ * worker batches up to MAX_PUMP_BATCH = 8 items, each with a 30s fetch
+ * budget, so the worst case is 8 x 30s = 240s against a 180s TTL. A slow
+ * batch therefore outlived its own lock, a second tab acquired it, and both
+ * ran — which is precisely the state the lock exists to make impossible.
+ *
+ * The number is not the fix; renewal is. `renewPumpLock`/`renewClaim` below
+ * re-stamp `at` before each item, so the TTL now bounds the gap between two
+ * dispatches rather than the length of the whole run. A crashed tab still
+ * releases within one TTL, which is the property that mattered.
+ */
 const CLAIM_TTL = 180000;
 
 /*
@@ -623,6 +668,40 @@ async function acquirePumpLock(storage, now, settleMs) {
     return true; // storage broken: fall back to per-tab behaviour
   }
 }
+/**
+ * Re-stamp the pump lock so a long batch cannot outlive it (W-3).
+ *
+ * Only the owner may renew: if another tab has taken the lock (because we
+ * genuinely did stall past the TTL), this reports false and the caller
+ * stands down rather than continuing to dispatch under a lock it lost.
+ */
+async function renewPumpLock(storage, now) {
+  try {
+    const got = (await storage.get(PUMP_LOCK_KEY)) || {};
+    const lock = got[PUMP_LOCK_KEY];
+    if (lock && lock.tab !== TAB_ID) return false; // someone else owns it now
+    await storage.set({ [PUMP_LOCK_KEY]: { ...(lock || {}), tab: TAB_ID, at: now } });
+    return true;
+  } catch {
+    return true; // storage broken: fall back to per-tab behaviour
+  }
+}
+
+/** Re-stamp one item's claim, for the same reason as the pump lock (W-3). */
+async function renewClaim(storage, id, now) {
+  try {
+    const got = (await storage.get(CLAIM_KEY)) || {};
+    const claims = got[CLAIM_KEY] || {};
+    const mine = claims[id];
+    if (mine && mine.tab !== TAB_ID) return false;
+    claims[id] = { ...(mine || {}), tab: TAB_ID, at: now };
+    await storage.set({ [CLAIM_KEY]: claims });
+    return true;
+  } catch {
+    return true;
+  }
+}
+
 async function releasePumpLock(storage) {
   try {
     const got = (await storage.get(PUMP_LOCK_KEY)) || {};
@@ -713,6 +792,14 @@ export async function flushOutbox(/** @type {{send?:(item:any)=>Promise<any>, st
         dispatching.delete(item.id); // denied claims must not leak (V2 P1-9)
         continue; // another tab owns it
       }
+      /* W-3: re-stamp before every dispatch, so the TTL bounds the gap
+         between two sends rather than the length of the whole batch. Losing
+         the lock here means another tab legitimately took over. */
+      if (!(await renewPumpLock(storage, Date.now()))) {
+        dispatching.delete(item.id);
+        break;
+      }
+      await renewClaim(storage, item.id, Date.now());
       items = items.map((x) => (x.id === item.id ? { ...x, state: 'sending' } : x));
       await saveOutbox(items, storage);
       onChange?.(items);

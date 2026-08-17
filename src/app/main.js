@@ -1964,16 +1964,17 @@ async function refresh({ silent = false } = {}) {
     st.clear();
     mbState(id).nextPageToken = '';
     mbState(id).loaded = false;
-    try {
-      await loadMailboxPage(id, '');
-    } catch {
-      /*
-       * RESTORED, NOT RETHROWN. Callers here are `refresh()` bare (the
-       * toolbar button, the freshness line, the auto-refresh timer); several
-       * neither await nor catch, so rethrowing would turn a failed poll into
-       * an unhandled rejection. The user-visible contract is the same either
-       * way: the old page is still on screen and the toast says why.
-       */
+    /*
+     * THE OUTCOME IS READ, NOT CAUGHT (round 13, W-4).
+     *
+     * This was a try/catch, and `loadMailboxPage` catches internally and
+     * resolves normally — so the restore below was unreachable and the bug
+     * it was written for (clear the store, fail the fetch, show an empty
+     * Sent/Trash under a "Refreshed" toast) was still live. It now returns
+     * true/false and this reads it.
+     */
+    const ok = await loadMailboxPage(id, '');
+    if (!ok) {
       st.batch(() => { for (const m of snapshot) st.upsert(m); });
       mbState(id).nextPageToken = prevToken;
       mbState(id).loaded = prevLoaded;
@@ -2392,8 +2393,27 @@ async function loadMailboxPage(id, pageToken = '') {
       renderList();
       renderSidebar();
     }
+    return true;
   } catch (err) {
+    /*
+     * IT REPORTS THE OUTCOME NOW, BECAUSE A CAUGHT ERROR IS INVISIBLE
+     * (round 13, W-4).
+     *
+     * `refresh()` wraps its call to this function in try/catch to restore a
+     * snapshot when a non-inbox refresh fails. That catch could NEVER run:
+     * this handler swallows the error and returns normally, so the caller
+     * saw a clean resolve, kept the cleared store, and toasted "Refreshed"
+     * over an empty mailbox. The rollback I added last round was dead code
+     * from the moment it was written — a fix that reads correctly and does
+     * nothing, which is worse than no fix at all.
+     *
+     * Rethrowing is not an option: this is also called from paths that
+     * neither await nor catch, and `reportError` (with its retry affordance)
+     * is the right handling for those. So the outcome is RETURNED, and the
+     * one caller that must react checks it.
+     */
     reportError(err, { retry: () => loadMailboxPage(id, pageToken) }); // 65/h
+    return false;
   } finally {
     ms.loading = false;
     syncBusy();

@@ -355,6 +355,27 @@ let inFlight = null;
  */
 let sessionEpoch = 0;
 
+/**
+ * The current session generation, for LONG WORKER OPERATIONS.
+ *
+ * WHY THIS IS EXPORTED (round 13, W-2).
+ *
+ * The epoch already guards credential WRITES inside this module. It did not
+ * guard anything else, and the outbox pump showed why that is not enough: it
+ * reads `accountEmail` ONCE, then loops over up to eight items, each with a
+ * network send inside it. A sign-out or an account switch part-way through
+ * that loop leaves every remaining iteration running under a stale ownership
+ * decision, while `getToken()` hands out the NEW account's token — so
+ * account A's queued draft can be sent from account B's mailbox.
+ *
+ * `signOut()` and the ACCOUNT_CHANGED tripwire both bump the epoch, so any
+ * operation that captures it at the start and re-checks before each
+ * irreversible step gets a correct answer without polling storage.
+ */
+export function authEpoch() {
+  return sessionEpoch;
+}
+
 export async function getToken() {
   const [t, a] = await Promise.all([
     TOKEN_STORAGE().get(['accessToken', 'expiresAt']),

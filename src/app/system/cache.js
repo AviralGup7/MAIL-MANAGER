@@ -276,6 +276,24 @@ export function createSaver(getMessages, storage = STORAGE, opts = {}) {
   let handle = null;
   let lastWrite = 0;
   let pending = false;
+  /*
+   * THE WRITE THAT IS ALREADY RUNNING (round 13, W-5).
+   *
+   * `write()` sets `pending = false` and THEN awaits `saveCache`, so between
+   * those two lines the saver reports "nothing pending" while a write is
+   * still in flight. `flush()` returned `Promise.resolve()` in that window —
+   * telling its caller the cache was durable when it was not.
+   *
+   * That matters because of who asks: main.js flushes the cache before
+   * committing the history cursor. A cursor committed over an unfinished
+   * cache write means the next delta starts AFTER changes that never reached
+   * disk, and Gmail's history is the only copy — the exact loss the
+   * cache-then-cursor ordering exists to prevent.
+   *
+   * Tracking the in-flight promise lets `flush()` await the write that is
+   * already happening instead of assuming it finished.
+   */
+  let inFlight = null;
 
   const hasIdle = typeof requestIdleCallback === 'function';
 
@@ -308,9 +326,18 @@ export function createSaver(getMessages, storage = STORAGE, opts = {}) {
     handleKind = null;
     pending = false;
     lastWrite = Date.now();
-    const ok = await saveCache(getMessages(), storage);
-    if (!ok && onError) {
-      try { onError(); } catch { /* the reporter must never break the write path */ }
+    const p = Promise.resolve(saveCache(getMessages(), storage));
+    inFlight = p;
+    try {
+      const ok = await p;
+      if (!ok && onError) {
+        try { onError(); } catch { /* the reporter must never break the write path */ }
+      }
+      return ok;
+    } finally {
+      // Only clear if no LATER write replaced us, or we would erase the
+      // record of a write that is still running.
+      if (inFlight === p) inFlight = null;
     }
   }
 
@@ -350,7 +377,14 @@ export function createSaver(getMessages, storage = STORAGE, opts = {}) {
     flush() {
       cancel(handle);
       handle = null;
-      if (!pending) return Promise.resolve();
+      /*
+       * W-5: "not pending" is not the same as "durable". A write started by
+       * the idle scheduler clears `pending` before it awaits, so without
+       * this the flush would resolve immediately over a live write and the
+       * caller would commit the history cursor against data that had not
+       * reached disk.
+       */
+      if (!pending) return inFlight ? Promise.resolve(inFlight) : Promise.resolve();
       pending = false;
       lastWrite = Date.now();
       // Issued immediately, not scheduled. The onError reporter still fires
@@ -366,6 +400,10 @@ export function createSaver(getMessages, storage = STORAGE, opts = {}) {
     get isPending() {
       return pending;
     },
+    /** True while a write has been issued but not yet acknowledged (W-5). */
+    get isWriting() {
+      return inFlight !== null;
+    },
 
     /**
      * Cancel any pending save so a stale write cannot resurrect data after
@@ -378,6 +416,11 @@ export function createSaver(getMessages, storage = STORAGE, opts = {}) {
       handle = null;
       handleKind = null;
       pending = false;
+      /* An in-flight write is deliberately NOT awaited or cancelled here —
+         it cannot be recalled, and `clearCache()` runs after it in the same
+         paths. Dropping the handle only means a later flush will not report
+         a write that belongs to the invalidated generation. */
+      inFlight = null;
     },
   };
   return api;

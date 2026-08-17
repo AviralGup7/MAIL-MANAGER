@@ -8,7 +8,7 @@
  *   - proxy Gmail API calls
  */
 
-import { signIn, signOut, isSignedIn, AUTH_RETRY_ALARM, runAuthRetry } from './auth.js';
+import { signIn, signOut, isSignedIn, AUTH_RETRY_ALARM, runAuthRetry, authEpoch } from './auth.js';
 import { bump, persistDiag } from './diag.js';
 import { pickGmailTab } from './tab-pick.js';
 import {
@@ -24,7 +24,7 @@ import { MAX_INLINE_BYTES, MAX_INLINE_PARTS, BULK_CHUNK } from '../shared/limits
 import { loadSnoozed, removeSnooze, due, nextWakeAt } from '../features/snooze/model.js';
 // Pure queue helpers (state machine, backoff, normalisation). The RUNNER
 // lives here in the worker now: one dispatcher for every tab (bug-hunt P1).
-import { loadOutbox, saveOutbox, dueItems, markFailed, markUncertain, prioritizeDue, dispatchable } from '../features/outbox/model.js';
+import { loadOutbox, saveOutbox, dueItems, markFailed, markUncertain, prioritizeDue, dispatchable, markDelivered, wasDelivered } from '../features/outbox/model.js';
 import { syncPage, syncDelta, commitHistoryId } from './sync.js';
 import { api } from './gmail.js';
 // The MIME parser lives in its own module so the in-page fallback can reuse
@@ -412,6 +412,23 @@ async function handle(msg) {
            this session is skipped — left armed for the account that made
            the promise, never fired by the one that didn't. */
         const { accountEmail } = await chrome.storage.local.get('accountEmail');
+        /*
+         * THE ACCOUNT MAY MOVE MID-PUMP (round 13, W-2).
+         *
+         * Ownership is decided ONCE, above, and then up to eight network
+         * sends run beneath that decision. If the user switches Google
+         * account (or signs out) during the loop, `getToken()` starts
+         * handing out the NEW account's credential while these items are
+         * still being dispatched under the OLD account's eligibility check —
+         * so account A's queued draft, MIME body and all, can leave from
+         * account B's mailbox.
+         *
+         * The auth module already keeps a session generation for exactly
+         * this hazard; it simply was not readable from here. Captured now
+         * and re-checked immediately before every send, because that is the
+         * last point at which stopping is still free.
+         */
+        const startEpoch = authEpoch();
         let wrongAccount = 0;
         // HELD FIRST (bug-hunt 43 #1): a fresh send must not wait behind a
         // backlog of automatic retries for a slot in the batch.
@@ -419,10 +436,18 @@ async function handle(msg) {
         if (allDue.length === 0) return { sent: 0, failed: 0, skipped: false };
         // Eligibility is decided BEFORE the batch slice. Foreign rows must not
         // consume all eight slots and permanently starve this account's mail.
-        const blockedIds = allDue
+        /*
+         * A ROW GMAIL ALREADY HAS IS NOT "WRONG ACCOUNT" (round 13, W-1).
+         * `dispatchable` returns false for both, so counting the difference
+         * would tell the user their mail is queued for another account when
+         * it has in fact gone. Separated, and reported separately.
+         */
+        const alreadyDelivered = allDue.filter((item) => wasDelivered(item.id)).map((x) => x.id);
+        const notDelivered = allDue.filter((item) => !wasDelivered(item.id));
+        const blockedIds = notDelivered
           .filter((item) => !dispatchable(item, accountEmail))
           .map((item) => item.id);
-        const eligible = allDue.filter((item) => dispatchable(item, accountEmail));
+        const eligible = notDelivered.filter((item) => dispatchable(item, accountEmail));
         wrongAccount = blockedIds.length;
         const due = eligible.slice(0, MAX_PUMP_BATCH);
         const more = eligible.length > due.length;
@@ -433,6 +458,10 @@ async function handle(msg) {
         // "what actually changed", and a send entry with no id cannot
         // (bug-hunt #27). Gmail's send response carries the message id.
         const sentIds = [];
+        /* Delivered, but the queue could not be updated to say so (W-1). */
+        const unreconciled = [];
+        /* The session changed under us and the pump stood down (W-2). */
+        let accountChanged = false;
         for (const item of due) {
           /*
            * CANCEL RACE (bug-hunt 43 #11): the queue was loaded once, but
@@ -449,6 +478,14 @@ async function handle(msg) {
           // Persist `sending` from the freshest queue snapshot. This preserves
           // rows enqueued while an earlier Gmail request was in flight instead
           // of overwriting storage with the pump's original snapshot.
+          /* W-2: the last check before an irreversible act. Anything already
+             sent stays sent and reported; the rest stay armed for whoever
+             owns them, which is the same answer `dispatchable` would give if
+             it were re-run now. */
+          if (authEpoch() !== startEpoch) {
+            accountChanged = true;
+            break;
+          }
           items = await loadOutbox(chrome.storage.local);
           items = items.map((x) => (x.id === item.id ? { ...x, state: 'sending' } : x));
           await saveOutbox(items, chrome.storage.local);
@@ -457,6 +494,23 @@ async function handle(msg) {
             // an unrecoverable part fails THIS item, loudly, not the batch.
             const draft = await hydrateDraftAttachments(item.draft);
             const res = await sendMessage(buildMime(draft), draft.threadId);
+            /*
+             * GMAIL HAS IT. RECORD THAT BEFORE ANYTHING CAN THROW
+             * (round 13, W-1).
+             *
+             * The removal below goes through `saveOutbox`, which swallows
+             * storage errors and returns false — and this pump ignored that
+             * return, exactly as the fallback runner used to. MEASURED with
+             * writes failing: pump reports sent=1, the row survives, and the
+             * NEXT pump sends the same message again. Two emails, one user
+             * action.
+             *
+             * The ledger is shared with the fallback runner rather than
+             * duplicated here, because two implementations of "have we
+             * already sent this" is how this bug existed in one pump and not
+             * the other.
+             */
+            markDelivered(item.id);
             // NAMESPACED per the PumpResult contract in outbox.js: `g:` marks
             // a real Gmail message id, distinct from the fallback's `q:` ids.
             if (res?.id) sentIds.push(`g:${res.id}`);
@@ -473,9 +527,19 @@ async function handle(msg) {
             });
             failed++;
           }
-          await saveOutbox(items, chrome.storage.local);
+          /*
+           * THE SAVE'S RETURN IS NO LONGER DISCARDED. When the removal of a
+           * DELIVERED item cannot be persisted, the row stays armed on disk;
+           * the ledger stops it being re-sent by this worker, and the caller
+           * is told so it can warn instead of reporting a clean success.
+           */
+          const persisted = await saveOutbox(items, chrome.storage.local);
+          if (!persisted && wasDelivered(item.id)) unreconciled.push(item.id);
         }
         return { sent, failed, skipped: false, sentIds, more,
+          ...(accountChanged ? { accountChanged: true } : {}),
+          ...(unreconciled.length ? { unreconciled } : {}),
+          ...(alreadyDelivered.length ? { alreadyDelivered } : {}),
           ...(wrongAccount ? { wrongAccount, blockedIds } : {}) };
       } finally {
         outboxPumping = false;
