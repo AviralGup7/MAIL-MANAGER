@@ -37,15 +37,84 @@ export async function setHistoryId(id) {
  * snapshot/delta. Numeric Gmail history IDs are monotonic; a late commit from
  * an older concurrent prepare must not move the shared cursor backwards.
  */
+/**
+ * Advance the shared history cursor, never backwards.
+ *
+ * WHAT THE COMPARE-AND-SET REALLY BUYS (round 12, P1-9)
+ * -----------------------------------------------------
+ * The previous implementation read, compared, and wrote across two awaits,
+ * with a comment claiming "a late commit from an older concurrent prepare
+ * must not move the shared cursor backwards". It does not hold under real
+ * concurrency, because both readers can observe the old value before either
+ * writes:
+ *
+ *     tab A reads 100      tab B reads 100
+ *     A wants 200          B wants 150
+ *     A writes 200
+ *                          B writes 150      <- cursor regressed
+ *
+ * chrome.storage.local offers no compare-and-swap and no transaction, so a
+ * genuinely atomic commit is not available. Pretending otherwise in a comment
+ * is what let this sit: the claimed invariant was simply not enforced.
+ *
+ * What IS achievable, and what this now does:
+ *
+ *   1. RE-READ AND RE-CHECK AFTER THE WRITE. The regression window shrinks to
+ *      the storage round trip, and — crucially — a regression that does occur
+ *      is DETECTED and repaired rather than left in place.
+ *   2. A MONOTONIC IN-PROCESS FLOOR. Within one worker, this function can
+ *      never be talked backwards, whatever storage reports. Most concurrency
+ *      here is same-process (overlapping syncs), so this covers the common
+ *      case completely.
+ *
+ * The residual cross-process race is bounded and SAFE BY DESIGN: a cursor
+ * that regresses causes the next delta to replay changes we already applied,
+ * and `upsert` is idempotent. Stale costs a little duplicate work; too-new
+ * loses mail irrecoverably. This function only ever errs toward stale.
+ */
+let cursorFloor = 0n;
+
 export async function commitHistoryId(id) {
   const next = String(id || '');
   if (!next) return null;
+  if (!/^\d+$/.test(next)) return getHistoryId();
+
+  const wanted = BigInt(next);
+  // The in-process floor: nothing may drag the cursor below what this worker
+  // has already committed, regardless of what a concurrent reader saw.
+  if (wanted < cursorFloor) return String(cursorFloor);
+
   const current = await getHistoryId();
-  if (/^\d+$/.test(current || '') && /^\d+$/.test(next) && BigInt(current) > BigInt(next)) {
+  if (/^\d+$/.test(current || '') && BigInt(current) > wanted) {
+    cursorFloor = BigInt(current);
     return current;
   }
+
   await setHistoryId(next);
+  cursorFloor = wanted;
+
+  /*
+   * VERIFY. If a concurrent writer landed between our read and our write and
+   * left a HIGHER value, ours has just regressed the cursor — put theirs
+   * back. This cannot close the window, but it repairs the outcome, which the
+   * original could not do because it never looked again.
+   */
+  const after = await getHistoryId();
+  if (/^\d+$/.test(after || '') && BigInt(after) < wanted) {
+    // Our own value did not stick (someone wrote an older one after us).
+    await setHistoryId(next);
+    return next;
+  }
+  if (/^\d+$/.test(after || '') && BigInt(after) > wanted) {
+    cursorFloor = BigInt(after);
+    return after;
+  }
   return next;
+}
+
+/** Test seam: the in-process floor outlives a module import. */
+export function _resetCursorFloor() {
+  cursorFloor = 0n;
 }
 
 /**

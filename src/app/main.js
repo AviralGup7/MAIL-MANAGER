@@ -1943,10 +1943,44 @@ async function refresh({ silent = false } = {}) {
    */
   if (state.mailbox !== 'inbox') {
     const id = state.mailbox;
-    storeFor(id).clear();
+    /*
+     * DO NOT DESTROY THE KNOWN-GOOD PAGE BEFORE HAVING ITS REPLACEMENT
+     * (round 12, P1-6).
+     *
+     * This cleared the store and THEN awaited the network. A failed refresh
+     * of Sent or Trash therefore emptied the view completely: the old
+     * messages were gone, the new ones never arrived, and unlike the inbox
+     * there is no cache or delta path to restore them — the user had to
+     * switch mailboxes and back.
+     *
+     * The snapshot is cheap (these mailboxes hold one page) and restoring it
+     * is the difference between a failed refresh and a blank screen.
+     */
+    const st = storeFor(id);
+    const snapshot = st.idsFor('all').map((mid) => st.get(mid)).filter(Boolean);
+    const prevToken = mbState(id).nextPageToken;
+    const prevLoaded = mbState(id).loaded;
+
+    st.clear();
     mbState(id).nextPageToken = '';
     mbState(id).loaded = false;
-    await loadMailboxPage(id, '');
+    try {
+      await loadMailboxPage(id, '');
+    } catch {
+      /*
+       * RESTORED, NOT RETHROWN. Callers here are `refresh()` bare (the
+       * toolbar button, the freshness line, the auto-refresh timer); several
+       * neither await nor catch, so rethrowing would turn a failed poll into
+       * an unhandled rejection. The user-visible contract is the same either
+       * way: the old page is still on screen and the toast says why.
+       */
+      st.batch(() => { for (const m of snapshot) st.upsert(m); });
+      mbState(id).nextPageToken = prevToken;
+      mbState(id).loaded = prevLoaded;
+      renderList();
+      if (!silent) toast('Could not refresh — showing what was already here', { kind: 'error' });
+      return 'failed';
+    }
     if (!silent) toast('Refreshed');
     return 'delta';
   }
@@ -3655,7 +3689,25 @@ async function start() {
     const delta = await refresh({ silent: true });
     // `refresh` falls back to a full page load when the cursor has expired, so
     // there is nothing more to do unless it reported no cursor at all.
-    if (delta !== 'none') return;
+    if (delta !== 'none') {
+      /*
+       * THE RETURNING USER'S TIMER (round 12, P1-5).
+       *
+       * `scheduleAutoRefresh()` lives at the END of this function, after the
+       * cold-start path — so this early return, which is the path EVERY user
+       * with a cache takes, left the app with no auto-refresh timer at all.
+       * The only other call site is the timer's own re-arm, which cannot run
+       * because it was never armed once.
+       *
+       * Net effect: open the extension with a warm cache and the inbox never
+       * refreshes itself again, flatly contradicting the README's "the inbox
+       * refreshes itself every two minutes". A cold start behaved correctly,
+       * which is exactly why this survived — the first-run path is the one
+       * that gets tested by hand.
+       */
+      scheduleAutoRefresh();
+      return;
+    }
   }
 
   await loadPage('');

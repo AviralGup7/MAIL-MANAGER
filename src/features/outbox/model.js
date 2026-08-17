@@ -1,4 +1,5 @@
 import { STORAGE } from '../../platform/storage.js';
+import { read as durableRead, mutate as durableMutate } from '../../platform/durable.js';
 
 /**
  * The outbox: queued sends, undo-send, and retry.  (Features 13 and 14.)
@@ -170,13 +171,58 @@ export function normaliseOutbox(raw) {
   return out;
 }
 
+/**
+ * The queue, or an empty list when storage cannot answer.
+ *
+ * KEPT FOR READERS ONLY. A UI that draws the outbox is right to treat a
+ * failed read as "nothing to draw" — it will repaint on the next change.
+ * A MUTATOR must not use this; see `readOutbox` and the note on
+ * `loadOutboxStrict`.
+ */
 export async function loadOutbox(storage = STORAGE) {
-  try {
-    const got = (await storage.get(KEY)) || {};
-    return normaliseOutbox(got[KEY]);
-  } catch {
-    return [];
-  }
+  const got = await readOutbox(storage);
+  return got.value;
+}
+
+/**
+ * The three-state read (round 12, P0-2).
+ *
+ * MEASURED BEFORE THIS EXISTED: `retryNow` on a queue of five, with the
+ * storage read failing, wrote back a ONE-element array — four real unsent
+ * messages destroyed, permanently, with no error anywhere. The mutator did
+ * nothing wrong; it asked "what is queued", was told "nothing", and believed
+ * it. `loadOutbox` could not tell it otherwise, because a thrown read and an
+ * empty queue returned the same `[]`.
+ *
+ * @returns {Promise<{ok:boolean, value:OutboxItem[], reason?:string}>}
+ */
+export async function readOutbox(storage = STORAGE) {
+  return durableRead(KEY, {
+    storage,
+    empty: [],
+    normalise: normaliseOutbox,
+    // An array is the only shape this key may hold. Anything else is a
+    // previous version's mistake, not a transient failure, so it is
+    // reported as corrupt and may be overwritten.
+    isValid: (raw) => Array.isArray(raw),
+  });
+}
+
+/**
+ * Read-modify-write the queue, REFUSING to write over an unreadable base.
+ *
+ * Every mutator below goes through this. The refusal is the fix: a modify
+ * built on a base we failed to read is how five messages became zero.
+ *
+ * @param {(items:OutboxItem[]) => OutboxItem[]} change
+ */
+async function mutateOutbox(change, storage = STORAGE) {
+  return durableMutate(KEY, change, {
+    storage,
+    empty: [],
+    normalise: normaliseOutbox,
+    isValid: (raw) => Array.isArray(raw),
+  });
 }
 
 export async function saveOutbox(items, storage = STORAGE) {
@@ -199,6 +245,10 @@ export async function saveOutbox(items, storage = STORAGE) {
  * the promise is not being handed to a stranger.
  */
 export function dispatchable(item, accountEmail) {
+  /* P0-1: a known delivery is never dispatchable again, whatever the queue
+     still says. This is the guard that turns a lost removal into a stale row
+     instead of a duplicate email. */
+  if (item && delivered.has(item.id)) return false;
   const mine = typeof item?.accountEmail === 'string'
     ? item.accountEmail.trim().toLowerCase() : '';
   const current = typeof accountEmail === 'string'
@@ -466,6 +516,40 @@ let inFlight = false;
 const dispatching = new Set();
 
 /**
+ * IDS WE KNOW GMAIL ACCEPTED, WHOSE REMOVAL MAY NOT HAVE PERSISTED.
+ *
+ * ============ THE WORST BUG IN THIS FILE (round 12, P0-1) ============
+ *
+ * `flushOutbox` did: send -> remove from queue -> save queue. `saveOutbox`
+ * catches storage errors and returns `false`, and the caller ignored that
+ * return. So with storage failing to WRITE:
+ *
+ *     queue before : 1
+ *     Gmail send   : SUCCESS
+ *     save queue   : FAILED  (silently)
+ *     flush result : sent = 1
+ *     queue after  : 1        <- the item is still armed
+ *
+ * When storage recovered, the next pump saw a due item and SENT IT AGAIN.
+ * Measured end to end: two Gmail deliveries for one user action. The
+ * recipient gets the email twice.
+ *
+ * This is NOT the OUTCOME_UNKNOWN case, which exists for "we never learned
+ * whether the send landed". Here we know perfectly well that it landed; it
+ * is the LOCAL BOOKKEEPING that failed. Retrying a known success is the one
+ * thing the pump must never do.
+ *
+ * The ledger is checked by `dispatchable`, so a stranded item cannot be
+ * re-sent by this session no matter how many times the pump runs. It is
+ * memory-only ON PURPOSE: persisting it needs the very storage that is
+ * broken. Its lifetime therefore matches the tab, which is exactly the
+ * window in which the phantom item can still be seen — the recovery write
+ * below almost always succeeds long before then, and `normaliseOutbox`
+ * already refuses to re-queue anything marked `sent` across a reload.
+ */
+const delivered = new Set();
+
+/**
  * Attempt every due item once.
  *
  * @param {object} deps
@@ -573,6 +657,8 @@ export async function flushOutbox(/** @type {{send?:(item:any)=>Promise<any>, st
      discover a cross-account send, not the right place to allow one. */
   let wrongAccount = 0;
   const blockedIds = [];
+  /* Skipped because Gmail already has them (P0-1), not because of ownership. */
+  const alreadyDelivered = [];
   if (inFlight) return { sent: 0, failed: 0, skipped: true };
   let items = await loadOutbox(storage);
   let due = prioritizeDue(dueItems(items, now));
@@ -598,8 +684,23 @@ export async function flushOutbox(/** @type {{send?:(item:any)=>Promise<any>, st
     // no Gmail id to offer and pushes the queue id instead -- something is
     // better than the empty array this used to record.
     const sentIds = [];
+    /* Ids that Gmail accepted but whose removal could not be persisted
+       (P0-1). Reported so the caller can warn rather than claim success. */
+    const unreconciled = [];
 
     for (const item of due) {
+      /*
+       * TWO REASONS TO SKIP, AND THEY ARE NOT THE SAME (P0-1).
+       *
+       * `delivered` means WE ALREADY SENT THIS and failed to record it;
+       * reporting that as `wrongAccount` would tell the user their mail is
+       * queued for another account when it has in fact gone. Checked first
+       * and counted separately.
+       */
+      if (delivered.has(item.id)) {
+        alreadyDelivered.push(item.id);
+        continue;
+      }
       if (!dispatchable(item, accountEmail)) {
         // Not ours to send; it stays armed for its owner (AUD-C2).
         wrongAccount++;
@@ -631,10 +732,32 @@ export async function flushOutbox(/** @type {{send?:(item:any)=>Promise<any>, st
          * hazard is a lost removal, so remove by read-modify-write and
          * verify, retrying while it keeps reappearing.
          */
+        /* P0-1: RECORD THE DELIVERY BEFORE ATTEMPTING TO PERSIST IT.
+           Gmail has accepted this message. From this instant the only
+           correct behaviour is "never send it again", and that must hold
+           even if every storage call below throws. */
+        delivered.add(item.id);
+
+        let removalPersisted = false;
         for (let attempt = 0; attempt < 3; attempt++) {
-          const fresh = await loadOutbox(storage);
-          if (!fresh.some((x) => x.id === item.id)) break; // already gone
-          await saveOutbox(fresh.filter((x) => x.id !== item.id), storage);
+          const fresh = await readOutbox(storage);
+          if (!fresh.ok && fresh.reason === 'unavailable') break; // cannot verify; ledger holds
+          if (!fresh.value.some((x) => x.id === item.id)) { removalPersisted = true; break; }
+          const res = await mutateOutbox((cur) => cur.filter((x) => x.id !== item.id), storage);
+          if (res.ok) { removalPersisted = true; break; }
+        }
+        if (!removalPersisted) {
+          /*
+           * The message WENT and we could not write that fact down. Silence
+           * here is what produced the duplicate. The item is marked so the
+           * UI can show it honestly, the id is counted, and the ledger above
+           * guarantees this session will not re-send it.
+           */
+          unreconciled.push(item.id);
+          items = items.map((x) =>
+            x.id === item.id
+              ? { ...x, state: 'uncertain', error: 'Sent, but this device could not record it. It will not be sent again.' }
+              : x);
         }
         await releaseClaim(storage, item.id);
         sent++;
@@ -672,6 +795,8 @@ export async function flushOutbox(/** @type {{send?:(item:any)=>Promise<any>, st
     } catch { /* the TTL remains the backstop */ }
 
     return { sent, failed, skipped: false, sentIds,
+           ...(unreconciled.length ? { unreconciled } : {}),
+           ...(alreadyDelivered.length ? { alreadyDelivered } : {}),
            ...(wrongAccount ? { wrongAccount, blockedIds } : {}) };
   } finally {
     inFlight = false;
@@ -684,7 +809,11 @@ export async function flushOutbox(/** @type {{send?:(item:any)=>Promise<any>, st
 
 /** Remove one item -- the undo path, and the "cancel" button on a stuck item. */
 export async function cancel(id, storage = STORAGE) {
-  const items = await loadOutbox(storage);
+  /* P0-2: a failed read must not become "the queue is empty, so there is
+     nothing to cancel" — and more importantly must not lead to a write. */
+  const got = await readOutbox(storage);
+  if (!got.ok && got.reason === 'unavailable') return null;
+  const items = got.value;
   const item = items.find((x) => x.id === id);
   if (!item) return null;
   /*
@@ -696,14 +825,21 @@ export async function cancel(id, storage = STORAGE) {
    * on `dispatching`.
    */
   if (dispatching.has(id) || item.state === 'sending') return null;
-  await saveOutbox(items.filter((x) => x.id !== id), storage);
+  /* Re-read under mutate so a concurrent pump's write is not clobbered. */
+  const res = await mutateOutbox((cur) => cur.filter((x) => x.id !== id), storage);
+  if (!res.ok) return null;
   return item;
 }
 
 /** Retry a stuck item now, resetting its backoff. */
 export async function retryNow(id, storage = STORAGE, now = Date.now()) {
-  const items = await loadOutbox(storage);
-  const next = items.map((x) =>
+  /*
+   * P0-2, THE MEASURED ONE. This function read the queue, mapped over it and
+   * wrote the result. With the read failing it mapped over `[]` and wrote
+   * `[]`, destroying five queued messages. It now refuses to write at all
+   * when the base is unknown, and reports null so the UI can say so.
+   */
+  const res = await mutateOutbox((items) => items.map((x) =>
     // The stale error goes with the old attempts (bug-hunt 43 #4): keeping
     // it made an identical retry failure read as "the same failure twice",
     // short-circuiting straight back to stuck and showing "attempt 4 of 4"
@@ -711,9 +847,9 @@ export async function retryNow(id, storage = STORAGE, now = Date.now()) {
     x.id === id
       ? { ...x, state: 'failed', attempts: 0, nextAttempt: now, error: '', _fullError: '' }
       : x
-  );
-  await saveOutbox(next, storage);
-  return next.find((x) => x.id === id) || null;
+  ), storage);
+  if (!res.ok) return null;
+  return res.value.find((x) => x.id === id) || null;
 }
 
 /** Test seam. Module state outlives a jsdom boot. */

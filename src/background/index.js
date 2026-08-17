@@ -497,8 +497,32 @@ async function handle(msg) {
     case 'SNOOZE': {
       const labelId = await ensureLabel(SNOOZE_LABEL);
       await modify(msg.id, [labelId], ['INBOX']);
-      await scheduleWake();
-      return { ok: true };
+      /*
+       * THE GMAIL MUTATION HAS COMMITTED (round 12, P1-4).
+       *
+       * `scheduleWake()` used to be awaited bare, so a failure in it — a
+       * storage error, an alarms-API error — rejected the whole SNOOZE
+       * request. The app's optimistic() reads a rejected request as "the
+       * action failed" and ROLLS THE UI BACK, producing:
+       *
+       *     UI:    "Could not snooze", message restored to the inbox
+       *     Gmail: the message really is snoozed and out of the inbox
+       *
+       * A classic partial commit, and the rollback is the harmful half: the
+       * user believes nothing happened and moves on, while the message is
+       * gone from their inbox with no local wake armed.
+       *
+       * The label IS the durable state (see the snooze module header), and
+       * the startup catch-up sweep re-derives the schedule from it — so a
+       * failed alarm is a degraded snooze, not a failed one. It is reported
+       * as such instead of being escalated into a lie.
+       */
+      try {
+        await scheduleWake();
+      } catch (err) {
+        return { ok: true, wakeScheduled: false, warning: 'Snoozed in Gmail, but the wake alarm could not be set on this device. It will be caught up next time the extension starts.', error: String(err?.message || err) };
+      }
+      return { ok: true, wakeScheduled: true };
     }
     case 'UNSNOOZE': {
       const labelId = await ensureLabel(SNOOZE_LABEL);
@@ -779,8 +803,29 @@ function scheduleBackgroundSync() {
 if (chrome.alarms?.onAlarm) {
   chrome.alarms.onAlarm.addListener(async (alarm) => {
     if (alarm.name === WAKE_ALARM) {
-      await wakeDue();
-      await scheduleWake(); // re-aim at whatever is next
+      /*
+       * AN ALARM LISTENER MAY NOT REJECT (round 12, P1-12).
+       *
+       * `wakeDue()` and `scheduleWake()` were awaited bare in an async
+       * listener. Either can throw (storage, alarms API, a Gmail modify),
+       * and the rejection escapes into the MV3 service worker as an
+       * unhandled promise rejection — the exact failure surface the rest of
+       * this worker is written to avoid. Worse, a throw in `wakeDue` used to
+       * skip the re-aim entirely, so ONE bad wake disarmed the alarm chain
+       * permanently: nothing would ever wake again.
+       *
+       * Each half is now independent, and the re-aim runs regardless.
+       */
+      try {
+        await wakeDue();
+      } catch (err) {
+        console.warn('[BMM] wake sweep failed; the startup catch-up will retry', err);
+      }
+      try {
+        await scheduleWake(); // re-aim at whatever is next
+      } catch (err) {
+        console.warn('[BMM] could not re-arm the wake alarm', err);
+      }
       /* THE COUNTERS FLUSH FROM A PATH THAT ACTUALLY RUNS (audit EXT2-L3).
          persistDiag's only call site was the SYNC_ALARM branch, which
          BACKGROUND_SYNC_ENABLED turns off — so in production the diagnostics

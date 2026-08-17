@@ -1,4 +1,5 @@
 import { STORAGE } from '../../platform/storage.js';
+import { read as durableRead, mutate as durableMutate } from '../../platform/durable.js';
 
 /**
  * Snooze.
@@ -126,41 +127,79 @@ export function presets(now = Date.now(), ctx = {}) {
   });
 }
 
-/** @returns {Promise<Record<string, {at:number, snoozedAt:number}>>} */
+/**
+ * The schedule, or an empty map when storage cannot answer.
+ *
+ * READERS ONLY — the Snoozed view, `due`, `pending`. A mutator must use
+ * `readSnoozed`/`mutateSnoozed`, for the reason written on those.
+ *
+ * @returns {Promise<Record<string, {at:number, snoozedAt:number}>>}
+ */
 export async function loadSnoozed(storage = STORAGE) {
-  try {
-    const got = (await storage.get(KEY)) || {};
-    const raw = got[KEY];
-    return raw && typeof raw === 'object' ? raw : {};
-  } catch {
-    return {};
-  }
+  return (await readSnoozed(storage)).value;
+}
+
+/**
+ * The three-state read (round 12, P0-3).
+ *
+ * MEASURED BEFORE THIS EXISTED: with the storage read failing, `addSnooze`
+ * turned a schedule of {m-a, m-b} into {m-c}. Two messages the user had
+ * deferred lost their local wake time entirely.
+ *
+ * The damage is bounded — the real `BMM/Snoozed` Gmail label still carries
+ * the state, and the startup catch-up sweep is designed for exactly this —
+ * but "bounded" is not "correct": until that sweep runs, those messages are
+ * out of the inbox with nothing scheduled to bring them back, which is the
+ * lost-mail failure this module's own header swears to prevent.
+ */
+export async function readSnoozed(storage = STORAGE) {
+  return durableRead(KEY, {
+    storage,
+    empty: {},
+    normalise: (raw) => (raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}),
+    isValid: (raw) => !!raw && typeof raw === 'object' && !Array.isArray(raw),
+  });
+}
+
+/** Read-modify-write the schedule, refusing to write over an unreadable base. */
+async function mutateSnoozed(change, storage = STORAGE) {
+  return durableMutate(KEY, change, {
+    storage,
+    empty: {},
+    normalise: (raw) => (raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}),
+    isValid: (raw) => !!raw && typeof raw === 'object' && !Array.isArray(raw),
+  });
 }
 
 export async function addSnooze(id, wakeAt, storage = STORAGE, now = Date.now()) {
   // A past-due snooze is due on the next tick and vanishes -- the presets
   // filter `> now`; the writer must enforce the same contract (B-09).
   if (!Number.isFinite(wakeAt) || wakeAt <= now) return null;
-  const all = await loadSnoozed(storage);
-  all[id] = { at: wakeAt, snoozedAt: now };
-  try {
-    await storage.set({ [KEY]: all });
-  } catch {
-    return null;
-  }
-  return all;
+  /* P0-3: never write a schedule built on a base we could not read. */
+  const res = await mutateSnoozed(
+    (all) => ({ ...all, [id]: { at: wakeAt, snoozedAt: now } }),
+    storage,
+  );
+  return res.ok ? res.value : null;
 }
 
 export async function removeSnooze(id, storage = STORAGE) {
-  const all = await loadSnoozed(storage);
-  if (!(id in all)) return all;
-  delete all[id];
-  try {
-    await storage.set({ [KEY]: all });
-  } catch {
-    // Best effort.
-  }
-  return all;
+  /*
+   * P0-3. This was saved from the same destruction only by luck: the
+   * `if (!(id in all)) return all` guard happens to bail out when a failed
+   * read yields {}. That is a coincidence, not a defence — it protects the
+   * store only while the id is absent, and the same read failure with a
+   * PRESENT id would have written the truncated map.
+   */
+  const got = await readSnoozed(storage);
+  if (!got.ok && got.reason === 'unavailable') return got.value;
+  if (!(id in got.value)) return got.value;
+  const res = await mutateSnoozed((all) => {
+    const next = { ...all };
+    delete next[id];
+    return next;
+  }, storage);
+  return res.ok ? res.value : got.value;
 }
 
 /**
