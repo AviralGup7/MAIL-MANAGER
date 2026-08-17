@@ -2978,3 +2978,43 @@ test('no licence file grants rights the owner never granted', () => {
   assert.equal(pkg.license, undefined, 'package.json must not declare a licence');
   assert.equal(pkg.private, true, 'private:true keeps it off the npm registry');
 });
+
+test('a shebanged script keeps its executable bit', () => {
+  /*
+   * THE RECURRING TRAP (round 11).
+   *
+   * The workspace snapshot this project is developed in strips the
+   * executable bit from tools/make-icons.py on every restore, so the file
+   * shows as modified with no content change. `git add -A` then commits
+   * mode 100644, and ruff's EXE001 ("shebang is present but file is not
+   * executable") fails CI — a red build caused by an environment artefact
+   * rather than by anything anyone wrote.
+   *
+   * It has been reverted by hand many times. Asserting it here means the
+   * failure names itself locally, in the suite, instead of surfacing twenty
+   * minutes later as a Python lint error in a JavaScript project.
+   */
+  const tracked = execSync('git ls-files -s tools/', { cwd: ROOT, encoding: 'utf8' })
+    .split('\n').filter(Boolean);
+
+  const wrong = [];
+  for (const line of tracked) {
+    const [meta, path] = line.split('\t');
+    const mode = meta.split(' ')[0];
+    let body = '';
+    try { body = readFileSync(join(ROOT, path), 'utf8'); } catch { continue; }
+    if (!body.startsWith('#!')) continue;
+    /*
+     * PYTHON ONLY, because that is where the rule is ENFORCED. ruff's EXE001
+     * fires on .py; the .mjs tools all carry a shebang as documentation and
+     * are invoked as `node tools/x.mjs`, so their bit is not load-bearing and
+     * demanding it would be a rule this project does not actually hold.
+     * My first version asserted every shebang and flagged nine innocent
+     * files — a gate that fails on correct code teaches people to ignore it.
+     */
+    if (!path.endsWith('.py')) continue;
+    if (mode !== '100755') wrong.push(`${path} is mode ${mode}, needs 100755`);
+  }
+  assert.deepEqual(wrong, [],
+    'a file with a shebang must be executable — run: git update-index --chmod=+x <file>');
+});
