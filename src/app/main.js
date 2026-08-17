@@ -1533,28 +1533,8 @@ function ingest(messages) {
     const body = await send('GET_BODY', { id });
     return body?.text || '';
   }).catch(() => {});
-  /*
-   * THE SWEEP CLAIMS ITS MESSAGES, AND THE RULES GET WHAT IS LEFT
-   * (round 12, R5-5).
-   *
-   * The comment below has always said rules act on "anything the category
-   * sweep left behind" — but both functions were handed the SAME `records`
-   * array, and neither knew what the other had taken. Measured with one
-   * unread `clubs` message, `autoArchive: ['clubs']`, and the natural rule
-   * `category:clubs -> archive`: autoArchive removed it from the store and
-   * fired a BULK, then applyRules planned an archive batch for the very same
-   * id and fired a SECOND, concurrent BULK for it.
-   *
-   * Two requests for one message is the cheap half. The expensive half is
-   * that autoArchive records an undo holding a snapshot, and applyRules is
-   * mutating the same id underneath it — so Ctrl+Z restores a record the
-   * other path has already removed, and the activity log carries two entries
-   * blaming two different actors for one archive.
-   *
-   * `autoArchive` now returns the ids it claimed, and they are withheld from
-   * the rules pass. That makes the existing comment true instead of
-   * aspirational.
-   */
+  /* R5-5: the sweep reports what it claimed so the rules pass can skip it —
+     see autoArchive's docblock for the double-BULK this prevents. */
   const swept = autoArchive(records);
   // User rules run after the category auto-archive, so a hand-written rule can
   // act on anything the category sweep left behind.
@@ -1706,7 +1686,27 @@ async function applyRules(records) {
 
 /**
  * @returns {Set<string>} the ids this sweep claimed, so the rules pass can
- *   skip them (R5-5). Empty when the sweep did nothing.
+ *   skip them. Empty when the sweep did nothing.
+ *
+ * THE SWEEP CLAIMS ITS MESSAGES, AND THE RULES GET WHAT IS LEFT
+ * (round 12, R5-5).
+ *
+ * `ingest` has always commented that rules act on "anything the category
+ * sweep left behind" — but this function and `applyRules` were handed the
+ * SAME records array, and neither knew what the other had taken. Measured
+ * with one unread `clubs` message, `autoArchive: ['clubs']`, and the natural
+ * rule `category:clubs -> archive`: this function removed it from the store
+ * and fired a BULK, then applyRules planned an archive batch for the very
+ * same id and fired a SECOND, concurrent BULK for it.
+ *
+ * Two requests for one message is the cheap half. The expensive half is that
+ * this function records an undo holding a snapshot while applyRules mutates
+ * the same id underneath it — so Ctrl+Z restores a record the other path has
+ * already removed, and the activity log carries two entries blaming two
+ * different actors for one archive.
+ *
+ * Returning the claimed ids makes ingest's long-standing comment true instead
+ * of aspirational.
  */
 function autoArchive(records) {
   if (!rules.autoArchive.length) return new Set();

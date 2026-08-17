@@ -20,6 +20,51 @@ import { readFileSync } from 'node:fs';
 const ui = readFileSync(new URL('../src/app/academic/timetable-ui.js', import.meta.url), 'utf8');
 const app = readFileSync(new URL('../src/app/main.js', import.meta.url), 'utf8');
 
+
+/**
+ * The source of one function, from its declaration to its matching brace.
+ *
+ * Written because two gates in this file sliced a FIXED number of characters
+ * and so silently changed meaning whenever a comment grew. Strings, comments
+ * and regex literals are skipped so a brace inside them cannot end the slice
+ * early.
+ */
+function sliceFunction(src, at) {
+  /*
+   * The body brace is the one after the PARAMETER LIST closes. Taking
+   * `indexOf('{')` naively finds the brace of a destructured parameter —
+   * `deepScanMessages(messages, fetchBody, { limit = 3 })` — and the slice
+   * then ends at that parameter's closing brace, yielding the signature and
+   * nothing else. (My first version of this helper did exactly that.)
+   */
+  const lp = src.indexOf('(', at);
+  let depth = 0;
+  let rp = -1;
+  for (let i = lp; i < src.length && lp !== -1; i++) {
+    if (src[i] === '(') depth++;
+    else if (src[i] === ')' && --depth === 0) { rp = i; break; }
+  }
+  const open = src.indexOf('{', rp === -1 ? at : rp);
+  if (open === -1) return src.slice(at);
+  depth = 0;
+  for (let i = open; i < src.length; i++) {
+    const c = src[i];
+    if (c === '/' && src[i + 1] === '*') { i = src.indexOf('*/', i + 2) + 1; continue; }
+    if (c === '/' && src[i + 1] === '/') { i = src.indexOf('\n', i); if (i === -1) break; continue; }
+    if (c === '\'' || c === '"' || c === '`') {
+      const q = c;
+      for (i++; i < src.length; i++) {
+        if (src[i] === '\\') { i++; continue; }
+        if (src[i] === q) break;
+      }
+      continue;
+    }
+    if (c === '{') depth++;
+    else if (c === '}' && --depth === 0) return src.slice(at, i + 1);
+  }
+  return src.slice(at);
+}
+
 test('the scanner imports every gate it evaluates (no silent references)', () => {
   assert.match(ui, /import \{[^}]*scanMessages[^}]*\} from '\.\/timetable-mail\.js'/s);
   assert.match(ui, /import \{[^}]*isAcademicSender[^}]*\} from '\.\/timetable-mail\.js'/s);
@@ -27,9 +72,22 @@ test('the scanner imports every gate it evaluates (no silent references)', () =>
 });
 
 test('ingest scans academic mail BEFORE auto-archive can hide it (bug-hunt 44 #47)', () => {
+  /*
+   * THE WINDOW IS THE FUNCTION, NOT 2000 CHARACTERS (round 12).
+   *
+   * This used to slice a fixed 2000-char window after `function ingest(`.
+   * Round 5's R5-5 added a docblock inside that window, pushing the
+   * `autoArchive(` call to offset 2206 — `indexOf` returned -1, and the test
+   * failed reporting that the arrival pipeline no longer auto-archives at
+   * all. The ordering it exists to protect was never broken; a COMMENT broke
+   * it, and the failure message pointed at the wrong thing entirely.
+   *
+   * A brace-matched slice cannot be fooled by the length of an explanation,
+   * which is the whole point of a gate on ORDER.
+   */
   const at = app.indexOf('function ingest(');
   assert.notEqual(at, -1);
-  const fn = app.slice(at, at + 2000);
+  const fn = sliceFunction(app, at);
   const scanAt = fn.indexOf('deepScanMessages(');
   const archAt = fn.indexOf('autoArchive(');
   assert.ok(scanAt !== -1, 'the arrival pipeline runs the academic scan');
@@ -41,7 +99,7 @@ test('ingest scans academic mail BEFORE auto-archive can hide it (bug-hunt 44 #4
 test('the body pass is bounded and degrades on failure (bug-hunt 44 #46)', () => {
   const at = ui.indexOf('export async function deepScanMessages');
   assert.notEqual(at, -1);
-  const fn = ui.slice(at, at + 2600);
+  const fn = sliceFunction(ui, at); // not a fixed window; see sliceFunction
   assert.match(fn, /slice\(0, limit\)/, 'candidates are capped before any fetch');
   assert.match(fn, /catch \{ body = ''/, 'a failed body fetch degrades, it never throws');
   assert.match(fn, /mergeFindings\(\[\.\.\.kept, \.\.\.deep\]\)/,
