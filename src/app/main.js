@@ -3657,6 +3657,10 @@ function wireViewsPop() {
 }
 
 async function start() {
+  /* The generation this boot belongs to. Every post-await arming site below
+     compares against it, so a start() that is overtaken by a sign-out or an
+     account switch cannot arm a timer for a session that has ended. */
+  const epoch = opEpoch;
   try {
     const p = await send('PROFILE');
     el.account.textContent = p.emailAddress || '';
@@ -3743,6 +3747,21 @@ async function start() {
        * which is exactly why this survived — the first-run path is the one
        * that gets tested by hand.
        */
+      /*
+       * ARMED ONLY IF THE SESSION IS STILL THIS ONE.
+       *
+       * `start()` is async and this branch sits after two awaits, so a
+       * sign-out (or an account switch) can land while we are still here.
+       * `scheduleAutoRefresh` checks `state.signedIn`, but that is not
+       * sufficient on its own: sign-in immediately after a sign-out sets the
+       * flag back to true, and this stale continuation would then arm a
+       * SECOND timer belonging to a session that has already ended.
+       *
+       * `opEpoch` is the primitive the rest of this file uses for exactly
+       * that question (endAccountSession bumps it), so the guard is the same
+       * one every other post-await site uses rather than a new invention.
+       */
+      if (epoch !== opEpoch) return;
       scheduleAutoRefresh();
       return;
     }
@@ -3750,6 +3769,7 @@ async function start() {
 
   await loadPage('');
   setSkeleton(false);
+  if (epoch !== opEpoch) return; // the session ended while we were loading
   // Only after the inbox is on screen do we spend a request on a delta check.
   if (store.size) refresh({ silent: true });
   // From here on, mail arrives on its own.

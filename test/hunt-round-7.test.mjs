@@ -372,3 +372,46 @@ test('W-15: a wake is counted only when the local entry really went', () => {
     'the check must gate the counter, not follow it'
   );
 });
+
+/* ========================================================================
+ * P1-5 follow-up · the new arming site must respect the session generation
+ * ==================================================================== */
+
+test('P1-5: start() cannot arm an auto-refresh timer for a session that ended', () => {
+  /*
+   * FOUND BY CI, NOT LOCALLY (2026-08-17).
+   *
+   * P1-5 added `scheduleAutoRefresh()` to the cached-start branch, fixing a
+   * real bug — a returning user with a warm cache got no auto-refresh at
+   * all. But `start()` is async and that call sits after two awaits, so a
+   * sign-out landing mid-boot leaves a stale continuation that arms a timer
+   * for a session which has already ended. CI's slower box surfaced it as
+   * "auto-refresh stops when the user signs out" failing 6 !== 2; it does
+   * not reproduce on this machine, which is exactly why the guard is pinned
+   * by source rather than by a timing test that would be green either way.
+   *
+   * `scheduleAutoRefresh` does check `state.signedIn`, and that is NOT
+   * sufficient: a sign-in immediately after a sign-out sets the flag back to
+   * true, and the stale continuation would then arm a second timer for a
+   * session it does not belong to. `opEpoch` — bumped by endAccountSession
+   * before its first await — is the primitive the rest of this file already
+   * uses at every post-await site.
+   */
+  const main = code('src/app/main.js');
+  const fn = main.slice(main.indexOf('async function start()'));
+  const body = fn.slice(0, fn.indexOf('async function boot()'));
+
+  assert.match(body, /const epoch = opEpoch;/,
+    'start() must capture the generation it belongs to');
+
+  // EVERY arming site inside start() must be guarded, not just the one I
+  // happened to add — an unguarded sibling is the same bug wearing a
+  // different line number.
+  const sites = [...body.matchAll(/scheduleAutoRefresh\(\);/g)];
+  assert.ok(sites.length >= 2, `expected both start() arming sites, found ${sites.length}`);
+  for (const m of sites) {
+    const before = body.slice(Math.max(0, m.index - 200), m.index);
+    assert.match(before, /if \(epoch !== opEpoch\) return;/,
+      'an arming site in start() is not guarded by the session epoch');
+  }
+});
