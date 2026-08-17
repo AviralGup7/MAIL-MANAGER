@@ -28,6 +28,7 @@ function measureBox(el) {
 
 /** Geometry interpolation — pure, exported for pins. */
 export function lerpBox(a, b, t) {
+  if (!a || !b) return a || b || null;
   return {
     x: a.x + (b.x - a.x) * t,
     y: a.y + (b.y - a.y) * t,
@@ -46,6 +47,7 @@ export function lerpBox(a, b, t) {
  * Pure.
  */
 export function morphFrame(cur, base, t) {
+  if (!cur || !base) return null;
   if (t >= 1) return null;
   // Guard degenerate sizes (hidden elements measure 0): scaling by 0/0 is
   // NaN poison; a missing dimension keeps scale 1 and only slides.
@@ -68,6 +70,7 @@ export function morphFrame(cur, base, t) {
  * @returns {{cancel:()=>void, running:()=>boolean}}
  */
 export function morphGhost(ghostEl, from, opts = {}) {
+  if (!ghostEl?.style || !from) return;
   const preset = opts.preset || SPRINGS.PANEL;
   if (reducedMotion()) return { cancel() {}, running: () => false };
 
@@ -111,6 +114,7 @@ export function morphGhost(ghostEl, from, opts = {}) {
  * @param {{x:number,y:number}} anchor  client point the pop grows FROM
  */
 export function popFrom(el, anchor, opts = {}) {
+  if (!el || !anchor?.getBoundingClientRect) return;
   const preset = opts.preset || SPRINGS.PANEL;
   if (reducedMotion()) return { cancel() {}, running: () => false };
 

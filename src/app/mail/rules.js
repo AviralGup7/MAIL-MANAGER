@@ -204,6 +204,7 @@ export function correctSender(rules, from, category) {
 }
 
 export function clearCorrection(rules, from) {
+  if (!rules || typeof rules !== 'object' || !rules.corrections) rules = asRules(rules);
   const addr = mailboxOf(from);
   const next = { ...rules.corrections };
   delete next[addr];
@@ -219,6 +220,7 @@ export function clearCorrection(rules, from) {
  * match, and confidence is 1 because the user is not guessing.
  */
 export function applyCorrection(rules, msg) {
+  if (!msg || typeof msg !== 'object') return msg;
   const addr = mailboxOf(msg.from);
   /*
    * Own-read + string check (fuzz round 3, 2026-08-14, defect #4): the
@@ -241,6 +243,7 @@ export function applyCorrection(rules, msg) {
 
 /** Ids to hide from the inbox list because their category is muted. */
 export function filterMuted(rules, messages) {
+  if (!Array.isArray(messages)) return [];
   const muted = new Set(rules.muted);
   const threads = new Set(rules.mutedThreads || []);
   if (!muted.size && !threads.size) return messages;
@@ -293,6 +296,7 @@ export function isThreadMuted(rules, threadId) {
  * to tell whether to unmute a category or a conversation.
  */
 export function mutedThreadCount(rules, messages) {
+  if (!Array.isArray(messages)) return 0;
   const threads = new Set(rules.mutedThreads || []);
   if (!threads.size) return 0;
   let n = 0;
@@ -308,7 +312,14 @@ export function mutedThreadCount(rules, messages) {
  * a slow leak. Called after a full sync, when the live thread set is known.
  */
 export function pruneThreadMutes(rules, liveThreadIds) {
-  const live = liveThreadIds instanceof Set ? liveThreadIds : new Set(liveThreadIds);
+  /* Total, but IDENTITY-PRESERVING (round 11 sweep). Normalising
+     unconditionally would return a fresh object even when nothing changed,
+     and callers compare by identity to decide whether to persist — the
+     contract one line below. Only a missing/damaged input is rebuilt. */
+  if (!rules || typeof rules !== 'object' || !Array.isArray(rules.mutedThreads)) {
+    rules = asRules(rules);
+  }
+  const live = liveThreadIds instanceof Set ? liveThreadIds : new Set(liveThreadIds || []);
   const kept = (rules.mutedThreads || []).filter((t) => live.has(t));
   if (kept.length === (rules.mutedThreads || []).length) return rules;
   return { ...rules, mutedThreads: kept };
@@ -316,6 +327,7 @@ export function pruneThreadMutes(rules, liveThreadIds) {
 
 /** How many messages the CATEGORY mutes are hiding. Threads are counted separately. */
 export function mutedCount(rules, messages) {
+  if (!Array.isArray(messages)) return 0;
   if (!rules.muted.length) return 0;
   const muted = new Set(rules.muted);
   let n = 0;
@@ -336,6 +348,7 @@ export function mutedCount(rules, messages) {
  * subjects so the dialog can name examples without rendering a list.
  */
 export function autoArchiveMatchSet(messages, category, cap = 3) {
+  if (!Array.isArray(messages)) return { count: 0, samples: [] };
   let count = 0;
   const samples = [];
   for (const m of messages) {

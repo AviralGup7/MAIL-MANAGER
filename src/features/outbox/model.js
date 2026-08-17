@@ -277,6 +277,7 @@ export function enqueue(draft, { holdMs = DEFAULT_HOLD_MS, now = Date.now(), thr
  * its backoff expires and it has attempts left.
  */
 export function dueItems(items, now = Date.now()) {
+  if (!Array.isArray(items)) return [];
   return items.filter((it) => {
     if (it.state === 'held') return it.releaseAt <= now;
     if (it.state === 'failed') return it.attempts < MAX_ATTEMPTS && it.nextAttempt <= now;
@@ -295,6 +296,7 @@ export function dueItems(items, now = Date.now()) {
  * still run oldest-first.
  */
 export function prioritizeDue(items) {
+  if (!Array.isArray(items)) return [];
   return [...items].sort((a, b) => {
     const pa = a.state === 'held' ? 0 : 1;
     const pb = b.state === 'held' ? 0 : 1;
@@ -310,6 +312,7 @@ export function prioritizeDue(items) {
  * has nothing to do is a battery bug.
  */
 export function nextWakeIn(items, now = Date.now()) {
+  if (!Array.isArray(items)) return null;
   let soonest = Infinity;
   for (const it of items) {
     if (it.state === 'held') soonest = Math.min(soonest, it.releaseAt - now);
@@ -341,6 +344,7 @@ const ATTACHMENT_LOST = /Cannot recover attachment|Could not read attachment/;
  * used to carry three copies of this rule, and copies drift.
  */
 export function attemptsAfterFailure(item, fullError) {
+  if (!item || typeof item !== 'object') return 1;
   const lost = ATTACHMENT_LOST.test(fullError);
   const repeated = (item._fullError || item.error || '') !== '' &&
     (item._fullError || item.error) === fullError;
@@ -349,6 +353,7 @@ export function attemptsAfterFailure(item, fullError) {
 
 /** Record a failure and schedule the retry. Returns a NEW item. */
 export function markFailed(item, error, now = Date.now()) {
+  if (!item || typeof item !== 'object') return item;
   const full = String(error || 'Send failed');
   const message = full.slice(0, 200);
   let attempts = item.attempts + 1;
@@ -394,6 +399,7 @@ export function markUncertain(item, error) {
 }
 
 export function isStuck(item) {
+  if (!item || typeof item !== 'object') return false;
   return item.state === 'uncertain' ||
     (item.state === 'failed' && item.attempts >= MAX_ATTEMPTS);
 }
@@ -405,6 +411,7 @@ export function isStuck(item) {
  * cannot drift.
  */
 export function statusOf(item, now = Date.now()) {
+  if (!item || typeof item !== 'object') return 'unknown';
   if (item.state === 'held') {
     const left = Math.max(0, Math.ceil((item.releaseAt - now) / 1000));
     return left > 0 ? `Sending in ${left}s` : 'Sending…';

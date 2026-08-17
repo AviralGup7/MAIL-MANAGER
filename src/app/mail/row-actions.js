@@ -53,6 +53,7 @@ function runQuick(ctx, verb, m, anchorEl) {
  * faster path.
  */
 export function buildRowActions(li) {
+  if (!li?.querySelector) return;
   const wrap = document.createElement('span');
   wrap.className = 'r-actions';
   /* One verb cluster per row, and the date has right of way until the row is
@@ -73,6 +74,7 @@ export function buildRowActions(li) {
 
 /** The read/unread toggle names both directions; sync it to the message. */
 export function syncRowActions(li, m) {
+  if (!li?.querySelector || !m) return;
   const toggle = li.querySelector('.r-act[data-verb="unread"]');
   if (!toggle || !m) return;
   const label = m.unread ? 'Mark read' : 'Mark unread';

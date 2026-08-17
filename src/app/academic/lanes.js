@@ -156,6 +156,7 @@ export function laneOf(m, { self, now = Date.now(), isAnswered = () => false, du
  * @returns {Array<{lane:string, label:string, ids:string[]}>}
  */
 export function partition(ids, get, ctx = {}) {
+  if (!Array.isArray(ids)) ids = [];
   /** @type {Record<string,string[]>} */
   const buckets = {};
   for (const lane of LANES) buckets[lane] = [];
@@ -224,6 +225,7 @@ export function answeredPredicate(store, self) {
  * therefore conveys nothing.
  */
 export function laneCounts(ids, get, ctx = {}) {
+  if (!Array.isArray(ids)) ids = [];
   const out = {};
   for (const lane of LANES) out[lane] = 0;
   for (const id of ids) {

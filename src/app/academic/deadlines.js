@@ -102,6 +102,7 @@ const PAST_TOLERANCE = 30 * DAY_MS;
  * @returns {{at:number, kind:'deadline'|'event', text:string}|null}
  */
 export function extractDeadline(msg, now = Date.now()) {
+  if (!msg || typeof msg !== 'object') return null;
   const haystack = `${msg.subject || ''}. ${msg.snippet || ''}`.toLowerCase();
   if (!haystack.trim()) return null;
 

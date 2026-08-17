@@ -170,6 +170,7 @@ export async function removeSnooze(id, storage = STORAGE) {
  * makes a missed alarm survivable.
  */
 export function due(all, now = Date.now()) {
+  if (!all || typeof all !== 'object') return [];
   return Object.entries(all)
     /*
      * Number.isFinite, not typeof === 'number' (fuzz round 3, 2026-08-14,
@@ -214,6 +215,7 @@ export function nextWakeAt(all, now = Date.now()) {
 
 /** Still asleep, soonest first -- the order the Snoozed view should show. */
 export function pending(all, now = Date.now()) {
+  if (!all || typeof all !== 'object') return [];
   return Object.entries(all)
     /*
      * Same fuzz-5 guard as due(): a row with `at: Infinity` passes

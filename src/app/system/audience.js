@@ -144,6 +144,7 @@ export function isDirect(msg, selfAddress) {
  * @param {{includeCc?:boolean}} [opts]
  */
 export function filterDirect(ids, get, selfAddress, { includeCc = true } = {}) {
+  if (!Array.isArray(ids)) return [];
   const out = [];
   for (const id of ids) {
     const m = get(id);

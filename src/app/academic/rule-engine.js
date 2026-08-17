@@ -232,6 +232,7 @@ export function compileCondition(query, now = Date.now()) {
  * @param {(id:string)=>object|undefined} get
  */
 export function idsMatching(query, ids, get, now = Date.now()) {
+  if (!Array.isArray(ids)) return [];
   const test = compileCondition(query, now);
   const out = [];
   for (const id of ids) {
@@ -327,6 +328,7 @@ export function dryRun(rule, ids, get, { sample = 12, now = Date.now() } = {}) {
  * @returns {Array<{type:string, value?:string, ids:string[]}>}
  */
 export function batchPlan(plans) {
+  if (!Array.isArray(plans)) return [];
   /** @type {Map<string, {type:string, value?:string, ids:string[]}>} */
   const groups = new Map();
   for (const { id, actions } of plans) {
@@ -347,6 +349,7 @@ export function batchPlan(plans) {
  * Called at ingest. Returns a plan; the caller dispatches and logs it.
  */
 export function planFor(rules, messages, now = Date.now()) {
+  if (!Array.isArray(messages)) return [];
   const plans = [];
   const fired = new Map(); // ruleId -> count, for the audit log
   for (const m of messages) {

@@ -144,10 +144,12 @@ export function setFollowup(list, { threadId, messageId, dueAt, note }, now = Da
 }
 
 export function clearFollowup(list, threadId) {
+  if (!Array.isArray(list)) return [];
   return list.filter((f) => f.threadId !== threadId);
 }
 
 export function hasFollowup(list, threadId) {
+  if (!Array.isArray(list)) return false;
   return list.some((f) => f.threadId === threadId);
 }
 
@@ -239,6 +241,7 @@ export function openFollowups(list, store, self) {
  * forever and the storage blob becomes a slow leak.
  */
 export function pruneFollowups(list, store, self) {
+  if (!Array.isArray(list)) return [];
   return list.filter((f) => {
     const ids = typeof store?.threadIds === 'function' ? store.threadIds(f.threadId) : null;
     /*
@@ -261,6 +264,7 @@ export function pruneFollowups(list, store, self) {
  * identified as blocking five separate features, done for the first consumer.
  */
 export function asRadarItem(f, store) {
+  if (!f || typeof f !== 'object') return null;
   const m = typeof store?.get === 'function' ? store.get(f.messageId) : null;
   return {
     kind: 'followup',

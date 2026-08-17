@@ -178,6 +178,7 @@ export function parseAddressList(raw) {
  * @param {{selfAddress?:string}} opts
  */
 export function buildContacts(messages, opts = {}) {
+  if (!Array.isArray(messages)) return [];
   /*
    * SELF-EXCLUSION FOLDS THE PLUS TAG (round 11, B5).
    *

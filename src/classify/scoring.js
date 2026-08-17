@@ -126,6 +126,7 @@ export function scoreField(haystack, weights, fieldWeight) {
  * than a keyword appearing in a snippet.
  */
 export function resolveConflict(scored) {
+  if (!Array.isArray(scored)) return null;
   const best = scored[0];
   if (scored.length < 2) return best;
   const runnerUp = scored[1];

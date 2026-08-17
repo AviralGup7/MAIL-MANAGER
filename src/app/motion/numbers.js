@@ -27,6 +27,7 @@ const NUM = /(-?\d[\d,]*(?:\.\d+)?)/;
  * @returns {{running:()=>boolean, cancel:()=>void}}
  */
 export function tweenNumber(el, to, opts = {}) {
+  if (!el) return;
   const text = el.textContent || '';
   const m = text.match(NUM);
   const preset = opts.preset || SPRINGS.SNAP;

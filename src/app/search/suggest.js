@@ -166,6 +166,7 @@ export function currentToken(text, caret = null) {
  * @returns {Array<{type:string, value:string, label:string, hint?:string}>}
  */
 export function suggest(text, ctx = {}) {
+  if (typeof text !== 'string') return [];
   const { history = [], views = [], senders = [], labels = [], categories = [], limit = 8 } = ctx;
   const { prefix, token } = currentToken(text);
   const lower = token.toLowerCase();

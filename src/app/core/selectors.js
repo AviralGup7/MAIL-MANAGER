@@ -39,6 +39,7 @@ export function mutedHiddenCount(store, { mailbox, category, query, muted }) {
 
 /** Filter ids whose category is muted — under the same guards as above. */
 export function applyMute(ids, store, { mailbox, category, query, muted }) {
+  if (!Array.isArray(ids)) return [];
   if (!muted?.length) return ids;
   if (mailbox !== 'inbox') return ids;
   if (category !== 'all') return ids; // they asked for it by name
@@ -54,6 +55,7 @@ export function applyMute(ids, store, { mailbox, category, query, muted }) {
 
 /** Collapse a conversation to its root row, when threading is on. */
 export function collapseThreads(ids, store, { threaded }) {
+  if (!Array.isArray(ids)) return [];
   if (!threaded) return ids;
   return store.rootIds(ids);
 }
@@ -110,6 +112,7 @@ export function visibleIds(store, ctx) {
 
 /** Narrow a base id list with the parsed query's predicate. */
 export function applyPredicate(base, store, parsed) {
+  if (!Array.isArray(base)) return [];
   if (!parsed.predicate) return base;
   const out = [];
   for (const id of base) {
@@ -121,6 +124,7 @@ export function applyPredicate(base, store, parsed) {
 
 /** Same term semantics as the Store index: subject + from + snippet. */
 export function matchesQuery(m, parsed) {
+  if (!m || !parsed) return false;
   if (parsed.predicate && !parsed.predicate(m)) return false;
   if (!parsed.terms.length) return true;
   const hay = `${m.subject || ''} ${m.from || ''} ${m.snippet || ''}`.toLowerCase();

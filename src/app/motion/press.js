@@ -106,5 +106,6 @@ export function makePressable(el, opts = {}) {
 
 /** For tests: is this element mid-press? */
 export function isPressing(el) {
+  if (!el?.dataset) return false;
   return Object.prototype.hasOwnProperty.call(el.dataset, 'pressing');
 }

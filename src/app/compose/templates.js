@@ -263,6 +263,7 @@ export function unfilled(text) {
  * @param {object} values  auto-fill values
  */
 export function applyTemplate(tpl, draft = {}, values = {}) {
+  if (!tpl || typeof tpl !== 'object') return { subject: draft?.subject || '', body: draft?.body || '', _unfilled: [] };
   const body = fill(tpl.body, values);
   const isReply = /^\s*(re|fwd|fw)\s*:/i.test(draft.subject || '');
   const subject =

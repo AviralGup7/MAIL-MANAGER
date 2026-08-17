@@ -194,6 +194,7 @@ export function dismiss(map, messageId, { wasText, wasAt, now = Date.now() } = {
 
 /** Forget an override entirely, restoring whatever the extractor says. */
 export function clearOverride(map, messageId) {
+  if (!map || typeof map !== 'object') return {};
   if (!map[messageId]) return map;
   const next = { ...map };
   delete next[messageId];
@@ -265,6 +266,7 @@ export function dueAtOf(msg, map) {
 
 /** Has the user expressed an opinion about this message's deadline? */
 export function isOverridden(map, messageId) {
+  if (!map || typeof map !== 'object') return false;
   return !!map[messageId];
 }
 
@@ -311,6 +313,7 @@ export function pruneOverrides(map, liveIds) {
  * nothing about teaches nothing about parsing.
  */
 export function corpus(map) {
+  if (!map || typeof map !== 'object') return [];
   return Object.values(map)
     .filter((o) => o.wasText && (o.origin === 'corrected' || o.origin === 'dismissed'))
     .map((o) => ({

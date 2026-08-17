@@ -84,6 +84,7 @@ export function normaliseLog(raw) {
 
 /** Drop what is too old, then what is beyond the count cap. Newest first. */
 export function prune(entries, now = Date.now()) {
+  if (!Array.isArray(entries)) return [];
   return entries
     .filter((e) => now - e.at <= MAX_AGE_MS)
     .sort((a, b) => b.at - a.at)
@@ -122,6 +123,7 @@ export const FLUSH_MS = 1500;
  * no log.
  */
 export function record(entry, { storage = STORAGE, now = Date.now() } = {}) {
+  if (!entry || typeof entry !== 'object') return pending.length;
   const ids = Array.isArray(entry.ids) ? entry.ids : [];
   pending.push({
     at: Number.isFinite(entry.at) ? entry.at : now,
@@ -221,6 +223,7 @@ export function pendingCount() {
  * log view and any future export agree.
  */
 export function describe(entry) {
+  if (!entry || typeof entry !== 'object') return '';
   const n = entry.count || entry.ids.length;
   const what = n === 1 ? '1 message' : `${n} messages`;
   const verb = entry.verb.toLowerCase().replace(/_/g, ' ');

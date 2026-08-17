@@ -35,6 +35,7 @@ const V_EPS = 0.5;
  * @returns {[number, number]} the stepped [position, velocity]
  */
 export function springStep(x, v, target, spring, dt) {
+  if (!spring) return { x, v };
   const { stiffness: k, damping: c, mass: m } = spring;
   // F = -k(x - target) - c·v
   const a = (-k * (x - target) - c * v) / m;

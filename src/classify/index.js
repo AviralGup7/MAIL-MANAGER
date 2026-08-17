@@ -240,6 +240,7 @@ function describe(winner, scored) {
  * semaphore, which is pure overhead for synchronous work.
  */
 export function classifyAll(messages) {
+  if (!Array.isArray(messages)) return [];
   const out = new Array(messages.length);
   for (let i = 0; i < messages.length; i++) out[i] = classify(messages[i]);
   return out;

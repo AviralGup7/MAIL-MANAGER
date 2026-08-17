@@ -111,6 +111,7 @@ export function enrol(list, { courseNo, section, comCode }) {
 }
 
 export function unenrol(list, courseNo) {
+  if (!Array.isArray(list)) return [];
   const want = canonical(courseNo);
   return list.filter((e) => canonical(e.courseNo) !== want);
 }
@@ -128,12 +129,14 @@ export function canonical(courseNo) {
 
 /** Is the user enrolled in this course? */
 export function isEnrolled(list, courseNo) {
+  if (!Array.isArray(list)) return false;
   const want = canonical(courseNo);
   return list.some((e) => canonical(e.courseNo) === want);
 }
 
 /** Their section for a course, if they recorded one. */
 export function sectionFor(list, courseNo) {
+  if (!Array.isArray(list)) return '';
   const want = canonical(courseNo);
   return list.find((e) => canonical(e.courseNo) === want)?.section || '';
 }
@@ -218,6 +221,7 @@ export function sectionsOf(data, courseNo) {
  * a schedule view; that was cut.
  */
 export function myMeetings(data, list) {
+  if (!Array.isArray(list)) return [];
   const out = [];
   for (const e of list) {
     const course = findCourse(data, e.courseNo);

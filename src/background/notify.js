@@ -31,6 +31,7 @@ export const NOTIFY_BURST_CAP = 3;
  * @returns {Array<{id:string, category:string, subject:string, from:string}>}
  */
 export function selectNotifiable(added, notifiedIds = []) {
+  if (!Array.isArray(added)) return [];
   const seen = new Set(Array.isArray(notifiedIds) ? notifiedIds : []);
   const out = [];
   for (const m of added || []) {
@@ -63,6 +64,7 @@ export const NOTIFIED_CAP = 100;
  * safe; this function is only the arithmetic of it.
  */
 export function mergeNotified(freshIds, prev = []) {
+  if (!Array.isArray(freshIds)) return Array.isArray(prev) ? prev.slice(0, NOTIFIED_CAP) : [];
   const out = [];
   const seen = new Set();
   for (const id of [...(freshIds || []), ...(prev || [])]) {

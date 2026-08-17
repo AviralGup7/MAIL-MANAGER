@@ -288,6 +288,7 @@ export function summarise(notice) {
  * inbox and three is already a lot of vertical space to take from the list.
  */
 export function scanForNotices(messages, resolve, { limit = 3, threshold = 0.7 } = {}) {
+  if (!Array.isArray(messages)) return [];
   const out = [];
   for (const m of messages) {
     const ctx = resolve ? resolve(m) : {};

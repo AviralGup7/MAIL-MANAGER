@@ -2,6 +2,7 @@ import { Store } from './store.js';
 
 /** Pure fact model; raw IDs stay out of the everyday reader. */
 export function messageFacts(message, store, lowConfidence) {
+  if (!message || typeof message !== 'object') return [];
   const conversation = store?.thread(Store.threadOf(message));
   const confident = (message.confidence ?? 1) >= lowConfidence && message.source !== 'you';
   return [

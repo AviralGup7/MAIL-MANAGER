@@ -143,6 +143,7 @@ const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
  * user do work the query has already described.
  */
 export function suggestViewName(q) {
+  if (typeof q !== 'string') return '';
   const parsed = parseQuery(q, Date.now(), { dueAtOf: dueAtOfNow });
   const bits = [];
   for (const o of parsed.operators) {

@@ -131,6 +131,7 @@ export const entryId = (comCode, section) => {
  * teacher, which lecture section.
  */
 export function sectionsByKind(course) {
+  if (!course || typeof course !== 'object') return {};
   const out = { lecture: [], tutorial: [], practical: [] };
   for (const s of course.sections || []) {
     if (out[s.kind]) out[s.kind].push(s);
@@ -146,6 +147,7 @@ export function sectionsByKind(course) {
  * mixed case on continuation rows, and they are the same person.
  */
 export function instructorsFor(course) {
+  if (!course || typeof course !== 'object') return [];
   const seen = new Map();
   for (const s of course.sections || []) {
     if (s.kind !== 'lecture') continue;
@@ -183,6 +185,7 @@ export function instructorsFor(course) {
  * worse than an unanswered question.
  */
 export function linkedSections(course, lectureSection) {
+  if (!course || typeof course !== 'object') return { auto: [], choices: [] };
   const kinds = sectionsByKind(course);
   const result = { auto: [], choose: [] };
 
@@ -314,6 +317,7 @@ export function addCourse(state, course, { lecture, extraSections = [], ref, at 
 
 /** Remove a course entirely, or one section of it. */
 export function removeCourse(state, comCode, section = null) {
+  if (!Array.isArray(state?.entries)) return { state: emptyState(), removed: [] };
   const keep = (e) => (section ? !(e.comCode === comCode && e.section === section) : e.comCode !== comCode);
   const entries = state.entries.filter(keep);
   return {
@@ -392,6 +396,7 @@ export function switchSection(state, comCode, fromSection, course, toSection, at
  * never be resolvable from the source.
  */
 export function finalize(state, at = Date.now()) {
+  if (!state || typeof state !== 'object') return emptyState();
   const blocking = (state.conflicts || []).filter((c) => c.severity === 'blocking');
   if (blocking.length) {
     return {
@@ -534,6 +539,7 @@ function describeValue(field, v) {
 
 /** Lock or unlock an entry against automatic updates. */
 export function setLocked(state, id, locked, at = Date.now()) {
+  if (!Array.isArray(state?.entries)) return { state: state || emptyState(), applied: false, reason: 'no timetable' };
   return mapEntry(state, id, (e) => ({
     ...e,
     locked,
@@ -562,6 +568,7 @@ export function setLocked(state, id, locked, at = Date.now()) {
  * weakening the precedence rule.
  */
 export function manualEdit(state, id, field, value, at = Date.now(), ref = 'user') {
+  if (!Array.isArray(state?.entries)) return { state: state || emptyState(), applied: false, reason: 'no timetable' };
   let outcome = null;
   const next = mapEntry(state, id, (e) => {
     const r = applyFieldChange(e, field, value, { source: 'manual', ref, at });
@@ -579,6 +586,7 @@ export function manualEdit(state, id, field, value, at = Date.now(), ref = 'user
  * the source value" means the document's value, not the previous one.
  */
 export function restoreFromSource(state, id, field, course, at = Date.now()) {
+  if (!Array.isArray(state?.entries)) return { state: state || emptyState(), applied: false, reason: 'no timetable' };
   const entry = state.entries.find((e) => e.id === id);
   if (!entry) return { state, applied: false, reason: 'no such entry' };
   // B-08: the lock guarantee must not be bypassable through the restore
@@ -869,6 +877,7 @@ export const EXAM_SESSIONS = {
  *   startMin:number|null, endMin:number|null, time:string}[]}
  */
 export function examEvents(entries) {
+  if (!Array.isArray(entries)) return [];
   const out = [];
   for (const e of entries || []) {
     for (const type of ['midsem', 'compre']) {
@@ -1114,6 +1123,7 @@ const DAY_NAME_LONG = {
 
 /** The week, as a day -> sorted meetings map. For rendering a grid. */
 export function weekView(entries) {
+  if (!Array.isArray(entries)) return { days: [], hours: [], cells: new Map() };
   const week = { M: [], T: [], W: [], Th: [], F: [], S: [] };
   for (const e of entries) {
     for (const m of e.meetings || []) {
@@ -1206,6 +1216,7 @@ export function fmtTime(min) {
  * UI shows about provenance comes from here, so there is one wording.
  */
 export function explainEntry(entry) {
+  if (!entry || typeof entry !== 'object') return [];
   const lines = [];
   for (const field of TRACKED_FIELDS) {
     if (field === 'daysHours') continue; // shown as part of meetings

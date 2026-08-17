@@ -42,6 +42,7 @@ import { mailboxOf } from '../core/contacts.js';
  * two truths about where one token ends.
  */
 export function tokenize(q) {
+  if (typeof q !== 'string') return [];
   const out = [];
   let cur = '';
   let quoted = false;
@@ -486,6 +487,7 @@ function buildCheck(key, value, now, ctx = {}) {
 
 /** Human summary of what a query is doing, shown under the search box. */
 export function describeQuery(parsed) {
+  if (!parsed || typeof parsed !== 'object') return '';
   const bits = [];
   for (const o of parsed.operators) {
     bits.push(`${o.negated ? 'not ' : ''}${o.key}:${o.value}`);
@@ -519,6 +521,7 @@ function splitAddrs(v) {
  * @param {'reply'|'replyAll'|'forward'} mode
  */
 export function buildReply(body, selfEmail, mode = 'reply') {
+  if (!body || typeof body !== 'object') body = {};
   /*
    * IDENTITY IS THE MAILBOX (round 11, B13). See the dedupe note below.
    */

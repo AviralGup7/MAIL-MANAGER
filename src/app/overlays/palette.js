@@ -80,6 +80,7 @@ export function parseRecents(raw) {
  * for tests; the render path consumes only the return value.
  */
 export function orderForEmptyQuery(cmds, recentIds) {
+  if (!Array.isArray(cmds)) return [];
   const recent = [];
   const seen = new Set();
   for (const id of recentIds) {

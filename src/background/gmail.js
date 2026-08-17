@@ -363,6 +363,7 @@ export async function batchMetadata(ids) {
  * looking for the last blank-line separator inside the part.
  */
 export function parseBatch(text) {
+  if (typeof text !== 'string') return [];
   const m = text.match(/--([^\s-][^\r\n]*?)(?:\r?\n)/);
   if (!m) return [];
   const boundary = m[1].replace(/--$/, '');
@@ -983,6 +984,11 @@ function b64urlEncode(text) {
  *   attachments?:any[]}} m
  */
 export function buildMime(m) {
+  /* Total over its input (round 11 sweep): the outbox replays stored drafts
+     and a damaged record must not take the send path down with a TypeError.
+     A draft with no fields yields a well-formed empty message, which the
+     wire rejects honestly rather than the app crashing first. */
+  const draft = (m && typeof m === 'object') ? m : /** @type {any} */ ({ to: '', subject: '', body: '' });
   const boundary = `bmm_${Math.random().toString(36).slice(2)}`;
 
   /*
@@ -1015,15 +1021,15 @@ export function buildMime(m) {
    * already handles both, which is why it is reused rather than reinvented.
    */
   const headers = [
-    m.from ? foldHeader('From', safeAddressHeader(m.from)) : null,
+    draft.from ? foldHeader('From', safeAddressHeader(draft.from)) : null,
     /* An empty To: is malformed, and buildMime is fed by the outbox replaying
        stored drafts and by buildReply, not only by the compose UI -- so the
        guard belongs here at the wire rather than only in the form (round 8,
        M-9). Omitting the header is correct: a message with no To but a Bcc
        is legal, a message with a blank To is not. */
-    safeAddressHeader(m.to) ? foldHeader('To', safeAddressHeader(m.to)) : null,
-    m.cc ? foldHeader('Cc', safeAddressHeader(m.cc)) : null,
-    m.bcc ? foldHeader('Bcc', safeAddressHeader(m.bcc)) : null,
+    safeAddressHeader(draft.to) ? foldHeader('To', safeAddressHeader(draft.to)) : null,
+    draft.cc ? foldHeader('Cc', safeAddressHeader(draft.cc)) : null,
+    draft.bcc ? foldHeader('Bcc', safeAddressHeader(draft.bcc)) : null,
     /*
      * SUBJECT GETS THE SCRUB TOO (bug-hunt #1). encodeHeader alone passes a
      * pure-ASCII subject through unchanged, and an ASCII CR/LF in it was the
@@ -1038,16 +1044,16 @@ export function buildMime(m) {
      * line break; a multi-line compose input or a crafted inbound subject
      * has nothing honest on the later lines.
      */
-    foldHeader('Subject', encodeHeader(safeSubject(m.subject))),
+    foldHeader('Subject', encodeHeader(safeSubject(draft.subject))),
     // Threading. Without these two a reply starts a NEW conversation, which is
     // the single most visible way a mail client looks broken.
-    m.inReplyTo ? foldHeader('In-Reply-To', safeIdHeader(m.inReplyTo)) : null,
-    m.references ? foldHeader('References', safeIdHeader(m.references)) : null,
+    draft.inReplyTo ? foldHeader('In-Reply-To', safeIdHeader(draft.inReplyTo)) : null,
+    draft.references ? foldHeader('References', safeIdHeader(draft.references)) : null,
     'MIME-Version: 1.0',
   ].filter(Boolean);
 
-  const plain = m.body;
-  const html = plainToHtml(m.body);
+  const plain = draft.body;
+  const html = plainToHtml(draft.body);
 
   /*
    * The body is always multipart/alternative: a text/plain fallback beside the
@@ -1070,7 +1076,7 @@ export function buildMime(m) {
     '',
   ];
 
-  const files = Array.isArray(m.attachments) ? m.attachments.filter(Boolean) : [];
+  const files = Array.isArray(draft.attachments) ? draft.attachments.filter(Boolean) : [];
 
   /*
    * NO ATTACHMENTS: EMIT EXACTLY WHAT WE ALWAYS DID.

@@ -86,6 +86,7 @@ export function cancelOutboxTimer() {
  * text is an error, not a countdown.
  */
 export function needsTick(items, now = Date.now()) {
+  if (!Array.isArray(items)) return false;
   return items.some((it) =>
     (it.state === 'held' && it.releaseAt > now) ||
     (it.state === 'failed' && !outbox.isStuck(it) &&
@@ -152,6 +153,7 @@ export async function renderSnoozed() {
  * the right heading -- rows are moved into lane order first.
  */
 export function insertLaneHeaders(frag) {
+  if (!frag?.querySelectorAll) return;
   const rows = [...frag.children].filter((n) => n.classList?.contains('row'));
   if (rows.length === 0) return;
 

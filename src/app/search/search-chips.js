@@ -51,6 +51,7 @@ const SCOPE_LABELS = {
  * display.
  */
 export function chipModel(query) {
+  if (typeof query !== 'string') return [];
   const chips = [];
   for (const raw of tokenize(query)) {
     const m = /^(-?)([a-z_]+):(.*)$/.exec(raw);
@@ -77,6 +78,7 @@ function displayValue(raw) {
 
 /** What remains after one chip is removed. Pure — the shell applies it. */
 export function queryWithout(query, rawToDrop) {
+  if (typeof query !== 'string') return '';
   const kept = [];
   let dropped = false;
   for (const raw of tokenize(query)) {

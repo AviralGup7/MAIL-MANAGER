@@ -37,6 +37,7 @@ import { headerMap, toEpoch } from './gmail.js';
  * showed "(no content)" for any mail with an attachment.
  */
 export function extractBody(full) {
+  if (!full || typeof full !== 'object') return { id: '', threadId: '', html: '', text: '', attachments: [], inline: [] };
   // Headers needed to REPLY correctly, not just to display.
   //
   // Without Message-ID and References a reply arrives as a brand-new
@@ -176,6 +177,7 @@ export function extractBody(full) {
 
 /** Gmail returns base64url with no padding. atob wants base64 with padding. */
 export function b64url(data) {
+  if (typeof data !== 'string') return '';
   const b64 = data.replace(/-/g, '+').replace(/_/g, '/');
   const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
   try {

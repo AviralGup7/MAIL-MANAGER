@@ -266,6 +266,7 @@ export function closeWithMotion(node, after) {
  * Called by every open path. Cheap when nothing is closing.
  */
 export function cancelExit(node) {
+  if (!node?.classList) return;
   if (!node) return;
   node.classList.remove('closing');
   delete node.dataset.closing;

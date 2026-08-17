@@ -226,6 +226,7 @@ export async function syncDelta() {
  * Exported for testing; this is the part with all the ordering subtlety.
  */
 export function reduceHistory(records) {
+  if (!Array.isArray(records)) return { addIds: [], removeIds: [], patched: [] };
   /** @type {Map<string, 'add'|'remove'>} id -> final presence in our inbox */
   const fate = new Map();
   /** @type {Map<string, {id:string, unread?:boolean, starred?:boolean}>} */

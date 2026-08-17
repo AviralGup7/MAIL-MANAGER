@@ -491,6 +491,7 @@ export function scanMessages(messages, state) {
  * deliberate limit of what the source supports, and it is stated to the user.
  */
 export function matchNotice(changes, state) {
+  if (!Array.isArray(changes)) return [];
   const out = [];
   for (const c of changes || []) {
     const targets = state.entries.filter(

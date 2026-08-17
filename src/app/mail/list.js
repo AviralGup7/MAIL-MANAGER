@@ -710,6 +710,7 @@ export function setSkeleton(on) {
  * the message being filed.
  */
 export function travelGhost(fromRect, text) {
+  if (!fromRect) return;
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
   // Live destination: lay the toast out invisibly, read it, put it back.
@@ -1112,6 +1113,7 @@ function ensureCountParts(node) {
  * have not checked.
  */
 export function setCount(node, unread, total) {
+  if (!node?.querySelector) return;
   const { un, tot, sr } = ensureCountParts(node);
   const known = total !== null && total !== undefined;
   const u = known ? unread || 0 : 0;

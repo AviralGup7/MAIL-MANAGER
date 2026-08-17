@@ -44,6 +44,7 @@ export function ruleCount() {
  * Handles `Name <a@b.c>`, `<a@b.c>`, and a naked `a@b.c`.
  */
 export function extractAddress(from) {
+  if (typeof from !== 'string') return '';
   if (!from) return '';
   const angle = from.lastIndexOf('<');
   if (angle !== -1) {
@@ -73,6 +74,7 @@ const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])
  * closes the parse-level half of the spoof.
  */
 export function extractDomain(from) {
+  if (typeof from !== 'string') return '';
   const addr = extractAddress(from);
   const at = addr.lastIndexOf('@');
   if (at === -1) return '';
@@ -91,6 +93,7 @@ export function extractDomain(from) {
  * `bits-pilani.ac.in.evil.com` — a real phishing shape for a university.
  */
 export function detectBitsSource(from) {
+  if (typeof from !== 'string') return { isBits: false, domain: '' };
   const domain = extractDomain(from);
   if (!domain) return { isBits: false, domain: '' };
   for (const d of BITS_DOMAINS) {
@@ -110,6 +113,7 @@ export function detectBitsSource(from) {
  * @returns {{category:string, confidence:number, matchedPattern:string}|null}
  */
 export function classifyBySender(from, isBits) {
+  if (typeof from !== 'string') return null;
   if (!from) return null;
   const haystack = from.toLowerCase();
 
