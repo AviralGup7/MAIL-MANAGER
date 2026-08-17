@@ -1533,10 +1533,32 @@ function ingest(messages) {
     const body = await send('GET_BODY', { id });
     return body?.text || '';
   }).catch(() => {});
-  autoArchive(records);
+  /*
+   * THE SWEEP CLAIMS ITS MESSAGES, AND THE RULES GET WHAT IS LEFT
+   * (round 12, R5-5).
+   *
+   * The comment below has always said rules act on "anything the category
+   * sweep left behind" — but both functions were handed the SAME `records`
+   * array, and neither knew what the other had taken. Measured with one
+   * unread `clubs` message, `autoArchive: ['clubs']`, and the natural rule
+   * `category:clubs -> archive`: autoArchive removed it from the store and
+   * fired a BULK, then applyRules planned an archive batch for the very same
+   * id and fired a SECOND, concurrent BULK for it.
+   *
+   * Two requests for one message is the cheap half. The expensive half is
+   * that autoArchive records an undo holding a snapshot, and applyRules is
+   * mutating the same id underneath it — so Ctrl+Z restores a record the
+   * other path has already removed, and the activity log carries two entries
+   * blaming two different actors for one archive.
+   *
+   * `autoArchive` now returns the ids it claimed, and they are withheld from
+   * the rules pass. That makes the existing comment true instead of
+   * aspirational.
+   */
+  const swept = autoArchive(records);
   // User rules run after the category auto-archive, so a hand-written rule can
   // act on anything the category sweep left behind.
-  applyRules(records);
+  applyRules(swept.size ? records.filter((m) => !swept.has(m.id)) : records);
   return kept;
 }
 
@@ -1571,9 +1593,57 @@ async function applyRules(records) {
 
   const named = new Map(automationRules.map((r) => [r.id, r.name]));
 
+  /*
+   * ATTRIBUTION IS PER-VERB, NOT PER-INGEST (round 12, R5-2).
+   *
+   * This used to be one line hoisted out of the loop:
+   *
+   *     const who = Object.keys(fired).map((id) => named.get(id)).filter(Boolean)[0];
+   *
+   * `fired` is every rule that matched anything in the whole batch of arrivals,
+   * and `[0]` takes whichever happened to be first. That single name was then
+   * stamped on EVERY batch. Measured with two rules — "Star the Dean" (star)
+   * and "Archive digest" (archive) — over two messages: the archive entry was
+   * logged with `detail: "Star the Dean"`.
+   *
+   * So the activity log names the wrong rule, and it does it in the worst
+   * direction: a star rule gets the blame for an archive. The user goes to
+   * disable the rule that ate their mail and disables an innocent one, while
+   * the real one keeps running. Only the rules that actually contribute this
+   * verb are named.
+   */
+  const whoFired = (type) => {
+    const owners = automationRules
+      .filter((r) => fired[r.id] && r.actions?.some((a) => a.type === type))
+      .map((r) => named.get(r.id))
+      .filter(Boolean);
+    return owners.length > 1 ? `${owners[0]} +${owners.length - 1} more` : owners[0];
+  };
+
   for (const batch of batches) {
-    const spec = BULK_ACTIONS[batch.type === 'markRead' ? 'read' : batch.type];
-    if (!spec) continue;
+    const spec = BULK_ACTIONS[engine.BULK_VERB[batch.type] || batch.type];
+    if (!spec) {
+      /*
+       * A VERB THE GRAMMAR ALLOWS AND THIS BUILD CANNOT RUN (round 12, R5-1).
+       *
+       * `if (!spec) continue;` was the whole handling: four of the engine's
+       * seven verbs (label, category, pin, skipInbox) have no BULK_ACTIONS
+       * entry, so a saved, enabled, valid rule using one did precisely nothing
+       * and said nothing. The editors now refuse to save such a rule, but
+       * storage is shared with older versions and with backup import, so the
+       * inert rule can still arrive here — and when it does it is LOGGED
+       * rather than swallowed, because "why didn't my rule fire" has to be
+       * answerable from the activity log.
+       */
+      activity.record({
+        verb: `RULE_${batch.type.toUpperCase()}`,
+        ids: batch.ids,
+        actor: 'rule',
+        outcome: 'unsupported',
+        detail: whoFired(batch.type),
+      });
+      continue;
+    }
     try {
       const res = await send('BULK', { ids: batch.ids, add: spec.add || [], remove: spec.remove || [] });
       const failed = new Set(res?.failed || []);
@@ -1587,16 +1657,36 @@ async function applyRules(records) {
           else if (batch.type === 'star') store.patch(id, { starred: true });
         }
       });
+      /*
+       * THE LOG RECORDS WHAT GMAIL ACCEPTED, NOT WHAT WAS ATTEMPTED
+       * (round 12, R5-3).
+       *
+       * These two `record` calls used to both fire on a partial failure, and
+       * the second one passed `batch.ids` — the WHOLE batch, including the
+       * ids the server had just rejected — with no `outcome`, so it defaulted
+       * to 'ok'. Measured with one rejected id out of three: the log gained
+       * `{ids:[m2], outcome:'partial'}` immediately followed by
+       * `{ids:[m1,m2,m3], outcome:'ok'}`. m2 was never archived, the local
+       * store correctly left it alone, and the activity log stated twice over
+       * that it had been dealt with — in the one feature whose entire job is
+       * answering "why did this get archived".
+       *
+       * `autoArchive`, the sibling path twenty lines down, already got this
+       * right: it reports the partial and RETURNS. The success entry now
+       * names `applied` (which excludes the failures) and is skipped entirely
+       * when nothing landed, so an all-rejected batch cannot log a success.
+       */
       if (failed.size) {
         activity.record({ verb: `RULE_${batch.type.toUpperCase()}`, ids: [...failed], actor: 'rule', outcome: 'partial' });
       }
-      const who = Object.keys(fired).map((id) => named.get(id)).filter(Boolean)[0];
-      activity.record({
-        verb: `RULE_${batch.type.toUpperCase()}`,
-        ids: batch.ids,
-        actor: 'rule',
-        detail: who,
-      });
+      if (applied.length) {
+        activity.record({
+          verb: `RULE_${batch.type.toUpperCase()}`,
+          ids: applied,
+          actor: 'rule',
+          detail: whoFired(batch.type),
+        });
+      }
     } catch (err) {
       /*
        * A failed rule is reported and then LEFT ALONE. Retrying automation the
@@ -1614,11 +1704,15 @@ async function applyRules(records) {
   }
 }
 
+/**
+ * @returns {Set<string>} the ids this sweep claimed, so the rules pass can
+ *   skip them (R5-5). Empty when the sweep did nothing.
+ */
 function autoArchive(records) {
-  if (!rules.autoArchive.length) return;
+  if (!rules.autoArchive.length) return new Set();
   const targets = new Set(rules.autoArchive);
   const hits = records.filter((m) => targets.has(m.category) && m.unread && !m.fromSearch);
-  if (!hits.length) return;
+  if (!hits.length) return new Set();
 
   const ids = hits.map((m) => m.id);
   const snapshots = hits.map((m) => ({ ...m }));
@@ -1668,6 +1762,12 @@ function autoArchive(records) {
       toast('Could not auto-archive', { kind: 'error' });
     }
   );
+
+  /* Claimed synchronously, before the BULK resolves: the rules pass runs on
+     this tick and must not race the network round trip. If the archive later
+     fails, the snapshots are restored above — re-running rules over them is
+     not wanted either, since the user is being shown an error. */
+  return new Set(ids);
 }
 
 /**

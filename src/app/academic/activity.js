@@ -56,10 +56,25 @@ export const ACTORS = /** @type {const} */ (['user', 'rule', 'sync', 'system']);
  * @property {string} actor
  * @property {string[]} ids       truncated
  * @property {number} count       the real number, before truncation
- * @property {'ok'|'failed'|'partial'|'undone'} outcome
+ * @property {'ok'|'failed'|'partial'|'undone'|'unsupported'} outcome
  * @property {string} [error]
  * @property {string} [detail]    short, non-sensitive; e.g. a rule name
  */
+
+/**
+ * The closed set of outcomes.
+ *
+ * ONE definition (round 12, R5-1). This vocabulary was written out as a
+ * literal array in `normaliseLog` and again as a ternary chain in
+ * `describe`, so adding 'unsupported' in one place would have had the loader
+ * silently coerce it to 'ok' — the exact "the log lies" failure R5-3 fixes
+ * one file over.
+ *
+ * 'unsupported' means the action was never attempted because this build has
+ * no executor for that verb. It is NOT 'failed' (nothing was tried and
+ * nothing is retryable) and emphatically not 'ok'.
+ */
+export const OUTCOMES = /** @type {const} */ (['ok', 'failed', 'partial', 'undone', 'unsupported']);
 
 /** Coerce storage into a usable list. Never throws. */
 export function normaliseLog(raw) {
@@ -74,7 +89,7 @@ export function normaliseLog(raw) {
       actor: ACTORS.includes(e.actor) ? e.actor : 'system',
       ids: Array.isArray(e.ids) ? e.ids.filter((x) => typeof x === 'string').slice(0, MAX_IDS) : [],
       count: Number.isFinite(e.count) ? e.count : (Array.isArray(e.ids) ? e.ids.length : 0),
-      outcome: ['ok', 'failed', 'partial', 'undone'].includes(e.outcome) ? e.outcome : 'ok',
+      outcome: OUTCOMES.includes(e.outcome) ? e.outcome : 'ok',
       ...(typeof e.error === 'string' ? { error: e.error.slice(0, 200) } : {}),
       ...(typeof e.detail === 'string' ? { detail: e.detail.slice(0, 120) } : {}),
     });
@@ -231,6 +246,7 @@ export function describe(entry) {
   const status =
     entry.outcome === 'failed' ? ' — failed'
     : entry.outcome === 'partial' ? ' — partial'
-    : entry.outcome === 'undone' ? ' — undone' : '';
+    : entry.outcome === 'undone' ? ' — undone'
+    : entry.outcome === 'unsupported' ? ' — not supported in this version' : '';
   return `${verb} · ${what}${by}${status}`;
 }

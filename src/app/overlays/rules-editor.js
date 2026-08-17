@@ -182,6 +182,14 @@ export function buildRulesEditor(doc, ctx) {
       (id) => ctx.store.get(id),
     );
 
+    /* R5-1: a verb this build cannot execute is reported BEFORE the count,
+       because no count makes an inert rule worth saving. `dryRun` computes
+       it, so this editor and the options page cannot disagree. */
+    if (out.inert) {
+      say(out.unsupportedReason, true);
+      return null;
+    }
+
     if (out.count === 0) {
       say('Matches nothing among the loaded messages.');
     } else {

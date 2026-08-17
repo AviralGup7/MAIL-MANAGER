@@ -502,6 +502,12 @@ function fmtHold(sec) {
     const byId = new Map(msgs.map((m) => [m.id, m]));
     const out = engine.dryRun(rule, [...byId.keys()], (id) => byId.get(id));
 
+    /* R5-1: same gate as the in-app editor, from the same dryRun field. */
+    if (out.inert) {
+      say(out.unsupportedReason, true);
+      return null;
+    }
+
     if (out.count === 0) {
       say(`Matches nothing among the ${msgs.length} messages cached here.`);
     } else {

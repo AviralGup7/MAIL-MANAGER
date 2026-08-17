@@ -66,6 +66,85 @@ export const ACTIONS = /** @type {const} */ ([
 const NEEDS_VALUE = new Set(['label', 'category']);
 
 /**
+ * THE GRAMMAR IS WIDER THAN THE EXECUTOR, AND THAT GAP WAS UNGATED
+ * (round 12, R5-1).
+ *
+ * `ACTIONS` above is the grammar: what a rule record may legally SAY. What
+ * the app can actually DO is decided a whole module away, in main.js's
+ * `applyRules`, which looks each verb up in `BULK_ACTIONS` and does this:
+ *
+ *     const spec = BULK_ACTIONS[batch.type === 'markRead' ? 'read' : batch.type];
+ *     if (!spec) continue;                       // <- silently
+ *
+ * Four of the seven verbs have no entry there. Measured, by planning a rule
+ * list of the kind `normaliseRuleList` happily accepts:
+ *
+ *     pin        -> SILENTLY DROPPED
+ *     star       -> RUNS
+ *     skipInbox  -> SILENTLY DROPPED
+ *     label      -> SILENTLY DROPPED
+ *
+ * Every one of those rules validates, saves, survives a backup round trip,
+ * and renders in BOTH editors as a row with a ticked "enabled" checkbox. The
+ * user is looking at an automation that provably cannot fire, with no way to
+ * tell it apart from one that does — the exact "why didn't my rule fire"
+ * failure the editor's own comments say the dry run exists to prevent.
+ *
+ * Two lists that must agree, in two modules, with nothing asserting it. So
+ * the agreement is declared HERE, next to the grammar it constrains, and a
+ * test pins it against `BULK_ACTIONS`:
+ *
+ *   EXECUTABLE  — the app can carry this out today; `BULK_VERB` names how.
+ *   PLANNED     — grammar the record format accepts and the executor does
+ *                 not implement. Kept (rather than deleted from ACTIONS) so
+ *                 an imported backup carrying one is not silently mangled
+ *                 into a rule that means something else — but callers can
+ *                 now ASK, instead of finding out by watching nothing happen.
+ */
+export const BULK_VERB = /** @type {const} */ ({
+  archive: 'archive',
+  star: 'star',
+  markRead: 'read',
+});
+
+/** Verbs `applyRules` can actually dispatch. Pinned against BULK_ACTIONS. */
+export const EXECUTABLE = new Set(Object.keys(BULK_VERB));
+
+/**
+ * Declared grammar with no executor, each with the reason it is not one.
+ * A test asserts ACTIONS === EXECUTABLE ∪ PLANNED, so adding a verb to the
+ * grammar without either wiring or documenting it fails the build.
+ */
+export const PLANNED = /** @type {const} */ ({
+  label: 'needs a Gmail label id, which the bulk path does not resolve yet',
+  category: 'local classification, not a mailbox mutation the bulk path owns',
+  pin: 'local flag with no bulk verb',
+  skipInbox: 'overlaps archive; kept distinct in the grammar, unwired',
+});
+
+/**
+ * Can this rule actually run in this build?
+ *
+ * Separate from `validateRule`, which answers "is this a well-formed rule".
+ * A rule can be perfectly well-formed and still be inert.
+ *
+ * @returns {{ok:true} | {ok:false, unsupported:string[], reason:string}}
+ */
+export function executability(rule) {
+  const types = Array.isArray(rule?.actions) ? rule.actions.map((a) => a?.type) : [];
+  const unsupported = [...new Set(types.filter((t) => t && !EXECUTABLE.has(t)))];
+  if (unsupported.length === 0) return { ok: true };
+  return {
+    ok: false,
+    unsupported,
+    reason:
+      unsupported.length === 1
+        ? `This build cannot "${unsupported[0]}" yet — that part of the rule will not run.`
+        : `This build cannot do ${unsupported.map((u) => `"${u}"`).join(' or ')} yet — those parts of the rule will not run.`,
+  };
+}
+
+/**
  * Actions that MUTATE THE MAILBOX rather than local state.
  *
  * Split out because these are the ones that need a network round trip, need
@@ -296,8 +375,17 @@ export function dryRun(rule, ids, get, { sample = 12, now = Date.now() } = {}) {
 
   const matchedIds = idsMatching(rule.query, ids, get, now);
 
+  /* R5-1: the dry run is the ONE place both editors ask "what would this
+     do", so it is where "…and this part of it cannot do anything" belongs.
+     Reported alongside the count rather than instead of it: the condition
+     may still be worth previewing. */
+  const runnable = executability(rule);
+
   return {
     ok: true,
+    inert: !runnable.ok,
+    unsupported: runnable.ok ? [] : runnable.unsupported,
+    unsupportedReason: runnable.ok ? null : runnable.reason,
     count: matchedIds.length,
     ids: matchedIds,
     sample: matchedIds.slice(0, sample).map((id) => {
