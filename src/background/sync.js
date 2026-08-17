@@ -90,8 +90,24 @@ export async function commitHistoryId(id) {
     return current;
   }
 
+  /*
+   * RE-CHECK THE FLOOR IMMEDIATELY BEFORE WRITING.
+   *
+   * Checking it once at entry is not enough, and a concurrency test caught
+   * this: `await getHistoryId()` is a suspension point, so a commit that
+   * entered with a valid `wanted` can be parked there while a HIGHER commit
+   * completes end to end. When the stale one resumes, its entry check is
+   * long stale and it writes the lower value — the cursor regresses exactly
+   * as it did before any of this was added.
+   *
+   * The floor is raised synchronously by whoever wins, so re-reading it here
+   * (no await in between) is what actually enforces monotonicity within the
+   * worker.
+   */
+  if (wanted < cursorFloor) return String(cursorFloor);
+
   await setHistoryId(next);
-  cursorFloor = wanted;
+  if (wanted > cursorFloor) cursorFloor = wanted;
 
   /*
    * VERIFY. If a concurrent writer landed between our read and our write and

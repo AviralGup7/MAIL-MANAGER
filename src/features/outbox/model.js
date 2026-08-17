@@ -741,7 +741,7 @@ export async function flushOutbox(/** @type {{send?:(item:any)=>Promise<any>, st
         let removalPersisted = false;
         for (let attempt = 0; attempt < 3; attempt++) {
           const fresh = await readOutbox(storage);
-          if (!fresh.ok && fresh.reason === 'unavailable') break; // cannot verify; ledger holds
+          if (fresh.ok === false && fresh.reason === 'unavailable') break; // cannot verify; ledger holds
           if (!fresh.value.some((x) => x.id === item.id)) { removalPersisted = true; break; }
           const res = await mutateOutbox((cur) => cur.filter((x) => x.id !== item.id), storage);
           if (res.ok) { removalPersisted = true; break; }
@@ -812,7 +812,7 @@ export async function cancel(id, storage = STORAGE) {
   /* P0-2: a failed read must not become "the queue is empty, so there is
      nothing to cancel" — and more importantly must not lead to a write. */
   const got = await readOutbox(storage);
-  if (!got.ok && got.reason === 'unavailable') return null;
+  if (got.ok === false && got.reason === 'unavailable') return null;
   const items = got.value;
   const item = items.find((x) => x.id === id);
   if (!item) return null;
@@ -856,6 +856,11 @@ export async function retryNow(id, storage = STORAGE, now = Date.now()) {
 export function _resetOutbox() {
   inFlight = false;
   dispatching.clear();
+  /* `delivered` is module state that outlives a jsdom boot, exactly like
+     `dispatching`. Leaving it populated would make a LATER test's send be
+     skipped as an already-delivered duplicate — a cross-test leak, and a
+     nasty one because it manifests as an unrelated suite going flaky. */
+  delivered.clear();
 }
 
 /** Is this item on the wire right now? For the UI's disabled state. */

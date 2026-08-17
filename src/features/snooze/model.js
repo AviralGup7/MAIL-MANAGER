@@ -192,7 +192,7 @@ export async function removeSnooze(id, storage = STORAGE) {
    * PRESENT id would have written the truncated map.
    */
   const got = await readSnoozed(storage);
-  if (!got.ok && got.reason === 'unavailable') return got.value;
+  if (got.ok === false && got.reason === 'unavailable') return got.value;
   if (!(id in got.value)) return got.value;
   const res = await mutateSnoozed((all) => {
     const next = { ...all };

@@ -70,8 +70,8 @@ import { STORAGE } from './storage.js';
 
 /**
  * @template T
- * @typedef {{ok:true, value:T, present:boolean}
- *         | {ok:false, reason:'unavailable'|'corrupt', error?:string, value:T}} DurableRead
+ * @typedef {{ok:true, value:T, present:boolean, reason?:undefined, error?:undefined}
+ *         | {ok:false, reason:'unavailable'|'corrupt', error?:string, value:T, present?:undefined}} DurableRead
  */
 
 /**
@@ -82,7 +82,7 @@ import { STORAGE } from './storage.js';
  * @param {{storage?:any, normalise?:(raw:any)=>T, empty:T, isValid?:(raw:any)=>boolean}} opts
  * @returns {Promise<DurableRead<T>>}
  */
-export async function read(key, { storage = STORAGE, normalise = (x) => x, empty, isValid } = {}) {
+export async function read(key, { storage = STORAGE, normalise = (x) => x, empty, isValid } = /** @type {any} */ ({})) {
   let got;
   try {
     got = await storage.get(key);
@@ -122,10 +122,10 @@ export async function read(key, { storage = STORAGE, normalise = (x) => x, empty
  * @param {{storage?:any, normalise?:(raw:any)=>T, empty:T, isValid?:(raw:any)=>boolean}} opts
  * @returns {Promise<{ok:true, value:T} | {ok:false, reason:'unavailable'|'corrupt'|'write-failed', error?:string}>}
  */
-export async function mutate(key, change, { storage = STORAGE, normalise = (x) => x, empty, isValid } = {}) {
+export async function mutate(key, change, { storage = STORAGE, normalise = (x) => x, empty, isValid } = /** @type {any} */ ({})) {
   const got = await read(key, { storage, normalise, empty, isValid });
 
-  if (!got.ok && got.reason === 'unavailable') {
+  if (got.ok === false && got.reason === 'unavailable') {
     /*
      * THE REFUSAL. Writing here is precisely the bug: the base is unknown, so
      * the result of `change(base)` would silently discard whatever is really
