@@ -346,7 +346,9 @@ function selectorsCtx() {
     query: state.query,
     threaded: settings.get('threaded'),
     muted: ctx.getRules().muted,
-    parse: (q) => parseQuery(q, Date.now(), { dueAtOf: (m) => deadlineStore.dueAtOf(m, ctx.overrides()) }),
+    /* selfEmail feeds `to:me` (W-9); without it that operator matches
+       nothing rather than everything. */
+    parse: (q) => parseQuery(q, Date.now(), { dueAtOf: (m) => deadlineStore.dueAtOf(m, ctx.overrides()), selfEmail: state.selfEmail }),
     overlay: { ids: overlayIds, get: overlayGet },
   };
 }

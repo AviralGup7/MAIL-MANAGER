@@ -21,7 +21,7 @@ import { classify } from '../classify/index.js';
 import { selectNotifiable, mergeNotified, cardText } from './notify.js';
 import { SNOOZE_LABEL } from '../shared/labels.js';
 import { MAX_INLINE_BYTES, MAX_INLINE_PARTS, BULK_CHUNK } from '../shared/limits.js';
-import { loadSnoozed, removeSnooze, due, nextWakeAt } from '../features/snooze/model.js';
+import { loadSnoozed, readSnoozed, removeSnooze, due, nextWakeAt } from '../features/snooze/model.js';
 // Pure queue helpers (state machine, backoff, normalisation). The RUNNER
 // lives here in the worker now: one dispatcher for every tab (bug-hunt P1).
 import { loadOutbox, saveOutbox, dueItems, markFailed, markUncertain, prioritizeDue, dispatchable, markDelivered, wasDelivered } from '../features/outbox/model.js';
@@ -716,10 +716,29 @@ async function wakeDue(now = Date.now()) {
   }
 
   let woke = 0;
+  /* Woken in Gmail but still on the local schedule (W-15). */
+  let stillScheduled = 0;
   for (const id of ready) {
     try {
       await modify(id, ['INBOX', 'UNREAD'], [labelId]);
-      await removeSnooze(id, chrome.storage.local);
+      /*
+       * THE SAME PARTIAL COMMIT AS SNOOZE, IN REVERSE (round 13, W-15).
+       *
+       * Gmail has taken the message out of the snoozed label; if the local
+       * schedule entry cannot be removed, this counted a success anyway and
+       * the entry stayed due — so the next sweep wakes the same message
+       * again, forever, and the Snoozed view keeps listing something that is
+       * back in the inbox. The modify is idempotent so no mail is harmed,
+       * but the loop is unbounded and the local state never converges.
+       *
+       * `removeSnooze` returns the schedule it managed to write, so the
+       * entry's absence is the proof. Counted as woken only when it is gone.
+       */
+      const after = await removeSnooze(id, chrome.storage.local);
+      if (after && id in after) {
+        stillScheduled++;
+        continue;
+      }
       woke++;
     } catch (err) {
       const message = String(err?.message || err);
@@ -730,6 +749,9 @@ async function wakeDue(now = Date.now()) {
       }
       // Transient/auth/network failures stay queued for the next real wake.
     }
+  }
+  if (stillScheduled) {
+    console.warn(`[BMM] ${stillScheduled} message(s) woke in Gmail but could not be removed from the local schedule`);
   }
   return woke;
 }
@@ -743,7 +765,23 @@ async function wakeDue(now = Date.now()) {
  */
 async function scheduleWake() {
   if (!chrome.alarms) return;
-  const all = await loadSnoozed(chrome.storage.local);
+  /*
+   * A FAILED READ MUST NOT DISARM THE ALARM (round 13, W-14).
+   *
+   * `loadSnoozed` answers {} when storage throws, and {} means "nothing is
+   * snoozed", so this function concluded there was nothing to wake for and
+   * called `alarms.clear(WAKE_ALARM)`. The snoozes were still on disk and
+   * still labelled in Gmail — the READ had failed, not the schedule. With
+   * the only alarm cleared, nothing re-arms until some other event happens
+   * to call this again, so the wake can be deferred indefinitely. A
+   * liveness bug that a transient storage blip is enough to trigger.
+   *
+   * The three-state read distinguishes the two cases; on 'unavailable' the
+   * existing alarm is left exactly as it is.
+   */
+  const got = await readSnoozed(chrome.storage.local);
+  if (got.ok === false && got.reason === 'unavailable') return;
+  const all = got.value;
   /* AUD-L1 (audit 2026-08-15): the selection arithmetic moved to pure,
      pinned `nextWakeAt` in the snooze module. The old inline version
      filtered `typeof t === 'number'` — NaN passes that filter — so a

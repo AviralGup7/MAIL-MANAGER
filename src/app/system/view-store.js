@@ -1,4 +1,5 @@
 import { STORAGE } from '../../platform/storage.js';
+import { read as durableRead } from '../../platform/durable.js';
 
 /**
  * Saved views.
@@ -106,13 +107,30 @@ export async function loadViews(storage = STORAGE) {
   return [...BUILTIN_VIEWS.filter((v) => !hidden.includes(v.id)), ...custom];
 }
 
+/**
+ * The stored blob, or a signal that we could not read it (round 13, W-6).
+ *
+ * This returned `{views: [], hidden: []}` on a storage failure, and EVERY
+ * mutator below is a read-modify-write built on it. So a transient blip
+ * during `saveView` wrote a blob containing only the new view and destroyed
+ * the user's other saved views; `removeView` and `restoreBuiltins` had the
+ * same shape. Saved views are authored by hand and never recoverable from
+ * anywhere else — this is the `EMPTY` vs `UNAVAILABLE` conflation that cost
+ * the outbox and the snooze schedule, in a store nobody had revisited.
+ *
+ * `loadViews` above is intentionally left as-is: it is a READER, and a
+ * reader degrading to the built-ins is the right behaviour. Only the
+ * mutation base has to be certain.
+ */
 async function readRaw(storage) {
-  try {
-    const got = await storage.get(KEY);
-    return got?.[KEY] || { views: [], hidden: [] };
-  } catch {
-    return { views: [], hidden: [] };
-  }
+  const got = await durableRead(KEY, {
+    storage,
+    empty: { views: [], hidden: [] },
+    normalise: (raw) => (raw && typeof raw === 'object' ? raw : { views: [], hidden: [] }),
+    isValid: (raw) => !!raw && typeof raw === 'object' && !Array.isArray(raw),
+  });
+  if (got.ok === false && got.reason === 'unavailable') return null;
+  return got.value;
 }
 
 /** A view must have a usable name and a non-empty query. */
@@ -138,6 +156,7 @@ export async function saveView(name, query, storage = STORAGE) {
   if (!q) return { ok: false, error: 'There is no search to save.' };
 
   const raw = await readRaw(storage);
+  if (!raw) return { ok: false, error: 'Storage is unavailable — nothing was changed.' };
   const views = raw.views || [];
 
   // Reject a duplicate NAME rather than silently creating two identical
@@ -164,6 +183,7 @@ export async function saveView(name, query, storage = STORAGE) {
  */
 export async function removeView(id, storage = STORAGE) {
   const raw = await readRaw(storage);
+  if (!raw) return { ok: false, error: 'Storage is unavailable — nothing was changed.' };
   const next = BUILTIN_VIEWS.some((v) => v.id === id)
     ? { ...raw, hidden: [...new Set([...(raw.hidden || []), id])] }
     : { ...raw, views: (raw.views || []).filter((v) => v.id !== id) };
@@ -173,6 +193,7 @@ export async function removeView(id, storage = STORAGE) {
 /** Restore every hidden built-in. */
 export async function restoreBuiltins(storage = STORAGE) {
   const raw = await readRaw(storage);
+  if (!raw) return { ok: false, error: 'Storage is unavailable — nothing was changed.' };
   return write({ ...raw, hidden: [] }, storage, 'Could not restore the views.');
 }
 

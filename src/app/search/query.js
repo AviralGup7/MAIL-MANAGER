@@ -387,13 +387,41 @@ function buildCheck(key, value, now, ctx = {}) {
   switch (key) {
     case 'from':
       return (m) => asText(m.from).toLowerCase().includes(value);
-    case 'to':
-      // To/Cc are part of the canonical metadata record. Specific-recipient
-      // search is therefore answerable locally (especially useful in Sent).
-      // `to:me` keeps its established mailbox shorthand until every caller
-      // supplies the proved account identity through ctx.
-      if (value === 'me') return () => true;
+    case 'to': {
+      /*
+       * `to:me` MEANT "EVERY MESSAGE" (round 13, W-9).
+       *
+       * `if (value === 'me') return () => true;` was written as a placeholder
+       * "until every caller supplies the proved account identity", but a
+       * predicate that matches everything is not a deferred feature — it is
+       * a wrong answer. Two things make it serious:
+       *
+       *   1. This parser also compiles RULES. `to:me -> archive` is a
+       *      perfectly natural rule to write, and it validated, previewed
+       *      against the corpus and would archive THE ENTIRE MAILBOX.
+       *      `validateRule` rejects a query matching everything, but this
+       *      one does not look empty — it looks specific.
+       *   2. Local results paint before any server search returns, so the
+       *      user sees the wrong set even where Gmail would have corrected
+       *      it, and offline there is no correction at all.
+       *
+       * The identity arrives through the same `ctx` seam `dueAtOf` uses.
+       * `mailboxOf` is the comparator the round-11 identity gate settled on
+       * (plus-addressing folded, case folded), so this cannot become an
+       * eighth private spelling of "is this me".
+       *
+       * WITHOUT an identity the honest answer is "match nothing", not
+       * "match everything": a caller that never supplied one now gets an
+       * empty result it can notice, instead of a silent catch-all.
+       */
+      if (value === 'me') {
+        const self = mailboxOf(ctx.selfEmail || '');
+        if (!self) return () => false;
+        return (m) => parseAddressList(`${asText(m.to)}, ${asText(m.cc)}`)
+          .some((a) => mailboxOf(a.address) === self);
+      }
       return (m) => `${asText(m.to)} ${asText(m.cc)}`.toLowerCase().includes(value);
+    }
     case 'subject':
       return (m) => asText(m.subject).toLowerCase().includes(value);
     case 'category':

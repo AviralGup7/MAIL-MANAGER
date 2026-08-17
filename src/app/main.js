@@ -2731,11 +2731,24 @@ function openFollowupMenu(id, anchor) {
         messageId: id,
         dueAt: Date.now() + p.ms,
       });
-      await followups.saveFollowups(followupList);
-      activity.record({ verb: 'FOLLOWUP_SET', ids: [id], actor: 'user' });
+      /*
+       * THE TOAST MUST NOT OUTRUN THE DISK (round 13, W-7).
+       *
+       * `saveFollowups` returns false when storage rejects the write, and
+       * that return was discarded — so a quota error produced "Will remind
+       * you tomorrow" over a reminder that existed only in memory and would
+       * be gone on the next reload. The user has been told the opposite of
+       * what happened, which is worse than an error: they stop thinking
+       * about the thread.
+       */
+      const saved = await followups.saveFollowups(followupList);
+      activity.record({ verb: 'FOLLOWUP_SET', ids: [id], actor: 'user', ...(saved ? {} : { outcome: 'failed' }) });
       renderRadar(ctx);
     renderReaderIdle(ctx);
-      toast(`Will remind you ${p.label.toLowerCase()}`);
+      toast(saved
+        ? `Will remind you ${p.label.toLowerCase()}`
+        : 'Could not save that reminder — storage is full or unavailable.',
+      saved ? undefined : { kind: 'error' });
     },
   }));
 
@@ -2744,10 +2757,11 @@ function openFollowupMenu(id, anchor) {
       text: 'Clear follow-up',
       run: async () => {
         followupList = followups.clearFollowup(followupList, m.threadId);
-        await followups.saveFollowups(followupList);
+        const cleared = await followups.saveFollowups(followupList);
         renderRadar(ctx);
     renderReaderIdle(ctx);
-        toast('Follow-up cleared');
+        toast(cleared ? 'Follow-up cleared' : 'Could not clear that reminder — it may come back.',
+          cleared ? undefined : { kind: 'error' });
       },
     });
   }
@@ -2773,12 +2787,16 @@ function openDeadlineMenu(id, anchor) {
     deadlineOverrides = origin === 'dismiss'
       ? deadlineStore.dismiss(deadlineOverrides, id, { wasText: m.dueText, wasAt: m.dueAt })
       : deadlineStore.setManual(deadlineOverrides, id, at);
-    await deadlineStore.saveOverrides(deadlineOverrides);
-    activity.record({ verb: 'DEADLINE_SET', ids: [id], actor: 'user' });
+    /* W-7: same lie as the follow-up toast. A deadline correction is a
+       deliberate act the user will not repeat, so reporting a save that did
+       not happen is how a corrected date silently reverts. */
+    const saved = await deadlineStore.saveOverrides(deadlineOverrides);
+    activity.record({ verb: 'DEADLINE_SET', ids: [id], actor: 'user', ...(saved ? {} : { outcome: 'failed' }) });
     renderRadar(ctx);
     renderReaderIdle(ctx);
     renderList();
-    toast(origin === 'dismiss' ? 'Not a deadline' : 'Deadline set');
+    if (!saved) toast('Could not save that change — storage is full or unavailable.', { kind: 'error' });
+    else toast(origin === 'dismiss' ? 'Not a deadline' : 'Deadline set');
   };
 
   /*

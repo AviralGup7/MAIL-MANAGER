@@ -319,10 +319,27 @@ test('P1-6: a failed non-inbox refresh restores the page it cleared', () => {
   assert.match(branch, /const snapshot = /, 'the old page must be captured before clear()');
   assert.ok(branch.indexOf('const snapshot') < branch.indexOf('st.clear()'),
     'snapshotting after the clear would capture nothing');
-  assert.match(branch, /catch \{/, 'the fetch must be guarded');
-  assert.match(branch, /for \(const m of snapshot\) st\.upsert\(m\)/, 'and the snapshot restored');
+  /*
+   * UPDATED BY W-4, AND THE UPDATE IS THE POINT.
+   *
+   * This used to assert `catch {`, and it PASSED while the rollback was dead
+   * code: `loadMailboxPage` catches internally and resolves normally, so the
+   * catch could never fire. A test that pins the SHAPE of a fix rather than
+   * its EFFECT will happily certify a no-op. It now asserts the mechanism
+   * that actually works — the returned outcome being read.
+   */
+  assert.match(branch, /const ok = await loadMailboxPage\(id, ''\);/,
+    'the outcome must be captured, not assumed from the absence of a throw');
+  assert.match(branch, /if \(!ok\) \{/, 'and acted on');
+  assert.match(branch, /for \(const m of snapshot\) st\.upsert\(m\)/, 'restoring the snapshot');
   assert.ok(!/throw err;/.test(branch),
     'must not rethrow: callers neither await nor catch, so a throw becomes an unhandled rejection');
+
+  // And the callee must actually report failure, or `ok` is always truthy.
+  const fn = main.slice(main.indexOf('async function loadMailboxPage'));
+  const body = fn.slice(0, fn.indexOf('\nasync function pruneAfterFullSync'));
+  assert.match(body, /return false;/, 'loadMailboxPage must report a failed load');
+  assert.match(body, /return true;/, 'and a successful one');
 });
 
 test('P1-9: the history cursor cannot be talked backwards in-process', async () => {
