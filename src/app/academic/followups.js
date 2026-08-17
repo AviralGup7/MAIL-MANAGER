@@ -127,7 +127,7 @@ export async function saveFollowups(list, storage = STORAGE) {
  * list, and sorting by `createdAt` means the thing dropped is the thing the
  * user cared about least recently.
  */
-export function setFollowup(list, { threadId, messageId, dueAt, note }, now = Date.now()) {
+export function setFollowup(list, { threadId, messageId, dueAt, note } = {}, now = Date.now()) {
   if (!Array.isArray(list)) list = [];
   if (!threadId || !Number.isFinite(dueAt)) return list;
   const without = list.filter((f) => f.threadId !== threadId);

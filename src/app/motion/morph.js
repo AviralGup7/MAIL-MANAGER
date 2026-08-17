@@ -114,7 +114,10 @@ export function morphGhost(ghostEl, from, opts = {}) {
  * @param {{x:number,y:number}} anchor  client point the pop grows FROM
  */
 export function popFrom(el, anchor, opts = {}) {
-  if (!el || !anchor?.getBoundingClientRect) return;
+  /* `anchor` is a POINT ({x, y}) — the pointer position — not an element.
+     My first sweep guard demanded getBoundingClientRect and disabled every
+     pop; the tests caught it. Guard what is actually read. */
+  if (!el?.getBoundingClientRect || !Number.isFinite(anchor?.x) || !Number.isFinite(anchor?.y)) return;
   const preset = opts.preset || SPRINGS.PANEL;
   if (reducedMotion()) return { cancel() {}, running: () => false };
 

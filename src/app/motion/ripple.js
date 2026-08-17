@@ -26,6 +26,7 @@ const RIPPLE_MS = 700;
  * @param {number} y clientY of the press
  */
 export function spawnRipple(host, x, y) {
+  if (!host?.querySelectorAll) return;
   if (reducedMotion()) return;
   if (!host) return;
 

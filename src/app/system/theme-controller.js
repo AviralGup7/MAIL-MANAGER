@@ -33,7 +33,12 @@ export function applyInitialTheme(savedTheme, osDark, state) {
  * User-driven theme transition: apply, voice the one themed arrival, report,
  * and persist through the schema authority.
  */
-export function chooseTheme(id, { state, toast }) {
+export function chooseTheme(id, /** @type {{state?:any, toast?:Function}} */ { state, toast } = {}) {
+  /* state and toast are REQUIRED collaborators, not options: a theme change
+     with nowhere to record itself and nothing to announce it is not a
+     partial success, it is a no-op. Refusing here beats crashing one line
+     down on `state.theme` (round 11 sweep). */
+  if (!state || typeof toast !== 'function') return applyTheme(id);
   const theme = applyTheme(id);
   state.theme = theme.id;
   if (theme.id === 'cyberpunk') cyberpunkEnterFx();

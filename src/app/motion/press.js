@@ -36,6 +36,7 @@ const yours = new WeakMap();
  * @param {number} [opts.sink=1]       px of downward travel at full press
  */
 export function makePressable(el, opts = {}) {
+  if (!el?.addEventListener) return;
   if (!el || yours.has(el)) return;
   const depth = opts.depth ?? 0.035;
   const sink = opts.sink ?? 1;

@@ -101,7 +101,7 @@ export async function saveEnrolment(list, storage = STORAGE) {
  * A reader and a writer that disagree about identity is how a list grows a
  * duplicate nobody can delete.
  */
-export function enrol(list, { courseNo, section, comCode }) {
+export function enrol(list, { courseNo, section, comCode } = {}) {
   const norm = normaliseEnrolment([{ courseNo, section, comCode }]);
   if (norm.length === 0) return list;
   const [entry] = norm;

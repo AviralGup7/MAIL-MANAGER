@@ -33,6 +33,8 @@ const RADAR_MAX = 6;
  * "what needs you", rendered two ways.
  */
 export function collectDueItems(ctx) {
+  if (!ctx?.store?.idsFor) return [];
+  if (!ctx || typeof ctx !== 'object') return [];
   const now = Date.now();
   const items = [];
 

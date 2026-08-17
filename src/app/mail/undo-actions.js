@@ -23,6 +23,7 @@ export const undoStack = new UndoStack();
  * network call is the part nobody waits for.
  */
 export function recordUndo(ctx, label, undoFn) {
+  if (!ctx || typeof undoFn !== 'function') return;
   undoStack.push(label, undoFn);
   /*
    * The single best reason to prefer this over Gmail used to be communicated

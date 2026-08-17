@@ -50,7 +50,11 @@ function writeBox(pill, b) {
  *   identity, not nodes: a re-rendered button with the same key is a no-op
  */
 export function syncPill(group, btn, key) {
-  if (!group) return;
+  /* A NULL btn is MEANINGFUL: it means "no active tab", and the pill must
+     retract rather than no-op — see the retract path below. Only a group
+     that cannot host the pill is a non-starter. (round 11 sweep: my first
+     guard rejected `!btn` and broke that contract.) */
+  if (!group?.prepend) return;
   let st = yours.get(group);
   if (!st) {
     const pill = document.createElement('div');

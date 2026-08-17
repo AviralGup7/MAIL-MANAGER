@@ -54,7 +54,8 @@ let pendingSelection = null;
  * state → hash. Always canonical: mailbox and category always present,
  * query only while filtering, message only while a message is open.
  */
-export function formatHash({ mailbox, category, query, selected }) {
+export function formatHash(/** @type {{mailbox?:string, category?:string, query?:string, selected?:string}} */
+  { mailbox, category, query, selected } = {}) {
   let h = `#${mailbox || 'inbox'}/${category || 'all'}`;
   const params = [];
   /*
@@ -77,7 +78,7 @@ export function formatHash({ mailbox, category, query, selected }) {
  * us (an empty hash is not foreign; it means "the default view").
  * Unknown MAILBOXES are foreign: applying one would desync the store.
  */
-export function parseHash(hash, { validMailbox }) {
+export function parseHash(hash, /** @type {{validMailbox?:(m:string)=>boolean}} */ { validMailbox } = {}) {
   const raw = String(hash || '').replace(/^#/, '');
   if (!raw) return { mailbox: null, category: null, q: '', m: null };
   const [path, qs = ''] = raw.split('?');

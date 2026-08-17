@@ -235,6 +235,7 @@ export function parseCredits(cols) {
 }
 
 export function makeEntry(course, section, { source = 'document', ref, at = Date.now(), linkedTo = '' } = {}) {
+  if (!course || !section) return null;
   const prov = (field) => ({
     source: (section.unresolved || []).includes(field) ? 'unresolved' : source,
     ref: ref || '',
@@ -290,7 +291,12 @@ export function makeEntry(course, section, { source = 'document', ref, at = Date
  * no-op rather than a duplicate, because the natural user gesture after a
  * mistake is to try again.
  */
-export function addCourse(state, course, { lecture, extraSections = [], ref, at = Date.now() }) {
+export function addCourse(state, course, { lecture, extraSections = [], ref, at = Date.now() } = {}) {
+  /* Total over a missing or half-built state (round 11 sweep): the builder
+     runs against whatever the store handed back, and a boot that has not
+     loaded yet is `undefined`, not a crash. */
+  if (!Array.isArray(state?.entries)) state = emptyState();
+  if (!course) return { state, added: [] };
   const next = { ...state, entries: [...state.entries] };
   const added = [];
 
@@ -346,6 +352,7 @@ export function removeCourse(state, comCode, section = null) {
  * A section the user does not hold is left alone -- no silent insert.
  */
 export function switchSection(state, comCode, fromSection, course, toSection, at = Date.now()) {
+  if (!Array.isArray(state?.entries)) return { state: state || emptyState(), applied: false, reason: 'no timetable' };
   const old = state.entries.find(
     (e) => e.comCode === comCode && e.section === fromSection
   );
@@ -449,7 +456,7 @@ export function resetTimetable(state, at = Date.now()) {
  * notice arriving later must not quietly undo their decision. It is reported,
  * so they can choose to accept it.
  */
-export function applyFieldChange(entry, field, value, { source, ref, at = Date.now(), note = '' }) {
+export function applyFieldChange(entry, field, value, { source, ref, at = Date.now(), note = '' } = {}) {
   if (!TRACKED_FIELDS.includes(field)) {
     return { entry, applied: false, reason: `"${field}" is not a tracked field` };
   }

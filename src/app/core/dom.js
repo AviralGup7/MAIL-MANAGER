@@ -14,6 +14,7 @@
 
 /** Write an attribute only when it changed. */
 export function setAttr(node, name, value) {
+  if (!node?.getAttribute) return;
   if (!node) return;
   const v = value || '';
   if (node.getAttribute(name) !== v) node.setAttribute(name, v);

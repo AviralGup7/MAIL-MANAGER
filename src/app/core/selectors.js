@@ -30,7 +30,7 @@
  * search is active: a mute that made mail unfindable would be worse than the
  * noise it removes.
  */
-export function mutedHiddenCount(store, { mailbox, category, query, muted }) {
+export function mutedHiddenCount(store, { mailbox, category, query, muted } = {}) {
   if (!muted?.length || mailbox !== 'inbox') return 0;
   if (category !== 'all' || query) return 0;
   const all = store.idsFor('all');
@@ -38,7 +38,7 @@ export function mutedHiddenCount(store, { mailbox, category, query, muted }) {
 }
 
 /** Filter ids whose category is muted — under the same guards as above. */
-export function applyMute(ids, store, { mailbox, category, query, muted }) {
+export function applyMute(ids, store, { mailbox, category, query, muted } = {}) {
   if (!Array.isArray(ids)) return [];
   if (!muted?.length) return ids;
   if (mailbox !== 'inbox') return ids;
@@ -54,7 +54,7 @@ export function applyMute(ids, store, { mailbox, category, query, muted }) {
 }
 
 /** Collapse a conversation to its root row, when threading is on. */
-export function collapseThreads(ids, store, { threaded }) {
+export function collapseThreads(ids, store, { threaded } = {}) {
   if (!Array.isArray(ids)) return [];
   if (!threaded) return ids;
   return store.rootIds(ids);
@@ -70,6 +70,7 @@ export function collapseThreads(ids, store, { threaded }) {
  * answer.
  */
 export function visibleIds(store, ctx) {
+  if (!store || !ctx) return [];
   const { mailbox, category, query, threaded, muted, parse, overlay } = ctx;
   if (!query) {
     const muted = applyMute(store.idsFor(category), store, ctx);

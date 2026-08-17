@@ -50,6 +50,7 @@ const VERBS = [
  * @returns {HTMLElement}
  */
 export function buildRulesEditor(doc, ctx) {
+  if (!doc?.createElement) return null;
   const root = doc.createElement('div');
   root.className = 'rules-editor';
 

@@ -99,6 +99,7 @@ export function iconMarkup(name, size = 16) {
 
 /** Replace a button's text glyph with a real icon, keeping its label. */
 export function setIcon(el, name, opts) {
+  if (!el?.replaceChildren) return;
   if (!el) return;
   el.replaceChildren(icon(name, opts));
 }

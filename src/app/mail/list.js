@@ -296,10 +296,12 @@ export function resetScrollState() {
 
 /** R4: each category keeps its place; returning is returning, not resetting. */
 export function saveScroll(key) {
+  if (!el?.scroller) return;
   scrollMemory.set(key, el.scroller.scrollTop);
 }
 
 export function recallScroll(key) {
+  if (!el?.scroller) return;
   return scrollMemory.get(key) || 0;
 }
 
@@ -310,6 +312,7 @@ export function capturePreSearchScroll() {
 
 /** R5: clearing a search returns you to where the search began. */
 export function applySearchScroll(hasQuery) {
+  if (!el?.scroller) return;
   pendingScrollRestore = 0;
   lastUserScroll = 0;
   el.scroller.scrollTop = hasQuery ? 0 : preQueryScroll;
@@ -321,6 +324,7 @@ export function applySearchScroll(hasQuery) {
  * toasts only what the pill did not.
  */
 export function announceNew(n) {
+  if (!el?.scroller || !Number.isFinite(n)) return;
   if (!n) return false;
   if (el.scroller.scrollTop > 200) {
     // The anchor held, but the arrival must not be invisible. The pill is
@@ -357,6 +361,7 @@ export function visibleIds() {
 
 /** Sidebar total: collapse at the same choke point as the list (see R-6). */
 export function collapseThreads(ids) {
+  if (typeof storeOf !== 'function') return Array.isArray(ids) ? ids : [];
   return sel.collapseThreads(ids, storeOf(), selectorsCtx());
 }
 
@@ -665,7 +670,7 @@ function updateEmptyState(count, achieved = false) {
  * replaced by grey bars.
  */
 export function setSkeleton(on) {
-  if (!el.skeleton) return;
+  if (!el?.skeleton) return;
   if (on && !el.skeleton.childElementCount) {
     const frag = document.createDocumentFragment();
     for (let i = 0; i < 7; i++) {
@@ -710,6 +715,7 @@ export function setSkeleton(on) {
  * the message being filed.
  */
 export function travelGhost(fromRect, text) {
+  if (!ctx || !el) return;
   if (!fromRect) return;
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 

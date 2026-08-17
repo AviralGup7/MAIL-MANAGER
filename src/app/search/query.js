@@ -487,6 +487,7 @@ function buildCheck(key, value, now, ctx = {}) {
 
 /** Human summary of what a query is doing, shown under the search box. */
 export function describeQuery(parsed) {
+  if (!parsed || !Array.isArray(parsed.operators)) return '';
   if (!parsed || typeof parsed !== 'object') return '';
   const bits = [];
   for (const o of parsed.operators) {

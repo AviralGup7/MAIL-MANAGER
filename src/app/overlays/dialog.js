@@ -15,7 +15,7 @@
 
 import { openLayer } from './layers.js';
 
-export function promptDialog({ title, label, value = '', hint, submit }) {
+export function promptDialog({ title, label, value = '', hint, submit } = {}) {
   return new Promise((resolve) => {
     const doc = globalThis.document;
     if (!doc) { resolve(null); return; }
@@ -141,7 +141,7 @@ export function promptDialog({ title, label, value = '', hint, submit }) {
  */
 export function confirmDialog({
   title, body, confirmLabel = 'OK', cancelLabel = 'Cancel', danger = false,
-}) {
+} = {}) {
   return new Promise((resolve) => {
     const doc = globalThis.document;
     if (!doc) { resolve(false); return; }

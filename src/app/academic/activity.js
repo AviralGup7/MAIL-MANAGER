@@ -224,9 +224,9 @@ export function pendingCount() {
  */
 export function describe(entry) {
   if (!entry || typeof entry !== 'object') return '';
-  const n = entry.count || entry.ids.length;
+  const n = entry.count || (entry.ids || []).length;
   const what = n === 1 ? '1 message' : `${n} messages`;
-  const verb = entry.verb.toLowerCase().replace(/_/g, ' ');
+  const verb = String(entry.verb || 'unknown').toLowerCase().replace(/_/g, ' ');
   const by = entry.actor === 'rule' ? ` by rule${entry.detail ? ` "${entry.detail}"` : ''}` : '';
   const status =
     entry.outcome === 'failed' ? ' — failed'
