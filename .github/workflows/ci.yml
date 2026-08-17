@@ -59,11 +59,30 @@ jobs:
       - name: Test shard ${{ matrix.shard }} (fails on skips)
         run: node tools/ci-test.mjs --shard ${{ matrix.shard }}
 
-  # The non-test gates. Split out so the eight shards do not pay for them
-  # eight times, and so a test failure does not hide their results.
+  # The non-test gates that need no browser. Split out so the eight shards
+  # do not pay for them eight times, and so a test failure does not hide
+  # their results.
+  #
+  # WHY THIS JOB NO LONGER OWNS THE BROWSER (2026-08-17).
+  #
+  # MEASURED on run 32013206837: `checks` took 80s while the slowest of the
+  # eight shards took 49s — so this job, not the suite, was the critical
+  # path of every build. The breakdown was unambiguous:
+  #
+  #     Install Chromium (once)   24s
+  #     Rendering benchmark       16s
+  #     Browser smoke gates       15s
+  #     ------------------------------
+  #     everything else          ~25s
+  #
+  # Three steps carried 55 of the 80 seconds, and none of them depends on
+  # lint, typecheck, docs or coverage. They now live in a SEPARATE job
+  # (`browser`) that runs in PARALLEL with this one, so the slow half no
+  # longer serialises behind the fast half. Both remain required by the
+  # verdict, so no coverage is traded for the speed.
   checks:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -160,6 +179,64 @@ jobs:
       - name: Benchmark (data layer)
         run: npm run bench
 
+      # The shard manifest survives EVERY run (2026-08-14 audit #8/#23):
+      # which file went to which slice, how many, disjoint/complete — the
+      # evidence the completeness claim rests on, kept for green runs too
+      # because "what did CI actually execute?" is a question you ask after
+      # a PASS as often as after a failure. Written by ci-selfcheck.mjs
+      # above; small enough that retention is free.
+      - name: Shard manifest (always)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: shard-manifest
+          path: .ci-manifest.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+      # The rule files are generated from docs/CLASSIFICATION_DATA_PACK.md.
+      # Regenerating must be a no-op; a diff means someone hand-edited the
+      # output, which is how the first port silently lost 802 of 891 keys.
+      - name: Generated files are in sync
+        run: |
+          node tools/gen-pattern-rules.mjs docs/CLASSIFICATION_DATA_PACK.md
+          node tools/gen-address-map.mjs docs/CLASSIFICATION_DATA_PACK.md
+          git diff --exit-code -- src/classify/pattern-rules.js src/classify/address-map.js
+
+  # THE BROWSER GATES, IN THEIR OWN JOB (2026-08-17).
+  #
+  # Chromium install + render bench + smoke gates were 55s of the old
+  # `checks` job's 80s, and made `checks` the critical path of the whole
+  # build (the slowest test shard was 49s). Nothing here depends on the
+  # lint/typecheck/docs gates, so running them in series was pure wall
+  # clock. The browser download is cached too, which removes most of the
+  # 24s install whenever the lockfile is unchanged.
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - run: npm ci
+
+      # THE DOWNLOAD IS CACHED; THE INSTALL STEP STILL RUNS.
+      # Keyed on the lockfile, so a playwright-core bump invalidates it and
+      # a stale browser can never survive an upgrade. The install below is
+      # still executed on a cache hit — it is a near-no-op when the binary
+      # is already present, and it stays the ONE place that puts a browser
+      # on the box (the invariant ci-selfcheck enforces).
+      - name: Cache Chromium
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
       # Exactly ONE browser install; the bench and the smoke gate both
       # reuse it through the job's shared cache (the workflow previously
       # installed Chromium once per step). The fallback keeps the useful
@@ -249,30 +326,6 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      # The shard manifest survives EVERY run (2026-08-14 audit #8/#23):
-      # which file went to which slice, how many, disjoint/complete — the
-      # evidence the completeness claim rests on, kept for green runs too
-      # because "what did CI actually execute?" is a question you ask after
-      # a PASS as often as after a failure. Written by ci-selfcheck.mjs
-      # above; small enough that retention is free.
-      - name: Shard manifest (always)
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: shard-manifest
-          path: .ci-manifest.json
-          if-no-files-found: ignore
-          retention-days: 30
-
-      # The rule files are generated from docs/CLASSIFICATION_DATA_PACK.md.
-      # Regenerating must be a no-op; a diff means someone hand-edited the
-      # output, which is how the first port silently lost 802 of 891 keys.
-      - name: Generated files are in sync
-        run: |
-          node tools/gen-pattern-rules.mjs docs/CLASSIFICATION_DATA_PACK.md
-          node tools/gen-address-map.mjs docs/CLASSIFICATION_DATA_PACK.md
-          git diff --exit-code -- src/classify/pattern-rules.js src/classify/address-map.js
-
   # THE VERDICT (2026-08-13). A REAL aggregate: if: always() so a cancelled
   # or failed need is still read, and the gate fails on any result that is
   # not verbatim "success" — including "cancelled", which a naive check
@@ -281,7 +334,7 @@ jobs:
   ci-verdict:
     name: Verdict
     if: always()
-    needs: [test, checks]
+    needs: [test, checks, browser]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -289,8 +342,9 @@ jobs:
         env:
           TEST: ${{ needs.test.result }}
           CHECKS: ${{ needs.checks.result }}
+          BROWSER: ${{ needs.browser.result }}
         run: |
-          echo "test=$TEST checks=$CHECKS"
+          echo "test=$TEST checks=$CHECKS browser=$BROWSER"
           # The run's Summary page carries the aggregate too (2026-08-14):
           # per-shard TEST SUMMARY blocks already land there from the
           # runner; this table is the one-glance answer above them.
@@ -301,8 +355,9 @@ jobs:
             echo "| --- | --- |"
             echo "| test (8 shards) | $TEST |"
             echo "| checks | $CHECKS |"
+            echo "| browser | $BROWSER |"
           } >> "$GITHUB_STEP_SUMMARY"
-          if [ "$TEST" != "success" ] || [ "$CHECKS" != "success" ]; then
-            echo "::error::a required job did not succeed (test=$TEST checks=$CHECKS)"
+          if [ "$TEST" != "success" ] || [ "$CHECKS" != "success" ] || [ "$BROWSER" != "success" ]; then
+            echo "::error::a required job did not succeed (test=$TEST checks=$CHECKS browser=$BROWSER)"
             exit 1
           fi

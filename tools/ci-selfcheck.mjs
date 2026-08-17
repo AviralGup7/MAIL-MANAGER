@@ -30,6 +30,22 @@ import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 
 const wf = readFileSync('.github/workflows/ci.yml', 'utf8');
+/*
+ * THE WORKFLOW WITH ITS COMMENTS STRIPPED.
+ *
+ * Every structural gate below must read this, not `wf`. Twice now a check
+ * has failed because a COMMENT quoted the very thing it forbids: splitting
+ * the browser steps into their own job added prose naming
+ * "Install Chromium (once)" and describing an install, and both
+ * `one-chromium-install` and the smoke-ordering check went red while the
+ * executable YAML was correct. A gate that cannot tell code from prose
+ * reports the explanation as the defect.
+ *
+ * Defined HERE rather than halfway down the file, where it used to sit —
+ * being declared after the checks that needed it is why they were written
+ * against the raw text in the first place.
+ */
+const wfCode = wf.split('\n').map((l) => l.replace(/#.*$/, '')).join('\n');
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
 const results = [];
 const check = (name, ok, detail = '') =>
@@ -134,12 +150,29 @@ check('workflow/least-privilege', /permissions:\s*\n\s+contents: read/.test(wf),
 check('workflow/timeouts', (wf.match(/timeout-minutes:/g) || []).length >= 2,
   'job timeouts present');
 check('workflow/one-chromium-install',
-  (wf.match(/Install Chromium \(once\)/g) || []).length === 1 && !/smoke[\s\S]*?install chromium/.test(wf.slice(wf.indexOf('Browser smoke gates'))),
-  'one install step; the smoke step reuses it');
+  (wfCode.match(/name: Install Chromium \(once\)/g) || []).length === 1
+  && (wfCode.match(/playwright-core install chromium/g) || []).length >= 1
+  && !/playwright-core install chromium/.test(wfCode.slice(wfCode.indexOf('Browser smoke gates'))),
+  'exactly one install STEP, and nothing reinstalls after the smoke gate');
 check('workflow/hard-smoke', /node tools\/ci-smoke\.mjs(?!.*\|\|)/.test(wf) && /Browser smoke gates/.test(wf),
   'the smoke gate has no soft-echo');
 check('workflow/typecheck-gate', wf.includes('npm run types'), 'checkJs runs in CI');
-check('workflow/verdict', wf.includes('needs: [test, checks]'), 'the aggregate verdict job exists');
+/* The verdict must depend on EVERY gate job. Hardcoding `[test, checks]`
+   silently stopped being true the moment the browser gates became their own
+   job — a check that names a fixed list cannot notice a new job it should be
+   guarding, which is the failure mode that lets a gate go unwatched. */
+const needsLine = /needs: \[([^\]]+)\]/.exec(wfCode)?.[1] || '';
+const verdictNeeds = needsLine.split(',').map((x) => x.trim()).filter(Boolean);
+/* Scoped to the `jobs:` block. A bare two-space-indent scan also matched
+   `push:` under `on:` — my first version of this gate did exactly that and
+   demanded the verdict depend on a trigger. */
+const jobsBlock = wfCode.slice(wfCode.indexOf('\njobs:'));
+const gateJobs = [...jobsBlock.matchAll(/^  ([a-z][a-z0-9-]*):$/gm)]
+  .map((m) => m[1]).filter((j) => j !== 'ci-verdict');
+check('workflow/verdict', verdictNeeds.length > 0, 'the aggregate verdict job exists');
+check('workflow/verdict-covers-every-job',
+  gateJobs.every((j) => verdictNeeds.includes(j)),
+  `the verdict must need every gate job — has [${verdictNeeds}], jobs are [${gateJobs}]`);
 check('workflow/real-verdict', !/echo "?all checks passed/i.test(wf),
   'no fake verdict job (success/failure/cancelled must be read, not printed)');
 /* 2026-08-14 audit #43/#44: nothing EXECUTED in the workflow may route
@@ -147,7 +180,6 @@ check('workflow/real-verdict', !/echo "?all checks passed/i.test(wf),
    supply-chain shape the pinned playwright-core dependency exists to
    prevent — so the browser install addresses node_modules/.bin directly.
    Comments are stripped first: explaining the rule requires naming it. */
-const wfCode = wf.split('\n').map((l) => l.replace(/#.*$/, '')).join('\n');
 check('workflow/no-npx', !/\bnpx\s/.test(wfCode), 'executables come from the lockfile, via npm ci');
 check('workflow/manifest-uploaded', /if: always\(\)[\S\s]*?\.ci-manifest\.json/.test(wf),
   'the shard manifest survives green runs too');
