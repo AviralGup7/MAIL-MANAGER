@@ -52,7 +52,12 @@ test('the workflow keeps least-privilege, timeouts, one install, real verdict', 
   assert.ok((wf.match(/timeout-minutes:/g) || []).length >= 3, 'jobs have timeouts');
   assert.match(wf, /Install Chromium \(once\)/, 'the doubled install stays merged');
   assert.match(wf, /if: failure\(\)/, 'failure evidence uploads only on failure');
-  assert.match(wf, /needs: \[test, checks\][\s\S]*?if \[ "\$TEST" != "success" \]/,
+  /* The job list is no longer hardcoded here (2026-08-17): the browser
+     gates became their own job, and a gate that names a fixed set cannot
+     notice a new job it should be guarding. ci-selfcheck's
+     `verdict-covers-every-job` enumerates them properly; this one only
+     asserts the verdict READS results rather than printing them. */
+  assert.match(wf, /needs: \[[^\]]*test[^\]]*checks[^\]]*\][\s\S]*?if \[ "\$TEST" != "success" \]/,
     'the verdict reads results, it does not print them');
 });
 
@@ -117,7 +122,7 @@ test('runs cancel when superseded; every gate mirrors to the Summary page', () =
   assert.match(wf, /concurrency:\s*\n\s+group: \$\{\{ github\.workflow \}\}-\$\{\{ github\.ref \}\}/,
     'the concurrency group names the ref');
   assert.match(wf, /cancel-in-progress: true/, 'a new push stops paying for a stale answer');
-  assert.match(wf, /needs: \[test, checks\][\s\S]*?GITHUB_STEP_SUMMARY/,
+  assert.match(wf, /needs: \[[^\]]*test[^\]]*checks[^\]]*\][\s\S]*?GITHUB_STEP_SUMMARY/,
     'the verdict table lands on the Summary page');
   assert.match(read('tools/ci-test.mjs'), /GITHUB_STEP_SUMMARY/,
     'shard TEST SUMMARYs mirror (round 52, kept)');

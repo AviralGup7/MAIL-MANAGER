@@ -62,10 +62,17 @@ test('nextWakeAt: a past-due wake is floored, not fired immediately', () => {
 });
 
 test('AUD-L1: scheduleWake delegates the arithmetic to nextWakeAt', () => {
-  const fn = INDEX_SRC.slice(
-    INDEX_SRC.indexOf('async function scheduleWake'),
-    INDEX_SRC.indexOf('async function scheduleWake') + 1200
-  );
+  /*
+   * THE WINDOW IS THE FUNCTION, NOT 1200 CHARACTERS (2026-08-17).
+   *
+   * W-14 added a docblock inside this window explaining why a failed read
+   * must not clear the alarm, which pushed `nextWakeAt(all)` past the fixed
+   * slice — so the gate reported that the worker had stopped delegating the
+   * arithmetic when it had not. Third time a fixed-width source window has
+   * failed on a COMMENT in this repo; the brace-matched slice cannot.
+   */
+  const start = INDEX_SRC.indexOf('async function scheduleWake');
+  const fn = INDEX_SRC.slice(start, INDEX_SRC.indexOf('\n}', start) + 2);
   assert.match(fn, /nextWakeAt\(all\)/, 'the worker must not re-derive this');
   assert.ok(!/\.filter\(\(t\) => typeof t === 'number'\)/.test(fn),
     'the NaN-passing filter is gone from the alarm path');

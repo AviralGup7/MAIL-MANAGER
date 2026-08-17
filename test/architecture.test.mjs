@@ -82,8 +82,14 @@ test('background never imports the app presentation layer', () => {
 test('cross-context jobs live in feature-owned models with explicit worker APIs', () => {
   const idx = readFileSync(join(SRC, 'background', 'index.js'), 'utf8');
   const declared = [
-    ['snooze/model.js', ['loadSnoozed', 'removeSnooze', 'due', 'nextWakeAt']],
-    ['outbox/model.js', ['loadOutbox', 'saveOutbox', 'dueItems', 'markFailed', 'markUncertain', 'prioritizeDue', 'dispatchable']],
+    /* `readSnoozed` joined the list when W-14 stopped a failed READ from
+       clearing the only wake alarm: the worker needs the three-state read,
+       not the lenient one. `markDelivered`/`wasDelivered` joined when W-1
+       moved the delivery ledger into the shared model so the worker pump and
+       the in-page fallback stop keeping separate answers to "have we already
+       sent this" — the divergence that let the worker send twice. */
+    ['snooze/model.js', ['loadSnoozed', 'readSnoozed', 'removeSnooze', 'due', 'nextWakeAt']],
+    ['outbox/model.js', ['loadOutbox', 'saveOutbox', 'dueItems', 'markFailed', 'markUncertain', 'prioritizeDue', 'dispatchable', 'markDelivered', 'wasDelivered']],
   ];
   for (const [file, symbols] of declared) {
     const marker = `from '../features/${file}'`;

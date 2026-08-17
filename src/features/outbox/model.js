@@ -72,6 +72,21 @@ export const MAX_ATTEMPTS = BACKOFF_MS.length;
  *                                queued, armed for their owner, and the count
  *                                is the honest receipt. Absent when zero —
  *                                a silent field is a door nobody walks through.
+ * @property {string[]} [unreconciled] ids GMAIL ACCEPTED whose removal from
+ *                                the queue could not be persisted (W-1). The
+ *                                mail HAS gone; only the local record of it
+ *                                failed. Distinct from `failed`, which means
+ *                                the send did not happen, and from
+ *                                `wrongAccount`, which means it was never
+ *                                attempted. Absent when empty.
+ * @property {string[]} [alreadyDelivered] ids skipped because this session
+ *                                already delivered them (W-1). Without this,
+ *                                a stranded row would be reported as an
+ *                                account refusal — telling the user their
+ *                                mail is queued elsewhere when it has gone.
+ * @property {boolean} [accountChanged] the session's account moved mid-pump
+ *                                and the pump stood down (W-2). Anything
+ *                                already sent stays sent and reported.
  */
 
 /**

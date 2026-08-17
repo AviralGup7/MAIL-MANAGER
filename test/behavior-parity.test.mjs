@@ -86,6 +86,23 @@ test('OUTBOX_PUMP: worker and fallback answer the same contract', async () => {
   installGmail();
   const { runInPage, _resetFallback } = await import('../src/app/system/fallback.js');
   _resetFallback();
+  /*
+   * THE DELIVERY LEDGER IS PER-SESSION, AND THIS TEST IS TWO SESSIONS
+   * (2026-08-17, W-1).
+   *
+   * SEED_QUEUE hands both halves the SAME item id, `ob-1`. The worker half
+   * runs first and records `ob-1` as delivered — correctly, since Gmail
+   * accepted it — so the fallback half then refused to send it again and
+   * reported sent=0 against the worker's sent=1.
+   *
+   * That is the duplicate-send guard doing exactly its job: the whole point
+   * of W-1 is that one id is never dispatched twice in a session. The test
+   * simulates two INDEPENDENT sessions sharing a module instance, so it has
+   * to say so, the same way it already resets the fallback runner and swaps
+   * the storage double.
+   */
+  const { _resetOutbox } = await import('../src/features/outbox/model.js');
+  _resetOutbox();
   fStore.outbox = SEED_QUEUE();
   const fRes = await runInPage('OUTBOX_PUMP');
 

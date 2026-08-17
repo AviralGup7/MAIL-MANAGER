@@ -561,12 +561,38 @@ test('date operators include the boundary day', () => {
 });
 
 test('to:me is honest about what it can answer', () => {
-  // `() => true` -> `false` survived. We only hold the signed-in mailbox, so
-  // `to:me` is a tautology; anything else cannot be answered from stored
-  // headers and must match nothing rather than pretend.
-  const probe = { subject: 'x', from: 'a@b.c', snippet: '', date: Date.now() };
-  assert.equal(parseQuery('to:me').predicate(probe), true, 'to:me must match everything held');
-  assert.equal(parseQuery('to:someone@else.com').predicate(probe), false,
+  /*
+   * THIS TEST USED TO ENCODE THE BUG AS THE CONTRACT (rewritten 2026-08-17,
+   * W-9).
+   *
+   * It asserted `to:me` matches EVERYTHING, reasoning that "we only hold the
+   * signed-in mailbox, so to:me is a tautology". That premise is false in
+   * two directions and an external audit caught it:
+   *
+   *   - The store holds plenty of mail the user is not a recipient of —
+   *     anything Cc'd to a list, and every message in Sent.
+   *   - The same parser compiles RULES. `to:me -> archive` therefore
+   *     validated, previewed, and would have archived the whole mailbox.
+   *
+   * A tautology is not honesty. The honest answer is the real one: match the
+   * messages actually addressed to this account, folding plus-addressing the
+   * way the rest of the identity code does — and when no identity has been
+   * proved, match NOTHING, because an empty result is visible and a silent
+   * catch-all is what an archive rule acts on.
+   */
+  const ME = 'f20240294@pilani.bits-pilani.ac.in';
+  const mine = { to: ME, cc: '', subject: 'x', from: 'a@b.c', snippet: '', date: Date.now() };
+  const tagged = { to: 'list@x.z', cc: `Me <f20240294+jobs@pilani.bits-pilani.ac.in>`, subject: 'x', from: 'a@b.c', snippet: '', date: Date.now() };
+  const theirs = { to: 'someone@else.com', cc: 'other@x.z', subject: 'x', from: 'a@b.c', snippet: '', date: Date.now() };
+
+  const withMe = parseQuery('to:me', Date.now(), { selfEmail: ME }).predicate;
+  assert.equal(withMe(mine), true, 'a message addressed to me matches');
+  assert.equal(withMe(tagged), true, 'plus-addressing reaches the same mailbox');
+  assert.equal(withMe(theirs), false, 'THE BUG: this used to match too');
+
+  assert.equal(parseQuery('to:me').predicate(mine), false,
+    'with no proved identity to:me must fail CLOSED, not match everything');
+  assert.equal(parseQuery('to:someone@else.com').predicate(mine), false,
     'an unanswerable to: must match nothing, not everything');
 });
 

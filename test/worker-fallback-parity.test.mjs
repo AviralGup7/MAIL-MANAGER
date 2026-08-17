@@ -179,7 +179,12 @@ test('the pump re-checks each item against live storage before dispatch (bug-hun
   // be resurrected by the pump's stale in-memory array. The re-check is the
   // mitigation; without it a cancelled message can still go out.
   const w = read('src/background/index.js');
-  const pump = w.slice(w.indexOf("case 'OUTBOX_PUMP'"), w.indexOf("case 'OUTBOX_PUMP'") + 3000);
+  /* Brace-matched, not a fixed 3000 characters: W-1/W-2 added explanatory
+     docblocks inside the pump and pushed `const live = await loadOutbox`
+     past the old window, so the gate reported a re-check that is still
+     there as missing. A comment must not be able to fail a code gate. */
+  const pumpStart = w.indexOf("case 'OUTBOX_PUMP'");
+  const pump = w.slice(pumpStart, w.indexOf('\n    }', pumpStart));
   assert.match(pump, /const live = await loadOutbox/,
     'each item is re-verified against storage before dispatch');
   assert.match(pump, /!live\.some/,
@@ -234,8 +239,18 @@ test('OUTBOX_PUMP answers the ONE canonical PumpResult shape (bug-hunt 43 #50)',
      receipt — rows refused for this session's account stay armed for their
      owner, and a pump that refuses silently would be lying by omission. It
      is conditional (absent at zero), so the base shape below is a prefix. */
-  assert.match(w, /return \{ sent, failed, skipped: false, sentIds, more,\s*\n?\s*\.\.\.\(wrongAccount \? \{ wrongAccount, blockedIds \} : \{\}\) \};/,
-    'the worker answers the contract plus visible account-refusal details');
+  /* The base shape is a PREFIX and the receipts are conditional spreads, so
+     the gate matches the prefix and then each receipt independently. Pinning
+     the whole literal meant every new honest receipt (unreconciled,
+     alreadyDelivered, accountChanged — W-1/W-2) failed a test whose subject
+     is the CONTRACT, not the field list. */
+  assert.match(w, /return \{ sent, failed, skipped: false, sentIds, more,/,
+    'the worker answers the canonical base shape');
+  assert.match(w, /\.\.\.\(wrongAccount \? \{ wrongAccount, blockedIds \} : \{\}\)/,
+    'account refusals stay visible');
+  assert.match(w, /\.\.\.\(unreconciled\.length \? \{ unreconciled \} : \{\}\)/,
+    'a delivered-but-unrecorded send is reported, never silently dropped');
+  assert.match(o, /@property \{string\[\]\} \[unreconciled\]/, 'the contract names it');
   assert.match(o, /@property \{number\}\s+\[wrongAccount\]/, 'the contract names the receipt');
   assert.match(w, /`g:\$\{res\.id\}`/, 'worker ids carry the g: namespace');
   assert.match(o, /`g:\$\{res\.id\}` : `q:\$\{item\.id\}`/, 'runner ids are namespaced');
