@@ -245,6 +245,14 @@ jobs:
           path: ~/.cache/ms-playwright
           key: ms-playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
+      # ONLY THE HEADLESS SHELL (2026-08-17). Neither tool asks for a
+      # `channel` or a headed browser — ci-smoke and render-bench both call
+      # `chromium.launch()` plain — so the full ~560MB Chromium was being
+      # downloaded to run something that only ever needs the 262MB shell.
+      # MEASURED locally: 7s to fetch the shell, and 22/22 smoke gates plus a
+      # real bench run against it. This is what closes the gap between the
+      # smoke job's 27s install and the bench job's 11s.
+      #
       # Exactly ONE browser install; the bench and the smoke gate both
       # reuse it through the job's shared cache (the workflow previously
       # installed Chromium once per step). The fallback keeps the useful
@@ -255,7 +263,7 @@ jobs:
       # exists to prevent. npm ci above guarantees the bin is there.
       - name: Install Chromium (once)
         run: |
-          node_modules/.bin/playwright-core install chromium --with-deps || { echo "::warning::install --with-deps failed; retrying without system deps"; node_modules/.bin/playwright-core install chromium; }
+          node_modules/.bin/playwright-core install chromium --only-shell --with-deps || { echo "::warning::install --with-deps failed; retrying without system deps"; node_modules/.bin/playwright-core install chromium --only-shell; }
 
       # Audit 64's F2, closed 2026-08-14: paint numbers are a HARD gate.
       # The bench itself splits its failure classes — exit 2 means "no
@@ -339,7 +347,7 @@ jobs:
       # exists to prevent. npm ci above guarantees the bin is there.
       - name: Install Chromium (once)
         run: |
-          node_modules/.bin/playwright-core install chromium --with-deps || { echo "::warning::install --with-deps failed; retrying without system deps"; node_modules/.bin/playwright-core install chromium; }
+          node_modules/.bin/playwright-core install chromium --only-shell --with-deps || { echo "::warning::install --with-deps failed; retrying without system deps"; node_modules/.bin/playwright-core install chromium --only-shell; }
 
       # The hard browser gate (direction M2, 2026-08-13). The bench REPORTS
       # numbers and soft-fails on exotic environments; the smoke suite
