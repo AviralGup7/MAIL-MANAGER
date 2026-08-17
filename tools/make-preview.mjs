@@ -176,9 +176,32 @@ function MOCK() {
 const NOW = Date.now();
 const H = 3600000;
 
+/*
+ * A DEADLINE THE CORPUS CAN STILL REACH (round 11 sweep).
+ *
+ * The seed used to say "Course registration opens on Monday" and nothing
+ * else datable, so extractDeadline found NO future deadline anywhere in
+ * the preview. The radar was therefore empty, every #rail-scroll section was
+ * hidden, and the rail column's rule --
+ *
+ *   body.rail-open #panes:has(#rail-scroll > :not([hidden]))
+ *
+ * — never matched, collapsing #panes to two columns. Three browser smoke
+ * gates (rail/column-visible-wide, rail/drawer-summons,
+ * rail/seam-unfold-restores) read display:none and failed.
+ *
+ * It is a data-rot bug, not a layout one: the gates passed while the fixture
+ * happened to carry a live date and started failing when the calendar moved
+ * past it. A fixture that decays silently is a gate that stops testing what
+ * it claims to. The date below is computed FROM NOW, so it can never age
+ * out again.
+ */
+const DUE_SOON = new Date(NOW + 3 * 24 * H)
+  .toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+
 /** Synthetic mail shaped like a real Pilani inbox. */
 const SEED = [
-  ['AUGSD <augsd@pilani.bits-pilani.ac.in>', 'Registration for Semester II 2025-26 — deadlines', 'Course registration opens on Monday. Students with pending fee payment will not be able to register.', 0.4, true],
+  ['AUGSD <augsd@pilani.bits-pilani.ac.in>', 'Registration for Semester II 2025-26 — deadlines', 'Course registration closes on ' + DUE_SOON + '. Students with pending fee payment will not be able to register.', 0.4, true],
   ['Practice School Division <psd@pilani.bits-pilani.ac.in>', 'PS-II Station Allotment Round 2 — response required', 'The second round of station allotment is now live on the PS portal. Confirm your preference within 48 hours.', 2, true],
   ['Placement Unit <placementunit@pilani.bits-pilani.ac.in>', 'Pre-placement talk: Quantitative Research role', 'PPT scheduled in the FD-III auditorium. Attendance is mandatory for all registered candidates.', 3.5, true],
   ['Department of Computer Science <cs@pilani.bits-pilani.ac.in>', 'CS F364 Design & Analysis of Algorithms — makeup class', 'Makeup lecture for the cancelled session will be held Saturday 9 AM in LTC 305.', 5, false],
