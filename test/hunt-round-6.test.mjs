@@ -299,15 +299,40 @@ test('P1-5: the cached-start path arms the auto-refresh timer', () => {
    * timer's own re-arm — which cannot run because it was never armed once.
    * So every returning user ran with no auto-refresh at all.
    */
+  /*
+   * REWRITTEN AFTER IT FAILED ON ITS OWN FIX (2026-08-17).
+   *
+   * The first version sliced a fixed 1400 characters and asserted that
+   * `scheduleAutoRefresh()` appeared before the first `return;`. Round 7
+   * then added the session-epoch guard —
+   *
+   *     if (epoch !== opEpoch) return;
+   *     scheduleAutoRefresh();
+   *
+   * — which introduces an EARLIER `return;`, so `armAt < retAt` went false
+   * while the behaviour was not merely intact but strictly better. Fourth
+   * fixed-window/positional gate in this repo to fail on correct code.
+   *
+   * What actually matters is structural: the cached branch must arm the
+   * timer somewhere before it returns to the caller, and the arming must be
+   * inside that branch rather than only on the cold path below it. Asserted
+   * against the brace-matched branch, with no dependence on which `return;`
+   * happens to come first.
+   */
   const main = src('src/app/main.js');
   const at = main.indexOf('const delta = await refresh({ silent: true });');
   assert.notEqual(at, -1);
-  const branch = main.slice(at, at + 1400);
+  // The cached branch runs from the delta call to the end of its `if` block.
+  const branch = main.slice(at, main.indexOf('\n  await loadPage', at));
 
-  const armAt = branch.indexOf('scheduleAutoRefresh();');
-  const retAt = branch.indexOf('return;');
-  assert.ok(armAt !== -1, 'the cached path must arm the timer');
-  assert.ok(armAt < retAt, 'and it must do so BEFORE returning');
+  assert.match(branch, /scheduleAutoRefresh\(\);/,
+    'the cached path must arm the timer — a returning user got none at all');
+  assert.match(branch, /if \(epoch !== opEpoch\) return;/,
+    'and must not arm one for a session that ended mid-boot');
+  assert.ok(
+    branch.indexOf('scheduleAutoRefresh();') < branch.lastIndexOf('return;'),
+    'the arming happens inside the branch, not after it'
+  );
 });
 
 test('P1-6: a failed non-inbox refresh restores the page it cleared', () => {
