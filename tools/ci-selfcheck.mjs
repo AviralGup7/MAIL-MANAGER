@@ -145,15 +145,41 @@ try {
 
 /* ---- 3 · the workflow keeps its own teeth -------------------------------- */
 
+/* Scoped to the `jobs:` block. A bare two-space-indent scan also matched
+   `push:` under `on:` — an early version of the verdict gate did exactly
+   that and demanded the verdict depend on a trigger. */
+const jobsBlock = wfCode.slice(wfCode.indexOf('\njobs:'));
+
 check('workflow/least-privilege', /permissions:\s*\n\s+contents: read/.test(wf),
   'top-level `permissions: contents: read`');
 check('workflow/timeouts', (wf.match(/timeout-minutes:/g) || []).length >= 2,
   'job timeouts present');
+/*
+ * ONE CHROMIUM INSTALL **PER JOB** (2026-08-17).
+ *
+ * The original rule was "exactly one install step in the file", written when
+ * a single job owned every browser gate and had accreted two installs. That
+ * spelling stopped matching reality when the bench and the smoke suite were
+ * split into separate jobs to get each under the shard time: a job is a
+ * fresh machine, so each one MUST install, and the cache makes the second
+ * nearly free.
+ *
+ * The invariant that actually mattered was never "one per file" — it was
+ * "no job installs the browser twice", which is what this now checks. The
+ * count is derived from the jobs that use a browser rather than pinned to a
+ * number, so adding a third browser job cannot silently break it.
+ */
+const browserJobs = jobsBlock
+  .split(/\n  (?=[a-z][a-z0-9-]*:\n)/)
+  .filter((b) => /playwright-core install chromium/.test(b));
 check('workflow/one-chromium-install',
-  (wfCode.match(/name: Install Chromium \(once\)/g) || []).length === 1
-  && (wfCode.match(/playwright-core install chromium/g) || []).length >= 1
-  && !/playwright-core install chromium/.test(wfCode.slice(wfCode.indexOf('Browser smoke gates'))),
-  'exactly one install STEP, and nothing reinstalls after the smoke gate');
+  browserJobs.length > 0 && browserJobs.every(
+    (b) => (b.match(/name: Install Chromium \(once\)/g) || []).length === 1
+  ),
+  `each browser job installs exactly once (${browserJobs.length} such job(s))`);
+check('workflow/browser-install-cached',
+  browserJobs.every((b) => /actions\/cache@/.test(b) && /ms-playwright/.test(b)),
+  'every browser job caches the download, keyed on the lockfile');
 check('workflow/hard-smoke', /node tools\/ci-smoke\.mjs(?!.*\|\|)/.test(wf) && /Browser smoke gates/.test(wf),
   'the smoke gate has no soft-echo');
 check('workflow/typecheck-gate', wf.includes('npm run types'), 'checkJs runs in CI');
@@ -163,10 +189,6 @@ check('workflow/typecheck-gate', wf.includes('npm run types'), 'checkJs runs in 
    guarding, which is the failure mode that lets a gate go unwatched. */
 const needsLine = /needs: \[([^\]]+)\]/.exec(wfCode)?.[1] || '';
 const verdictNeeds = needsLine.split(',').map((x) => x.trim()).filter(Boolean);
-/* Scoped to the `jobs:` block. A bare two-space-indent scan also matched
-   `push:` under `on:` — my first version of this gate did exactly that and
-   demanded the verdict depend on a trigger. */
-const jobsBlock = wfCode.slice(wfCode.indexOf('\njobs:'));
 const gateJobs = [...jobsBlock.matchAll(/^  ([a-z][a-z0-9-]*):$/gm)]
   .map((m) => m[1]).filter((j) => j !== 'ci-verdict');
 check('workflow/verdict', verdictNeeds.length > 0, 'the aggregate verdict job exists');

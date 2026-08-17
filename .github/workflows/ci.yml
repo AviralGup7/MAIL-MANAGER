@@ -203,15 +203,26 @@ jobs:
           node tools/gen-address-map.mjs docs/CLASSIFICATION_DATA_PACK.md
           git diff --exit-code -- src/classify/pattern-rules.js src/classify/address-map.js
 
-  # THE BROWSER GATES, IN THEIR OWN JOB (2026-08-17).
+  # THE TWO BROWSER GATES, EACH IN ITS OWN JOB (2026-08-17).
   #
-  # Chromium install + render bench + smoke gates were 55s of the old
-  # `checks` job's 80s, and made `checks` the critical path of the whole
-  # build (the slowest test shard was 49s). Nothing here depends on the
-  # lint/typecheck/docs gates, so running them in series was pure wall
-  # clock. The browser download is cached too, which removes most of the
-  # 24s install whenever the lockfile is unchanged.
-  browser:
+  # First they came out of `checks` (80s -> 25s). That left one `browser` job
+  # at 61s, which was then the critical path:
+  #
+  #     setup + npm ci + cache      12s
+  #     Install Chromium (warm)     11s
+  #     Rendering benchmark         20s
+  #     Browser smoke gates         16s
+  #
+  # The bench and the smoke suite are independent — different tools, different
+  # assertions, no shared state beyond the browser binary and the generated
+  # preview — so running them in series only added wall clock. Split, each job
+  # pays ~23s of setup and then its own gate, which puts BOTH comfortably
+  # under the slowest test shard instead of above it.
+  #
+  # The install step is duplicated across the two jobs by necessity: a job is
+  # a fresh machine. It is still exactly one install PER JOB, and the cache
+  # means it is mostly a no-op. ci-selfcheck enforces that per-job rule.
+  bench:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -225,12 +236,9 @@ jobs:
 
       - run: npm ci
 
-      # THE DOWNLOAD IS CACHED; THE INSTALL STEP STILL RUNS.
-      # Keyed on the lockfile, so a playwright-core bump invalidates it and
-      # a stale browser can never survive an upgrade. The install below is
-      # still executed on a cache hit — it is a near-no-op when the binary
-      # is already present, and it stays the ONE place that puts a browser
-      # on the box (the invariant ci-selfcheck enforces).
+      # The browser download is cached and keyed on the lockfile, so a
+      # playwright-core bump invalidates it and a stale browser cannot
+      # survive an upgrade. MEASURED: install 24s cold, 11s warm.
       - name: Cache Chromium
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
@@ -297,6 +305,42 @@ jobs:
             *) echo "::error::render bench thresholds breached"; exit ${code};;
           esac
 
+
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - run: npm ci
+
+      # The browser download is cached and keyed on the lockfile, so a
+      # playwright-core bump invalidates it and a stale browser cannot
+      # survive an upgrade. MEASURED: install 24s cold, 11s warm.
+      - name: Cache Chromium
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      # Exactly ONE browser install; the bench and the smoke gate both
+      # reuse it through the job's shared cache (the workflow previously
+      # installed Chromium once per step). The fallback keeps the useful
+      # signal: a --with-deps failure prints a warning instead of hiding.
+      # The executable is the PROJECT's playwright-core (2026-08-14 audit
+      # #43/#44), not npx: npx resolution can fetch when the local bin is
+      # absent, which is exactly the supply-chain shape a pinned dependency
+      # exists to prevent. npm ci above guarantees the bin is there.
+      - name: Install Chromium (once)
+        run: |
+          node_modules/.bin/playwright-core install chromium --with-deps || { echo "::warning::install --with-deps failed; retrying without system deps"; node_modules/.bin/playwright-core install chromium; }
+
       # The hard browser gate (direction M2, 2026-08-13). The bench REPORTS
       # numbers and soft-fails on exotic environments; the smoke suite
       # ASSERTS user-visible truths (the drawer never self-opens, compose
@@ -334,7 +378,7 @@ jobs:
   ci-verdict:
     name: Verdict
     if: always()
-    needs: [test, checks, browser]
+    needs: [test, checks, bench, smoke]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -342,9 +386,10 @@ jobs:
         env:
           TEST: ${{ needs.test.result }}
           CHECKS: ${{ needs.checks.result }}
-          BROWSER: ${{ needs.browser.result }}
+          BENCH: ${{ needs.bench.result }}
+          SMOKE: ${{ needs.smoke.result }}
         run: |
-          echo "test=$TEST checks=$CHECKS browser=$BROWSER"
+          echo "test=$TEST checks=$CHECKS bench=$BENCH smoke=$SMOKE"
           # The run's Summary page carries the aggregate too (2026-08-14):
           # per-shard TEST SUMMARY blocks already land there from the
           # runner; this table is the one-glance answer above them.
@@ -355,9 +400,10 @@ jobs:
             echo "| --- | --- |"
             echo "| test (8 shards) | $TEST |"
             echo "| checks | $CHECKS |"
-            echo "| browser | $BROWSER |"
+            echo "| bench | $BENCH |"
+            echo "| smoke | $SMOKE |"
           } >> "$GITHUB_STEP_SUMMARY"
-          if [ "$TEST" != "success" ] || [ "$CHECKS" != "success" ] || [ "$BROWSER" != "success" ]; then
-            echo "::error::a required job did not succeed (test=$TEST checks=$CHECKS browser=$BROWSER)"
+          if [ "$TEST" != "success" ] || [ "$CHECKS" != "success" ] || [ "$BENCH" != "success" ] || [ "$SMOKE" != "success" ]; then
+            echo "::error::a required job did not succeed (test=$TEST checks=$CHECKS bench=$BENCH smoke=$SMOKE)"
             exit 1
           fi
