@@ -32,7 +32,7 @@
     "lint:py": "ruff check tools/"
   },
   "devDependencies": {
-    "axe-core": "^4.13.0",
+    "axe-core": "^4.14.0",
     "eslint": "^9.39.5",
     "fake-indexeddb": "^6.2.5",
     "globals": "^17.11.0",
