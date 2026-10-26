@@ -156,7 +156,7 @@ jobs:
       # the tree is how the next Python file arrives unlinted. Pinned so a
       # new ruff release cannot redden a build that did not change.
       - name: Set up Python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.13'
 
